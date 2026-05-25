@@ -1,21 +1,36 @@
 export default function Legend() {
-    return (
-        <div className="bg-white rounded-lg shadow-lg p-4">
-                <h4 className="font-semibold text-gray-900 mb-3 text-sm">Legend</h4>
-                <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                        <div className="w-5 h-5 bg-green-600 rounded-full border-2 border-white shadow"></div>
-                        <span className="text-sm text-gray-600">Visited Parks</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <div className="w-5 h-5 bg-gray-300 rounded-full border-2 border-white shadow"></div>
-                        <span className="text-sm text-gray-600">Not Visited</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <div className="w-5 h-5 bg-yellow-400 rounded-full border-2 border-white shadow"></div>
-                        <span className="text-sm text-gray-600">Bucket List</span>
-                    </div>
-                </div>
-            </div>
-    );
+  const items = [
+    { color: "var(--visited)",   label: "Visited" },
+    { color: "var(--bucket)",    label: "Bucket list" },
+    { color: "var(--unvisited)", label: "Not yet" },
+  ];
+  return (
+    <div
+      className="flex items-center gap-3 px-3 py-2 rounded-lg"
+      style={{
+        background: "var(--surface)",
+        border: "0.5px solid var(--hairline)",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
+      {items.map(({ color, label }) => (
+        <div key={label} className="flex items-center gap-1.5">
+          <div
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ background: color }}
+          />
+          <span
+            className="text-[11px] font-semibold uppercase"
+            style={{
+              fontFamily: "var(--font-mono)",
+              letterSpacing: "0.8px",
+              color: "var(--ink-mute)",
+            }}
+          >
+            {label}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }

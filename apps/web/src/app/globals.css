@@ -2,123 +2,210 @@
 @import "react-day-picker/style.css";
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0 0 0);
-  --primary: oklch(0.646 0.179 141.5);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0 0 0);
-  --muted: oklch(0.97 0 0); 
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.646 0.179 141.5);
+  /* ── ParkQuest design tokens — Forest palette (light) ─────── */
+  --bg:            #F2EBDB;
+  --surface:       #FFFBF1;
+  --surface-alt:   #F7F0DE;
+  --ink:           #1B1A16;
+  --ink-soft:      #3C3A33;
+  --ink-mute:      #7A746A;
+  --hairline:      rgba(27,26,22,0.10);
+  --hairline-soft: rgba(27,26,22,0.06);
+  --primary:       #1F3D2E;
+  --primary-deep:  #152A20;
+  --accent:        #C56B3D;
+  --accent-2:      #D89A3A;
+  --visited:       #2F7A4A;
+  --bucket:        #D89A3A;
+  --unvisited:     #A8A29A;
+  --shadow-card:   0 6px 18px rgba(58,42,18,0.07), 0 1px 0 rgba(255,255,255,0.5) inset;
+  --shadow-panel:  0 12px 36px rgba(0,0,0,0.18);
+  --shadow-modal:  0 24px 60px rgba(0,0,0,0.40);
+
+  /* ── Alternate palettes (only primary/primary-deep/accent/accent-2 change) */
+  /* Canyon:  #7B3A1F / #582410 / #D89A3A / #3F6B5A */
+  /* Glacier: #2D4F66 / #1A3548 / #C7864B / #7FA6B8 */
+  /* Dusk:    #3A2E5C / #241B40 / #D9764A / #E0B454 */
+
+  /* ── Badge tier colors ─────────────────────────────────────── */
+  --tier-bronze-fill:    #B27339;
+  --tier-bronze-deep:    #8A5526;
+  --tier-silver-fill:    #A8A39B;
+  --tier-silver-deep:    #7A746A;
+  --tier-gold-fill:      #D4A93F;
+  --tier-gold-deep:      #A07E22;
+  --tier-platinum-fill:  #6E97A3;
+  --tier-platinum-deep:  #3F6573;
+  --tier-legendary-fill: #8B5DBF;
+  --tier-legendary-deep: #5A368C;
+
+  /* ── Radii ──────────────────────────────────────────────────── */
+  --r-pill: 100px;
+  --r-lg:   18px;
+  --r-md:   14px;
+  --r-sm:   10px;
+  --r-xs:   8px;
+  /* 0.875rem = 14px aligns shadcn's calc scale to the design system:
+     rounded-sm=10px  rounded-md=12px  rounded-lg=14px  rounded-xl=18px */
+  --radius: 0.875rem;
+
+  /* ── Fonts ───────────────────────────────────────────────────── */
+  --font-sans: var(--font-archivo), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, Menlo, monospace;
+
+  /* ── shadcn/ui compatibility aliases ────────────────────────── */
+  --background:                 var(--bg);
+  --foreground:                 var(--ink);
+  --card:                       var(--surface);
+  --card-foreground:            var(--ink);
+  --popover:                    var(--surface);
+  --popover-foreground:         var(--ink);
+  --primary-foreground:         #FFFBF1;
+  --secondary:                  var(--surface-alt);
+  --secondary-foreground:       var(--ink);
+  --muted:                      var(--surface-alt);
+  --muted-foreground:           var(--ink-mute);
+  --accent-foreground:          var(--ink);
+  --destructive:                oklch(0.577 0.245 27.325);
+  --border:                     var(--hairline);
+  --input:                      var(--hairline);
+  --ring:                       var(--primary);
+  --sidebar:                    var(--surface);
+  --sidebar-foreground:         var(--ink);
+  --sidebar-primary:            var(--primary);
+  --sidebar-primary-foreground: #FFFBF1;
+  --sidebar-accent:             var(--surface-alt);
+  --sidebar-accent-foreground:  var(--ink);
+  --sidebar-border:             var(--hairline);
+  --sidebar-ring:               var(--primary);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --bg:            #13120E;
+  --surface:       #1C1A15;
+  --surface-alt:   #262320;
+  --ink:           #F0EADB;
+  --ink-soft:      #C9C2B0;
+  --ink-mute:      #8C8678;
+  --hairline:      rgba(240,234,219,0.10);
+  --hairline-soft: rgba(240,234,219,0.06);
+  --visited:       #5DA572;
+  --bucket:        #E0B454;
+  --unvisited:     #5A554C;
+  --shadow-card:   0 6px 18px rgba(0,0,0,0.50), 0 1px 0 rgba(255,255,255,0.04) inset;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
 }
 
 button, [role="button"], a {
   cursor: pointer;
 }
 
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
+  /* ── Fonts ─────────────────────────────────────────────────── */
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-jetbrains-mono);
+
+  /* ── Design system color tokens ─────────────────────────────── */
+  --color-bg:             var(--bg);
+  --color-surface:        var(--surface);
+  --color-surface-alt:    var(--surface-alt);
+  --color-ink:            var(--ink);
+  --color-ink-soft:       var(--ink-soft);
+  --color-ink-mute:       var(--ink-mute);
+  --color-primary:        var(--primary);
+  --color-primary-deep:   var(--primary-deep);
+  --color-primary-fg:     #FFFBF1;
+  --color-accent:         var(--accent);
+  --color-accent-2:       var(--accent-2);
+  --color-visited:        var(--visited);
+  --color-bucket:         var(--bucket);
+  --color-unvisited:      var(--unvisited);
+
+  /* ── Badge tier colors ───────────────────────────────────────── */
+  --color-tier-bronze:    var(--tier-bronze-fill);
+  --color-tier-silver:    var(--tier-silver-fill);
+  --color-tier-gold:      var(--tier-gold-fill);
+  --color-tier-platinum:  var(--tier-platinum-fill);
+  --color-tier-legendary: var(--tier-legendary-fill);
+
+  /* ── Radii (Tailwind rounded-* utilities) ────────────────────── */
+  --radius-pill:  var(--r-pill);             /* rounded-pill  = 100px */
+  --radius-sm:    calc(var(--radius) - 4px); /* rounded-sm    = 10px  */
+  --radius-md:    calc(var(--radius) - 2px); /* rounded-md    = 12px  */
+  --radius-lg:    var(--radius);             /* rounded-lg    = 14px  */
+  --radius-xl:    calc(var(--radius) + 4px); /* rounded-xl    = 18px  */
+  --radius-2xl:   calc(var(--radius) + 8px);
+  --radius-3xl:   calc(var(--radius) + 12px);
+  --radius-4xl:   calc(var(--radius) + 16px);
+
+  /* ── shadcn/ui color aliases ─────────────────────────────────── */
+  --color-background:                var(--background);
+  --color-foreground:                var(--foreground);
+  --color-card:                      var(--card);
+  --color-card-foreground:           var(--card-foreground);
+  --color-popover:                   var(--popover);
+  --color-popover-foreground:        var(--popover-foreground);
+  --color-primary-foreground:        var(--primary-foreground);
+  --color-secondary:                 var(--secondary);
+  --color-secondary-foreground:      var(--secondary-foreground);
+  --color-muted:                     var(--muted);
+  --color-muted-foreground:          var(--muted-foreground);
+  --color-accent-foreground:         var(--accent-foreground);
+  --color-destructive:               var(--destructive);
+  --color-border:                    var(--border);
+  --color-input:                     var(--input);
+  --color-ring:                      var(--ring);
+  --color-chart-1:                   var(--chart-1);
+  --color-chart-2:                   var(--chart-2);
+  --color-chart-3:                   var(--chart-3);
+  --color-chart-4:                   var(--chart-4);
+  --color-chart-5:                   var(--chart-5);
+  --color-sidebar:                   var(--sidebar);
+  --color-sidebar-foreground:        var(--sidebar-foreground);
+  --color-sidebar-primary:           var(--sidebar-primary);
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
+  --color-sidebar-accent:            var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border:            var(--sidebar-border);
+  --color-sidebar-ring:              var(--sidebar-ring);
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 @keyframes slideDown {
-  from {
-    transform: translateY(-10px);
-  }
-  to {
-    transform: translateY(0);
-  }
+  from { transform: translateY(-10px); }
+  to   { transform: translateY(0); }
 }
 
 .dropdown-enter {
   animation: fadeIn 0.2s ease-out, slideDown 0.2s ease-out;
 }
 
-/* Keep Leaflet map behind other elements */
+/* Keep Leaflet map tiles behind floating panels but above shell bg */
 .leaflet-container {
-  z-index: -1;
+  z-index: 0;
+}
+
+/* Warm cream toning for CartoDB light_all tiles */
+.leaflet-tile-pane {
+  filter: sepia(18%) saturate(80%) brightness(104%);
 }
 
 /* Fix for day-picker blue ring bug */
 .rdp-root {
-  --rdp-accent-color: oklch(0.646 0.179 141.5);
-  --rdp-background-color: oklch(0.97 0 0);
+  --rdp-accent-color: var(--primary);
+  --rdp-background-color: var(--surface-alt);
 }

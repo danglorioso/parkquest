@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ilike, or, ne, sql } from 'drizzle-orm';
+import { ilike, or, ne, and } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles } from '@/lib/db/schema';
 import { auth } from '@clerk/nextjs/server';
@@ -25,9 +25,12 @@ export async function GET(request: Request) {
       })
       .from(userProfiles)
       .where(
-        or(
-          ilike(userProfiles.username, pattern),
-          ilike(userProfiles.display_name, pattern),
+        and(
+          or(
+            ilike(userProfiles.username, pattern),
+            ilike(userProfiles.display_name, pattern),
+          ),
+          userId ? ne(userProfiles.clerk_user_id, userId) : undefined,
         )
       )
       .limit(limit)

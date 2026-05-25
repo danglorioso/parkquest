@@ -1,21 +1,16 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-import { CheckCircle2, Bookmark, BookmarkX, Pencil } from 'lucide-react';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel,
-  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { useEffect, useMemo, useState } from "react";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
 
 export interface Park {
   park_code: string;
   name: string;
+  states?: string;
   position: [number, number];
-  status: 'visited' | 'notVisited' | 'bucketList';
+  status: "visited" | "notVisited" | "bucketList";
   description?: string;
   visitedDate?: string | null;
   title?: string | null;
@@ -29,192 +24,146 @@ interface LeafletMapProps {
   zoom?: number;
   className?: string;
   parks?: Park[];
-  onMarkVisited?: (parkCode: string) => void;
-  onAddToBucketList?: (parkCode: string) => void;
-  onRemoveFromBucketList?: (parkCode: string) => void;
-  onMarkNotVisited?: (parkCode: string) => void;
-  onEditVisit?: (parkCode: string) => void;
+  selectedParkCode?: string | null;
+  onSelectPark?: (parkCode: string) => void;
 }
 
-const createCustomIcon = (color: string) => {
+// ── SVG marker factory ────────────────────────────────────────────────────────
+
+function markerSVG(
+  status: Park["status"],
+  selected: boolean
+): { svg: string; size: number } {
+  if (status === "visited") {
+    if (selected) {
+      return {
+        size: 28,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="12" fill="rgba(47,122,74,0.25)"/>
+          <circle cx="14" cy="14" r="7" fill="#2F7A4A" stroke="#FFFBF1" stroke-width="2"/>
+          <path d="M10.5 14L13.2 16.5L18 11" stroke="#FFFBF1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>`,
+      };
+    }
+    return {
+      size: 22,
+      svg: `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+        <circle cx="11" cy="11" r="9" fill="rgba(47,122,74,0.16)"/>
+        <circle cx="11" cy="11" r="5.5" fill="#2F7A4A" stroke="#FFFBF1" stroke-width="1.5"/>
+        <path d="M8.5 11L10.8 13.2L14.5 9" stroke="#FFFBF1" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>`,
+    };
+  }
+
+  const isBucket = status === "bucketList";
+  const color = isBucket ? "#D89A3A" : "#A8A29A";
+  const rgba = isBucket ? "216,154,58" : "168,162,154";
+
+  if (selected) {
+    return {
+      size: 22,
+      svg: `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+        <circle cx="11" cy="11" r="9" fill="rgba(${rgba},0.22)"/>
+        <circle cx="11" cy="11" r="5.5" fill="${color}" stroke="#FFFBF1" stroke-width="1.5"/>
+      </svg>`,
+    };
+  }
+  return {
+    size: 16,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+      <circle cx="8" cy="8" r="5" fill="${color}" stroke="#FFFBF1" stroke-width="1.5"/>
+    </svg>`,
+  };
+}
+
+function makeIcon(status: Park["status"], selected: boolean): L.DivIcon {
+  const { svg, size } = markerSVG(status, selected);
   return L.divIcon({
-    className: 'custom-div-icon',
-    html: `
-      <div style="
-        width: 20px;
-        height: 20px;
-        background-color: ${color};
-        border: 2px solid white;
-        border-radius: 50%;
-        box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-      "></div>
-    `,
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
+    className: "",
+    html: svg,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
-};
+}
+
+// ── FlyToMarker — pans to selected park when it changes ──────────────────────
+
+function FlyToMarker({ park }: { park: Park | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!park) return;
+    map.flyTo(park.position, Math.max(map.getZoom(), 7), { duration: 0.7 });
+  }, [park, map]);
+  return null;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function LeafletMap({
-  center = [42.47, -71.49],
-  zoom = 13,
-  className = "h-96 w-full",
+  center = [39.8283, -98.5795],
+  zoom = 4,
+  className = "h-full w-full",
   parks = [],
-  onMarkVisited,
-  onAddToBucketList,
-  onRemoveFromBucketList,
-  onMarkNotVisited,
-  onEditVisit,
+  selectedParkCode,
+  onSelectPark,
 }: LeafletMapProps) {
   const [isClient, setIsClient] = useState(false);
-  const [markerIcons, setMarkerIcons] = useState<{
-    visited: L.DivIcon;
-    notVisited: L.DivIcon;
-    bucketList: L.DivIcon;
-  } | null>(null);
-  const [pendingUnvisit, setPendingUnvisit] = useState<{ code: string; name: string } | null>(null);
+  useEffect(() => { setIsClient(true); }, []);
 
-  useEffect(() => {
-    setTimeout(() => {
-      setIsClient(true);
-    }, 0);
+  const icons = useMemo(() => {
+    if (!isClient) return null;
+    return {
+      visited:           makeIcon("visited",    false),
+      "visited-sel":     makeIcon("visited",    true),
+      bucketList:        makeIcon("bucketList", false),
+      "bucketList-sel":  makeIcon("bucketList", true),
+      notVisited:        makeIcon("notVisited", false),
+      "notVisited-sel":  makeIcon("notVisited", true),
+    };
+  }, [isClient]);
 
-    setTimeout(() => {
-      setMarkerIcons({
-        visited: createCustomIcon('#16a34a'),
-        notVisited: createCustomIcon('#d1d5db'),
-        bucketList: createCustomIcon('#facc15'),
-      });
-    }, 0);
-  }, []);
+  const selectedPark = selectedParkCode
+    ? (parks.find((p) => p.park_code === selectedParkCode) ?? null)
+    : null;
 
-  if (!isClient || !markerIcons) {
-    return <div className={`bg-gray-200 animate-pulse ${className}`} />;
+  if (!isClient || !icons) {
+    return (
+      <div
+        className={className}
+        style={{ background: "var(--surface-alt)", animation: "pulse 2s infinite" }}
+      />
+    );
   }
 
   return (
-    <>
-      <MapContainer
-          center={center}
-          zoom={zoom}
-          className={className}
-          maxBounds={[
-              [-16.0, -180.0],
-              [75.0, -42.0]
-          ]}
-          maxBoundsViscosity={1.0}
-          minZoom={3}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        />
-        {parks.map((park) => (
+    <MapContainer
+      center={center}
+      zoom={zoom}
+      className={className}
+      maxBounds={[[-16.0, -180.0], [75.0, -42.0]]}
+      maxBoundsViscosity={1.0}
+      minZoom={3}
+      zoomControl={false}
+    >
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+      />
+      <FlyToMarker park={selectedPark} />
+      {parks.map((park) => {
+        const isSel = park.park_code === selectedParkCode;
+        const key = `${park.status}${isSel ? "-sel" : ""}` as keyof typeof icons;
+        return (
           <Marker
             key={park.park_code}
             position={park.position}
-            icon={markerIcons[park.status]}
-          >
-            <Popup>
-              <div className="min-w-[200px]">
-                <a
-                  href={`/parks/${park.park_code}`}
-                  className="font-semibold text-green-700 hover:text-green-900 hover:underline"
-                >
-                  {park.name}
-                </a>
-                {onMarkVisited ? (
-                  park.status === 'visited' && park.visitedDate ? (
-                    <div className="text-sm text-gray-600 mt-1 mb-3">
-                      Visited on {new Date(park.visitedDate).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-600 mt-1 mb-3">Not yet visited</div>
-                  )
-                ) : (
-                  park.description && (
-                    <div className="text-sm text-gray-600 mt-1 mb-3">{park.description}</div>
-                  )
-                )}
-
-                <div className="flex flex-col gap-2 mt-2">
-                  {park.status === 'visited' ? (
-                    onEditVisit && (
-                      <button
-                        onClick={() => onEditVisit(park.park_code)}
-                        className="w-full px-3 py-1.5 border border-gray-300 text-gray-600 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Pencil className="w-4 h-4" />
-                        Edit Visit
-                      </button>
-                    )
-                  ) : (
-                    onMarkVisited && (
-                      <button
-                        onClick={() => onMarkVisited(park.park_code)}
-                        className="w-full px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        Mark Visited
-                      </button>
-                    )
-                  )}
-
-                  {park.status !== 'visited' && (
-                    <>
-                      {park.status === 'bucketList' && onRemoveFromBucketList && (
-                        <button
-                          onClick={() => onRemoveFromBucketList(park.park_code)}
-                          className="w-full px-3 py-1.5 border border-yellow-400 text-yellow-600 text-sm font-medium rounded-md hover:bg-amber-100 transition-colors flex items-center justify-center gap-2"
-                        >
-                          <BookmarkX className="w-4 h-4" />
-                          Remove from Bucket List
-                        </button>
-                      )}
-                      {park.status !== 'bucketList' && onAddToBucketList && (
-                        <button
-                          onClick={() => onAddToBucketList(park.park_code)}
-                          className="w-full px-3 py-1.5 bg-yellow-500 text-white text-sm font-medium rounded-md hover:bg-yellow-400 transition-colors flex items-center justify-center gap-2"
-                        >
-                          <Bookmark className="w-4 h-4" />
-                          Add to Bucket List
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-      </MapContainer>
-
-      {/* Confirmation dialog — rendered outside MapContainer so it works in React's tree */}
-      <AlertDialog open={!!pendingUnvisit} onOpenChange={open => { if (!open) setPendingUnvisit(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove this visit?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove <span className="font-medium text-gray-900">{pendingUnvisit?.name}</span> from your visited parks. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingUnvisit(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (pendingUnvisit) onMarkNotVisited?.(pendingUnvisit.code);
-                setPendingUnvisit(null);
-              }}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              Remove visit
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+            icon={icons[key]}
+            eventHandlers={{
+              click: () => onSelectPark?.(park.park_code),
+            }}
+          />
+        );
+      })}
+    </MapContainer>
   );
 }

@@ -23,6 +23,11 @@ export default clerkMiddleware(async (auth, req) => {
   if (req.nextUrl.pathname === '/sso-callback') {
     return NextResponse.next();
   }
+
+  // Allow onboarding — new SSO users may not have a session yet (missing_requirements)
+  if (req.nextUrl.pathname.startsWith('/onboarding')) {
+    return NextResponse.next();
+  }
   
   // For ALL other routes (including /map), require auth
   if (!userId) {

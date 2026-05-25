@@ -271,11 +271,6 @@ export default function NavBar() {
         <EditProfileDialog
             open={editProfileOpen}
             onOpenChange={setEditProfileOpen}
-            initialUsername={username ?? ""}
-            initialBio={bio}
-            onSaved={(newUsername, _bio, _fullName) => {
-                setUsername(newUsername);
-            }}
         />
         </>
     );

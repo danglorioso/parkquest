@@ -1,11 +1,16 @@
-'use client';
+"use client";
 
-import dynamic from 'next/dynamic';
-import type { Park } from './LeafletMap';
+import dynamic from "next/dynamic";
+import type { Park } from "./LeafletMap";
 
-const LeafletMap = dynamic(() => import('./LeafletMap'), {
+const LeafletMap = dynamic(() => import("./LeafletMap"), {
   ssr: false,
-  loading: () => <div className="h-96 w-full bg-gray-200 animate-pulse rounded-lg" />
+  loading: () => (
+    <div
+      className="h-full w-full animate-pulse"
+      style={{ background: "var(--surface-alt)" }}
+    />
+  ),
 });
 
 interface MapProps {
@@ -13,35 +18,10 @@ interface MapProps {
   zoom?: number;
   className?: string;
   parks?: Park[];
-  onMarkVisited?: (parkCode: string) => void;
-  onAddToBucketList?: (parkCode: string) => void;
-  onRemoveFromBucketList?: (parkCode: string) => void;
-  onMarkNotVisited?: (parkCode: string) => void;
-  onEditVisit?: (parkCode: string) => void;
+  selectedParkCode?: string | null;
+  onSelectPark?: (parkCode: string) => void;
 }
 
 export default function Map(props: MapProps = {}) {
-  const {
-    center,
-    zoom,
-    className,
-    parks,
-    onMarkVisited,
-    onAddToBucketList,
-    onRemoveFromBucketList,
-    onMarkNotVisited,
-    onEditVisit,
-  } = props;
-
-  return <LeafletMap
-    center={center}
-    zoom={zoom}
-    className={className}
-    parks={parks}
-    onMarkVisited={onMarkVisited}
-    onAddToBucketList={onAddToBucketList}
-    onRemoveFromBucketList={onRemoveFromBucketList}
-    onMarkNotVisited={onMarkNotVisited}
-    onEditVisit={onEditVisit}
-  />;
+  return <LeafletMap {...props} />;
 }

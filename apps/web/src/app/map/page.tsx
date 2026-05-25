@@ -1,16 +1,21 @@
 "use client";
 
+import React from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import Nav from "@/components/NavBar";
-import ProgressCard from "@/components/ProgressCard";
-import QuickStats from "@/components/QuickStats";
-import RecentVisits from "@/components/RecentBadges";
-import Legend from "@/components/Legend";
-import Map from "@/components/Map";
+import dynamic from "next/dynamic";
+import { DesktopShell } from "@/components/desktop/DesktopShell";
+import { type FilterStatus } from "@/components/desktop/MapLeftPanel";
+import { MapRightPanel } from "@/components/desktop/MapRightPanel";
+import { MapSpotlight } from "@/components/desktop/MapSpotlight";
 import VisitDateDialog, { type JournalData } from "@/components/VisitDateDialog";
 import EditVisitDialog from "@/components/EditVisitDialog";
+
+const USAMap = dynamic(() => import("@/components/USAMapGL"), {
+  ssr: false,
+  loading: () => <div className="h-full w-full" style={{ background: "#CECDBC" }} />,
+});
 
 interface ParkFromDB {
   park_code: string;
@@ -35,28 +40,24 @@ interface ParkForMap {
   visibility?: string | null;
 }
 
-type FilterStatus = 'all' | 'visited' | 'bucketList' | 'notVisited';
-
-const FILTERS: { key: FilterStatus; label: string }[] = [
-  { key: 'all', label: 'All Parks' },
-  { key: 'visited', label: 'Visited' },
-  { key: 'bucketList', label: 'Bucket List' },
-  { key: 'notVisited', label: 'Unvisited' },
-];
 
 export default function Home() {
   const { isSignedIn, isLoaded } = useUser();
   const router = useRouter();
 
   const [parks, setParks] = useState<ParkForMap[]>([]);
-  const [totalParksCount, setTotalParksCount] = useState(0);
   const [visitedParksCount, setVisitedParksCount] = useState(0);
-  const [isLoadingParks, setIsLoadingParks] = useState(true);
   const [showVisitDateDialog, setShowVisitDateDialog] = useState(false);
   const [pendingParkCode, setPendingParkCode] = useState<string | null>(null);
   const [pendingParkName, setPendingParkName] = useState<string>("");
   const [pendingEdit, setPendingEdit] = useState<ParkForMap | null>(null);
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [selectedParkCode, setSelectedParkCode] = useState<string | null>(null);
+
+  // Derive selected park from parks state so it auto-updates after status changes
+  const selectedPark = selectedParkCode
+    ? parks.find((p) => p.park_code === selectedParkCode) ?? null
+    : null;
 
   useEffect(() => {
     if (!isSignedIn && isLoaded) {
@@ -64,13 +65,10 @@ export default function Home() {
     }
   }, [isSignedIn, isLoaded, router]);
 
-  useEffect(() => {
-    fetchParksAndVisits();
-  }, []);
+  const [spotOpen, setSpotOpen] = useState(false);
 
   const fetchParksAndVisits = async () => {
     try {
-      setIsLoadingParks(true);
       const [parksResponse, visitsResponse] = await Promise.all([
         fetch('/api/parks'),
         fetch('/api/visits')
@@ -79,7 +77,6 @@ export default function Home() {
       if (!parksResponse.ok) throw new Error('Failed to fetch parks');
 
       const parksData: ParkFromDB[] = await parksResponse.json();
-      setTotalParksCount(parksData.length);
 
       const visitedParkCodes: Set<string> = new Set();
       const bucketListParkCodes: Set<string> = new Set();
@@ -123,10 +120,26 @@ export default function Home() {
       setParks(transformedParks);
     } catch (error) {
       console.error('Error fetching parks:', error);
-    } finally {
-      setIsLoadingParks(false);
     }
   };
+
+  useEffect(() => {
+    void (async () => { await fetchParksAndVisits(); })();
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSpotOpen((s) => !s);
+      } else if (e.key === 'Escape') {
+        setSpotOpen(false);
+        setSelectedParkCode(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const handleMarkVisited = (parkCode: string) => {
     const park = parks.find(p => p.park_code === parkCode);
@@ -232,27 +245,7 @@ export default function Home() {
     }
   };
 
-  // ── Derived stats ──────────────────────────────────────────────────────────
-
-  const visitedParks = parks.filter(p => p.status === 'visited');
-
-  const statesVisited = new Set(
-    visitedParks.flatMap(p => p.states?.split(',').map(s => s.trim()).filter(Boolean) ?? [])
-  ).size;
-
-  const thisYear = new Date().getFullYear();
-  const parksThisYear = visitedParks.filter(
-    p => p.visitedDate && new Date(p.visitedDate).getFullYear() === thisYear
-  ).length;
-
   const bucketListCount = parks.filter(p => p.status === 'bucketList').length;
-  const unvisitedCount = parks.filter(p => p.status === 'notVisited' || p.status === 'bucketList').length;
-
-  const recentVisits = [...visitedParks]
-    .filter(p => p.visitedDate)
-    .sort((a, b) => new Date(b.visitedDate!).getTime() - new Date(a.visitedDate!).getTime())
-    .slice(0, 4)
-    .map(p => ({ park_code: p.park_code, name: p.name, visitedDate: p.visitedDate! }));
 
   const filteredParks = filterStatus === 'all'
     ? parks
@@ -264,91 +257,95 @@ export default function Home() {
 
   if (isSignedIn) {
     return (
-      <div className="flex flex-col h-screen">
-        <Nav />
+      <DesktopShell fullbleed onLogVisit={() => handleMarkVisited(parks.find(p => p.status !== "visited")?.park_code ?? "")}>
+        {/* Full-bleed map area with absolute floating panels */}
+        <div className="relative h-full w-full" style={{ background: "#E8E2D0" }}>
 
-        <div className="flex flex-1 flex-col md:flex-row min-h-0 overflow-hidden">
+          {/* SVG map */}
+          <USAMap
+            className="h-full w-full"
+            parks={filteredParks}
+            selectedParkCode={selectedParkCode}
+            onSelectPark={setSelectedParkCode}
+            onDeselect={() => setSelectedParkCode(null)}
+          />
 
-          {/* ── Left Sidebar ── */}
-          <div className="w-full md:w-72 bg-white border-r border-gray-200 overflow-y-auto p-5 max-h-[40vh] md:max-h-none space-y-6 shrink-0">
-            <ProgressCard
-              visitedCount={visitedParksCount}
-              totalCount={totalParksCount}
-              loading={isLoadingParks}
-            />
-            <QuickStats
-              statesVisited={statesVisited}
-              parksThisYear={parksThisYear}
-              bucketListCount={bucketListCount}
-              unvisitedCount={unvisitedCount}
-              loading={isLoadingParks}
-            />
-            <RecentVisits visits={recentVisits} loading={isLoadingParks} />
+          {/* Top-left — Filter + counts pill */}
+          <div
+            style={{
+              position: "absolute",
+              top: 16,
+              left: 16,
+              zIndex: 20,
+              background: "rgba(255,251,241,0.92)",
+              backdropFilter: "blur(24px) saturate(160%)",
+              WebkitBackdropFilter: "blur(24px) saturate(160%)",
+              border: "0.5px solid var(--hairline)",
+              borderRadius: 100,
+              padding: "6px 8px",
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              letterSpacing: "0.6px",
+              fontWeight: 600,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+            }}
+          >
+            {[
+              { key: "all" as FilterStatus,        dot: "var(--ink)",       label: "ALL",     count: parks.length },
+              { key: "visited" as FilterStatus,    dot: "var(--visited)",   label: "VISITED", count: visitedParksCount },
+              { key: "bucketList" as FilterStatus, dot: "var(--bucket)",    label: "BUCKET",  count: bucketListCount },
+              { key: "notVisited" as FilterStatus, dot: "var(--unvisited)", label: "TO GO",   count: parks.filter(p => p.status === "notVisited").length },
+            ].map((f, i, arr) => (
+              <React.Fragment key={f.key}>
+                <button
+                  onClick={() => { setFilterStatus(f.key); setSelectedParkCode(null); }}
+                  style={{
+                    background: filterStatus === f.key ? "rgba(31,61,46,0.08)" : "transparent",
+                    border: 0,
+                    cursor: "pointer",
+                    borderRadius: 100,
+                    padding: "4px 10px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    color: filterStatus === f.key ? "var(--ink)" : "var(--ink-soft)",
+                    transition: "background 120ms",
+                  }}
+                >
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: f.dot, display: "inline-block", flexShrink: 0 }} />
+                  <b style={{ color: "var(--ink)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{f.count}</b>
+                  {f.label}
+                </button>
+                {i < arr.length - 1 && (
+                  <span style={{ width: 1, height: 12, background: "var(--hairline)", display: "inline-block", flexShrink: 0 }} />
+                )}
+              </React.Fragment>
+            ))}
           </div>
 
-          {/* ── Right: filter bar + map ── */}
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Top-center — Spotlight search */}
+          <MapSpotlight
+            parks={parks}
+            open={spotOpen}
+            onToggle={() => setSpotOpen((s) => !s)}
+            onClose={() => setSpotOpen(false)}
+            onPick={(code) => { setSelectedParkCode(code); setSpotOpen(false); }}
+          />
 
-            {/* Filter bar */}
-            <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-2 shrink-0">
-              {FILTERS.map(({ key, label }) => {
-                const counts: Record<FilterStatus, number> = {
-                  all: parks.length,
-                  visited: visitedParksCount,
-                  bucketList: bucketListCount,
-                  notVisited: unvisitedCount,
-                };
-                const isActive = filterStatus === key;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setFilterStatus(key)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {label}
-                    {!isLoadingParks && (
-                      <span className={`text-xs rounded-full px-1.5 py-0.5 ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-white text-gray-500'
-                      }`}>
-                        {counts[key]}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Map */}
-            <div className="flex-1 relative overflow-hidden z-0">
-              {isLoadingParks ? (
-                <div className="flex items-center justify-center h-full bg-gray-100 animate-pulse" />
-              ) : (
-                <>
-                  <Map
-                    center={[39.8283, -98.5795]}
-                    zoom={4}
-                    className="h-full w-full"
-                    parks={filteredParks}
-                    onMarkVisited={handleMarkVisited}
-                    onAddToBucketList={handleAddToBucketList}
-                    onRemoveFromBucketList={handleRemoveFromBucketList}
-                    onMarkNotVisited={handleMarkNotVisited}
-                    onEditVisit={(parkCode) => {
-                      const park = parks.find(p => p.park_code === parkCode);
-                      if (park) setPendingEdit(park);
-                    }}
-                  />
-                  <div className="absolute bottom-4 left-4 z-[100]">
-                    <Legend />
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          {/* Right floating panel — park detail peek */}
+          {selectedPark && (
+            <MapRightPanel
+              park={selectedPark}
+              onClose={() => setSelectedParkCode(null)}
+              onMarkVisited={() => handleMarkVisited(selectedPark.park_code)}
+              onAddToBucketList={() => handleAddToBucketList(selectedPark.park_code)}
+              onRemoveFromBucketList={() => handleRemoveFromBucketList(selectedPark.park_code)}
+              onEditVisit={() => setPendingEdit(selectedPark)}
+            />
+          )}
         </div>
 
         <VisitDateDialog
@@ -376,7 +373,7 @@ export default function Home() {
             }}
           />
         )}
-      </div>
+      </DesktopShell>
     );
   }
 }

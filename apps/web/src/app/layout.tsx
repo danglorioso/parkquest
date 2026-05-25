@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Archivo, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import { ClerkProvider } from "@clerk/nextjs";
-import Footer from "../components/Footer";
 import OnboardingGuard from "../components/OnboardingGuard";
+import { ThemeProvider } from "../components/ThemeProvider";
 import 'leaflet/dist/leaflet.css';
 
-const inter = Inter({
-  variable: "--font-inter",
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -30,16 +32,20 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
+        {/* Restore dark mode + palette before first paint to prevent flash */}
+        <head>
+          <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(localStorage.getItem('pq-dark')==='1')document.documentElement.classList.add('dark');var p=localStorage.getItem('pq-palette')||'forest';var pv={canyon:{'--primary':'#7B3A1F','--primary-deep':'#582410','--accent':'#D89A3A','--accent-2':'#C56B3D'},glacier:{'--primary':'#2D4F66','--primary-deep':'#1A3548','--accent':'#C7864B','--accent-2':'#D89A3A'},dusk:{'--primary':'#3A2E5C','--primary-deep':'#241B40','--accent':'#D9764A','--accent-2':'#D89A3A'}};if(pv[p])Object.entries(pv[p]).forEach(function(e){document.documentElement.style.setProperty(e[0],e[1])});}catch(e){}})();` }} />
+        </head>
         <body
-          className={`${inter.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
+          className={`${archivo.variable} ${jetbrainsMono.variable} antialiased min-h-screen flex flex-col`}
         >
-          <OnboardingGuard />
-          <div className="flex-1">
-            {children}
-          </div>
+          <ThemeProvider>
+            <OnboardingGuard />
+            <div className="flex-1">
+              {children}
+            </div>
 
-          {/* Footer */}
-          <Footer />
+          </ThemeProvider>
 
           {/* Vercel Analytics */}
           <Analytics />

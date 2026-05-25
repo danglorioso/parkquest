@@ -1,181 +1,279 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { X, Camera, Loader2 } from "lucide-react";
 
-interface EditProfileDialogProps {
+interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialUsername?: string;
-  initialBio?: string;
-  onSaved?: (username: string, bio: string, fullName: string | null) => void;
+  onSaved?: () => void;
+  overlayLeft?: number;
 }
 
-export default function EditProfileDialog({
-  open,
-  onOpenChange,
-  initialUsername = "",
-  initialBio = "",
-  onSaved,
-}: EditProfileDialogProps) {
+const INPUT: React.CSSProperties = {
+  width: "100%",
+  background: "var(--surface)",
+  border: "0.5px solid var(--hairline)",
+  borderRadius: 8,
+  padding: "9px 12px",
+  fontSize: 13.5,
+  color: "var(--ink)",
+  outline: "none",
+  fontFamily: "inherit",
+  boxSizing: "border-box",
+};
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <label style={{ fontWeight: 600, fontSize: 12, color: "var(--ink)" }}>{label}</label>
+      {children}
+      {hint && <span style={{ fontSize: 10.5, color: "var(--ink-mute)" }}>{hint}</span>}
+    </div>
+  );
+}
+
+export default function EditProfileDialog({ open, onOpenChange, onSaved, overlayLeft = 0 }: Props) {
   const { user } = useUser();
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [username, setUsername] = useState(initialUsername);
-  const [bio, setBio] = useState(initialBio);
+  const [lastName,  setLastName]  = useState("");
+  const [username,  setUsername]  = useState("");
+  const [bio,       setBio]       = useState("");
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile,    setAvatarFile]    = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [error,  setError]  = useState("");
 
-  // Sync Clerk name into local state when dialog opens
+  // Load current values whenever dialog opens
   useEffect(() => {
-    if (open && user) {
-      setFirstName(user.firstName ?? "");
-      setLastName(user.lastName ?? "");
-      setUsername(initialUsername);
-      setBio(initialBio);
-      setError("");
-    }
-  }, [open, user, initialUsername, initialBio]);
+    if (!open || !user) return;
+    setFirstName(user.firstName ?? "");
+    setLastName(user.lastName ?? "");
+    setUsername(user.username ?? "");
+    setAvatarPreview(null);
+    setAvatarFile(null);
+    setError("");
+    // Fetch bio from our DB
+    fetch("/api/profile")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => data && setBio(data.bio ?? ""))
+      .catch(() => {});
+  }, [open, user]);
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
 
   const handleSave = async () => {
+    if (!user) return;
     setError("");
     setSaving(true);
     try {
-      // Update display name via Clerk
-      if (user) {
-        await user.update({ firstName: firstName.trim(), lastName: lastName.trim() });
+      // Clerk-side updates — non-fatal if Clerk rejects (e.g. username feature disabled)
+      if (avatarFile) {
+        try { await user.setProfileImage({ file: avatarFile }); } catch { /* ignore */ }
       }
+      try {
+        await user.update({ firstName: firstName.trim(), lastName: lastName.trim() });
+      } catch { /* ignore */ }
 
-      // Update username + bio via our API
-      const res = await fetch("/api/users/me", {
+      // DB save — this is the authoritative source; errors here are shown to the user
+      const res = await fetch("/api/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: username.trim().toLowerCase(),
+          display_name: [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || null,
           bio: bio.trim() || null,
         }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error ?? "Failed to save profile");
+        setError(data.error ?? "Failed to save");
         return;
       }
 
-      const savedUsername = username.trim().toLowerCase();
-      const savedBio = bio.trim();
-      const savedFullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || null;
-      onSaved?.(savedUsername, savedBio, savedFullName);
+      onSaved?.();
       onOpenChange(false);
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setSaving(false);
     }
   };
 
+  if (!open) return null;
+
+  const displayAvatar = avatarPreview ?? user?.imageUrl ?? null;
+  const initials = ([firstName[0], lastName[0]].filter(Boolean).join("").toUpperCase() || user?.username?.[0]?.toUpperCase()) ?? "?";
   const email = user?.primaryEmailAddress?.emailAddress;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Edit Profile</DialogTitle>
-        </DialogHeader>
+    <div
+      onClick={() => !saving && onOpenChange(false)}
+      style={{
+        position: "fixed", top: 0, right: 0, bottom: 0, left: overlayLeft, zIndex: 200,
+        background: "rgba(0,0,0,0.48)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(4px)",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%", maxWidth: 440,
+          background: "var(--bg)",
+          border: "0.5px solid var(--hairline)",
+          borderRadius: 16,
+          boxShadow: "0 24px 60px rgba(0,0,0,0.22)",
+          overflow: "hidden",
+          animation: "pqEditProfile 200ms cubic-bezier(.2,.7,.3,1)",
+        }}
+      >
+        <style>{`@keyframes pqEditProfile { from { opacity:0; transform:translateY(8px) scale(0.98) } to { opacity:1; transform:translateY(0) scale(1) } }`}</style>
 
-        <div className="space-y-4">
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 14px", borderBottom: "0.5px solid var(--hairline-soft)" }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)" }}>Edit account</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "1.2px", color: "var(--ink-mute)", marginTop: 2 }}>PROFILE &amp; PREFERENCES</div>
+          </div>
+          <button
+            onClick={() => !saving && onOpenChange(false)}
+            style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface-alt)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-soft)" }}
+          >
+            <X style={{ width: 14, height: 14 }} strokeWidth={2.2} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 18, maxHeight: "60vh", overflowY: "auto" }}>
+
+          {/* Avatar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              {displayAvatar ? (
+                <img src={displayAvatar} alt="avatar" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: "2px solid var(--hairline)" }} />
+              ) : (
+                <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--surface-alt)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 22, color: "var(--ink-mute)", border: "2px solid var(--hairline)" }}>
+                  {initials}
+                </div>
+              )}
+              <button
+                onClick={() => fileRef.current?.click()}
+                style={{ position: "absolute", bottom: 0, right: 0, width: 22, height: 22, borderRadius: "50%", background: "var(--primary)", border: "2px solid var(--bg)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <Camera style={{ width: 11, height: 11, color: "#FFFBF1" }} strokeWidth={2.2} />
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleAvatarChange} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>Profile photo</div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-mute)", marginTop: 2 }}>Click the camera to upload a new photo</div>
+            </div>
+          </div>
+
           {/* Name row */}
-          <div className="flex gap-3">
-            <div className="flex-1 space-y-1.5">
-              <Label htmlFor="ep-first" className="text-sm font-medium">First name</Label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="First name">
               <input
-                id="ep-first"
-                type="text"
+                style={INPUT}
                 value={firstName}
-                onChange={e => setFirstName(e.target.value)}
+                onChange={(e) => setFirstName(e.target.value)}
                 maxLength={50}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                placeholder="First"
+                onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.boxShadow = "0 0 0 2px rgba(47,122,74,0.12)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = ""; e.currentTarget.style.boxShadow = ""; }}
               />
-            </div>
-            <div className="flex-1 space-y-1.5">
-              <Label htmlFor="ep-last" className="text-sm font-medium">Last name</Label>
+            </Field>
+            <Field label="Last name">
               <input
-                id="ep-last"
-                type="text"
+                style={INPUT}
                 value={lastName}
-                onChange={e => setLastName(e.target.value)}
+                onChange={(e) => setLastName(e.target.value)}
                 maxLength={50}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                placeholder="Last"
+                onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.boxShadow = "0 0 0 2px rgba(47,122,74,0.12)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = ""; e.currentTarget.style.boxShadow = ""; }}
               />
-            </div>
+            </Field>
           </div>
 
           {/* Username */}
-          <div className="space-y-1.5">
-            <Label htmlFor="ep-username" className="text-sm font-medium">Username</Label>
-            <div className="flex items-center gap-0">
-              <span className="px-3 py-2 text-sm bg-gray-100 border border-r-0 border-gray-300 rounded-l-lg text-gray-500">@</span>
+          <Field label="Username" hint="3–20 characters · letters, numbers, underscores">
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <span style={{ padding: "9px 10px", background: "var(--surface-alt)", border: "0.5px solid var(--hairline)", borderRight: "none", borderRadius: "8px 0 0 8px", fontSize: 13.5, color: "var(--ink-mute)", fontWeight: 600, flexShrink: 0 }}>@</span>
               <input
-                id="ep-username"
-                type="text"
+                style={{ ...INPUT, borderRadius: "0 8px 8px 0", borderLeft: "none" }}
                 value={username}
-                onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
                 maxLength={20}
-                className="flex-1 border border-gray-300 rounded-r-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                placeholder="yourhandle"
+                onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.boxShadow = "0 0 0 2px rgba(47,122,74,0.12)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = ""; e.currentTarget.style.boxShadow = ""; }}
               />
             </div>
-            <p className="text-[11px] text-gray-400">3–20 characters: letters, numbers, underscores</p>
-          </div>
+          </Field>
 
           {/* Bio */}
-          <div className="space-y-1.5">
-            <Label htmlFor="ep-bio" className="text-sm font-medium">
-              Bio <span className="text-gray-400 font-normal">(optional)</span>
-            </Label>
-            <textarea
-              id="ep-bio"
-              value={bio}
-              onChange={e => setBio(e.target.value)}
-              placeholder="A short description about yourself"
-              rows={3}
-              maxLength={200}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
-            />
-            <p className="text-[11px] text-gray-400 text-right">{bio.length}/200</p>
-          </div>
+          <Field label="Bio">
+            <div style={{ position: "relative" }}>
+              <textarea
+                style={{ ...INPUT, resize: "none", lineHeight: 1.5, paddingBottom: 22 } as React.CSSProperties}
+                rows={3}
+                maxLength={200}
+                placeholder="A short description about yourself…"
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.boxShadow = "0 0 0 2px rgba(47,122,74,0.12)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = ""; e.currentTarget.style.boxShadow = ""; }}
+              />
+              <span style={{ position: "absolute", bottom: 8, right: 10, fontSize: 10, color: "var(--ink-mute)", fontFamily: "var(--font-mono)" }}>{bio.length}/200</span>
+            </div>
+          </Field>
 
           {/* Email — read-only */}
           {email && (
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">
-                Email <span className="text-gray-400 font-normal">(read-only)</span>
-              </Label>
-              <p className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{email}</p>
-              <p className="text-[11px] text-gray-400">Email changes are managed through your account security settings.</p>
-            </div>
+            <Field label="Email" hint="Email changes are managed through account security.">
+              <div style={{ ...INPUT, background: "var(--surface-alt)", color: "var(--ink-soft)", cursor: "default" }}>
+                {email}
+              </div>
+            </Field>
           )}
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && (
+            <div style={{ padding: "8px 12px", background: "rgba(192,64,64,0.08)", border: "0.5px solid rgba(192,64,64,0.25)", borderRadius: 8, fontSize: 12.5, color: "#C04040" }}>
+              {error}
+            </div>
+          )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+        {/* Footer */}
+        <div style={{ padding: "14px 20px", borderTop: "0.5px solid var(--hairline-soft)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+            style={{ padding: "9px 18px", borderRadius: 9, border: "0.5px solid var(--hairline)", background: "var(--surface-alt)", color: "var(--ink)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+          >
             Cancel
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={handleSave}
             disabled={saving || username.trim().length < 3}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            style={{ padding: "9px 20px", borderRadius: 9, border: "none", background: "var(--primary)", color: "#FFFBF1", fontWeight: 700, fontSize: 13, cursor: saving ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 7, opacity: (saving || username.trim().length < 3) ? 0.6 : 1 }}
           >
-            {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</> : "Save"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            {saving && <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />}
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

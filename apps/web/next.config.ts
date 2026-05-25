@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: '*.clerk.accounts.dev',
       },
+      {
+        protocol: 'https',
+        hostname: 'www.nps.gov',
+      },
     ],
   },
 };

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { UploadButton } from "@uploadthing/react";
 import type { OurFileRouter } from "@/lib/uploadthing";
-import { X, ChevronLeft } from "lucide-react";
+import { X, ChevronLeft, Lock, Users, Globe, MapPin } from "lucide-react";
 import { format } from "date-fns";
 
 export interface JournalData {
@@ -24,10 +24,10 @@ interface VisitDateDialogProps {
   onConfirm: (date: Date, journal: JournalData) => void;
 }
 
-const VISIBILITY_OPTIONS: { value: JournalData['visibility']; label: string; description: string }[] = [
-  { value: 'private', label: 'Private', description: 'Only you' },
-  { value: 'friends', label: 'Friends', description: 'Mutual followers' },
-  { value: 'public', label: 'Public', description: 'Everyone' },
+const VISIBILITY_OPTIONS: { value: JournalData['visibility']; label: string; description: string; icon: React.ElementType }[] = [
+  { value: 'private', label: 'Private', description: 'Only you', icon: Lock },
+  { value: 'friends', label: 'Friends', description: 'Mutual followers', icon: Users },
+  { value: 'public', label: 'Public', description: 'Everyone', icon: Globe },
 ];
 
 export default function VisitDateDialog({ open, onOpenChange, parkName, onConfirm }: VisitDateDialogProps) {
@@ -82,12 +82,14 @@ export default function VisitDateDialog({ open, onOpenChange, parkName, onConfir
       <DialogContent className="w-full max-w-sm">
 
         <DialogHeader>
-          <DialogTitle className="text-base leading-snug">{parkName}</DialogTitle>
-          <p className="text-xs text-gray-400">{step === 1 ? 'Step 1 of 2 — When did you visit?' : 'Step 2 of 2 — Add a journal entry'}</p>
-          {/* Step indicator — inside header so it clears the close button */}
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-visited shrink-0" />
+            <DialogTitle className="text-base leading-snug">{parkName}</DialogTitle>
+          </div>
+          <p className="text-xs text-ink-mute">{step === 1 ? 'When did you visit?' : 'Add a journal entry (optional)'}</p>
           <div className="flex items-center gap-2 pt-1 pr-6">
-            <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 1 ? 'bg-emerald-500' : 'bg-gray-200'}`} />
-            <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 2 ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+            <div className={`h-1 flex-1 rounded-full transition-colors ${step >= 1 ? 'bg-visited' : 'bg-surface-alt'}`} />
+            <div className={`h-1 flex-1 rounded-full transition-colors ${step >= 2 ? 'bg-visited' : 'bg-surface-alt'}`} />
           </div>
         </DialogHeader>
 
@@ -103,13 +105,13 @@ export default function VisitDateDialog({ open, onOpenChange, parkName, onConfir
                 fromYear={1950}
                 toYear={new Date().getFullYear()}
                 fixedWeeks
-                className="rounded-xl border border-gray-200 shadow-sm"
+                className="rounded-xl border border-hairline shadow-sm"
               />
             </div>
             {dateError && <p className="text-sm text-red-600 -mt-1">{dateError}</p>}
             <DialogFooter>
               <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-              <Button onClick={handleNext} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Button onClick={handleNext} className="bg-primary hover:bg-primary-deep text-primary-fg">
                 Next →
               </Button>
             </DialogFooter>
@@ -119,16 +121,15 @@ export default function VisitDateDialog({ open, onOpenChange, parkName, onConfir
         {/* ── Step 2: Journal ── */}
         {step === 2 && (
           <>
-            {/* Selected date badge */}
-            <div className="text-xs text-gray-500 bg-gray-100 rounded-lg px-3 py-1.5 w-fit">
+            <div className="flex items-center gap-2 text-xs text-ink-mute bg-surface-alt rounded-lg px-3 py-1.5 w-fit">
+              <MapPin className="w-3 h-3 text-visited" />
               Visited {date ? format(date, 'MMMM d, yyyy') : ''}
             </div>
 
             <div className="space-y-4">
-              {/* Title */}
               <div className="space-y-1.5">
                 <Label htmlFor="visit-title" className="text-sm font-medium">
-                  Title <span className="text-gray-400 font-normal">(optional)</span>
+                  Title <span className="text-ink-mute font-normal">(optional)</span>
                 </Label>
                 <input
                   id="visit-title"
@@ -137,15 +138,14 @@ export default function VisitDateDialog({ open, onOpenChange, parkName, onConfir
                   onChange={e => setTitle(e.target.value)}
                   placeholder="e.g. Hiked the Narrows!"
                   maxLength={255}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  className="w-full border border-hairline bg-surface rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   autoFocus
                 />
               </div>
 
-              {/* Notes */}
               <div className="space-y-1.5">
                 <Label htmlFor="visit-notes" className="text-sm font-medium">
-                  Notes <span className="text-gray-400 font-normal">(optional)</span>
+                  Notes <span className="text-ink-mute font-normal">(optional)</span>
                 </Label>
                 <textarea
                   id="visit-notes"
@@ -153,19 +153,18 @@ export default function VisitDateDialog({ open, onOpenChange, parkName, onConfir
                   onChange={e => setNotes(e.target.value)}
                   placeholder="What did you see? What was the highlight?"
                   rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
+                  className="w-full border border-hairline bg-surface rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
                 />
               </div>
 
-              {/* Photos */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">
-                  Photos <span className="text-gray-400 font-normal">(optional, up to 5)</span>
+                  Photos <span className="text-ink-mute font-normal">(optional, up to 5)</span>
                 </Label>
                 {photos.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {photos.map(url => (
-                      <div key={url} className="relative w-14 h-14 rounded-lg overflow-hidden border border-gray-200">
+                      <div key={url} className="relative w-14 h-14 rounded-lg overflow-hidden border border-hairline">
                         <img src={url} alt="upload" className="w-full h-full object-cover" />
                         <button
                           type="button"
@@ -186,32 +185,36 @@ export default function VisitDateDialog({ open, onOpenChange, parkName, onConfir
                     }}
                     onUploadError={err => console.error("Upload error:", err)}
                     appearance={{
-                      button: "bg-gray-100 text-gray-700 text-sm px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-200 after:bg-emerald-600 ut-uploading:cursor-not-allowed",
-                      allowedContent: "text-xs text-gray-400",
+                      button: "bg-surface-alt text-ink text-sm px-3 py-1.5 rounded-lg border border-hairline hover:opacity-80 after:bg-primary ut-uploading:cursor-not-allowed",
+                      allowedContent: "text-xs text-ink-mute",
                     }}
                   />
                 )}
               </div>
 
-              {/* Visibility */}
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">Who can see this?</Label>
                 <div className="flex gap-2">
-                  {VISIBILITY_OPTIONS.map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setVisibility(opt.value)}
-                      className={`flex-1 flex flex-col items-center py-2 rounded-lg border text-xs transition-colors ${
-                        visibility === opt.value
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      <span className="font-medium">{opt.label}</span>
-                      <span className="text-gray-400 text-[11px]">{opt.description}</span>
-                    </button>
-                  ))}
+                  {VISIBILITY_OPTIONS.map(opt => {
+                    const Icon = opt.icon;
+                    const selected = visibility === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setVisibility(opt.value)}
+                        className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-lg border text-xs transition-colors ${
+                          selected
+                            ? 'border-primary bg-surface-alt text-primary'
+                            : 'border-hairline bg-surface text-ink-soft hover:bg-surface-alt'
+                        }`}
+                      >
+                        <Icon className={`w-3.5 h-3.5 ${selected ? 'text-visited' : 'text-ink-mute'}`} />
+                        <span className="font-medium">{opt.label}</span>
+                        <span className="text-ink-mute text-[11px]">{opt.description}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -220,7 +223,7 @@ export default function VisitDateDialog({ open, onOpenChange, parkName, onConfir
               <Button variant="outline" onClick={handleBack} className="gap-1">
                 <ChevronLeft className="w-4 h-4" /> Back
               </Button>
-              <Button onClick={handleSubmit} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Button onClick={handleSubmit} className="flex-1 bg-primary hover:bg-primary-deep text-primary-fg">
                 Log Visit
               </Button>
             </DialogFooter>

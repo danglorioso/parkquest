@@ -3,11 +3,7 @@
 import { useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import Header from "@/components/Header";
-import Hero from "@/components/Hero";
-import Features from "@/components/Features";
-import About from "@/components/About";
-import CTA from "@/components/CTA";
+import { AuthHeroLayout } from "@/components/AuthHeroLayout";
 
 export default function Home() {
   const { isSignedIn, isLoaded } = useUser();
@@ -15,23 +11,11 @@ export default function Home() {
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
-      router.push('/map');
+      router.push("/map");
     }
   }, [isLoaded, isSignedIn, router]);
-  
-  if (isSignedIn) {
-    return (
-      <></>
-    );
-  }
 
-  return (
-    <div className="flex flex-col min-h-screen">
-      <Header />
-      <Hero />
-      <About />
-      <Features />
-      <CTA />
-    </div>
-  );
+  if (!isLoaded || isSignedIn) return null;
+
+  return <AuthHeroLayout />;
 }
