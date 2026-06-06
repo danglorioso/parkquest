@@ -13,6 +13,11 @@ export default clerkMiddleware(async (auth, req) => {
   if (req.nextUrl.pathname === '/parks' || req.nextUrl.pathname.startsWith('/parks/')) {
     return NextResponse.next();
   }
+
+  // Allow public profile pages (logged-out visitors see a sign-up nudge)
+  if (req.nextUrl.pathname.startsWith('/profile/')) {
+    return NextResponse.next();
+  }
   
   // Always allow API routes (they handle their own auth)
   if (req.nextUrl.pathname.startsWith('/api/')) {
