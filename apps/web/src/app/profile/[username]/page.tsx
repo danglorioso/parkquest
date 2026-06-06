@@ -4,19 +4,48 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
-import { MapPin, Users, UserCheck, UserPlus, Clock, TreePine, Footprints } from "lucide-react";
+import dynamic from "next/dynamic";
+import {
+  MapPin, Users, UserCheck, UserPlus, Clock,
+  TreePine, Footprints, Award,
+} from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
-import { fullStateName } from "@/lib/stateNames";
+import type { MapPark } from "@/components/USAMapGL";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+const USAMap = dynamic(() => import("@/components/USAMapGL"), {
+  ssr: false,
+  loading: () => <div style={{ background: "#CECDBC", width: "100%", height: "100%" }} />,
+});
 
-type FriendshipStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted';
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-interface RecentVisit {
+type FriendshipStatus = "none" | "pending_sent" | "pending_received" | "accepted";
+
+interface BadgeData {
+  badge_id: string;
+  earned_at: string | null;
+  name: string;
+  emoji: string;
+  tier: string;
+}
+
+interface VisitedPark {
   park_code: string;
   name: string;
   states: string;
+  latitude: string | null;
+  longitude: string | null;
+  image_url: string | null;
   visited_date: string | null;
+}
+
+interface PostData {
+  id: number;
+  caption: string | null;
+  photos: { url: string; key: string; name: string }[] | null;
+  park_code: string | null;
+  park_name: string | null;
+  created_at: string | null;
 }
 
 interface ProfileData {
@@ -25,155 +54,305 @@ interface ProfileData {
   display_name: string | null;
   bio: string | null;
   avatar_url: string | null;
+  created_at: string | null;
   parks_visited: number;
+  states_visited: number;
+  bucket_list_count: number;
   friend_count: number;
+  mutual_friends: number;
+  badges: BadgeData[];
+  recent_visits: VisitedPark[];
+  visited_parks: VisitedPark[];
+  recent_posts: PostData[];
+  journal: JournalEntry[];
   friendship_status: FriendshipStatus;
   friendship_id: number | null;
   is_own_profile: boolean;
-  recent_visits: RecentVisit[];
 }
 
-// ── Stat chip ─────────────────────────────────────────────────────────────────
+interface JournalEntry {
+  visit_id: number;
+  visited_date: string | null;
+  park_code: string;
+  park_name: string;
+  states: string;
+  title: string | null;
+  notes: string | null;
+  rating: number | null;
+  activities: string[] | null;
+  visibility: string | null;
+}
 
-function Stat({ value, label }: { value: number; label: string }) {
+// ── Tier config ────────────────────────────────────────────────────────────────
+
+const TIER_COLOR: Record<string, string> = {
+  bronze: "#B27339", silver: "#8A9BA6", gold: "#C49A28",
+  platinum: "#5B8A96", legendary: "#7B4FB5",
+};
+const TIER_BG: Record<string, string> = {
+  bronze: "#FDF5EB", silver: "#F4F6F7", gold: "#FEF9E6",
+  platinum: "#EBF4F7", legendary: "#F5EFFE",
+};
+
+function explorerRank(n: number) {
+  if (n >= 63) return "NATIONAL LEGEND";
+  if (n >= 50) return "PIONEER";
+  if (n >= 30) return "TRAILBLAZER";
+  if (n >= 15) return "RANGER";
+  if (n >= 5)  return "EXPLORER";
+  if (n >= 1)  return "INITIATE";
+  return "TRAILHEAD";
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
+function StatPill({ value, label, sub }: { value: string | number; label: string; sub?: string }) {
   return (
-    <div style={{ textAlign: "center" }}>
-      <div style={{ fontWeight: 800, fontSize: 22, color: "var(--ink)", letterSpacing: -0.5 }}>
-        {value.toLocaleString()}
+    <div style={{ textAlign: "center", padding: "18px 12px" }}>
+      <div style={{ fontWeight: 900, fontSize: 28, color: "var(--ink)", letterSpacing: -0.8, lineHeight: 1 }}>
+        {value}
+        {sub && <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-mute)", letterSpacing: 0 }}>{sub}</span>}
       </div>
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.2px", color: "var(--ink-mute)", fontWeight: 600, marginTop: 2 }}>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "1.4px", color: "var(--ink-mute)", fontWeight: 600, marginTop: 4 }}>
         {label}
       </div>
     </div>
   );
 }
 
-// ── Park card ─────────────────────────────────────────────────────────────────
-
-function VisitCard({ visit, onClick }: { visit: RecentVisit; onClick: () => void }) {
+function FriendButton({
+  status, busy,
+  onAddFriend, onCancelRequest, onAcceptRequest, onDeclineRequest, onUnfriend,
+}: {
+  status: FriendshipStatus; busy: boolean;
+  onAddFriend: () => void; onCancelRequest: () => void;
+  onAcceptRequest: () => void; onDeclineRequest: () => void;
+  onUnfriend: () => void;
+}) {
+  const base: React.CSSProperties = {
+    flexShrink: 0, borderRadius: 10, padding: "9px 18px",
+    fontSize: 13, fontWeight: 700,
+    cursor: busy ? "wait" : "pointer",
+    display: "flex", alignItems: "center", gap: 6,
+    opacity: busy ? 0.7 : 1, transition: "opacity 120ms", border: "none",
+  };
+  if (status === "accepted") return (
+    <button onClick={onUnfriend} disabled={busy}
+      style={{ ...base, background: "var(--surface)", color: "var(--ink)", border: "0.5px solid var(--hairline)" }}>
+      <UserCheck size={14} /> Friends
+    </button>
+  );
+  if (status === "pending_sent") return (
+    <button onClick={onCancelRequest} disabled={busy}
+      style={{ ...base, background: "var(--surface)", color: "var(--ink-mute)", border: "0.5px solid var(--hairline)" }}>
+      <Clock size={14} /> Request Sent
+    </button>
+  );
+  if (status === "pending_received") return (
+    <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+      <button onClick={onAcceptRequest} disabled={busy}
+        style={{ ...base, background: "var(--primary)", color: "#FFFBF1" }}>
+        <UserCheck size={14} /> Accept
+      </button>
+      <button onClick={onDeclineRequest} disabled={busy}
+        style={{ ...base, background: "var(--surface)", color: "var(--ink)", border: "0.5px solid var(--hairline)" }}>
+        Decline
+      </button>
+    </div>
+  );
   return (
-    <button
-      onClick={onClick}
-      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-alt)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = "var(--surface)"; }}
-      style={{
-        background: "var(--surface)",
-        border: "0.5px solid var(--hairline)",
-        borderRadius: 12,
-        padding: "14px 16px",
-        cursor: "pointer",
-        textAlign: "left",
-        transition: "background 120ms",
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--visited)", flexShrink: 0 }} />
-        <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {visit.name}
-        </div>
-      </div>
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", letterSpacing: "0.6px", fontWeight: 600 }}>
-        {fullStateName(visit.states.split(",")[0].trim())}
-      </div>
-      {visit.visited_date && (
-        <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 2 }}>
-          {new Date(visit.visited_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
-        </div>
-      )}
+    <button onClick={onAddFriend} disabled={busy}
+      style={{ ...base, background: "var(--primary)", color: "#FFFBF1" }}>
+      <UserPlus size={14} /> Add Friend
     </button>
   );
 }
 
-// ── Friend action button ───────────────────────────────────────────────────────
-
-function FriendButton({
-  status,
-  busy,
-  onAddFriend,
-  onCancelRequest,
-  onAcceptRequest,
-  onDeclineRequest,
-  onUnfriend,
-}: {
-  status: FriendshipStatus;
-  busy: boolean;
-  onAddFriend: () => void;
-  onCancelRequest: () => void;
-  onAcceptRequest: () => void;
-  onDeclineRequest: () => void;
-  onUnfriend: () => void;
+function Section({ title, icon: Icon, children }: {
+  title: string;
+  icon: React.ElementType;
+  children: React.ReactNode;
 }) {
-  const base: React.CSSProperties = {
-    flexShrink: 0,
-    borderRadius: 10,
-    padding: "9px 18px",
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: busy ? "wait" : "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    opacity: busy ? 0.7 : 1,
-    transition: "opacity 120ms",
-    border: "none",
-  };
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+        <Icon size={13} style={{ color: "var(--ink-mute)" }} strokeWidth={2} />
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.4px", color: "var(--ink-mute)", fontWeight: 600 }}>
+          {title}
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
 
-  if (status === 'accepted') {
-    return (
-      <button
-        onClick={onUnfriend}
-        disabled={busy}
-        style={{ ...base, background: "var(--surface)", color: "var(--ink)", border: "0.5px solid var(--hairline)" }}
-      >
-        <UserCheck size={14} /> Friends
-      </button>
-    );
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function groupJournalByYearMonth(entries: JournalEntry[]) {
+  const map = new Map<number, Map<number, JournalEntry[]>>();
+  for (const e of entries) {
+    if (!e.visited_date) continue;
+    const d = new Date(e.visited_date);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    if (!map.has(y)) map.set(y, new Map());
+    if (!map.get(y)!.has(m)) map.get(y)!.set(m, []);
+    map.get(y)!.get(m)!.push(e);
   }
+  // Sort years desc, months desc within each year
+  return Array.from(map.entries())
+    .sort(([a], [b]) => b - a)
+    .map(([year, months]) => ({
+      year,
+      months: Array.from(months.entries())
+        .sort(([a], [b]) => b - a)
+        .map(([month, items]) => ({ month, items })),
+    }));
+}
 
-  if (status === 'pending_sent') {
-    return (
-      <button
-        onClick={onCancelRequest}
-        disabled={busy}
-        style={{ ...base, background: "var(--surface)", color: "var(--ink-mute)", border: "0.5px solid var(--hairline)" }}
-      >
-        <Clock size={14} /> Request Sent
-      </button>
-    );
-  }
+function StarRating({ n }: { n: number }) {
+  return (
+    <span style={{ fontSize: 11, letterSpacing: 1 }}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <span key={i} style={{ color: i < n ? "#C49A28" : "var(--hairline)" }}>★</span>
+      ))}
+    </span>
+  );
+}
 
-  if (status === 'pending_received') {
+function VisibilityPill({ vis }: { vis: string | null }) {
+  if (!vis || vis === "public") return null;
+  const label = vis === "friends" ? "Friends only" : "Private";
+  const color = vis === "private" ? "#9A6B4B" : "#5B8A96";
+  return (
+    <span style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "0.8px", color, fontWeight: 600, background: `${color}18`, borderRadius: 4, padding: "1px 5px" }}>
+      {label}
+    </span>
+  );
+}
+
+function JournalTimeline({ entries }: { entries: JournalEntry[] }) {
+  if (entries.length === 0) {
     return (
-      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-        <button
-          onClick={onAcceptRequest}
-          disabled={busy}
-          style={{ ...base, background: "var(--primary)", color: "#FFFBF1" }}
-        >
-          <UserCheck size={14} /> Accept
-        </button>
-        <button
-          onClick={onDeclineRequest}
-          disabled={busy}
-          style={{ ...base, background: "var(--surface)", color: "var(--ink)", border: "0.5px solid var(--hairline)" }}
-        >
-          Decline
-        </button>
+      <div style={{ padding: "32px 0", textAlign: "center", color: "var(--ink-mute)", fontSize: 13 }}>
+        No journal entries visible.
       </div>
     );
   }
-
+  const groups = groupJournalByYearMonth(entries);
   return (
-    <button
-      onClick={onAddFriend}
-      disabled={busy}
-      style={{ ...base, background: "var(--primary)", color: "#FFFBF1" }}
-    >
-      <UserPlus size={14} /> Add Friend
-    </button>
+    <div>
+      {groups.map(({ year, months }) => (
+        <div key={year} style={{ marginBottom: 36 }}>
+          {/* Year header */}
+          <div style={{
+            fontWeight: 900, fontSize: 20, color: "var(--ink)",
+            letterSpacing: -0.4, marginBottom: 16,
+          }}>
+            {year}
+          </div>
+          {months.map(({ month, items }) => (
+            <div key={month} style={{ marginBottom: 24 }}>
+              {/* Month header with line */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                <span style={{
+                  fontFamily: "var(--font-mono)", fontSize: 9.5,
+                  letterSpacing: "1.8px", fontWeight: 700,
+                  color: "var(--ink-mute)",
+                  textTransform: "uppercase",
+                  flexShrink: 0,
+                }}>
+                  {MONTH_NAMES[month]}
+                </span>
+                <div style={{ flex: 1, height: 1, background: "var(--hairline)" }} />
+              </div>
+              {/* Entries */}
+              <div style={{ position: "relative", paddingLeft: 20 }}>
+                {/* Vertical line */}
+                <div style={{
+                  position: "absolute", left: 5, top: 8, bottom: 8,
+                  width: 1, background: "var(--hairline)",
+                }} />
+                {items.map((entry, idx) => {
+                  const d = new Date(entry.visited_date!);
+                  const day = d.getDate();
+                  const mon = MONTH_SHORT[d.getMonth()];
+                  return (
+                    <div key={entry.visit_id} style={{
+                      position: "relative",
+                      marginBottom: idx < items.length - 1 ? 18 : 0,
+                    }}>
+                      {/* Dot */}
+                      <div style={{
+                        position: "absolute", left: -19, top: 5,
+                        width: 9, height: 9, borderRadius: "50%",
+                        background: "var(--visited)", border: "2px solid var(--bg)",
+                        flexShrink: 0,
+                      }} />
+                      {/* Card */}
+                      <div style={{
+                        background: "var(--surface)",
+                        border: "0.5px solid var(--hairline)",
+                        borderRadius: 10,
+                        padding: "12px 14px",
+                      }}>
+                        {/* Top row: date + park + visibility */}
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: entry.title || entry.notes || entry.rating || (entry.activities?.length ?? 0) > 0 ? 8 : 0 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flex: 1, minWidth: 0 }}>
+                            <span style={{
+                              fontFamily: "var(--font-mono)", fontSize: 10,
+                              letterSpacing: "0.6px", color: "var(--ink-mute)",
+                              fontWeight: 600, flexShrink: 0,
+                            }}>
+                              {mon} {day}
+                            </span>
+                            <span style={{
+                              fontWeight: 700, fontSize: 14, color: "var(--ink)",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            }}>
+                              {entry.park_name}
+                            </span>
+                          </div>
+                          <VisibilityPill vis={entry.visibility} />
+                        </div>
+                        {/* Custom title */}
+                        {entry.title && (
+                          <div style={{ fontSize: 12, fontWeight: 650, color: "var(--ink-soft)", marginBottom: 5, fontStyle: "italic" }}>
+                            "{entry.title}"
+                          </div>
+                        )}
+                        {/* Rating + activities row */}
+                        {(entry.rating || (entry.activities?.length ?? 0) > 0) && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: entry.notes ? 6 : 0 }}>
+                            {entry.rating && <StarRating n={entry.rating} />}
+                            {(entry.activities?.length ?? 0) > 0 && (
+                              <span style={{ fontSize: 11, color: "var(--ink-mute)" }}>
+                                {entry.activities!.join(" · ")}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {/* Notes */}
+                        {entry.notes && (
+                          <div style={{
+                            fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.55,
+                            display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}>
+                            {entry.notes}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -191,16 +370,14 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!username) return;
-    setError(false);
+    setError(false); setNotFound(false); setLoading(true);
     fetch(`/api/users/${encodeURIComponent(username)}`)
       .then((r) => {
         if (r.status === 404) { setNotFound(true); return null; }
         if (!r.ok) { setError(true); return null; }
         return r.json();
       })
-      .then((data) => {
-        if (data) setProfile(data);
-      })
+      .then((data) => { if (data) setProfile(data); })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [username]);
@@ -214,211 +391,357 @@ export default function ProfilePage() {
 
   const handleAddFriend = withBusy(async () => {
     const prev = profile!.friendship_status;
-    setProfile(p => p ? { ...p, friendship_status: 'pending_sent' } : p); // optimistic
-    const res = await fetch('/api/friends', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    setProfile((p) => p ? { ...p, friendship_status: "pending_sent" } : p);
+    const res = await fetch("/api/friends", {
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: profile!.clerk_user_id }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error('[friends] POST failed:', res.status, err);
-      setProfile(p => p ? { ...p, friendship_status: prev } : p); // revert
-      return;
+    if (!res.ok) setProfile((p) => p ? { ...p, friendship_status: prev } : p);
+    else {
+      const data = await res.json();
+      setProfile((p) => p ? { ...p, friendship_status: data.status ?? "pending_sent" } : p);
     }
-    const data = await res.json();
-    setProfile(p => p ? { ...p, friendship_status: data.status ?? 'pending_sent' } : p);
   });
-
   const handleCancelRequest = withBusy(async () => {
-    setProfile(p => p ? { ...p, friendship_status: 'none' } : p); // optimistic
-    const res = await fetch(`/api/friends?userId=${profile!.clerk_user_id}`, { method: 'DELETE' });
-    if (!res.ok) setProfile(p => p ? { ...p, friendship_status: 'pending_sent' } : p); // revert
+    setProfile((p) => p ? { ...p, friendship_status: "none" } : p);
+    const res = await fetch(`/api/friends?userId=${profile!.clerk_user_id}`, { method: "DELETE" });
+    if (!res.ok) setProfile((p) => p ? { ...p, friendship_status: "pending_sent" } : p);
   });
-
   const handleAcceptRequest = withBusy(async () => {
     if (!profile!.friendship_id) return;
-    const res = await fetch('/api/friends', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ friendshipId: profile!.friendship_id, action: 'accept' }),
+    const res = await fetch("/api/friends", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ friendshipId: profile!.friendship_id, action: "accept" }),
     });
-    if (res.ok) {
-      setProfile(p => p ? { ...p, friendship_status: 'accepted', friend_count: p.friend_count + 1 } : p);
-    }
+    if (res.ok) setProfile((p) => p ? { ...p, friendship_status: "accepted", friend_count: p.friend_count + 1 } : p);
   });
-
   const handleDeclineRequest = withBusy(async () => {
     if (!profile!.friendship_id) return;
-    const res = await fetch('/api/friends', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ friendshipId: profile!.friendship_id, action: 'reject' }),
+    const res = await fetch("/api/friends", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ friendshipId: profile!.friendship_id, action: "reject" }),
     });
-    if (res.ok) setProfile(p => p ? { ...p, friendship_status: 'none', friendship_id: null } : p);
+    if (res.ok) setProfile((p) => p ? { ...p, friendship_status: "none", friendship_id: null } : p);
   });
-
   const handleUnfriend = withBusy(async () => {
-    const res = await fetch(`/api/friends?userId=${profile!.clerk_user_id}`, { method: 'DELETE' });
-    if (res.ok) {
-      setProfile(p => p ? { ...p, friendship_status: 'none', friend_count: Math.max(0, p.friend_count - 1) } : p);
-    }
+    const res = await fetch(`/api/friends?userId=${profile!.clerk_user_id}`, { method: "DELETE" });
+    if (res.ok) setProfile((p) => p ? { ...p, friendship_status: "none", friend_count: Math.max(0, p.friend_count - 1) } : p);
   });
 
-  const profileContent = (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "48px 32px" }}>
-        {loading && (
-          <div style={{ textAlign: "center", padding: "80px 0", color: "var(--ink-mute)", fontSize: 14 }}>
-            Loading…
+  // Build MapPark array for the visited map
+  const mapParks: MapPark[] = (profile?.visited_parks ?? [])
+    .filter((v) => v.latitude && v.longitude)
+    .map((v) => ({
+      park_code: v.park_code,
+      name: v.name,
+      position: [parseFloat(v.latitude!), parseFloat(v.longitude!)] as [number, number],
+      status: "visited" as const,
+    }));
+
+  // ── Inner page content ────────────────────────────────────────────────────
+
+  const stateAbbr = (states: string) => states.split(",")[0].trim();
+
+  const emptyOrLoading = (
+    <div style={{ textAlign: "center", padding: "80px 0", color: "var(--ink-mute)", fontSize: 14 }}>
+      {loading ? "Loading…" : error ? "Failed to load profile." : notFound ? `@${username} doesn't exist.` : null}
+    </div>
+  );
+
+  const memberSince = profile?.created_at
+    ? new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : null;
+
+  const content = profile ? (
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 28px 80px" }}>
+
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 22, marginBottom: 28 }}>
+        {profile.avatar_url ? (
+          <img src={profile.avatar_url} alt={profile.username}
+            style={{ width: 84, height: 84, borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: "2px solid var(--hairline)" }} />
+        ) : (
+          <div style={{
+            width: 84, height: 84, borderRadius: "50%", flexShrink: 0,
+            background: "var(--primary)", display: "flex", alignItems: "center",
+            justifyContent: "center", fontSize: 30, fontWeight: 800, color: "#FFFBF1",
+          }}>
+            {profile.username[0]?.toUpperCase()}
           </div>
         )}
 
-        {error && (
-          <div style={{ textAlign: "center", padding: "80px 0" }}>
-            <TreePine size={40} style={{ color: "var(--ink-mute)", marginBottom: 16 }} />
-            <div style={{ fontWeight: 700, fontSize: 20, color: "var(--ink)" }}>Failed to load profile</div>
-            <div style={{ color: "var(--ink-mute)", marginTop: 8, fontSize: 14 }}>Something went wrong. Try refreshing the page.</div>
-            <button
-              onClick={() => { setError(false); setLoading(true); fetch(`/api/users/${encodeURIComponent(username)}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setProfile(d); else setError(true); }).catch(() => setError(true)).finally(() => setLoading(false)); }}
-              style={{ marginTop: 24, background: "var(--primary)", color: "#FFFBF1", border: "none", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-            >
-              Try again
-            </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 26, color: "var(--ink)", letterSpacing: -0.5, lineHeight: 1.1 }}>
+            {profile.display_name || `@${profile.username}`}
           </div>
-        )}
-
-        {notFound && (
-          <div style={{ textAlign: "center", padding: "80px 0" }}>
-            <TreePine size={40} style={{ color: "var(--ink-mute)", marginBottom: 16 }} />
-            <div style={{ fontWeight: 700, fontSize: 20, color: "var(--ink)" }}>User not found</div>
-            <div style={{ color: "var(--ink-mute)", marginTop: 8, fontSize: 14 }}>@{username} doesn&apos;t exist.</div>
-            <button
-              onClick={() => router.back()}
-              style={{ marginTop: 24, background: "var(--primary)", color: "#FFFBF1", border: "none", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-            >
-              Go back
-            </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-mute)", fontWeight: 600, letterSpacing: "0.8px" }}>
+              @{profile.username}
+            </span>
+            {memberSince && (
+              <span style={{ fontSize: 11, color: "var(--ink-mute)" }}>
+                Joined {memberSince}
+              </span>
+            )}
           </div>
-        )}
-
-        {profile && (
-          <>
-            {/* Header */}
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 24, marginBottom: 36 }}>
-              {/* Avatar */}
-              {profile.avatar_url ? (
-                <img
-                  src={profile.avatar_url}
-                  alt={profile.username}
-                  style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: "2px solid var(--hairline)" }}
-                />
-              ) : (
-                <div style={{
-                  width: 80, height: 80, borderRadius: "50%", flexShrink: 0,
-                  background: "var(--primary)", display: "flex", alignItems: "center",
-                  justifyContent: "center", fontSize: 28, fontWeight: 800, color: "#FFFBF1",
-                }}>
-                  {profile.username[0]?.toUpperCase()}
-                </div>
-              )}
-
-              {/* Name / username / bio */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 24, color: "var(--ink)", letterSpacing: -0.5 }}>
-                  {profile.display_name || `@${profile.username}`}
-                </div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-mute)", fontWeight: 600, letterSpacing: "0.8px", marginTop: 2 }}>
-                  @{profile.username}
-                </div>
-                {profile.bio && (
-                  <div style={{ fontSize: 13.5, color: "var(--ink-soft)", marginTop: 10, lineHeight: 1.55 }}>
-                    {profile.bio}
-                  </div>
-                )}
-              </div>
-
-              {/* Friend button */}
-              {!profile.is_own_profile && isSignedIn && (
-                <FriendButton
-                  status={profile.friendship_status}
-                  busy={busy}
-                  onAddFriend={handleAddFriend}
-                  onCancelRequest={handleCancelRequest}
-                  onAcceptRequest={handleAcceptRequest}
-                  onDeclineRequest={handleDeclineRequest}
-                  onUnfriend={handleUnfriend}
-                />
-              )}
+          {profile.bio && (
+            <div style={{ fontSize: 13.5, color: "var(--ink-soft)", marginTop: 10, lineHeight: 1.55 }}>
+              {profile.bio}
             </div>
+          )}
+          {isSignedIn && !profile.is_own_profile && profile.mutual_friends > 0 && (
+            <div style={{ fontSize: 12, color: "var(--ink-mute)", marginTop: 8, display: "flex", alignItems: "center", gap: 5 }}>
+              <Users size={12} strokeWidth={2} />
+              {profile.mutual_friends} mutual {profile.mutual_friends === 1 ? "friend" : "friends"}
+            </div>
+          )}
+        </div>
 
-            {/* Stats row */}
-            <div style={{
-              display: "flex",
-              gap: 0,
-              background: "var(--surface)",
-              border: "0.5px solid var(--hairline)",
-              borderRadius: 14,
-              overflow: "hidden",
-              marginBottom: 36,
-            }}>
+        {!profile.is_own_profile && isSignedIn && (
+          <FriendButton
+            status={profile.friendship_status} busy={busy}
+            onAddFriend={handleAddFriend} onCancelRequest={handleCancelRequest}
+            onAcceptRequest={handleAcceptRequest} onDeclineRequest={handleDeclineRequest}
+            onUnfriend={handleUnfriend}
+          />
+        )}
+      </div>
+
+      {/* ── Stats row ── */}
+      <div style={{
+        display: "flex", background: "var(--surface)", border: "0.5px solid var(--hairline)",
+        borderRadius: 14, overflow: "hidden", marginBottom: 28,
+      }}>
+        {[
+          { value: profile.parks_visited, sub: "/63", label: "PARKS VISITED" },
+          { value: profile.states_visited, label: "STATES" },
+          { value: profile.bucket_list_count, label: "BUCKET LIST" },
+          { value: profile.badges.length, label: "BADGES EARNED" },
+          { value: profile.friend_count, label: "FRIENDS" },
+        ].map((s, i, arr) => (
+          <div key={s.label} style={{
+            flex: 1,
+            borderRight: i < arr.length - 1 ? "0.5px solid var(--hairline)" : "none",
+          }}>
+            <StatPill value={s.value} sub={s.sub} label={s.label} />
+          </div>
+        ))}
+      </div>
+
+      {/* ── Map + Passport card ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 16, marginBottom: 28, alignItems: "stretch" }}>
+        {/* Map */}
+        <div style={{
+          borderRadius: 14, overflow: "hidden",
+          border: "0.5px solid var(--hairline)",
+          minHeight: 240,
+          background: "#CECDBC",
+        }}>
+          {mapParks.length > 0 ? (
+            <USAMap
+              parks={mapParks}
+              showControls={false}
+              initialBounds={[[-124.8, 24.4], [-66.9, 49.4]]}
+            />
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", minHeight: 240, color: "var(--ink-mute)", fontSize: 13 }}>
+              No park visits yet
+            </div>
+          )}
+        </div>
+
+        {/* Passport card */}
+        <div style={{
+          borderRadius: 14, overflow: "hidden",
+          background: "radial-gradient(120% 100% at 50% 0%, #1F3D2E 0%, #152A20 50%, #0D1D15 100%)",
+          border: "0.5px solid rgba(0,0,0,0.3)",
+          padding: "20px 18px",
+          display: "flex", flexDirection: "column", justifyContent: "space-between",
+          color: "#C9A94A",
+        }}>
+          <div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, letterSpacing: "2px", opacity: 0.7 }}>
+              PARKQUEST · PASSPORT
+            </div>
+            <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: "3px", marginTop: 12, color: "#C9A94A", textShadow: "0 1px 0 #8A5E18" }}>
+              {profile.display_name?.toUpperCase() || profile.username.toUpperCase()}
+            </div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "rgba(201,169,74,0.7)", marginTop: 4, letterSpacing: "1px" }}>
+              @{profile.username}
+            </div>
+          </div>
+
+          <div style={{ borderTop: "0.5px dashed rgba(201,169,74,0.3)", paddingTop: 14, marginTop: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {[
-                { value: profile.parks_visited, label: "PARKS VISITED" },
-                { value: profile.friend_count, label: "FRIENDS" },
-              ].map((s, i, arr) => (
-                <div
-                  key={s.label}
-                  style={{
-                    flex: 1,
-                    padding: "20px 16px",
-                    borderRight: i < arr.length - 1 ? "0.5px solid var(--hairline)" : "none",
-                  }}
-                >
-                  <Stat value={s.value} label={s.label} />
+                { label: "VISITED", value: `${profile.parks_visited}/63` },
+                { label: "STATES", value: `${profile.states_visited}/50` },
+                { label: "CLASS", value: explorerRank(profile.parks_visited) },
+                { label: "BADGES", value: String(profile.badges.length) },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 7, letterSpacing: "1.5px", opacity: 0.6, textTransform: "uppercase" }}>{label}</div>
+                  <div style={{ fontWeight: 700, fontSize: 11, marginTop: 2, color: "#C9A94A" }}>{value}</div>
                 </div>
               ))}
             </div>
+          </div>
 
-            {/* Recent visits */}
-            {profile.recent_visits.length > 0 && (
-              <>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                  <MapPin size={14} style={{ color: "var(--visited)" }} />
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.4px", color: "var(--ink-mute)", fontWeight: 600 }}>
-                    RECENTLY VISITED
+          {profile.avatar_url && (
+            <div style={{
+              width: 44, height: 44, borderRadius: 6, overflow: "hidden",
+              border: "1.5px solid rgba(201,169,74,0.5)",
+              marginTop: 14, alignSelf: "flex-end",
+            }}>
+              <img src={profile.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", filter: "grayscale(30%)" }} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Badges ── */}
+      {profile.badges.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <Section title="BADGES EARNED" icon={Award}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {profile.badges.map((b) => (
+                <div key={b.badge_id}
+                  title={b.name}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    background: TIER_BG[b.tier] ?? "#F9F9F9",
+                    border: `1px solid ${TIER_COLOR[b.tier] ?? "#ccc"}33`,
+                    borderRadius: 8, padding: "5px 10px",
+                  }}>
+                  <span style={{ fontSize: 15 }}>{b.emoji}</span>
+                  <div>
+                    <div style={{ fontSize: 11.5, fontWeight: 650, color: "var(--ink)", lineHeight: 1.2 }}>{b.name}</div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "0.8px", color: TIER_COLOR[b.tier] ?? "var(--ink-mute)", fontWeight: 600, textTransform: "uppercase" }}>
+                      {b.tier}
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
-                  {profile.recent_visits.map((v) => (
-                    <VisitCard key={v.park_code} visit={v} onClick={() => router.push(`/parks/${v.park_code}`)} />
-                  ))}
-                </div>
-              </>
-            )}
+              ))}
+            </div>
+          </Section>
+        </div>
+      )}
 
-            {profile.recent_visits.length === 0 && (
-              <div style={{
-                textAlign: "center",
-                padding: "48px 24px",
-                background: "var(--surface)",
-                border: "0.5px solid var(--hairline)",
-                borderRadius: 14,
-                color: "var(--ink-mute)",
-                fontSize: 13,
-              }}>
-                No park visits yet.
+      {/* ── Passport stamps ── */}
+      {profile.visited_parks.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <Section title="PARK STAMPS" icon={MapPin}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
+              {profile.visited_parks.slice(0, 24).map((v) => (
+                <button
+                  key={v.park_code}
+                  onClick={() => router.push(`/parks/${v.park_code}`)}
+                  style={{
+                    background: "var(--surface)",
+                    border: "0.5px solid var(--hairline)",
+                    borderRadius: 10,
+                    padding: "11px 13px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "background 120ms",
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-alt)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "var(--surface)"; }}
+                >
+                  {/* Stamp circle deco */}
+                  <div style={{
+                    position: "absolute", top: -12, right: -12,
+                    width: 44, height: 44, borderRadius: "50%",
+                    border: "2px solid var(--primary)", opacity: 0.08,
+                  }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--visited)", flexShrink: 0 }} />
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1px", color: "var(--ink-mute)", fontWeight: 600 }}>
+                      {stateAbbr(v.states)}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)", lineHeight: 1.3, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                    {v.name}
+                  </div>
+                  {v.visited_date && (
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-mute)", marginTop: 5, letterSpacing: "0.5px" }}>
+                      {new Date(v.visited_date).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase()}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+            {profile.visited_parks.length > 24 && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-mute)", textAlign: "center" }}>
+                +{profile.visited_parks.length - 24} more parks
               </div>
             )}
-          </>
-        )}
+          </Section>
+        </div>
+      )}
+
+      {/* ── Recent posts ── */}
+      {/* ── Journal timeline ── */}
+      <div style={{ marginBottom: 28 }}>
+        <Section title="JOURNAL" icon={MapPin}>
+          <JournalTimeline entries={profile.journal} />
+        </Section>
+      </div>
+
+      {profile.recent_posts.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <Section title="POSTS" icon={MapPin}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {profile.recent_posts.map((post) => {
+                const photo = post.photos?.[0]?.url;
+                return (
+                  <div key={post.id} style={{
+                    borderRadius: 10, overflow: "hidden",
+                    border: "0.5px solid var(--hairline)",
+                    background: "var(--surface-alt)",
+                    aspectRatio: "1",
+                    position: "relative",
+                  }}>
+                    {photo ? (
+                      <img src={photo} alt={post.park_name ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <TreePine size={24} style={{ color: "var(--ink-mute)" }} strokeWidth={1.5} />
+                      </div>
+                    )}
+                    {post.park_name && (
+                      <div style={{
+                        position: "absolute", bottom: 0, left: 0, right: 0,
+                        background: "linear-gradient(transparent, rgba(0,0,0,0.55))",
+                        padding: "20px 8px 7px",
+                        fontSize: 10.5, fontWeight: 700, color: "#fff",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>
+                        {post.park_name}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        </div>
+      )}
+
+    </div>
+  ) : (
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 28px" }}>
+      {emptyOrLoading}
     </div>
   );
 
   // Signed-in users get the full shell
   if (isLoaded && isSignedIn) {
-    return <DesktopShell>{profileContent}</DesktopShell>;
+    return <DesktopShell>{content}</DesktopShell>;
   }
 
-  // Logged-out visitors get a public layout with a sign-up nudge
   const displayName = profile?.display_name || (profile ? `@${profile.username}` : "This explorer");
 
   return (
@@ -444,32 +767,24 @@ export default function ProfilePage() {
               background: "transparent", border: "0.5px solid var(--hairline)",
               borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600,
               color: "var(--ink)", cursor: "pointer",
-            }}>
-              Sign in
-            </button>
+            }}>Sign in</button>
           </Link>
           <Link href="/sign-up" style={{ textDecoration: "none" }}>
             <button style={{
               background: "var(--primary)", border: "none",
               borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 700,
               color: "#FFFBF1", cursor: "pointer",
-            }}>
-              Get started
-            </button>
+            }}>Get started</button>
           </Link>
         </div>
       </div>
 
-      {/* Profile content */}
-      <div style={{ paddingBottom: 100 }}>
-        {profileContent}
-      </div>
+      <div style={{ paddingBottom: 100 }}>{content}</div>
 
       {/* Sticky sign-up banner */}
       <div style={{
         position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200,
-        background: "var(--primary)",
-        padding: "16px 24px",
+        background: "var(--primary)", padding: "16px 24px",
         display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
       }}>
         <div>
@@ -486,18 +801,14 @@ export default function ProfilePage() {
               background: "rgba(255,251,241,0.15)", border: "1px solid rgba(255,251,241,0.35)",
               borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600,
               color: "#FFFBF1", cursor: "pointer",
-            }}>
-              Sign in
-            </button>
+            }}>Sign in</button>
           </Link>
           <Link href="/sign-up" style={{ textDecoration: "none" }}>
             <button style={{
               background: "#FFFBF1", border: "none",
               borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700,
               color: "var(--primary)", cursor: "pointer",
-            }}>
-              Create free account
-            </button>
+            }}>Create free account</button>
           </Link>
         </div>
       </div>

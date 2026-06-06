@@ -434,7 +434,7 @@ export default function DashboardPage() {
         onOpenChange={setEditOpen}
         onSaved={() => { void user?.reload(); }}
       />
-      <div style={{ padding: "24px 32px 32px", overflowY: "auto", height: "100%" }}>
+      <div className="px-4 md:px-8 pt-6 pb-8 overflow-y-auto h-full">
 
         {/* ── Greeting row ──────────────────────────────────────── */}
         <div
@@ -462,9 +462,9 @@ export default function DashboardPage() {
             {isReady ? (
               <>
                 <div
+                  className="text-2xl md:text-4xl"
                   style={{
                     fontWeight: 800,
-                    fontSize: 36,
                     color: "var(--ink)",
                     letterSpacing: -0.8,
                     lineHeight: 1,
@@ -508,14 +508,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ── Big stats row ──────────────────────────────────────── */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: 12,
-            marginBottom: 24,
-          }}
-        >
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <BigStat
             kicker="VISITED"
             value={visitedCount}
@@ -553,13 +546,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ── Panel grid ─────────────────────────────────────────── */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.6fr 1fr",
-            gap: 16,
-          }}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-4">
           {/* Mini-map */}
           <Panel
             kicker="THE MAP"
