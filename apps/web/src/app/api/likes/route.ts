@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { likes, posts, notifications } from '@/lib/db/schema';
+import { likes, posts, notifications, userProfiles } from '@/lib/db/schema';
+import { sendPushToUser } from '@/lib/push';
 
 export async function POST(request: Request) {
   try {
@@ -22,6 +23,9 @@ export async function POST(request: Request) {
       const [post] = await db.select({ clerk_user_id: posts.clerk_user_id }).from(posts).where(eq(posts.id, Number(postId)));
       if (post && post.clerk_user_id !== userId) {
         await db.insert(notifications).values({ recipient_id: post.clerk_user_id, actor_id: userId, type: 'like', post_id: Number(postId) }).catch(() => {});
+        const [actor] = await db.select({ display_name: userProfiles.display_name, username: userProfiles.username }).from(userProfiles).where(eq(userProfiles.clerk_user_id, userId));
+        const name = actor?.display_name || actor?.username || "Someone";
+        sendPushToUser(post.clerk_user_id, { title: "New like", body: `${name} liked your post.`, url: "/map" }).catch(() => {});
       }
     }
 

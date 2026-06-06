@@ -116,3 +116,14 @@ export const notifications = pgTable('notifications', {
 
 export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
+
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: serial('id').primaryKey(),
+  clerk_user_id: varchar('clerk_user_id', { length: 255 }).notNull(),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;

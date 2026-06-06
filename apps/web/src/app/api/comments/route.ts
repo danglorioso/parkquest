@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, asc } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { comments, userProfiles, posts, notifications } from '@/lib/db/schema';
+import { sendPushToUser } from '@/lib/push';
 
 export async function GET(request: Request) {
   try {
@@ -50,6 +51,9 @@ export async function POST(request: Request) {
     const [post] = await db.select({ clerk_user_id: posts.clerk_user_id }).from(posts).where(eq(posts.id, Number(postId)));
     if (post && post.clerk_user_id !== userId) {
       await db.insert(notifications).values({ recipient_id: post.clerk_user_id, actor_id: userId, type: 'comment', post_id: Number(postId), metadata: { excerpt: content.trim().slice(0, 100) } }).catch(() => {});
+      const [actor] = await db.select({ display_name: userProfiles.display_name, username: userProfiles.username }).from(userProfiles).where(eq(userProfiles.clerk_user_id, userId));
+      const name = actor?.display_name || actor?.username || "Someone";
+      sendPushToUser(post.clerk_user_id, { title: "New comment", body: `${name}: ${content.trim().slice(0, 80)}`, url: "/map" }).catch(() => {});
     }
 
     return NextResponse.json(comment, { status: 201 });

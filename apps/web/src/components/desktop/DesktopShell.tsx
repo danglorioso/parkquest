@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { GlobalSpotlight } from "@/components/desktop/GlobalSpotlight";
 import { NotificationCenter } from "@/components/desktop/NotificationCenter";
+import { PushPermissionPrompt } from "@/components/desktop/PushPermissionPrompt";
 import { useTheme, type Palette } from "@/components/ThemeProvider";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { LogVisitModal } from "@/components/LogVisitModal";
@@ -508,6 +509,12 @@ export function DesktopShell({
   }, []);
 
   useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
     fetch("/api/visits")
       .then((r) => (r.ok ? r.json() : []))
       .then(
@@ -538,6 +545,7 @@ export function DesktopShell({
       className="flex h-screen overflow-hidden"
       style={{ background: "var(--bg)" }}
     >
+      <PushPermissionPrompt />
       <EditProfileDialog
         open={editOpen}
         onOpenChange={setEditOpen}

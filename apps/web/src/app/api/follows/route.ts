@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { follows, userProfiles, notifications } from '@/lib/db/schema';
+import { sendPushToUser } from '@/lib/push';
 
 export async function GET(request: Request) {
   try {
@@ -68,6 +69,9 @@ export async function POST(request: Request) {
 
     if (inserted) {
       await db.insert(notifications).values({ recipient_id: targetId, actor_id: userId, type: 'follow' }).catch(() => {});
+      const [actor] = await db.select({ display_name: userProfiles.display_name, username: userProfiles.username }).from(userProfiles).where(eq(userProfiles.clerk_user_id, userId));
+      const name = actor?.display_name || actor?.username || "Someone";
+      sendPushToUser(targetId, { title: "New follower", body: `${name} started following you.`, url: "/map" }).catch(() => {});
     }
 
     return NextResponse.json({ message: 'Followed' });
