@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, X } from "lucide-react";
 
 const STORAGE_KEY = "pq_push_asked";
@@ -52,14 +53,14 @@ export function PushPermissionPrompt() {
 
   if (!visible) return null;
 
-  return (
+  return createPortal(
     <div
       style={{
         position: "fixed",
         bottom: 60,
         left: 12,
         zIndex: 10000,
-        width: 320,
+        width: 360,
         background: "rgba(255,251,241,0.98)",
         backdropFilter: "blur(24px) saturate(160%)",
         WebkitBackdropFilter: "blur(24px) saturate(160%)",
@@ -132,7 +133,8 @@ export function PushPermissionPrompt() {
       >
         <X style={{ width: 13, height: 13 }} strokeWidth={2} />
       </button>
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -4,7 +4,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 export const parks = pgTable('parks', {
-  park_code: varchar('park_code', { length: 10 }).notNull().unique().primaryKey(),
+  park_code: varchar('park_code', { length: 10 }).notNull().primaryKey(),
   name: varchar('name', { length: 255 }).notNull(),
   states: varchar('states', { length: 100 }).notNull(),
   description: text('description'),

@@ -252,9 +252,20 @@ function PassportCover() {
 
 // ── PassportDataPage ──────────────────────────────────────────────────────────
 
+function explorerRank(count: number): string {
+  if (count === 63) return "NATIONAL LEGEND";
+  if (count >= 50) return "PIONEER";
+  if (count >= 30) return "TRAILBLAZER";
+  if (count >= 15) return "RANGER";
+  if (count >= 5)  return "EXPLORER";
+  if (count >= 1)  return "INITIATE";
+  return "TRAILHEAD";
+}
+
 function PassportDataPage({
   profile,
   visitedCount,
+  statesCount,
   bucketCount,
   badgeCount,
   totalBadges,
@@ -263,6 +274,7 @@ function PassportDataPage({
 }: {
   profile: UserProfile | null;
   visitedCount: number;
+  statesCount: number;
   bucketCount: number;
   badgeCount: number;
   totalBadges: number;
@@ -408,42 +420,81 @@ function PassportDataPage({
           borderTop: `0.5px dashed ${paperFaint}`,
           borderBottom: `0.5px dashed ${paperFaint}`,
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateColumns: "repeat(4, 1fr)",
           position: "relative",
         }}
       >
-        <div style={{ padding: "0 10px" }}>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "1.5px", color: paperMute, textTransform: "uppercase" }}>VISITED</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
-            <div style={{ fontWeight: 900, fontSize: 28, color: paperInk, letterSpacing: -1, lineHeight: 1 }}>{visitedCount}</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: paperMute, fontWeight: 600 }}>/63</div>
-          </div>
-        </div>
-        <div style={{ padding: "0 10px", borderLeft: `0.5px dashed ${paperMute}`, borderRight: `0.5px dashed ${paperMute}` }}>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "1.5px", color: paperMute, textTransform: "uppercase" }}>BUCKET</div>
-          <div style={{ fontWeight: 900, fontSize: 28, color: paperInk, letterSpacing: -1, lineHeight: 1, marginTop: 4 }}>{bucketCount}</div>
-        </div>
-        <div style={{ padding: "0 10px" }}>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "1.5px", color: paperMute, textTransform: "uppercase" }}>BADGES</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
-            <div style={{ fontWeight: 900, fontSize: 28, color: paperInk, letterSpacing: -1, lineHeight: 1 }}>{badgeCount}</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: paperMute, fontWeight: 600 }}>/{totalBadges}</div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ position: "relative", marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {[
-          { label: "ISSUED", value: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase() },
-          { label: "CODE", value: "USA · NPS" },
-        ].map(({ label, value }) => (
-          <div key={label}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, letterSpacing: "1.5px", color: paperMute, textTransform: "uppercase" }}>
-              {label}
+          { label: "VISITED", value: visitedCount, suffix: "/63" },
+          { label: "STATES", value: statesCount, suffix: "/50" },
+          { label: "BUCKET", value: bucketCount, suffix: null },
+          { label: "BADGES", value: badgeCount, suffix: `/${totalBadges}` },
+        ].map(({ label, value, suffix }, i, arr) => (
+          <div
+            key={label}
+            style={{
+              padding: "0 8px",
+              borderLeft: i > 0 ? `0.5px dashed ${paperMute}` : undefined,
+            }}
+          >
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, letterSpacing: "1.5px", color: paperMute, textTransform: "uppercase" }}>{label}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 3, marginTop: 4 }}>
+              <div style={{ fontWeight: 900, fontSize: 24, color: paperInk, letterSpacing: -1, lineHeight: 1 }}>{value}</div>
+              {suffix && <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: paperMute, fontWeight: 600 }}>{suffix}</div>}
             </div>
-            <div style={{ fontWeight: 700, fontSize: 12, color: paperInk, marginTop: 2, letterSpacing: "0.2px" }}>{value}</div>
           </div>
         ))}
+      </div>
+
+      <div style={{ position: "relative", marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 16px" }}>
+        {[
+          { label: "EXPLORER CLASS", value: explorerRank(visitedCount) },
+          { label: "VALID THRU",     value: "LIFETIME" },
+          { label: "ISSUED",         value: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase() },
+          { label: "TYPE · CODE",    value: "E · USA/NPS" },
+        ].map(({ label, value }) => (
+          <div key={label}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 7.5, letterSpacing: "1.5px", color: paperMute, textTransform: "uppercase" }}>
+              {label}
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 11.5, color: paperInk, marginTop: 2, letterSpacing: "0.3px" }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Signature line */}
+      <div
+        style={{
+          position: "relative",
+          marginTop: 14,
+          paddingTop: 10,
+          borderTop: `0.5px dashed ${paperFaint}`,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+        }}
+      >
+        <div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 7.5, letterSpacing: "1.5px", color: paperMute, textTransform: "uppercase", marginBottom: 3 }}>
+            BEARER SIGNATURE
+          </div>
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 17, color: paperInk, fontStyle: "italic", letterSpacing: "0.5px", lineHeight: 1.1 }}>
+            {name}
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 7.5, letterSpacing: "1.5px", color: paperMute, textTransform: "uppercase", marginBottom: 3 }}>
+            STATUS
+          </div>
+          <div style={{
+            fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 800, letterSpacing: "1.5px",
+            color: visitedCount > 0 ? "#1F5C2E" : paperMute,
+            background: visitedCount > 0 ? "rgba(31,92,46,0.12)" : "transparent",
+            padding: "2px 7px", borderRadius: 4,
+          }}>
+            {visitedCount > 0 ? "● ACTIVE" : "○ INACTIVE"}
+          </div>
+        </div>
       </div>
 
       <div
@@ -651,6 +702,16 @@ export default function PassportPage() {
   const [animType, setAnimType] = useState<"initial" | "open" | "next" | "prev">("initial");
   const [animKey, setAnimKey]   = useState(0);
   const hasAutoOpened           = useRef(false);
+  const [copied, setCopied]     = useState(false);
+
+  function handleShare() {
+    if (!profile?.username) return;
+    const url = `${window.location.origin}/profile/${profile.username}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  }
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
@@ -724,6 +785,12 @@ export default function PassportPage() {
 
   const avatarUrl = user?.imageUrl ?? profile?.avatar_url ?? null;
 
+  const statesCount = (() => {
+    const s = new Set<string>();
+    visitedParks.forEach(p => p.states.split(",").forEach(st => s.add(st.trim())));
+    return s.size;
+  })();
+
   function goNext() {
     if (spread >= maxSpread) return;
     setAnimType(spread === 0 ? "open" : "next");
@@ -752,6 +819,7 @@ export default function PassportPage() {
         <PassportDataPage
           profile={profile}
           visitedCount={visitedParks.length}
+          statesCount={statesCount}
           bucketCount={bucketCount}
           badgeCount={badgeCount}
           totalBadges={totalBadges}
@@ -790,8 +858,8 @@ export default function PassportPage() {
           sub="Flip through every park you've visited."
           actions={
             <>
-              <DesktopButton size="sm">
-                <Share2 size={13} strokeWidth={2} /> Share
+              <DesktopButton size="sm" onClick={handleShare}>
+                <Share2 size={13} strokeWidth={2} /> {copied ? "Copied!" : "Share"}
               </DesktopButton>
               <DesktopButton size="sm">
                 <PenLine size={13} strokeWidth={2} /> Edit

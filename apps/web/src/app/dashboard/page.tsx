@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { DesktopShell, AccountMenu } from "@/components/desktop/DesktopShell";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
+import { FindFriendsDialog } from "@/components/desktop/FindFriendsDialog";
 import type { MapPark } from "@/components/USAMapGL";
 import EditProfileDialog from "@/components/EditProfileDialog";
 
@@ -337,6 +338,7 @@ export default function DashboardPage() {
   const [activityItems,  setActivityItems]  = useState<ActivityEvent[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [editOpen,       setEditOpen]       = useState(false);
+  const [findFriendsOpen, setFindFriendsOpen] = useState(false);
   const [mapHover,       setMapHover]       = useState(false);
 
   useEffect(() => {
@@ -638,15 +640,39 @@ export default function DashboardPage() {
             kicker="ACTIVITY"
             title="What's new"
             action={
-              <Link href="/feed" style={{ textDecoration: "none" }}>
-                <DesktopButton size="sm">View all</DesktopButton>
-              </Link>
+              <div style={{ display: "flex", gap: 6 }}>
+                <DesktopButton size="sm" onClick={() => setFindFriendsOpen(true)}>
+                  Add Friends
+                </DesktopButton>
+                <Link href="/feed" style={{ textDecoration: "none" }}>
+                  <DesktopButton size="sm">View all</DesktopButton>
+                </Link>
+              </div>
             }
           >
             <div style={{ display: "flex", flexDirection: "column" }}>
-              {activityItems.length === 0 ? (
+              {loading ? (
                 <div style={{ padding: "20px 0", textAlign: "center", fontSize: 12.5, color: "var(--ink-mute)" }}>
-                  {loading ? "Loading…" : "Add friends to see their activity here."}
+                  Loading…
+                </div>
+              ) : activityItems.length === 0 ? (
+                <div style={{ padding: "24px 0", textAlign: "center" }}>
+                  <div style={{ fontSize: 13, color: "var(--ink)", fontWeight: 600, marginBottom: 6 }}>
+                    Nothing here yet
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "var(--ink-mute)", marginBottom: 14 }}>
+                    Add friends to see their visits, badges, and posts.
+                  </div>
+                  <button
+                    onClick={() => setFindFriendsOpen(true)}
+                    style={{
+                      background: "var(--primary)", color: "#fff",
+                      border: "none", borderRadius: 8, cursor: "pointer",
+                      fontSize: 12.5, fontWeight: 650, padding: "7px 18px",
+                    }}
+                  >
+                    Find friends
+                  </button>
                 </div>
               ) : (
                 activityItems.map((event, i) => (
@@ -655,6 +681,7 @@ export default function DashboardPage() {
               )}
             </div>
           </Panel>
+          <FindFriendsDialog open={findFriendsOpen} onOpenChange={setFindFriendsOpen} />
 
           {/* Trips on deck */}
           <Panel

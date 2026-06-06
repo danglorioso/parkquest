@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { MapPin, Users, UserCheck, UserPlus, Clock, TreePine } from "lucide-react";
+import Link from "next/link";
+import { MapPin, Users, UserCheck, UserPlus, Clock, TreePine, Footprints } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { fullStateName } from "@/lib/stateNames";
 
@@ -181,23 +182,26 @@ function FriendButton({
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
   const router = useRouter();
-  const { isSignedIn } = useUser();
+  const { isSignedIn, isLoaded } = useUser();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!username) return;
+    setError(false);
     fetch(`/api/users/${encodeURIComponent(username)}`)
       .then((r) => {
         if (r.status === 404) { setNotFound(true); return null; }
-        return r.ok ? r.json() : null;
+        if (!r.ok) { setError(true); return null; }
+        return r.json();
       })
       .then((data) => {
         if (data) setProfile(data);
       })
-      .catch(() => {})
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [username]);
 
@@ -209,20 +213,27 @@ export default function ProfilePage() {
   };
 
   const handleAddFriend = withBusy(async () => {
+    const prev = profile!.friendship_status;
+    setProfile(p => p ? { ...p, friendship_status: 'pending_sent' } : p); // optimistic
     const res = await fetch('/api/friends', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: profile!.clerk_user_id }),
     });
-    if (res.ok) {
-      const data = await res.json();
-      setProfile(p => p ? { ...p, friendship_status: data.status ?? 'pending_sent' } : p);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error('[friends] POST failed:', res.status, err);
+      setProfile(p => p ? { ...p, friendship_status: prev } : p); // revert
+      return;
     }
+    const data = await res.json();
+    setProfile(p => p ? { ...p, friendship_status: data.status ?? 'pending_sent' } : p);
   });
 
   const handleCancelRequest = withBusy(async () => {
+    setProfile(p => p ? { ...p, friendship_status: 'none' } : p); // optimistic
     const res = await fetch(`/api/friends?userId=${profile!.clerk_user_id}`, { method: 'DELETE' });
-    if (res.ok) setProfile(p => p ? { ...p, friendship_status: 'none' } : p);
+    if (!res.ok) setProfile(p => p ? { ...p, friendship_status: 'pending_sent' } : p); // revert
   });
 
   const handleAcceptRequest = withBusy(async () => {
@@ -254,12 +265,25 @@ export default function ProfilePage() {
     }
   });
 
-  return (
-    <DesktopShell>
-      <div style={{ maxWidth: 680, margin: "0 auto", padding: "48px 32px" }}>
+  const profileContent = (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "48px 32px" }}>
         {loading && (
           <div style={{ textAlign: "center", padding: "80px 0", color: "var(--ink-mute)", fontSize: 14 }}>
             Loading…
+          </div>
+        )}
+
+        {error && (
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
+            <TreePine size={40} style={{ color: "var(--ink-mute)", marginBottom: 16 }} />
+            <div style={{ fontWeight: 700, fontSize: 20, color: "var(--ink)" }}>Failed to load profile</div>
+            <div style={{ color: "var(--ink-mute)", marginTop: 8, fontSize: 14 }}>Something went wrong. Try refreshing the page.</div>
+            <button
+              onClick={() => { setError(false); setLoading(true); fetch(`/api/users/${encodeURIComponent(username)}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setProfile(d); else setError(true); }).catch(() => setError(true)).finally(() => setLoading(false)); }}
+              style={{ marginTop: 24, background: "var(--primary)", color: "#FFFBF1", border: "none", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+            >
+              Try again
+            </button>
           </div>
         )}
 
@@ -386,7 +410,97 @@ export default function ProfilePage() {
             )}
           </>
         )}
+    </div>
+  );
+
+  // Signed-in users get the full shell
+  if (isLoaded && isSignedIn) {
+    return <DesktopShell>{profileContent}</DesktopShell>;
+  }
+
+  // Logged-out visitors get a public layout with a sign-up nudge
+  const displayName = profile?.display_name || (profile ? `@${profile.username}` : "This explorer");
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+      {/* Minimal public nav */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 100,
+        background: "rgba(245,239,224,0.92)",
+        backdropFilter: "blur(20px) saturate(160%)",
+        WebkitBackdropFilter: "blur(20px) saturate(160%)",
+        borderBottom: "0.5px solid var(--hairline)",
+        padding: "0 24px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        height: 54,
+      }}>
+        <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 7, color: "var(--primary)" }}>
+          <Footprints size={20} strokeWidth={2} />
+          <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: -0.3 }}>ParkQuest</span>
+        </Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link href="/sign-in" style={{ textDecoration: "none" }}>
+            <button style={{
+              background: "transparent", border: "0.5px solid var(--hairline)",
+              borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600,
+              color: "var(--ink)", cursor: "pointer",
+            }}>
+              Sign in
+            </button>
+          </Link>
+          <Link href="/sign-up" style={{ textDecoration: "none" }}>
+            <button style={{
+              background: "var(--primary)", border: "none",
+              borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 700,
+              color: "#FFFBF1", cursor: "pointer",
+            }}>
+              Get started
+            </button>
+          </Link>
+        </div>
       </div>
-    </DesktopShell>
+
+      {/* Profile content */}
+      <div style={{ paddingBottom: 100 }}>
+        {profileContent}
+      </div>
+
+      {/* Sticky sign-up banner */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200,
+        background: "var(--primary)",
+        padding: "16px 24px",
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+      }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#FFFBF1" }}>
+            Join {displayName} on ParkQuest
+          </div>
+          <div style={{ fontSize: 12.5, color: "rgba(255,251,241,0.75)", marginTop: 2 }}>
+            Track your national park adventures, earn badges, and connect with friends.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <Link href="/sign-in" style={{ textDecoration: "none" }}>
+            <button style={{
+              background: "rgba(255,251,241,0.15)", border: "1px solid rgba(255,251,241,0.35)",
+              borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600,
+              color: "#FFFBF1", cursor: "pointer",
+            }}>
+              Sign in
+            </button>
+          </Link>
+          <Link href="/sign-up" style={{ textDecoration: "none" }}>
+            <button style={{
+              background: "#FFFBF1", border: "none",
+              borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700,
+              color: "var(--primary)", cursor: "pointer",
+            }}>
+              Create free account
+            </button>
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }
