@@ -432,9 +432,8 @@ function PassportDataPage({
         </div>
       </div>
 
-      <div style={{ position: "relative", marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+      <div style={{ position: "relative", marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {[
-          { label: "NATIONALITY", value: "U.S." },
           { label: "ISSUED", value: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase() },
           { label: "CODE", value: "USA · NPS" },
         ].map(({ label, value }) => (

@@ -249,71 +249,74 @@ function Skel({ width, height, radius = 6 }: { width?: number | string; height: 
   );
 }
 
-function ActivityItem({
-  initials, name, what, where: dest, badge, when,
-}: (typeof MOCK_ACTIVITY)[number]) {
+function timeAgo(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "JUST NOW";
+  if (mins < 60) return `${mins}M AGO`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}H AGO`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}D AGO`;
+  return `${Math.floor(days / 7)}W AGO`;
+}
+
+function ActivityItem({ event }: { event: ActivityEvent }) {
+  const name = event.display_name || event.username || "Someone";
+  const initials = name.slice(0, 2).toUpperCase();
+
+  let what: string;
+  let dest: string | null = null;
+  let destColor = "var(--primary)";
+
+  if (event.type === "visit") {
+    what = "visited";
+    dest = event.park_name;
+  } else if (event.type === "bucket") {
+    what = "added to bucket list:";
+    dest = event.park_name;
+    destColor = "var(--bucket)";
+  } else if (event.type === "badge") {
+    what = `unlocked ${event.badge_emoji}`;
+    dest = event.badge_name;
+    destColor = "var(--bucket)";
+  } else {
+    what = event.park_name ? "posted at" : "shared a post";
+    dest = event.park_name ?? null;
+  }
+
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 0",
-        borderBottom: "0.5px solid var(--hairline-soft)",
-      }}
-    >
-      {/* Avatar placeholder */}
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: "50%",
-          background: "var(--surface-alt)",
-          border: "0.5px solid var(--hairline)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          fontSize: 9,
-          fontWeight: 700,
-          color: "var(--ink-mute)",
-          fontFamily: "var(--font-mono)",
-        }}
-      >
-        {initials}
-      </div>
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          fontSize: 12.5,
-          color: "var(--ink-soft)",
-          lineHeight: 1.4,
-        }}
-      >
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10,
+      padding: "8px 0", borderBottom: "0.5px solid var(--hairline-soft)",
+    }}>
+      {event.avatar_url ? (
+        <img
+          src={event.avatar_url}
+          alt={name}
+          style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+        />
+      ) : (
+        <div style={{
+          width: 28, height: 28, borderRadius: "50%",
+          background: "var(--surface-alt)", border: "0.5px solid var(--hairline)",
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          fontSize: 9, fontWeight: 700, color: "var(--ink-mute)", fontFamily: "var(--font-mono)",
+        }}>
+          {initials}
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.4 }}>
         <strong style={{ color: "var(--ink)", fontWeight: 700 }}>{name}</strong>{" "}
         {what}{" "}
-        {dest && (
-          <span
-            style={{
-              color: badge ? "var(--bucket)" : "var(--primary)",
-              fontWeight: 600,
-            }}
-          >
-            {dest}
-          </span>
-        )}
+        {dest && <span style={{ color: destColor, fontWeight: 600 }}>{dest}</span>}
       </div>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
-          color: "var(--ink-mute)",
-          letterSpacing: "0.6px",
-          flexShrink: 0,
-        }}
-      >
-        {when.toUpperCase()}
+      <div style={{
+        fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-mute)",
+        letterSpacing: "0.6px", flexShrink: 0,
+      }}>
+        {timeAgo(event.created_at)}
       </div>
     </div>
   );
@@ -331,6 +334,7 @@ export default function DashboardPage() {
   const [badgesEarned,   setBadgesEarned]   = useState(0);
   const [closestBadges,  setClosestBadges]  = useState<BadgeData[]>([]);
   const [miniMapParks,   setMiniMapParks]   = useState<MapPark[]>([]);
+  const [activityItems,  setActivityItems]  = useState<ActivityEvent[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [editOpen,       setEditOpen]       = useState(false);
   const [mapHover,       setMapHover]       = useState(false);
@@ -341,6 +345,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isSignedIn) return;
+
+    fetch("/api/activity")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: ActivityEvent[]) => setActivityItems(data))
+      .catch(() => {});
 
     Promise.all([
       fetch("/api/visits").then((r) => (r.ok ? r.json() : [])),
@@ -635,9 +644,15 @@ export default function DashboardPage() {
             }
           >
             <div style={{ display: "flex", flexDirection: "column" }}>
-              {MOCK_ACTIVITY.map((item, i) => (
-                <ActivityItem key={i} {...item} />
-              ))}
+              {activityItems.length === 0 ? (
+                <div style={{ padding: "20px 0", textAlign: "center", fontSize: 12.5, color: "var(--ink-mute)" }}>
+                  {loading ? "Loading…" : "Add friends to see their activity here."}
+                </div>
+              ) : (
+                activityItems.map((event, i) => (
+                  <ActivityItem key={`${event.type}-${event.user_id}-${i}`} event={event} />
+                ))
+              )}
             </div>
           </Panel>
 

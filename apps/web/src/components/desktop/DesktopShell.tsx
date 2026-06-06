@@ -487,9 +487,21 @@ export function DesktopShell({
   onOpenSpotlight: onOpenSpotlightOverride,
 }: DesktopShellProps) {
   const { user } = useUser();
-  const [visitedCount, setVisitedCount] = useState(0);
-  const [totalCount, setTotalCount] = useState(63);
-  const [bucketCount, setBucketCount] = useState(0);
+  const [visitedCount, setVisitedCount] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    const v = sessionStorage.getItem("pq_visited_count");
+    return v ? parseInt(v, 10) : 0;
+  });
+  const [totalCount, setTotalCount] = useState(() => {
+    if (typeof window === "undefined") return 63;
+    const v = sessionStorage.getItem("pq_total_count");
+    return v ? parseInt(v, 10) : 63;
+  });
+  const [bucketCount, setBucketCount] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    const v = sessionStorage.getItem("pq_bucket_count");
+    return v ? parseInt(v, 10) : 0;
+  });
   const [editOpen, setEditOpen] = useState(false);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [logVisitOpen, setLogVisitOpen] = useState(false);
@@ -524,10 +536,12 @@ export function DesktopShell({
             visited_date: string | null;
           }>
         ) => {
-          setVisitedCount(
-            visits.filter((v) => !v.is_bucket_list && v.visited_date).length
-          );
-          setBucketCount(visits.filter((v) => v.is_bucket_list).length);
+          const visited = visits.filter((v) => !v.is_bucket_list && v.visited_date).length;
+          const bucket = visits.filter((v) => v.is_bucket_list).length;
+          setVisitedCount(visited);
+          setBucketCount(bucket);
+          sessionStorage.setItem("pq_visited_count", String(visited));
+          sessionStorage.setItem("pq_bucket_count", String(bucket));
         }
       )
       .catch(() => {});
@@ -535,7 +549,10 @@ export function DesktopShell({
     fetch("/api/parks")
       .then((r) => (r.ok ? r.json() : []))
       .then((parks: unknown[]) => {
-        if (parks.length) setTotalCount(parks.length);
+        if (parks.length) {
+          setTotalCount(parks.length);
+          sessionStorage.setItem("pq_total_count", String(parks.length));
+        }
       })
       .catch(() => {});
   }, []);

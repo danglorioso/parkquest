@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import {
-  Bell, UserPlus, Heart, MessageCircle, MapPin, Sparkles, X,
+  Bell, UserPlus, Heart, MessageCircle, MapPin, Sparkles, X, UserCheck, BellOff,
 } from "lucide-react";
 
-type NotificationType = "follow" | "like" | "comment" | "post" | "system" | "recommendation";
+type NotificationType = "friend_request" | "friend_accepted" | "like" | "comment" | "post" | "system" | "recommendation";
 
 interface NotificationItem {
   id: number;
@@ -18,7 +18,7 @@ interface NotificationItem {
   post_id: number | null;
   park_code: string | null;
   park_name: string | null;
-  metadata: { message?: string; excerpt?: string } | null;
+  metadata: { message?: string; excerpt?: string; friendship_id?: number } | null;
   read: boolean;
   created_at: string;
 }
@@ -36,29 +36,40 @@ function timeAgo(dateStr: string): string {
 }
 
 const TYPE_CONFIG: Record<NotificationType, { icon: React.ElementType; bg: string; color: string }> = {
-  follow:         { icon: UserPlus,      bg: "#EDE9FE", color: "#7C3AED" },
-  like:           { icon: Heart,         bg: "#FEE2E2", color: "#DC2626" },
-  comment:        { icon: MessageCircle, bg: "#D1FAE5", color: "#059669" },
-  post:           { icon: MapPin,        bg: "#DCFCE7", color: "#16A34A" },
-  system:         { icon: Sparkles,      bg: "#FEF3C7", color: "#D97706" },
-  recommendation: { icon: Sparkles,      bg: "#FEF3C7", color: "#D97706" },
+  friend_request: { icon: UserPlus,      bg: "#EDE9FE", color: "#7C3AED" },
+  friend_accepted: { icon: UserCheck,    bg: "#D1FAE5", color: "#059669" },
+  like:            { icon: Heart,         bg: "#FEE2E2", color: "#DC2626" },
+  comment:         { icon: MessageCircle, bg: "#D1FAE5", color: "#059669" },
+  post:            { icon: MapPin,        bg: "#DCFCE7", color: "#16A34A" },
+  system:          { icon: Sparkles,      bg: "#FEF3C7", color: "#D97706" },
+  recommendation:  { icon: Sparkles,      bg: "#FEF3C7", color: "#D97706" },
 };
 
 function notificationText(n: NotificationItem): string {
   const name = n.actor_display_name || n.actor_username || "Someone";
   switch (n.type) {
-    case "follow":  return `${name} started following you`;
-    case "like":    return `${name} liked your post`;
-    case "comment": return `${name} commented on your post`;
-    case "post":    return n.park_name ? `${name} posted at ${n.park_name}` : `${name} shared a new post`;
-    default:        return n.metadata?.message ?? "New notification";
+    case "friend_request":  return `${name} sent you a friend request`;
+    case "friend_accepted": return `${name} accepted your friend request`;
+    case "like":            return `${name} liked your post`;
+    case "comment":         return `${name} commented on your post`;
+    case "post":            return n.park_name ? `${name} posted at ${n.park_name}` : `${name} shared a new post`;
+    default:                return n.metadata?.message ?? "New notification";
   }
 }
 
-function NotificationRow({ n }: { n: NotificationItem }) {
+function NotificationRow({
+  n,
+  responded,
+  onRespond,
+}: {
+  n: NotificationItem;
+  responded: boolean;
+  onRespond: (friendshipId: number, action: 'accept' | 'reject') => Promise<void>;
+}) {
   const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.system;
   const Icon = cfg.icon;
   const name = n.actor_display_name || n.actor_username || "Someone";
+  const [busy, setBusy] = useState(false);
 
   const avatarEl = n.actor_avatar_url ? (
     <img
@@ -82,6 +93,13 @@ function NotificationRow({ n }: { n: NotificationItem }) {
       <Icon style={{ width: 16, height: 16, color: cfg.color }} strokeWidth={2} />
     </div>
   );
+
+  const handleRespond = async (action: 'accept' | 'reject') => {
+    const fid = n.metadata?.friendship_id;
+    if (!fid || busy) return;
+    setBusy(true);
+    try { await onRespond(fid, action); } finally { setBusy(false); }
+  };
 
   return (
     <div style={{
@@ -113,9 +131,44 @@ function NotificationRow({ n }: { n: NotificationItem }) {
             fontSize: 11.5, color: "var(--ink-soft)", marginTop: 2,
             fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
-            "{n.metadata.excerpt}"
+            &ldquo;{n.metadata.excerpt}&rdquo;
           </div>
         )}
+
+        {/* Friend request action buttons */}
+        {n.type === "friend_request" && n.metadata?.friendship_id && (
+          responded ? (
+            <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 5, display: "flex", alignItems: "center", gap: 4 }}>
+              <UserCheck style={{ width: 11, height: 11 }} /> Responded
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 6, marginTop: 7 }}>
+              <button
+                onClick={() => handleRespond('accept')}
+                disabled={busy}
+                style={{
+                  background: "var(--primary)", color: "#FFFBF1", border: "none",
+                  borderRadius: 7, padding: "4px 12px", fontSize: 11.5, fontWeight: 700,
+                  cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1,
+                }}
+              >
+                Accept
+              </button>
+              <button
+                onClick={() => handleRespond('reject')}
+                disabled={busy}
+                style={{
+                  background: "var(--surface-alt)", color: "var(--ink)", border: "0.5px solid var(--hairline)",
+                  borderRadius: 7, padding: "4px 12px", fontSize: 11.5, fontWeight: 600,
+                  cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1,
+                }}
+              >
+                Decline
+              </button>
+            </div>
+          )
+        )}
+
         <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 3 }}>
           {timeAgo(n.created_at)}
         </div>
@@ -124,11 +177,46 @@ function NotificationRow({ n }: { n: NotificationItem }) {
   );
 }
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
+}
+
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [respondedTo, setRespondedTo] = useState<Set<number>>(new Set());
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setPushPermission(Notification.permission);
+    }
+  }, [open]);
+
+  async function handleEnablePush() {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
+    const permission = await Notification.requestPermission();
+    setPushPermission(permission);
+    if (permission !== "granted") return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
+      });
+      await fetch("/api/push-subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub.toJSON()),
+      });
+      localStorage.setItem("pq_push_asked", "1");
+    } catch { /* silent */ }
+  }
 
   // Poll unread count every 30s
   useEffect(() => {
@@ -166,6 +254,17 @@ export function NotificationCenter() {
       })
       .catch(() => setLoading(false));
   }, [open]);
+
+  const handleRespond = async (friendshipId: number, action: 'accept' | 'reject') => {
+    const res = await fetch('/api/friends', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ friendshipId, action }),
+    });
+    if (res.ok) {
+      setRespondedTo(prev => new Set([...prev, friendshipId]));
+    }
+  };
 
   const newCount = items.filter((n) => !n.read).length;
   const displayCount = open ? newCount : unreadCount;
@@ -291,7 +390,7 @@ export function NotificationCenter() {
                   No notifications yet
                 </div>
                 <div style={{ fontSize: 12, color: "var(--ink-mute)" }}>
-                  Follow friends and interact with posts to get started.
+                  Add friends and interact with posts to get started.
                 </div>
               </div>
             ) : (
@@ -300,33 +399,61 @@ export function NotificationCenter() {
                   {i > 0 && (
                     <div style={{ height: "0.5px", background: "var(--hairline-soft)", margin: "0 14px" }} />
                   )}
-                  <NotificationRow n={n} />
+                  <NotificationRow
+                    n={n}
+                    responded={n.type === "friend_request" && n.metadata?.friendship_id != null
+                      ? respondedTo.has(n.metadata.friendship_id)
+                      : false}
+                    onRespond={handleRespond}
+                  />
                 </div>
               ))
             )}
           </div>
 
           {/* Footer */}
-          {items.length > 0 && (
-            <div style={{ borderTop: "0.5px solid var(--hairline-soft)", padding: "8px 14px" }}>
+          <div style={{ borderTop: "0.5px solid var(--hairline-soft)", padding: "8px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+            {items.length > 0 && (
               <button
                 onClick={() => setOpen(false)}
                 style={{
-                  width: "100%",
-                  background: "transparent",
-                  border: 0,
-                  cursor: "pointer",
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  color: "var(--primary)",
-                  textAlign: "center",
-                  padding: "4px 0",
+                  width: "100%", background: "transparent", border: 0, cursor: "pointer",
+                  fontSize: 12.5, fontWeight: 600, color: "var(--primary)",
+                  textAlign: "center", padding: "4px 0",
                 }}
               >
                 See all activity
               </button>
-            </div>
-          )}
+            )}
+            {pushPermission !== null && pushPermission !== "granted" && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "7px 10px",
+                background: "var(--surface-alt)",
+                borderRadius: 9,
+                border: "0.5px solid var(--hairline-soft)",
+              }}>
+                <BellOff style={{ width: 13, height: 13, color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {pushPermission === "denied" ? (
+                    <span style={{ fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.3 }}>
+                      Browser notifications blocked — enable in your browser settings.
+                    </span>
+                  ) : (
+                    <button
+                      onClick={handleEnablePush}
+                      style={{
+                        background: "transparent", border: 0, padding: 0, cursor: "pointer",
+                        fontSize: 11.5, fontWeight: 600, color: "var(--primary)", textAlign: "left",
+                      }}
+                    >
+                      Enable browser notifications
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>

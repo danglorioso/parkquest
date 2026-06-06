@@ -56,11 +56,10 @@ export function PushPermissionPrompt() {
     <div
       style={{
         position: "fixed",
-        bottom: 24,
-        left: "50%",
-        transform: "translateX(-50%)",
+        bottom: 60,
+        left: 12,
         zIndex: 10000,
-        width: 340,
+        width: 320,
         background: "rgba(255,251,241,0.98)",
         backdropFilter: "blur(24px) saturate(160%)",
         WebkitBackdropFilter: "blur(24px) saturate(160%)",
@@ -76,8 +75,8 @@ export function PushPermissionPrompt() {
     >
       <style>{`
         @keyframes pq-slide-up {
-          from { opacity: 0; transform: translateX(-50%) translateY(16px); }
-          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
 
@@ -94,7 +93,7 @@ export function PushPermissionPrompt() {
           Stay in the loop
         </div>
         <div style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.4, marginBottom: 12 }}>
-          Get notified when someone follows you, likes a post, or leaves a comment.
+          Get notified when someone sends a friend request, likes a post, or leaves a comment.
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button
