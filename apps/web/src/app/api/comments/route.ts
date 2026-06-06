@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, asc } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { comments, userProfiles } from '@/lib/db/schema';
+import { comments, userProfiles, posts, notifications } from '@/lib/db/schema';
 
 export async function GET(request: Request) {
   try {
@@ -46,6 +46,11 @@ export async function POST(request: Request) {
       .insert(comments)
       .values({ user_id: userId, post_id: Number(postId), content: content.trim() })
       .returning();
+
+    const [post] = await db.select({ clerk_user_id: posts.clerk_user_id }).from(posts).where(eq(posts.id, Number(postId)));
+    if (post && post.clerk_user_id !== userId) {
+      await db.insert(notifications).values({ recipient_id: post.clerk_user_id, actor_id: userId, type: 'comment', post_id: Number(postId), metadata: { excerpt: content.trim().slice(0, 100) } }).catch(() => {});
+    }
 
     return NextResponse.json(comment, { status: 201 });
   } catch (error) {

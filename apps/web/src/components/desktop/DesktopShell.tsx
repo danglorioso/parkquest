@@ -10,8 +10,10 @@ import {
   Plus, ChevronDown, LogOut, UserCircle, Pencil, Sun, Search,
 } from "lucide-react";
 import { GlobalSpotlight } from "@/components/desktop/GlobalSpotlight";
+import { NotificationCenter } from "@/components/desktop/NotificationCenter";
 import { useTheme, type Palette } from "@/components/ThemeProvider";
 import EditProfileDialog from "@/components/EditProfileDialog";
+import { LogVisitModal } from "@/components/LogVisitModal";
 
 // ── Wordmark ─────────────────────────────────────────────────────────────────
 
@@ -73,7 +75,7 @@ const NAV = [
 
 // ── AccountMenu ───────────────────────────────────────────────────────────────
 
-function AccountMenu({ onEditAccount }: { onEditAccount: () => void }) {
+export function AccountMenu({ onEditAccount, compact = false }: { onEditAccount: () => void; compact?: boolean }) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const router = useRouter();
@@ -117,17 +119,24 @@ function AccountMenu({ onEditAccount }: { onEditAccount: () => void }) {
     { icon: LogOut,     label: "Sign out", danger: true, onClick: () => { setOpen(false); signOut(() => router.push("/")); } },
   ];
 
+  const avatar = avatarUrl ? (
+    <img src={avatarUrl} alt={name} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+  ) : (
+    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--surface-alt)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink-mute)" }}>
+      {name[0]?.toUpperCase()}
+    </div>
+  );
+
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      {/* Resting pill */}
       <button
         onClick={() => setOpen(o => !o)}
         style={{
-          width: "100%",
+          width: compact ? "auto" : "100%",
           background: open ? "rgba(31,61,46,0.06)" : "transparent",
-          border: `0.5px solid ${open ? "var(--hairline)" : "transparent"}`,
+          border: `0.5px solid ${open ? "var(--hairline)" : compact ? "var(--hairline-soft)" : "transparent"}`,
           borderRadius: 12,
-          padding: "8px 10px 8px 8px",
+          padding: compact ? "5px 8px 5px 5px" : "8px 10px 8px 8px",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
@@ -136,31 +145,27 @@ function AccountMenu({ onEditAccount }: { onEditAccount: () => void }) {
           transition: "background 120ms",
         }}
       >
-        {avatarUrl ? (
-          <img src={avatarUrl} alt={name} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-        ) : (
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--surface-alt)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink-mute)" }}>
-            {name[0]?.toUpperCase()}
+        {avatar}
+        {!compact && (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+            {handle && <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{handle}</div>}
           </div>
         )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
-          {handle && <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{handle}</div>}
-        </div>
         <ChevronDown
           style={{ width: 13, height: 13, color: "var(--ink-mute)", flexShrink: 0, transform: open ? "rotate(180deg)" : "rotate(0)", transition: "transform 160ms" }}
           strokeWidth={2.2}
         />
       </button>
 
-      {/* Dropdown panel — opens upward */}
+      {/* Dropdown panel — opens upward in sidebar, downward when compact */}
       {open && (
         <div
           style={{
             position: "absolute",
-            bottom: "calc(100% + 8px)",
-            left: 0,
-            right: 0,
+            ...(compact
+              ? { top: "calc(100% + 8px)", right: 0, width: 220 }
+              : { bottom: "calc(100% + 8px)", left: 0, right: 0 }),
             background: "rgba(255,251,241,0.98)",
             backdropFilter: "blur(24px) saturate(160%)",
             WebkitBackdropFilter: "blur(24px) saturate(160%)",
@@ -169,11 +174,12 @@ function AccountMenu({ onEditAccount }: { onEditAccount: () => void }) {
             padding: 5,
             boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
             zIndex: 50,
-            animation: "pqAccMenu 160ms cubic-bezier(.2,.7,.3,1)",
+            animation: `${compact ? "pqAccMenuDown" : "pqAccMenu"} 160ms cubic-bezier(.2,.7,.3,1)`,
           }}
         >
           <style>{`
             @keyframes pqAccMenu { from { opacity: 0; transform: translateY(4px) scale(0.98) } to { opacity: 1; transform: translateY(0) scale(1) } }
+            @keyframes pqAccMenuDown { from { opacity: 0; transform: translateY(-4px) scale(0.98) } to { opacity: 1; transform: translateY(0) scale(1) } }
             .pq-menu-item:hover { background: rgba(31,61,46,0.06) !important; }
           `}</style>
 
@@ -301,8 +307,10 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, onLogVisit, onE
       <div style={{ padding: "0 12px 14px" }}>
         <button
           onClick={onLogVisit}
-          className="w-full flex items-center justify-center gap-[7px] font-bold cursor-pointer transition-opacity hover:opacity-90"
+          className="w-full flex items-center justify-center gap-[7px] font-bold cursor-pointer"
           style={{
+            WebkitAppearance: "none",
+            appearance: "none",
             background: "var(--primary)",
             color: "#FFFBF1",
             fontSize: 13,
@@ -311,6 +319,13 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, onLogVisit, onE
             borderRadius: "var(--r-sm)",
             border: "none",
             boxShadow: "0 4px 12px rgba(31,61,46,0.35)",
+            transition: "background-color 150ms",
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.backgroundColor = "color-mix(in srgb, var(--primary) 85%, white)";
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.backgroundColor = "var(--primary)";
           }}
         >
           <Plus className="w-[15px] h-[15px] shrink-0" strokeWidth={2.4} />
@@ -441,8 +456,13 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, onLogVisit, onE
           </div>
         </div>
 
-        {/* Account menu */}
-        <AccountMenu onEditAccount={onEditAccount} />
+        {/* Account menu + notification bell */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <AccountMenu onEditAccount={onEditAccount} />
+          </div>
+          <NotificationCenter />
+        </div>
       </div>
     </aside>
   );
@@ -455,6 +475,7 @@ interface DesktopShellProps {
   fullbleed?: boolean;
   rightRail?: React.ReactNode;
   onLogVisit?: () => void;
+  onOpenSpotlight?: () => void;
 }
 
 export function DesktopShell({
@@ -462,6 +483,7 @@ export function DesktopShell({
   fullbleed = false,
   rightRail,
   onLogVisit,
+  onOpenSpotlight: onOpenSpotlightOverride,
 }: DesktopShellProps) {
   const { user } = useUser();
   const [visitedCount, setVisitedCount] = useState(0);
@@ -469,6 +491,10 @@ export function DesktopShell({
   const [bucketCount, setBucketCount] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
+  const [logVisitOpen, setLogVisitOpen] = useState(false);
+
+  const handleLogVisit = onLogVisit ?? (() => setLogVisitOpen(true));
+  const handleOpenSpotlight = onOpenSpotlightOverride ?? (() => setSpotlightOpen(true));
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -516,16 +542,16 @@ export function DesktopShell({
         open={editOpen}
         onOpenChange={setEditOpen}
         onSaved={() => { void user?.reload(); }}
-        overlayLeft={232}
       />
       <GlobalSpotlight open={spotlightOpen} onClose={() => setSpotlightOpen(false)} />
+      <LogVisitModal open={logVisitOpen} onClose={() => setLogVisitOpen(false)} />
       <DesktopSidebar
         visitedCount={visitedCount}
         totalCount={totalCount}
         bucketCount={bucketCount}
-        onLogVisit={onLogVisit}
+        onLogVisit={handleLogVisit}
         onEditAccount={() => setEditOpen(true)}
-        onOpenSpotlight={() => setSpotlightOpen(true)}
+        onOpenSpotlight={handleOpenSpotlight}
       />
 
       <div className="flex flex-1 min-w-0 min-h-0" style={{ background: "var(--bg)" }}>

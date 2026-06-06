@@ -15,7 +15,25 @@ export async function GET() {
       .where(eq(userProfiles.clerk_user_id, userId))
       .limit(1);
 
-    if (existing.length > 0) return NextResponse.json(existing[0]);
+    if (existing.length > 0) {
+      const row = existing[0];
+      // Backfill display_name / avatar_url from Clerk if not yet synced
+      if (!row.display_name || !row.avatar_url) {
+        const clerkUser = await currentUser();
+        if (clerkUser) {
+          const updates: Record<string, unknown> = { updated_at: new Date() };
+          if (!row.display_name && clerkUser.fullName) updates.display_name = clerkUser.fullName;
+          if (!row.avatar_url && clerkUser.imageUrl) updates.avatar_url = clerkUser.imageUrl;
+          const [updated] = await db
+            .update(userProfiles)
+            .set(updates)
+            .where(eq(userProfiles.clerk_user_id, userId))
+            .returning();
+          return NextResponse.json(updated ?? row);
+        }
+      }
+      return NextResponse.json(row);
+    }
 
     // Auto-create profile from Clerk data on first access
     const clerkUser = await currentUser();

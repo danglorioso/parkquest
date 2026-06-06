@@ -12,8 +12,7 @@ import {
 import { LightboxModal, type LightboxImage } from "@/components/LightboxModal";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
-import VisitDateDialog, { type JournalData } from "@/components/VisitDateDialog";
-import EditVisitDialog from "@/components/EditVisitDialog";
+import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
 import type { NpsData } from "@/app/api/parks/[park_code]/nps/route";
 import type { WeatherForecast } from "@/app/api/parks/[park_code]/weather/route";
 
@@ -724,8 +723,9 @@ export default function ParkDetailPage({
   const [allVisitsGlobal, setAllVisitsGlobal] = useState<VisitData[]>([]);
   const [allParks, setAllParks] = useState<ParkData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [editingVisit, setEditingVisit]   = useState<VisitData | null>(null);
+  const [logVisitOpen, setLogVisitOpen]   = useState(false);
+  const [logVisitDraft, setLogVisitDraft] = useState<Partial<VisitDraft> | undefined>(undefined);
+  const [logVisitEditMode, setLogVisitEditMode] = useState(false);
   const [nps, setNps] = useState<NpsData | null>(null);
   const [forecast, setForecast] = useState<WeatherForecast | null>(null);
   const [journalOpen, setJournalOpen] = useState(false);
@@ -773,35 +773,36 @@ export default function ParkDetailPage({
       .finally(() => setLoading(false));
   }, [isSignedIn, park_code]);
 
-  const handleConfirmVisit = async (date: Date, journal: JournalData) => {
-    const res = await fetch("/api/visits", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        park_code,
-        is_bucket_list: false,
-        visited_date: date.toISOString(),
-        title: journal.title,
-        notes: journal.notes,
-        photos: journal.photos,
-        visibility: journal.visibility,
-      }),
+  const openLogVisit = () => {
+    setLogVisitDraft({ parkCode: park_code });
+    setLogVisitEditMode(false);
+    setLogVisitOpen(true);
+  };
+
+  const openEditVisit = (v: VisitData) => {
+    setLogVisitDraft({
+      parkCode: park_code,
+      dates: {
+        start: v.visited_date ? new Date(v.visited_date) : null,
+        end: null,
+      },
+      title: v.title ?? "",
+      notes: v.notes ?? "",
+      photos: Array.isArray(v.photos) ? v.photos : [],
+      cover: Array.isArray(v.photos) && v.photos.length > 0 ? v.photos[0] : null,
+      visibility: (v.visibility
+        ? v.visibility.charAt(0).toUpperCase() + v.visibility.slice(1)
+        : "Private") as "Private" | "Friends" | "Public",
     });
-    if (res.ok) {
-      setVisits((prev) => [
-        ...prev,
-        {
-          park_code,
-          visited_date: date.toISOString(),
-          is_bucket_list: false,
-          title: journal.title ?? null,
-          notes: journal.notes ?? null,
-          photos: journal.photos ?? null,
-          visibility: journal.visibility ?? null,
-        },
-      ]);
-    }
-    setShowAddDialog(false);
+    setLogVisitEditMode(true);
+    setLogVisitOpen(true);
+  };
+
+  const refreshVisits = async () => {
+    const res = await fetch("/api/visits");
+    if (!res.ok) return;
+    const all = await res.json();
+    setVisits((all as VisitData[]).filter((v) => v.park_code === park_code));
   };
 
   const latestVisit = visits
@@ -1044,11 +1045,11 @@ export default function ParkDetailPage({
           {/* Quick actions */}
           <div style={{ padding: "0 32px 32px", display: "flex", gap: 10 }}>
             {status !== "visited" ? (
-              <DesktopButton primary onClick={() => setShowAddDialog(true)}>
+              <DesktopButton primary onClick={() => openLogVisit()}>
                 <Plus size={14} strokeWidth={2.4} /> Log a visit
               </DesktopButton>
             ) : (
-              <DesktopButton onClick={() => setShowAddDialog(true)}>
+              <DesktopButton onClick={() => openLogVisit()}>
                 <Plus size={14} strokeWidth={2.4} /> Log another visit
               </DesktopButton>
             )}
@@ -1448,72 +1449,22 @@ export default function ParkDetailPage({
         {/* ── Right column — Journal ───────────────────────────────── */}
         <JournalColumn
           allVisits={visits}
-          onEdit={(v) => setEditingVisit(v)}
-          onAdd={() => setShowAddDialog(true)}
+          onEdit={(v) => openEditVisit(v)}
+          onAdd={() => openLogVisit()}
           collapsed={!journalOpen}
           onToggle={() => setJournalOpen((v) => !v)}
           onImageClick={(images, index) => setLightbox({ images, index })}
         />
       </div>
 
-      {/* Dialogs */}
-      <VisitDateDialog
-        open={showAddDialog}
-        onOpenChange={setShowAddDialog}
-        parkName={park.name}
-        onConfirm={handleConfirmVisit}
+      {/* Log / Edit visit modal */}
+      <LogVisitModal
+        open={logVisitOpen}
+        onClose={() => { setLogVisitOpen(false); setLogVisitDraft(undefined); setLogVisitEditMode(false); }}
+        onPosted={refreshVisits}
+        initialDraft={logVisitDraft}
+        editMode={logVisitEditMode}
       />
-      {editingVisit && (
-        <EditVisitDialog
-          open={!!editingVisit}
-          onOpenChange={(open) => { if (!open) setEditingVisit(null); }}
-          parkName={park.name}
-          existing={{
-            visitedDate: editingVisit.visited_date ?? new Date().toISOString(),
-            title: editingVisit.title,
-            notes: editingVisit.notes,
-            photos: editingVisit.photos,
-            visibility: editingVisit.visibility,
-          }}
-          onSave={async (date, journal) => {
-            const res = await fetch("/api/visits", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                park_code,
-                is_bucket_list: false,
-                visited_date: date.toISOString(),
-                title: journal.title,
-                notes: journal.notes,
-                photos: journal.photos,
-                visibility: journal.visibility,
-              }),
-            });
-            if (res.ok) {
-              setVisits((prev) =>
-                prev.map((v) =>
-                  v === editingVisit
-                    ? {
-                        ...v,
-                        visited_date: date.toISOString(),
-                        title: journal.title ?? null,
-                        notes: journal.notes ?? null,
-                        photos: journal.photos ?? null,
-                        visibility: journal.visibility ?? null,
-                      }
-                    : v
-                )
-              );
-            }
-            setEditingVisit(null);
-          }}
-          onDelete={async () => {
-            await fetch(`/api/visits?park_code=${park_code}`, { method: "DELETE" });
-            setVisits((prev) => prev.filter((v) => v !== editingVisit));
-            setEditingVisit(null);
-          }}
-        />
-      )}
 
       {lightbox && (
         <LightboxModal

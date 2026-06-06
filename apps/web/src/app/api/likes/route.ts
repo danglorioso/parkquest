@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { likes } from '@/lib/db/schema';
+import { likes, posts, notifications } from '@/lib/db/schema';
 
 export async function POST(request: Request) {
   try {
@@ -12,10 +12,18 @@ export async function POST(request: Request) {
     const { postId } = await request.json();
     if (!postId) return NextResponse.json({ error: 'postId is required' }, { status: 400 });
 
-    await db
+    const [inserted] = await db
       .insert(likes)
       .values({ user_id: userId, post_id: Number(postId) })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning();
+
+    if (inserted) {
+      const [post] = await db.select({ clerk_user_id: posts.clerk_user_id }).from(posts).where(eq(posts.id, Number(postId)));
+      if (post && post.clerk_user_id !== userId) {
+        await db.insert(notifications).values({ recipient_id: post.clerk_user_id, actor_id: userId, type: 'like', post_id: Number(postId) }).catch(() => {});
+      }
+    }
 
     return NextResponse.json({ message: 'Liked' });
   } catch (error) {

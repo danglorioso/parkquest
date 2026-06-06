@@ -23,9 +23,9 @@ export function LightboxModal({ images, startIndex = 0, onClose }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") prev();
-      else if (e.key === "ArrowRight") next();
-      else if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") { prev(); e.stopImmediatePropagation(); }
+      else if (e.key === "ArrowRight") { next(); e.stopImmediatePropagation(); }
+      else if (e.key === "Escape") { e.stopImmediatePropagation(); onClose(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

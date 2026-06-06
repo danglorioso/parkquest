@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { follows, userProfiles } from '@/lib/db/schema';
+import { follows, userProfiles, notifications } from '@/lib/db/schema';
 
 export async function GET(request: Request) {
   try {
@@ -60,10 +60,15 @@ export async function POST(request: Request) {
     if (!targetId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     if (targetId === userId) return NextResponse.json({ error: 'Cannot follow yourself' }, { status: 400 });
 
-    await db
+    const [inserted] = await db
       .insert(follows)
       .values({ follower_id: userId, following_id: targetId })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning();
+
+    if (inserted) {
+      await db.insert(notifications).values({ recipient_id: targetId, actor_id: userId, type: 'follow' }).catch(() => {});
+    }
 
     return NextResponse.json({ message: 'Followed' });
   } catch (error) {

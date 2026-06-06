@@ -819,7 +819,6 @@ export default function FeedPage() {
     )}
     <DesktopShell
       rightRail={<FeedRightRail visited={visited} total={total} />}
-      onLogVisit={() => setShowCreate(true)}
     >
       <DesktopHeader
         kicker="THE FEED"

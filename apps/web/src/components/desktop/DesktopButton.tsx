@@ -11,6 +11,7 @@ interface DesktopButtonProps {
   onClick?: () => void;
   disabled?: boolean;
   type?: "button" | "submit" | "reset";
+  style?: React.CSSProperties;
 }
 
 export function DesktopButton({
@@ -21,6 +22,7 @@ export function DesktopButton({
   onClick,
   disabled,
   type = "button",
+  style: styleOverride,
 }: DesktopButtonProps) {
   const pad = size === "sm" ? "6px 12px" : "8px 14px";
   const fs = size === "sm" ? 12 : 13;
@@ -47,6 +49,7 @@ export function DesktopButton({
         padding: pad,
         fontSize: fs,
         letterSpacing: 0.1,
+        ...styleOverride,
       }}
     >
       {children}

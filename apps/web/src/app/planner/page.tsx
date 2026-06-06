@@ -249,7 +249,72 @@ export default function PlannerPage() {
 
   return (
     <DesktopShell fullbleed>
-      <div style={{ display: "flex", height: "100%" }}>
+      <div style={{ display: "flex", height: "100%", position: "relative" }}>
+
+        {/* ── Coming soon overlay ───────────────────────────────────── */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 50,
+            background: "rgba(245,239,224,0.72)",
+            backdropFilter: "blur(12px) saturate(140%)",
+            WebkitBackdropFilter: "blur(12px) saturate(140%)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "rgba(255,251,241,0.96)",
+              border: "0.5px solid var(--hairline)",
+              borderRadius: 18,
+              padding: "36px 48px",
+              textAlign: "center",
+              boxShadow: "0 12px 40px rgba(0,0,0,0.10)",
+              maxWidth: 420,
+            }}
+          >
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                letterSpacing: "2.4px",
+                color: "var(--ink-mute)",
+                textTransform: "uppercase",
+                fontWeight: 600,
+                marginBottom: 12,
+              }}
+            >
+              Coming soon
+            </div>
+            <div
+              style={{
+                fontWeight: 800,
+                fontSize: 28,
+                color: "var(--ink)",
+                letterSpacing: -0.6,
+                lineHeight: 1.1,
+                marginBottom: 12,
+              }}
+            >
+              Trip Planner
+            </div>
+            <div
+              style={{
+                fontSize: 14,
+                color: "var(--ink-mute)",
+                lineHeight: 1.6,
+              }}
+            >
+              Plan multi-park road trips, invite companions, and get weather
+              forecasts baked in. This feature is in the works.
+            </div>
+          </div>
+        </div>
 
         {/* ── Left: itinerary panel ──────────────────────────────── */}
         <div

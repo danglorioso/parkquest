@@ -40,10 +40,12 @@ function SpotGroup({
   label,
   parks,
   onPick,
+  activeCode,
 }: {
   label: string;
   parks: SpotPark[];
   onPick: (code: string) => void;
+  activeCode: string | null;
 }) {
   if (!parks.length) return null;
   return (
@@ -69,11 +71,12 @@ function SpotGroup({
             e.currentTarget.style.background = "rgba(31,61,46,0.04)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.background =
+              activeCode === p.park_code ? "rgba(31,61,46,0.07)" : "transparent";
           }}
           style={{
             width: "100%",
-            background: "transparent",
+            background: activeCode === p.park_code ? "rgba(31,61,46,0.07)" : "transparent",
             border: 0,
             padding: "8px 16px",
             cursor: "pointer",
@@ -135,18 +138,34 @@ function SpotGroup({
 export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<TabFilter>("all");
+  const [activeIdx, setActiveIdx] = useState(-1);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  // Refs to avoid stale closures in event handlers
+  const activeIdxRef = useRef(-1);
+  const flatRef = useRef<SpotPark[]>([]);
 
+  const setIdx = (n: number) => {
+    activeIdxRef.current = n;
+    setActiveIdx(n);
+  };
+
+  // Focus / reset on open/close
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 60);
     } else {
       setQ("");
       setTab("all");
+      setIdx(-1);
     }
   }, [open]);
 
+  // Reset active item when query or tab changes
+  useEffect(() => { setIdx(-1); }, [q, tab]);
+
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
@@ -155,6 +174,28 @@ export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) 
     const t = setTimeout(() => document.addEventListener("mousedown", onDocClick), 0);
     return () => { clearTimeout(t); document.removeEventListener("mousedown", onDocClick); };
   }, [open, onClose]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = Math.min(activeIdxRef.current + 1, flatRef.current.length - 1);
+        setIdx(next);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = Math.max(activeIdxRef.current - 1, -1);
+        setIdx(next);
+        if (next === -1) inputRef.current?.focus();
+      } else if (e.key === "Enter") {
+        const park = flatRef.current[activeIdxRef.current];
+        if (park) { e.preventDefault(); onPick(park.park_code); }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onPick]);
 
   const filtered = parks.filter((p) => {
     if (tab !== "all" && p.status !== tab) return false;
@@ -178,6 +219,13 @@ export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) 
           discover: parks.filter((p) => p.status === "notVisited").slice(0, 4),
         }
       : null;
+
+  // Keep flat ref current for keyboard handler
+  flatRef.current = suggestions
+    ? [...suggestions.recent, ...suggestions.bucket, ...suggestions.discover]
+    : filtered;
+
+  const activeCode = activeIdx >= 0 ? (flatRef.current[activeIdx]?.park_code ?? null) : null;
 
   if (!open) {
     return (
@@ -250,7 +298,7 @@ export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) 
         animation: "pqSpotIn 200ms cubic-bezier(.2,.7,.3,1)",
       }}
     >
-      <style>{`@keyframes pqSpotIn { from { opacity:0; transform:translate(-50%,-6px) scale(0.98) } to { opacity:1; transform:translate(-50%,0) scale(1) } }`}</style>
+      <style>{`@keyframes pqSpotIn { from { opacity:0; transform:translate(-50%,-6px) scale(0.98) } to { opacity:1; transform:translate(-50%,0) scale(1) } } `}</style>
 
       {/* Search input row */}
       <div
@@ -340,9 +388,9 @@ export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) 
       <div style={{ flex: 1, overflowY: "auto", maxHeight: 460 }}>
         {suggestions ? (
           <>
-            <SpotGroup label="RECENTLY VISITED" parks={suggestions.recent} onPick={onPick} />
-            <SpotGroup label="ON YOUR BUCKET LIST" parks={suggestions.bucket} onPick={onPick} />
-            <SpotGroup label="DISCOVER" parks={suggestions.discover} onPick={onPick} />
+            <SpotGroup label="RECENTLY VISITED" parks={suggestions.recent} onPick={onPick} activeCode={activeCode} />
+            <SpotGroup label="ON YOUR BUCKET LIST" parks={suggestions.bucket} onPick={onPick} activeCode={activeCode} />
+            <SpotGroup label="DISCOVER" parks={suggestions.discover} onPick={onPick} activeCode={activeCode} />
           </>
         ) : filtered.length === 0 ? (
           <div
@@ -357,13 +405,10 @@ export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) 
           </div>
         ) : (
           <SpotGroup
-            label={
-              q
-                ? `${filtered.length} MATCH${filtered.length !== 1 ? "ES" : ""}`
-                : `${filtered.length} PARKS`
-            }
+            label={q ? `${filtered.length} MATCH${filtered.length !== 1 ? "ES" : ""}` : `${filtered.length} PARKS`}
             parks={filtered}
             onPick={onPick}
+            activeCode={activeCode}
           />
         )}
       </div>
@@ -383,8 +428,8 @@ export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) 
           fontWeight: 600,
         }}
       >
-        <span>↑↓ NAVIGATE · ⏎ OPEN</span>
-        <span>⌘K TOGGLE</span>
+        <span>↑↓ NAVIGATE · ⏎ SELECT</span>
+        <span>⌘K CLOSE</span>
       </div>
     </div>
   );

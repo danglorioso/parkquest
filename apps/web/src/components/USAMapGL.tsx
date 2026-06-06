@@ -19,6 +19,9 @@ interface Props {
   onSelectPark?: (parkCode: string) => void;
   onDeselect?: () => void;
   className?: string;
+  initialBounds?: [[number, number], [number, number]];
+  showControls?: boolean;
+  flyToTarget?: { coords: [number, number]; rightPadding?: number } | null;
 }
 
 const VISITED_COLOR = "#2F7A4A";
@@ -261,6 +264,9 @@ export default function USAMapGL({
   onSelectPark,
   onDeselect,
   className = "h-full w-full",
+  initialBounds,
+  showControls = true,
+  flyToTarget,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<maplibregl.Map | null>(null);
@@ -279,8 +285,9 @@ export default function USAMapGL({
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: buildStyle(),
-      center: [-98.5, 39.0],
-      zoom: 3.6,
+      ...(initialBounds
+        ? { bounds: initialBounds, fitBoundsOptions: { padding: 10 } }
+        : { center: [-98.5, 39.0] as [number, number], zoom: 3.6 }),
       minZoom: 2.5,
       maxZoom: 14,
       attributionControl: false,
@@ -327,6 +334,24 @@ export default function USAMapGL({
     }
   }, [parks, selectedParkCode]);
 
+  // Fly to a park when flyToTarget changes (e.g. selected from search)
+  useEffect(() => {
+    if (!flyToTarget) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const { coords: [lat, lng], rightPadding = 0 } = flyToTarget;
+    const doFly = () =>
+      map.flyTo({
+        center: [lng, lat],
+        zoom: Math.max(map.getZoom(), 7),
+        padding: { top: 0, bottom: 0, left: 0, right: rightPadding },
+        duration: 900,
+        essential: true,
+      });
+    if (loadedRef.current) doFly();
+    else map.once("load", doFly);
+  }, [flyToTarget]);
+
   return (
     <div
       className={className}
@@ -341,19 +366,21 @@ export default function USAMapGL({
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 
       {/* Zoom controls — bottom-right, matching D3 map style */}
-      <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 4, zIndex: 10 }}>
-        {([
-          { label: "+",    action: () => mapRef.current?.zoomIn() },
-          { label: "−",    action: () => mapRef.current?.zoomOut() },
-          { label: "home", action: () => mapRef.current?.flyTo({ center: [-98.5, 39.0], zoom: 3.6 }) },
-        ] as const).map(({ label, action }) => (
-          <button key={label} onClick={action} style={{ ...BTN, fontFamily: "var(--font-mono)", fontSize: 18 }}>
-            {label === "home"
-              ? <Home style={{ width: 14, height: 14, color: "#4A4535" }} strokeWidth={2} />
-              : label}
-          </button>
-        ))}
-      </div>
+      {showControls && (
+        <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 4, zIndex: 10 }}>
+          {([
+            { label: "+",    action: () => mapRef.current?.zoomIn() },
+            { label: "−",    action: () => mapRef.current?.zoomOut() },
+            { label: "home", action: () => mapRef.current?.flyTo({ center: [-98.5, 39.0], zoom: 3.6 }) },
+          ] as const).map(({ label, action }) => (
+            <button key={label} onClick={action} style={{ ...BTN, fontFamily: "var(--font-mono)", fontSize: 18 }}>
+              {label === "home"
+                ? <Home style={{ width: 14, height: 14, color: "#4A4535" }} strokeWidth={2} />
+                : label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Hide default MapLibre attribution */}
       <style>{`.maplibregl-ctrl-attrib { display: none !important; } .maplibregl-ctrl-logo { display: none !important; }`}</style>

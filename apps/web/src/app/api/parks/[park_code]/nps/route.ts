@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toNpsCode } from "@/lib/npsCodeMap";
 
 export interface NpsImage {
   url: string;
@@ -40,6 +41,7 @@ export async function GET(
   { params }: { params: Promise<{ park_code: string }> }
 ) {
   const { park_code } = await params;
+  const npsCode = toNpsCode(park_code);
   const apiKey = process.env.NPS_API_KEY;
 
   if (!apiKey) {
@@ -48,7 +50,7 @@ export async function GET(
 
   try {
     const res = await fetch(
-      `https://developer.nps.gov/api/v1/parks?parkCode=${park_code}&api_key=${apiKey}`,
+      `https://developer.nps.gov/api/v1/parks?parkCode=${npsCode}&api_key=${apiKey}`,
       { next: { revalidate: 86400 } }
     );
 

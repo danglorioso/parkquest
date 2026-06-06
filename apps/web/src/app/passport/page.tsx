@@ -2,9 +2,9 @@
 
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Share2, PenLine, Plus } from "lucide-react";
+import { Share2, PenLine, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { DesktopHeader } from "@/components/desktop/DesktopHeader";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
@@ -25,17 +25,16 @@ interface VisitedPark {
   visited_date: string;
 }
 
-// ── Topo pattern (SVG data URI) ────────────────────────────────────────────────
+// ── Topo pattern ──────────────────────────────────────────────────────────────
 
 function topoPattern(color: string, opacity: number = 0.05): string {
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'><g fill='none' stroke='${color}' stroke-opacity='${opacity}' stroke-width='1'><path d='M-20 40 Q 30 20 80 40 T 180 40 T 280 40'/><path d='M-20 70 Q 30 50 80 70 T 180 70 T 280 70'/><path d='M-20 100 Q 30 80 80 100 T 180 100 T 280 100'/><path d='M-20 130 Q 30 110 80 130 T 180 130 T 280 130'/><path d='M-20 160 Q 30 140 80 160 T 180 160 T 280 160'/><path d='M-20 190 Q 30 170 80 190 T 180 190 T 280 190'/><path d='M-20 220 Q 30 200 80 220 T 180 220 T 280 220'/></g></svg>`;
   return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
 }
 
-// ── Stamp colors (deterministic) ──────────────────────────────────────────────
+// ── Stamp colors ──────────────────────────────────────────────────────────────
 
 const STAMP_COLORS = ["#5A2418", "#1F3D2E", "#2D4F66", "#3A2E5C", "#7B3A1F"];
-
 function stampColor(idx: number): string {
   return STAMP_COLORS[idx % STAMP_COLORS.length];
 }
@@ -127,36 +126,49 @@ function Stamp({ park, idx, visitedDate }: { park: VisitedPark; idx: number; vis
     .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     .toUpperCase();
   const sc = stateCode(park.states);
-  const shortName = park.name.length > 22 ? park.name.slice(0, 20) + "…" : park.name;
+
+  // Truncate to fit arc (arc length ≈ 113 units at r=36); scale font for longer names
+  const raw = park.name.toUpperCase();
+  const shortName = raw.length > 18 ? raw.slice(0, 16) + "…" : raw;
+  const nameFontSize = shortName.length > 16 ? 7 : shortName.length > 13 ? 7.5 : shortName.length > 10 ? 8 : 9;
 
   return (
-    <div style={{ width: size, height: size, position: "relative" }}>
-      <svg width={size} height={size} viewBox="0 0 100 100" style={{ filter: "url(#stampInk)" }}>
+    <div style={{ width: size, height: size, position: "relative", overflow: "visible" }}>
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 100 100"
+        overflow="visible"
+        style={{ overflow: "visible" }}
+      >
         <defs>
-          <filter id="stampInk">
-            <feTurbulence baseFrequency="0.7" numOctaves="2" />
-            <feDisplacementMap in="SourceGraphic" scale="1.5" />
+          {/* Wide filter region so overflowing arc text still gets the ink texture */}
+          <filter id={`ink-${id}`} x="-50%" y="-50%" width="200%" height="200%">
+            <feTurbulence baseFrequency="0.7" numOctaves="2" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.5" />
           </filter>
           <path id={`top-${id}`} d="M 14 50 A 36 36 0 0 1 86 50" fill="none" />
           <path id={`bot-${id}`} d="M 14 50 A 36 36 0 0 0 86 50" fill="none" />
         </defs>
-        <circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="2.2" opacity="0.85" />
-        <circle cx="50" cy="50" r="38" fill="none" stroke={c} strokeWidth="0.8" opacity="0.7" />
-        <text fill={c} fontFamily="Archivo, sans-serif" fontWeight="800" fontSize="9" letterSpacing="1.5" opacity="0.9">
-          <textPath href={`#top-${id}`} startOffset="50%" textAnchor="middle">
-            {shortName.toUpperCase()}
-          </textPath>
-        </text>
-        <text fill={c} fontFamily="JetBrains Mono, monospace" fontWeight="600" fontSize="6.5" letterSpacing="1.5" opacity="0.85">
-          <textPath href={`#bot-${id}`} startOffset="50%" textAnchor="middle">
-            ★ {sc} ★
-          </textPath>
-        </text>
-        <path d="M30 60 L 42 44 L 50 52 L 60 38 L 70 60 Z" fill={c} opacity="0.85" />
-        <circle cx="60" cy="34" r="2" fill={c} opacity="0.85" />
-        <text x="50" y="76" fill={c} fontFamily="JetBrains Mono, monospace" fontWeight="700" fontSize="6.5" textAnchor="middle" letterSpacing="0.8" opacity="0.9">
-          {dateStr}
-        </text>
+        <g filter={`url(#ink-${id})`}>
+          <circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="2.2" opacity="0.85" />
+          <circle cx="50" cy="50" r="38" fill="none" stroke={c} strokeWidth="0.8" opacity="0.7" />
+          <text fill={c} fontFamily="Archivo, sans-serif" fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.9">
+            <textPath href={`#top-${id}`} startOffset="50%" textAnchor="middle">
+              {shortName}
+            </textPath>
+          </text>
+          <text fill={c} fontFamily="JetBrains Mono, monospace" fontWeight="600" fontSize="6.5" letterSpacing="1.5" opacity="0.85">
+            <textPath href={`#bot-${id}`} startOffset="50%" textAnchor="middle">
+              ★ {sc} ★
+            </textPath>
+          </text>
+          <path d="M30 60 L 42 44 L 50 52 L 60 38 L 70 60 Z" fill={c} opacity="0.85" />
+          <circle cx="60" cy="34" r="2" fill={c} opacity="0.85" />
+          <text x="50" y="76" fill={c} fontFamily="JetBrains Mono, monospace" fontWeight="700" fontSize="6.5" textAnchor="middle" letterSpacing="0.8" opacity="0.9">
+            {dateStr}
+          </text>
+        </g>
       </svg>
     </div>
   );
@@ -201,7 +213,6 @@ function PassportCover() {
         border: "0.5px solid rgba(0,0,0,0.3)",
       }}
     >
-      {/* Topo leather grain */}
       <div
         style={{
           position: "absolute",
@@ -215,7 +226,6 @@ function PassportCover() {
       {(["tl", "tr", "bl", "br"] as CornerPos[]).map((p) => (
         <CornerFlourish key={p} color={foil} pos={p} />
       ))}
-
       <div style={{ position: "relative", textAlign: "center", color: foil }}>
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "2.5px", opacity: 0.9 }}>
           UNITED STATES OF AMERICA
@@ -226,15 +236,7 @@ function PassportCover() {
         <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
           <PassportSeal color={foil} size={64} />
         </div>
-        <div
-          style={{
-            fontWeight: 900,
-            fontSize: 26,
-            letterSpacing: "6px",
-            marginTop: 16,
-            textShadow: `0 1px 0 #8A5E18`,
-          }}
-        >
+        <div style={{ fontWeight: 900, fontSize: 26, letterSpacing: "6px", marginTop: 16, textShadow: `0 1px 0 #8A5E18` }}>
           PARKQUEST
         </div>
         <div style={{ fontWeight: 700, fontSize: 13, letterSpacing: "4px", marginTop: 4, opacity: 0.85 }}>
@@ -288,7 +290,6 @@ function PassportDataPage({
         boxShadow: "0 8px 22px rgba(58,42,18,0.10), inset 0 0 60px rgba(160,120,40,0.07)",
       }}
     >
-      {/* Paper grain */}
       <div
         style={{
           position: "absolute",
@@ -299,7 +300,6 @@ function PassportDataPage({
         }}
       />
 
-      {/* Banner strip */}
       <div
         style={{
           position: "relative",
@@ -325,7 +325,6 @@ function PassportDataPage({
         </div>
       </div>
 
-      {/* "VERIFIED" ghost stamp */}
       <div
         style={{
           position: "absolute",
@@ -347,9 +346,7 @@ function PassportDataPage({
         VERIFIED
       </div>
 
-      {/* User hero */}
       <div style={{ position: "relative", display: "flex", gap: 16, marginTop: 16, alignItems: "flex-start" }}>
-        {/* Passport photo */}
         <div
           style={{
             width: 108,
@@ -384,7 +381,6 @@ function PassportDataPage({
           )}
         </div>
 
-        {/* Right side — name, handle, bio */}
         <div style={{ flex: 1, minWidth: 0, paddingTop: 4 }}>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "1.6px", color: paperMute, textTransform: "uppercase" }}>
             BEARER
@@ -405,7 +401,6 @@ function PassportDataPage({
         </div>
       </div>
 
-      {/* Stats strip */}
       <div
         style={{
           marginTop: 26,
@@ -437,7 +432,6 @@ function PassportDataPage({
         </div>
       </div>
 
-      {/* Small ID fields */}
       <div style={{ position: "relative", marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
         {[
           { label: "NATIONALITY", value: "U.S." },
@@ -453,7 +447,6 @@ function PassportDataPage({
         ))}
       </div>
 
-      {/* MRZ strip */}
       <div
         style={{
           marginTop: 14,
@@ -486,116 +479,161 @@ function PassportDataPage({
 
 // ── PassportStampsPage ────────────────────────────────────────────────────────
 
-function PassportStampsPage({ visitedParks, onOpenPark }: { visitedParks: VisitedPark[]; onOpenPark: (code: string) => void }) {
+function PassportStampsPage({
+  visitedParks,
+  pageNum,
+  onOpenPark,
+}: {
+  visitedParks: VisitedPark[];
+  pageNum: number;
+  onOpenPark: (code: string) => void;
+}) {
   const paperBg = "#FAF3E0";
   const paperInk = "#3A2E1C";
   const paperMute = "rgba(58,46,28,0.55)";
   const paperFaint = "rgba(58,46,28,0.22)";
-  const grid = visitedParks.slice(0, 9);
-  const placeholders = Math.max(0, 9 - grid.length);
+  const placeholders = Math.max(0, 9 - visitedParks.length);
 
   return (
     <div
       style={{
-        background: paperBg,
         borderRadius: 14,
         border: "0.5px solid var(--hairline)",
         padding: "14px 18px 18px",
         position: "relative",
-        overflow: "hidden",
+        // overflow visible so stamp arc text doesn't get clipped by the page edge
+        overflow: "visible",
         height: "100%",
         minHeight: 480,
-        boxShadow: "0 8px 22px rgba(58,42,18,0.10), inset 0 0 60px rgba(160,120,40,0.07)",
       }}
     >
-      {/* Paper grain */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: topoPattern("#1F3D2E", 0.07),
-          backgroundSize: "260px 260px",
-          pointerEvents: "none",
-        }}
-      />
+      {/* Background layers positioned absolutely so they respect border-radius */}
+      <div style={{ position: "absolute", inset: 0, background: paperBg, borderRadius: 14, zIndex: 0, boxShadow: "0 8px 22px rgba(58,42,18,0.10), inset 0 0 60px rgba(160,120,40,0.07)" }} />
+      <div style={{ position: "absolute", inset: 0, backgroundImage: topoPattern("#1F3D2E", 0.07), backgroundSize: "260px 260px", borderRadius: 14, zIndex: 0, pointerEvents: "none" }} />
 
-      {/* Header strip */}
-      <div
-        style={{
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingBottom: 10,
-          borderBottom: `0.5px dashed ${paperFaint}`,
-        }}
-      >
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "1.6px", color: paperMute, fontWeight: 600 }}>
-          PAGE 7 · STAMPS
-        </div>
-        <div style={{ fontWeight: 800, fontSize: 12, color: paperInk, letterSpacing: "0.4px" }}>
-          VISITED · {visitedParks.length}
-        </div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "1.6px", color: paperMute, fontWeight: 600 }}>
-          2024 — 2026
-        </div>
-      </div>
-
-      {/* 3×3 stamp grid */}
-      <div
-        style={{
-          position: "relative",
-          marginTop: 16,
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: "18px 8px",
-          justifyItems: "center",
-        }}
-      >
-        {grid.map((park, i) => (
-          <button
-            key={park.park_code}
-            onClick={() => onOpenPark(park.park_code)}
-            style={{
-              background: "transparent",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
-              transform: `rotate(${((i * 37) % 16) - 8}deg)`,
-            }}
-          >
-            <Stamp park={park} idx={i} visitedDate={park.visited_date} />
-          </button>
-        ))}
-        {Array.from({ length: placeholders }).map((_, i) => (
-          <div key={`ph-${i}`} style={{ opacity: 0.25 }}>
-            <StampPlaceholder />
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingBottom: 10,
+            borderBottom: `0.5px dashed ${paperFaint}`,
+          }}
+        >
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "1.6px", color: paperMute, fontWeight: 600 }}>
+            STAMPS · {pageNum}
           </div>
-        ))}
-      </div>
-
-      {/* Footer */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 14,
-          left: 18,
-          right: 18,
-          paddingTop: 8,
-          borderTop: `0.5px dashed ${paperFaint}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1.2px", color: paperMute, fontWeight: 600 }}>
-          + {visitedParks.length > 9 ? visitedParks.length - 9 : 0} MORE BELOW
+          <div style={{ fontWeight: 800, fontSize: 12, color: paperInk, letterSpacing: "0.4px" }}>
+            VISITED · {visitedParks.length}
+          </div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "1.6px", color: paperMute, fontWeight: 600 }}>
+            2024 — 2026
+          </div>
         </div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1.2px", color: paperMute, fontWeight: 600 }}>★ ★ ★</div>
+
+        {/* Extra top padding gives headroom for stamp arc text overflowing above the stamp div */}
+        <div
+          style={{
+            marginTop: 8,
+            paddingTop: 16,
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: "18px 8px",
+            justifyItems: "center",
+          }}
+        >
+          {visitedParks.map((park, i) => (
+            <button
+              key={park.park_code}
+              onClick={() => onOpenPark(park.park_code)}
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                transform: `rotate(${((i * 37) % 16) - 8}deg)`,
+                overflow: "visible",
+              }}
+            >
+              <Stamp park={park} idx={i} visitedDate={park.visited_date} />
+            </button>
+          ))}
+          {Array.from({ length: placeholders }).map((_, i) => (
+            <div key={`ph-${i}`} style={{ opacity: 0.25 }}>
+              <StampPlaceholder />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
+
+// ── EmptyPage ─────────────────────────────────────────────────────────────────
+
+function EmptyPage() {
+  return (
+    <div
+      style={{
+        background: "#FAF3E0",
+        borderRadius: 14,
+        border: "0.5px solid var(--hairline)",
+        height: "100%",
+        minHeight: 480,
+        backgroundImage: topoPattern("#1F3D2E", 0.05),
+        backgroundSize: "260px 260px",
+      }}
+    />
+  );
+}
+
+// ── Book CSS ──────────────────────────────────────────────────────────────────
+
+const BOOK_CSS = `
+  @keyframes bookClose {
+    from { transform: perspective(1400px) rotateY(-8deg) translateX(8%); }
+    to   { transform: none; }
+  }
+  @keyframes bookOpen {
+    from { transform: perspective(1400px) rotateY(-18deg) translateX(12%); }
+    to   { transform: none; }
+  }
+  @keyframes spreadNext {
+    from { transform: perspective(1400px) rotateY(10deg) translateX(18px); }
+    to   { transform: none; }
+  }
+  @keyframes spreadPrev {
+    from { transform: perspective(1400px) rotateY(-10deg) translateX(-18px); }
+    to   { transform: none; }
+  }
+  .passport-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--surface-alt);
+    border: 0.5px solid var(--hairline);
+    cursor: pointer;
+    color: var(--ink-mute);
+    transition: background 0.15s, color 0.15s, transform 0.15s;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+  }
+  .passport-arrow:hover {
+    background: var(--surface);
+    color: var(--ink);
+    transform: translateY(-50%) scale(1.08);
+  }
+  .passport-arrow-left  { left:  -19px; }
+  .passport-arrow-right { right: -19px; }
+`;
+
+const STAMPS_PER_PAGE = 9;
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -609,6 +647,11 @@ export default function PassportPage() {
   const [badgeCount, setBadgeCount]     = useState(0);
   const [totalBadges, setTotalBadges]   = useState(0);
   const [loading, setLoading]           = useState(true);
+
+  const [spread, setSpread]     = useState(0); // 0 = cover closed, 1..N = open spreads
+  const [animType, setAnimType] = useState<"initial" | "open" | "next" | "prev">("initial");
+  const [animKey, setAnimKey]   = useState(0);
+  const hasAutoOpened           = useRef(false);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
@@ -645,6 +688,7 @@ export default function PassportPage() {
           })
           .filter(Boolean) as VisitedPark[];
 
+        // Most recent first
         vParks.sort((a, b) => new Date(b.visited_date).getTime() - new Date(a.visited_date).getTime());
         setVisitedParks(vParks);
 
@@ -656,6 +700,23 @@ export default function PassportPage() {
       .finally(() => setLoading(false));
   }, [isSignedIn]);
 
+  // Auto-open to first spread after data loads
+  useEffect(() => {
+    if (!loading && !hasAutoOpened.current) {
+      hasAutoOpened.current = true;
+      const t = setTimeout(() => {
+        setAnimType("open");
+        setSpread(1);
+        setAnimKey(1);
+      }, 700);
+      return () => clearTimeout(t);
+    }
+  }, [loading]);
+
+  const stampPageCount  = Math.max(1, Math.ceil(visitedParks.length / STAMPS_PER_PAGE));
+  const totalInnerPages = 1 + stampPageCount; // 1 profile page + N stamp pages
+  const maxSpread       = Math.ceil(totalInnerPages / 2);
+
   const passportNo =
     "PQ" +
     (((profile?.username?.length ?? 4) * 73291 + 41023) % 9999999)
@@ -664,13 +725,70 @@ export default function PassportPage() {
 
   const avatarUrl = user?.imageUrl ?? profile?.avatar_url ?? null;
 
+  function goNext() {
+    if (spread >= maxSpread) return;
+    setAnimType(spread === 0 ? "open" : "next");
+    setSpread((s) => s + 1);
+    setAnimKey((k) => k + 1);
+  }
+
+  function goPrev() {
+    if (spread <= 0) return;
+    setAnimType("prev");
+    setSpread((s) => s - 1);
+    setAnimKey((k) => k + 1);
+  }
+
+  function goToSpread(s: number) {
+    if (s === spread) return;
+    setAnimType(s > spread ? (spread === 0 ? "open" : "next") : "prev");
+    setSpread(s);
+    setAnimKey((k) => k + 1);
+  }
+
+  function getPageContent(pageIdx: number) {
+    if (pageIdx >= totalInnerPages) return <EmptyPage />;
+    if (pageIdx === 0) {
+      return (
+        <PassportDataPage
+          profile={profile}
+          visitedCount={visitedParks.length}
+          bucketCount={bucketCount}
+          badgeCount={badgeCount}
+          totalBadges={totalBadges}
+          passportNo={passportNo}
+          avatarUrl={avatarUrl}
+        />
+      );
+    }
+    const stampPageIdx = pageIdx - 1;
+    const pageParks = visitedParks.slice(
+      stampPageIdx * STAMPS_PER_PAGE,
+      (stampPageIdx + 1) * STAMPS_PER_PAGE
+    );
+    return (
+      <PassportStampsPage
+        visitedParks={pageParks}
+        pageNum={stampPageIdx + 1}
+        onOpenPark={(code) => router.push(`/parks/${code}`)}
+      />
+    );
+  }
+
+  const spreadAnim =
+    animType === "open" ? "bookOpen 0.55s ease"
+    : animType === "next" ? "spreadNext 0.4s ease"
+    : animType === "prev" ? "spreadPrev 0.4s ease"
+    : undefined;
+
   return (
     <DesktopShell>
+      <style>{BOOK_CSS}</style>
       <div style={{ height: "100%", overflowY: "auto" }}>
         <DesktopHeader
           kicker="OFFICIAL ISSUE · NATIONAL PARK PASSPORT"
           title="Your passport"
-          sub="Three pages, every visit verified."
+          sub="Flip through every park you've visited."
           actions={
             <>
               <DesktopButton size="sm">
@@ -687,128 +805,194 @@ export default function PassportPage() {
         />
 
         <div style={{ padding: "20px 32px 40px" }}>
-          {/* ── Spread ─────────────────────────────────────────────── */}
-          <div
-            style={{
-              position: "relative",
-              display: "grid",
-              gridTemplateColumns: "1fr 1.1fr 1.1fr",
-              gap: 0,
-              maxWidth: 1120,
-              margin: "0 auto",
-              background: "rgba(58,42,18,0.08)",
-              padding: 14,
-              borderRadius: 18,
-              boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
-            }}
-          >
-            {/* Spine lines */}
-            <div style={{ position: "absolute", left: "calc(33% + 4px)", top: 14, bottom: 14, width: 1, background: "rgba(0,0,0,0.18)", pointerEvents: "none", zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.12)" }} />
-            <div style={{ position: "absolute", left: "calc(66% + 8px)", top: 14, bottom: 14, width: 1, background: "rgba(0,0,0,0.18)", pointerEvents: "none", zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.12)" }} />
+          <div style={{ maxWidth: 1020, margin: "0 auto", position: "relative" }}>
 
-            {/* Page 1 — Cover */}
-            <PassportCover />
-
-            {/* Page 2 — Data */}
-            <PassportDataPage
-              profile={profile}
-              visitedCount={visitedParks.length}
-              bucketCount={bucketCount}
-              badgeCount={badgeCount}
-              totalBadges={totalBadges}
-              passportNo={passportNo}
-              avatarUrl={avatarUrl}
-            />
-
-            {/* Page 3 — Stamps */}
-            <PassportStampsPage
-              visitedParks={visitedParks}
-              onOpenPark={(code) => router.push(`/parks/${code}`)}
-            />
-          </div>
-
-          {/* ── All stamps below ────────────────────────────────────── */}
-          {visitedParks.length > 0 && (
-            <div style={{ marginTop: 32, maxWidth: 1120, margin: "32px auto 0" }}>
-              <div style={{ marginBottom: 14 }}>
-                <div
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 9.5,
-                    letterSpacing: "1.6px",
-                    color: "var(--ink-mute)",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    marginBottom: 3,
-                  }}
-                >
-                  {visitedParks.length} STAMPS · CHRONOLOGICAL
+            {spread === 0 ? (
+              /* ── Closed book ── */
+              <div
+                style={{ maxWidth: 380, margin: "0 auto", position: "relative", animation: animType === "prev" ? "bookClose 0.45s ease" : undefined }}
+              >
+                {/* Stacked shadow edges simulate closed-book page thickness */}
+                <div style={{ position: "absolute", top: 6, right: -6, bottom: -6, left: 6, background: "#121f16", borderRadius: 14, zIndex: -2 }} />
+                <div style={{ position: "absolute", top: 3, right: -3, bottom: -3, left: 3, background: "#1a2d1f", borderRadius: 14, zIndex: -1 }} />
+                <div onClick={goNext} style={{ cursor: "pointer" }}>
+                  <PassportCover />
                 </div>
-                <div style={{ fontWeight: 800, fontSize: 20, color: "var(--ink)", letterSpacing: -0.3 }}>
-                  Every stamp in your book
+                <div style={{ textAlign: "center", marginTop: 24 }}>
+                  <button
+                    onClick={goNext}
+                    style={{
+                      background: "var(--primary)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "10px 24px",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                      letterSpacing: "2px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    OPEN PASSPORT <ChevronRight size={14} />
+                  </button>
                 </div>
               </div>
+            ) : (
+              /* ── Open book ── */
+              <>
+                {/* Arrow wrapper keeps arrows positioned relative to the book spread only */}
+                <div style={{ position: "relative" }}>
+                  <button className="passport-arrow passport-arrow-left" onClick={goPrev} aria-label="Previous page">
+                    <ChevronLeft size={20} />
+                  </button>
 
-              <div
-                style={{
-                  background: "#FAF3E0",
-                  border: "0.5px solid var(--hairline)",
-                  borderRadius: 14,
-                  padding: "24px 20px",
-                  position: "relative",
-                  overflow: "hidden",
-                  display: "grid",
-                  gridTemplateColumns: "repeat(8, 1fr)",
-                  gap: "24px 16px",
-                  justifyItems: "center",
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    backgroundImage: topoPattern("#1F3D2E", 0.06),
-                    backgroundSize: "260px 260px",
-                    pointerEvents: "none",
-                  }}
-                />
-                {visitedParks.map((park, i) => (
-                  <button
-                    key={park.park_code}
-                    onClick={() => router.push(`/parks/${park.park_code}`)}
+                  <div
+                    key={animKey}
                     style={{
-                      background: "transparent",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      transform: `rotate(${((i * 37) % 14) - 7}deg)`,
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 0,
+                      background: "rgba(58,42,18,0.08)",
+                      padding: 14,
+                      borderRadius: 18,
+                      boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
+                      animation: spreadAnim,
                       position: "relative",
                     }}
                   >
-                    <Stamp park={park} idx={i} visitedDate={park.visited_date} />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+                    {/* Spine shadow */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: "50%",
+                        top: 14,
+                        bottom: 14,
+                        width: 1,
+                        background: "rgba(0,0,0,0.22)",
+                        pointerEvents: "none",
+                        zIndex: 2,
+                        boxShadow: "2px 0 8px rgba(0,0,0,0.14), -1px 0 4px rgba(0,0,0,0.08)",
+                      }}
+                    />
 
-          {/* Empty state */}
-          {!loading && visitedParks.length === 0 && (
-            <div
-              style={{
-                marginTop: 32,
-                textAlign: "center",
-                color: "var(--ink-mute)",
-                fontSize: 14,
-                padding: "40px 0",
-              }}
-            >
-              Log your first visit to earn a passport stamp.{" "}
-              <Link href="/map" style={{ color: "var(--primary)", fontWeight: 700 }}>
-                Open the map →
-              </Link>
-            </div>
-          )}
+                    <div style={{ paddingRight: 7 }}>
+                      {getPageContent((spread - 1) * 2)}
+                    </div>
+                    <div style={{ paddingLeft: 7 }}>
+                      {getPageContent((spread - 1) * 2 + 1)}
+                    </div>
+                  </div>
+
+                  {spread < maxSpread && (
+                    <button className="passport-arrow passport-arrow-right" onClick={goNext} aria-label="Next page">
+                      <ChevronRight size={20} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Spread indicator dots */}
+                {maxSpread > 1 && (
+                  <div style={{ display: "flex", gap: 7, justifyContent: "center", marginTop: 20 }}>
+                    {Array.from({ length: maxSpread }, (_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => goToSpread(i + 1)}
+                        aria-label={`Go to spread ${i + 1}`}
+                        style={{
+                          width: spread === i + 1 ? 20 : 8,
+                          height: 8,
+                          borderRadius: 4,
+                          background: spread === i + 1 ? "var(--primary)" : "var(--hairline)",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: 0,
+                          transition: "width 0.2s, background 0.2s",
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {!loading && visitedParks.length === 0 && spread > 0 && (
+              <div style={{ marginTop: 24, textAlign: "center", color: "var(--ink-mute)", fontSize: 14, padding: "20px 0" }}>
+                Log your first visit to earn a passport stamp.{" "}
+                <Link href="/map" style={{ color: "var(--primary)", fontWeight: 700 }}>
+                  Open the map →
+                </Link>
+              </div>
+            )}
+
+            {/* ── All stamps ── */}
+            {visitedParks.length > 0 && (
+              <div style={{ marginTop: 32 }}>
+                <div style={{ marginBottom: 14 }}>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 9.5,
+                      letterSpacing: "1.6px",
+                      color: "var(--ink-mute)",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      marginBottom: 3,
+                    }}
+                  >
+                    {visitedParks.length} STAMPS · MOST RECENT FIRST
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 20, color: "var(--ink)", letterSpacing: -0.3 }}>
+                    Every stamp in your book
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "#FAF3E0",
+                    border: "0.5px solid var(--hairline)",
+                    borderRadius: 14,
+                    padding: "24px 20px",
+                    position: "relative",
+                    overflow: "hidden",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(8, 1fr)",
+                    gap: "24px 16px",
+                    justifyItems: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      backgroundImage: topoPattern("#1F3D2E", 0.06),
+                      backgroundSize: "260px 260px",
+                      pointerEvents: "none",
+                    }}
+                  />
+                  {visitedParks.map((park, i) => (
+                    <button
+                      key={park.park_code}
+                      onClick={() => router.push(`/parks/${park.park_code}`)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        padding: 0,
+                        cursor: "pointer",
+                        transform: `rotate(${((i * 37) % 14) - 7}deg)`,
+                        position: "relative",
+                      }}
+                    >
+                      <Stamp park={park} idx={i} visitedDate={park.visited_date} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </DesktopShell>

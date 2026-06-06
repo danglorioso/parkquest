@@ -4,14 +4,20 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   MapPin, Bookmark, Award, Mountain,
-  Plus, Compass, ChevronRight,
+  Plus, ChevronRight,
 } from "lucide-react";
-import { DesktopShell } from "@/components/desktop/DesktopShell";
+import { DesktopShell, AccountMenu } from "@/components/desktop/DesktopShell";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
-import Map from "@/components/Map";
-import type { Park as MapPark } from "@/components/LeafletMap";
+import type { MapPark } from "@/components/USAMapGL";
+import EditProfileDialog from "@/components/EditProfileDialog";
+
+const USAMap = dynamic(() => import("@/components/USAMapGL"), {
+  ssr: false,
+  loading: () => <div className="h-full w-full" style={{ background: "#CECDBC" }} />,
+});
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,7 +87,7 @@ function Panel({
         style={{
           padding: "14px 18px 10px",
           display: "flex",
-          alignItems: "flex-end",
+          alignItems: "center",
           justifyContent: "space-between",
           borderBottom: fullbleed ? "none" : "0.5px solid var(--hairline-soft)",
           flexShrink: 0,
@@ -119,6 +125,7 @@ function Panel({
           padding: fullbleed ? 0 : "12px 18px 16px",
           flex: 1,
           minHeight: 0,
+          ...(fullbleed ? { display: "flex", flexDirection: "column" } : {}),
         }}
       >
         {children}
@@ -135,14 +142,16 @@ function BigStat({
   color,
   delta,
   icon: Icon,
+  loading = false,
 }: {
   kicker: string;
   value: number | string;
   total?: string;
   unit?: string;
   color: string;
-  delta: string;
+  delta: React.ReactNode;
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; style?: React.CSSProperties }>;
+  loading?: boolean;
 }) {
   return (
     <div
@@ -188,26 +197,32 @@ function BigStat({
           marginTop: 6,
         }}
       >
-        <div
-          style={{
-            fontWeight: 900,
-            fontSize: 38,
-            color: "var(--ink)",
-            letterSpacing: -1.2,
-            lineHeight: 1,
-          }}
-        >
-          {value}
-        </div>
-        {total && (
-          <div style={{ fontSize: 14, color: "var(--ink-mute)", fontWeight: 600 }}>
-            / {total}
-          </div>
-        )}
-        {unit && (
-          <div style={{ fontSize: 13, color: "var(--ink-mute)", fontWeight: 600 }}>
-            {unit}
-          </div>
+        {loading ? (
+          <Skel width={56} height={38} radius={6} />
+        ) : (
+          <>
+            <div
+              style={{
+                fontWeight: 900,
+                fontSize: 38,
+                color: "var(--ink)",
+                letterSpacing: -1.2,
+                lineHeight: 1,
+              }}
+            >
+              {value}
+            </div>
+            {total && (
+              <div style={{ fontSize: 14, color: "var(--ink-mute)", fontWeight: 600 }}>
+                / {total}
+              </div>
+            )}
+            {unit && (
+              <div style={{ fontSize: 13, color: "var(--ink-mute)", fontWeight: 600 }}>
+                {unit}
+              </div>
+            )}
+          </>
         )}
       </div>
       <div
@@ -227,6 +242,15 @@ function BigStat({
         </div>
       </div>
     </div>
+  );
+}
+
+function Skel({ width, height, radius = 6 }: { width?: number | string; height: number; radius?: number }) {
+  return (
+    <div
+      className="animate-pulse"
+      style={{ width, height, borderRadius: radius, background: "var(--surface-alt)" }}
+    />
   );
 }
 
@@ -313,6 +337,8 @@ export default function DashboardPage() {
   const [closestBadges,  setClosestBadges]  = useState<BadgeData[]>([]);
   const [miniMapParks,   setMiniMapParks]   = useState<MapPark[]>([]);
   const [loading,        setLoading]        = useState(true);
+  const [editOpen,       setEditOpen]       = useState(false);
+  const [mapHover,       setMapHover]       = useState(false);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
@@ -351,7 +377,6 @@ export default function DashboardPage() {
           .map((p) => ({
             park_code: p.park_code,
             name: p.name,
-            states: p.states,
             position: [parseFloat(p.latitude!), parseFloat(p.longitude!)] as [number, number],
             status: visitedCodes.has(p.park_code)
               ? "visited"
@@ -385,6 +410,7 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [isSignedIn]);
 
+  const isReady = isLoaded && !loading;
   const firstName = user?.firstName ?? "Explorer";
 
   // Formatted date kicker
@@ -397,13 +423,18 @@ export default function DashboardPage() {
 
   return (
     <DesktopShell>
+      <EditProfileDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={() => { void user?.reload(); }}
+      />
       <div style={{ padding: "24px 32px 32px", overflowY: "auto", height: "100%" }}>
 
         {/* ── Greeting row ──────────────────────────────────────── */}
         <div
           style={{
             display: "flex",
-            alignItems: "flex-end",
+            alignItems: "center",
             justifyContent: "space-between",
             marginBottom: 22,
           }}
@@ -422,53 +453,51 @@ export default function DashboardPage() {
             >
               {dateKicker}
             </div>
-            <div
-              style={{
-                fontWeight: 800,
-                fontSize: 36,
-                color: "var(--ink)",
-                letterSpacing: -0.8,
-                lineHeight: 1,
-              }}
-            >
-              Welcome back,{" "}
-              <span style={{ color: "var(--primary)" }}>{firstName}</span>.
-            </div>
-            <div
-              style={{
-                fontSize: 15,
-                color: "var(--ink-mute)",
-                marginTop: 8,
-              }}
-            >
-              You&rsquo;ve logged{" "}
-              <strong style={{ color: "var(--ink)", fontWeight: 700 }}>
-                {visitedCount} parks
-              </strong>
-              , you&rsquo;re{" "}
-              <strong style={{ color: "var(--ink)", fontWeight: 700 }}>
-                {parksLeft} away from legendary
-              </strong>
-              , and{" "}
-              <strong style={{ color: "var(--ink)", fontWeight: 700 }}>
-                {badgesEarned} badges
-              </strong>{" "}
-              earned so far.
-            </div>
+            {isReady ? (
+              <>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    fontSize: 36,
+                    color: "var(--ink)",
+                    letterSpacing: -0.8,
+                    lineHeight: 1,
+                  }}
+                >
+                  Welcome back,{" "}
+                  <span style={{ color: "var(--primary)" }}>{firstName}</span>.
+                </div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    color: "var(--ink-mute)",
+                    marginTop: 8,
+                  }}
+                >
+                  You&rsquo;ve logged{" "}
+                  <strong style={{ color: "var(--ink)", fontWeight: 700 }}>
+                    {visitedCount} parks
+                  </strong>
+                  , you&rsquo;re{" "}
+                  <strong style={{ color: "var(--ink)", fontWeight: 700 }}>
+                    {parksLeft} away from legendary
+                  </strong>
+                  , and{" "}
+                  <strong style={{ color: "var(--ink)", fontWeight: 700 }}>
+                    {badgesEarned} badges
+                  </strong>{" "}
+                  earned so far.
+                </div>
+              </>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+                <Skel width={300} height={36} radius={8} />
+                <Skel width={440} height={18} radius={5} />
+              </div>
+            )}
           </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <DesktopButton>
-              <Plus size={14} strokeWidth={2.4} /> Log a visit
-            </DesktopButton>
-            <DesktopButton primary>
-              <Compass size={14} strokeWidth={2} />
-              <Link
-                href="/planner"
-                style={{ color: "inherit", textDecoration: "none" }}
-              >
-                Plan a trip
-              </Link>
-            </DesktopButton>
+          <div style={{ flexShrink: 0 }}>
+            <AccountMenu compact onEditAccount={() => setEditOpen(true)} />
           </div>
         </div>
 
@@ -488,13 +517,15 @@ export default function DashboardPage() {
             color="var(--visited)"
             delta="+2 this year"
             icon={MapPin}
+            loading={!isReady}
           />
           <BigStat
             kicker="BUCKET LIST"
             value={bucketCount}
             color="var(--bucket)"
-            delta="add more parks"
+            delta={<Link href="/parks" style={{ color: "var(--ink-mute)", textDecoration: "none", fontWeight: 600 }} onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--bucket)"; }} onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-mute)"; }}>Browse parks →</Link>}
             icon={Bookmark}
+            loading={!isReady}
           />
           <BigStat
             kicker="BADGES"
@@ -502,6 +533,7 @@ export default function DashboardPage() {
             color="var(--accent)"
             delta={closestBadges.length > 0 ? `${closestBadges.length} close to unlock` : "keep exploring"}
             icon={Award}
+            loading={!isReady}
           />
           <BigStat
             kicker="PARKS LEFT"
@@ -510,6 +542,7 @@ export default function DashboardPage() {
             color="var(--primary)"
             delta="until legendary status"
             icon={Mountain}
+            loading={!isReady}
           />
         </div>
 
@@ -528,59 +561,72 @@ export default function DashboardPage() {
             fullbleed
             action={
               <Link href="/map" style={{ textDecoration: "none" }}>
-                <DesktopButton ghost size="sm">
+                <DesktopButton size="sm" primary>
                   Open map →
                 </DesktopButton>
               </Link>
             }
           >
-            <div
-              style={{
-                position: "relative",
-                height: 260,
-                borderRadius: "0 0 14px 14px",
-                overflow: "hidden",
-                background: "#E8E2D0",
-              }}
-            >
-              {!loading && miniMapParks.length > 0 && (
-                <Map
-                  center={[39.8283, -98.5795]}
-                  zoom={3}
-                  className="h-full w-full"
-                  parks={miniMapParks}
-                />
-              )}
-              {/* Mini legend overlay */}
+            <Link href="/map" style={{ display: "flex", flexDirection: "column", flex: 1, textDecoration: "none" }}>
               <div
                 style={{
-                  position: "absolute",
-                  bottom: 10,
-                  left: 10,
-                  background: "rgba(255,251,241,0.92)",
-                  border: "0.5px solid var(--hairline)",
-                  borderRadius: 8,
-                  padding: "6px 10px",
-                  display: "flex",
-                  gap: 10,
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 9,
-                  letterSpacing: "0.8px",
-                  color: "var(--ink-soft)",
+                  position: "relative",
+                  flex: 1,
+                  minHeight: 220,
+                  overflow: "hidden",
+                  background: "#CECDBC",
+                  cursor: "pointer",
                 }}
+                onMouseEnter={() => setMapHover(true)}
+                onMouseLeave={() => setMapHover(false)}
               >
-                {[
-                  { color: "var(--visited)",   label: "Visited" },
-                  { color: "var(--bucket)",    label: "Bucket" },
-                  { color: "var(--unvisited)", label: "Not yet" },
-                ].map(({ color, label }) => (
-                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
-                    {label}
+                {/* Non-interactive map */}
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                  {!loading && miniMapParks.length > 0 && (
+                    <USAMap
+                      parks={miniMapParks}
+                      className="h-full w-full"
+                      initialBounds={[[-125, 24], [-66, 50]]}
+                      showControls={false}
+                    />
+                  )}
+                </div>
+
+                {/* Hover affordance */}
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: mapHover ? "rgba(22,34,26,0.22)" : "rgba(0,0,0,0)",
+                    transition: "background 180ms",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "rgba(255,251,241,0.95)",
+                      backdropFilter: "blur(12px)",
+                      WebkitBackdropFilter: "blur(12px)",
+                      borderRadius: 100,
+                      padding: "8px 20px",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      color: "var(--primary)",
+                      letterSpacing: 0.2,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.14)",
+                      opacity: mapHover ? 1 : 0,
+                      transform: mapHover ? "translateY(0)" : "translateY(4px)",
+                      transition: "opacity 180ms, transform 180ms",
+                    }}
+                  >
+                    View full map →
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
+            </Link>
           </Panel>
 
           {/* Activity feed */}
@@ -589,7 +635,7 @@ export default function DashboardPage() {
             title="What's new"
             action={
               <Link href="/feed" style={{ textDecoration: "none" }}>
-                <DesktopButton ghost size="sm">View all</DesktopButton>
+                <DesktopButton size="sm">View all</DesktopButton>
               </Link>
             }
           >
@@ -606,7 +652,7 @@ export default function DashboardPage() {
             title="Trips on deck"
             action={
               <Link href="/planner" style={{ textDecoration: "none" }}>
-                <DesktopButton ghost size="sm">
+                <DesktopButton size="sm">
                   <Plus size={13} strokeWidth={2.2} /> New trip
                 </DesktopButton>
               </Link>
@@ -689,7 +735,7 @@ export default function DashboardPage() {
             title="Closest unlocks"
             action={
               <Link href="/badges" style={{ textDecoration: "none" }}>
-                <DesktopButton ghost size="sm">All badges</DesktopButton>
+                <DesktopButton size="sm">All badges</DesktopButton>
               </Link>
             }
           >

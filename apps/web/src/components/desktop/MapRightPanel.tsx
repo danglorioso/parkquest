@@ -1,10 +1,37 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, Check, Bookmark, BookmarkX, ArrowRight, Pencil, ChevronLeft, ChevronRight, Footprints, DollarSign } from "lucide-react";
+import { X, Check, Bookmark, BookmarkX, ArrowRight, Pencil, ChevronLeft, ChevronRight, ChevronDown, Footprints, DollarSign } from "lucide-react";
 import { fullStateName } from "@/lib/stateNames";
 import { LightboxModal, type LightboxImage } from "@/components/LightboxModal";
 import type { NpsData } from "@/app/api/parks/[park_code]/nps/route";
+
+interface VisitEntry {
+  id: number;
+  visited_date: string;
+  end_date?: string | null;
+  title?: string | null;
+  notes?: string | null;
+}
+
+function formatVisitDateRange(startIso: string, endIso?: string | null): string {
+  const start = new Date(startIso);
+  if (!endIso) {
+    return start.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  }
+  const end = new Date(endIso);
+  const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  const sy = start.getFullYear(), ey = end.getFullYear();
+  const sm = start.getMonth(), em = end.getMonth();
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  if (sy === ey && sm === em) {
+    return `${start.toLocaleDateString("en-US", { month: "long", day: "numeric" })}–${end.getDate()}, ${sy} · ${days}d`;
+  }
+  if (sy === ey) {
+    return `${start.toLocaleDateString("en-US", opts)}–${end.toLocaleDateString("en-US", opts)}, ${sy} · ${days}d`;
+  }
+  return `${start.toLocaleDateString("en-US", { ...opts, year: "numeric" })}–${end.toLocaleDateString("en-US", { ...opts, year: "numeric" })} · ${days}d`;
+}
 
 interface Park {
   park_code: string;
@@ -15,6 +42,8 @@ interface Park {
   visitedDate?: string | null;
   notes?: string | null;
   photos?: string[] | null;
+  visits?: VisitEntry[];
+  image_url?: string | null;
 }
 
 interface Props {
@@ -26,15 +55,15 @@ interface Props {
   onEditVisit: () => void;
 }
 
-function useEscapeKey(onClose: () => void) {
+function useEscapeKey(onClose: () => void, blocked: boolean) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !blocked) onClose();
     };
     // Capture phase fires before MapLibre GL can stop propagation
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [onClose]);
+  }, [onClose, blocked]);
 }
 
 function parkGradient(code: string): string {
@@ -114,23 +143,23 @@ function CarouselArrow({ dir, onClick }: { dir: "left" | "right"; onClick: (e: R
 }
 
 export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList, onRemoveFromBucketList, onEditVisit }: Props) {
-  const [npsImages, setNpsImages] = useState<LightboxImage[]>([]);
+  const [npsImages, setNpsImages] = useState<LightboxImage[]>(
+    park.image_url ? [{ url: park.image_url }] : []
+  );
   const [imgIdx, setImgIdx]       = useState(0);
   const [lightbox, setLightbox]   = useState<number | null>(null);
   const [closing, setClosing]     = useState(false);
   const [npsData, setNpsData]     = useState<NpsData | null>(null);
+  const [expandedVisits, setExpandedVisits] = useState<Set<number>>(new Set());
 
   const handleClose = useCallback(() => {
     setClosing(true);
     setTimeout(onClose, 190);
   }, [onClose]);
 
-  useEscapeKey(handleClose);
+  useEscapeKey(handleClose, lightbox !== null);
 
   useEffect(() => {
-    setNpsImages([]);
-    setImgIdx(0);
-    setNpsData(null);
     fetch(`/api/parks/${park.park_code}/images`)
       .then((r) => r.json())
       .then((data) => {
@@ -149,9 +178,8 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
       .catch(() => {});
   }, [park.park_code]);
 
-  // Build carousel images: user photos first, then NPS
-  const userPhotos: LightboxImage[] = (park.photos ?? []).map((url) => ({ url }));
-  const allImages: LightboxImage[] = [...userPhotos, ...npsImages];
+  // Carousel shows only NPS images — user photos appear in the visits section below
+  const allImages: LightboxImage[] = npsImages;
 
   const heroImage = allImages[imgIdx] ?? null;
   const total = allImages.length;
@@ -166,9 +194,19 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
   };
 
   const firstState = fullStateName(park.states.split(",")[0].trim());
-  const lastVisitDate = park.visitedDate
-    ? new Date(park.visitedDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
-    : null;
+
+  const toggleVisit = (id: number) => {
+    setExpandedVisits(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const sortedVisits = park.visits
+    ? [...park.visits].sort((a, b) => new Date(b.visited_date).getTime() - new Date(a.visited_date).getTime())
+    : [];
 
   return (
     <>
@@ -354,17 +392,101 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
             </div>
           )}
 
-          {/* Last visit */}
-          {park.status === "visited" && (park.notes || lastVisitDate) && (
+          {/* Visits */}
+          {park.status === "visited" && sortedVisits.length > 0 && (
             <div style={{ padding: "12px 18px", borderTop: "0.5px solid var(--hairline-soft)" }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "1.4px", color: "var(--ink-mute)", fontWeight: 600 }}>
-                YOUR LAST VISIT{lastVisitDate ? ` · ${lastVisitDate.toUpperCase()}` : ""}
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "1.4px", color: "var(--ink-mute)", fontWeight: 600, marginBottom: 8 }}>
+                VISITS · {sortedVisits.length}
               </div>
-              {park.notes && (
-                <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 6, lineHeight: 1.55 }}>
-                  {park.notes}
-                </div>
-              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {sortedVisits.map((visit) => {
+                  const isExpanded = expandedVisits.has(visit.id);
+                  const dateStr = formatVisitDateRange(visit.visited_date, visit.end_date);
+                  return (
+                    <div
+                      key={visit.id}
+                      style={{
+                        borderRadius: 9,
+                        border: "0.5px solid var(--hairline)",
+                        overflow: "hidden",
+                        background: "var(--surface)",
+                      }}
+                    >
+                      <button
+                        onClick={() => toggleVisit(visit.id)}
+                        style={{
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "9px 11px",
+                          background: "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)", lineHeight: 1.3 }}>{dateStr}</div>
+                          {visit.title && (
+                            <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {visit.title}
+                            </div>
+                          )}
+                        </div>
+                        <ChevronDown
+                          style={{
+                            width: 13, height: 13, color: "var(--ink-mute)", flexShrink: 0,
+                            transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                            transition: "transform 160ms ease",
+                          }}
+                          strokeWidth={2.2}
+                        />
+                      </button>
+                      {isExpanded && (
+                        <div
+                          style={{
+                            padding: "8px 11px 11px",
+                            borderTop: "0.5px solid var(--hairline-soft)",
+                            background: "var(--surface-alt)",
+                          }}
+                        >
+                          {visit.title && (
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)", marginBottom: 5 }}>
+                              {visit.title}
+                            </div>
+                          )}
+                          {visit.notes ? (
+                            <div style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.55 }}>
+                              {visit.notes}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: "var(--ink-mute)", fontStyle: "italic" }}>
+                              No notes
+                            </div>
+                          )}
+                          {/* Show user photos on the most recent visit */}
+                          {sortedVisits[0]?.id === visit.id && park.photos && park.photos.length > 0 && (
+                            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
+                              {park.photos.map((url, i) => (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  key={url}
+                                  src={url}
+                                  alt=""
+                                  onClick={() => setLightbox(-(i + 1))}
+                                  style={{ width: 56, height: 56, borderRadius: 7, objectFit: "cover", cursor: "zoom-in" }}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -407,12 +529,20 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
         </div>
       </div>
 
-      {lightbox !== null && allImages.length > 0 && (
-        <LightboxModal
-          images={allImages}
-          startIndex={lightbox}
-          onClose={() => setLightbox(null)}
-        />
+      {lightbox !== null && (
+        lightbox < 0 ? (
+          <LightboxModal
+            images={(park.photos ?? []).map((url) => ({ url }))}
+            startIndex={-(lightbox + 1)}
+            onClose={() => setLightbox(null)}
+          />
+        ) : allImages.length > 0 ? (
+          <LightboxModal
+            images={allImages}
+            startIndex={lightbox}
+            onClose={() => setLightbox(null)}
+          />
+        ) : null
       )}
     </>
   );

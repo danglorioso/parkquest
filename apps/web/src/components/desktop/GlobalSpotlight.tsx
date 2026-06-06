@@ -32,6 +32,11 @@ interface ParkWithStatus extends Park {
   status: ParkStatus;
 }
 
+// A single navigable item in the flat keyboard-nav list
+type NavItem =
+  | { kind: "user"; href: string }
+  | { kind: "park"; href: string };
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const STATUS_DOT: Record<ParkStatus, string> = {
@@ -56,14 +61,22 @@ function resolveParkStatus(code: string, visits: Visit[]): ParkStatus {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ParkRow({ park, onPick }: { park: ParkWithStatus; onPick: () => void }) {
+function ParkRow({
+  park,
+  onPick,
+  active,
+}: {
+  park: ParkWithStatus;
+  onPick: () => void;
+  active: boolean;
+}) {
   return (
     <button
       onClick={onPick}
       onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(31,61,46,0.04)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = active ? "rgba(31,61,46,0.07)" : "transparent"; }}
       style={{
-        width: "100%", background: "transparent", border: 0,
+        width: "100%", background: active ? "rgba(31,61,46,0.07)" : "transparent", border: 0,
         padding: "8px 16px", cursor: "pointer",
         display: "flex", alignItems: "center", gap: 11,
         textAlign: "left", transition: "background 100ms",
@@ -103,6 +116,9 @@ export function GlobalSpotlight({ open, onClose }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const userTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stale-closure-safe refs for keyboard handler
+  const activeIdxRef = useRef(-1);
+  const navItemsRef = useRef<NavItem[]>([]);
 
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<TabFilter>("all");
@@ -110,6 +126,12 @@ export function GlobalSpotlight({ open, onClose }: Props) {
   const [visits, setVisits] = useState<Visit[]>([]);
   const [users, setUsers] = useState<UserResult[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1);
+
+  const setIdx = (n: number) => {
+    activeIdxRef.current = n;
+    setActiveIdx(n);
+  };
 
   // Fetch parks + visits once on first open
   useEffect(() => {
@@ -132,8 +154,12 @@ export function GlobalSpotlight({ open, onClose }: Props) {
       setQ("");
       setTab("all");
       setUsers([]);
+      setIdx(-1);
     }
   }, [open]);
+
+  // Reset active idx when query or tab changes
+  useEffect(() => { setIdx(-1); }, [q, tab]);
 
   // ESC to close
   useEffect(() => {
@@ -152,6 +178,29 @@ export function GlobalSpotlight({ open, onClose }: Props) {
     const t = setTimeout(() => document.addEventListener("mousedown", onDocClick), 0);
     return () => { clearTimeout(t); document.removeEventListener("mousedown", onDocClick); };
   }, [open, onClose]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return; // handled separately above
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = Math.min(activeIdxRef.current + 1, navItemsRef.current.length - 1);
+        setIdx(next);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = Math.max(activeIdxRef.current - 1, -1);
+        setIdx(next);
+        if (next === -1) inputRef.current?.focus();
+      } else if (e.key === "Enter") {
+        const item = navItemsRef.current[activeIdxRef.current];
+        if (item) { e.preventDefault(); onClose(); router.push(item.href); }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose, router]);
 
   // Debounced user search
   const searchUsers = useCallback((query: string) => {
@@ -194,13 +243,31 @@ export function GlobalSpotlight({ open, onClose }: Props) {
   const suggestions =
     !q && tab === "all"
       ? {
-          recent: parksWithStatus
-            .filter((p) => p.status === "visited")
-            .slice(0, 5),
+          recent: parksWithStatus.filter((p) => p.status === "visited").slice(0, 5),
           bucket: parksWithStatus.filter((p) => p.status === "bucketList").slice(0, 5),
           discover: parksWithStatus.filter((p) => p.status === "notVisited").slice(0, 5),
         }
       : null;
+
+  // Build flat nav list (users first, then parks)
+  const navItems: NavItem[] = q
+    ? [
+        ...users.slice(0, 4).map((u) => ({ kind: "user" as const, href: `/profile/${u.username}` })),
+        ...filteredParks.map((p) => ({ kind: "park" as const, href: `/parks/${p.park_code}` })),
+      ]
+    : suggestions
+      ? [
+          ...suggestions.recent.map((p) => ({ kind: "park" as const, href: `/parks/${p.park_code}` })),
+          ...suggestions.bucket.map((p) => ({ kind: "park" as const, href: `/parks/${p.park_code}` })),
+          ...suggestions.discover.map((p) => ({ kind: "park" as const, href: `/parks/${p.park_code}` })),
+        ]
+      : filteredParks.map((p) => ({ kind: "park" as const, href: `/parks/${p.park_code}` }));
+
+  // Keep ref current for keyboard handler
+  navItemsRef.current = navItems;
+
+  // Map hrefs back to lookup active state per item
+  const activeHref = activeIdx >= 0 ? navItems[activeIdx]?.href : null;
 
   return (
     <div
@@ -291,39 +358,43 @@ export function GlobalSpotlight({ open, onClose }: Props) {
           {q && users.length > 0 && (
             <div>
               <SectionLabel>PEOPLE</SectionLabel>
-              {users.slice(0, 4).map((user) => (
-                <button
-                  key={user.username}
-                  onClick={() => handleSelect(`/profile/${user.username}`)}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(31,61,46,0.04)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                  style={{
-                    width: "100%", background: "transparent", border: 0,
-                    padding: "8px 16px", cursor: "pointer",
-                    display: "flex", alignItems: "center", gap: 11,
-                    textAlign: "left", transition: "background 100ms",
-                  }}
-                >
-                  {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.username} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-                  ) : (
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface-alt)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--ink-mute)" }}>
-                      {user.username[0]?.toUpperCase()}
-                    </div>
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {user.display_name && (
-                      <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {user.display_name}
+              {users.slice(0, 4).map((user) => {
+                const href = `/profile/${user.username}`;
+                const isActive = activeHref === href;
+                return (
+                  <button
+                    key={user.username}
+                    onClick={() => handleSelect(href)}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(31,61,46,0.04)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? "rgba(31,61,46,0.07)" : "transparent"; }}
+                    style={{
+                      width: "100%", background: isActive ? "rgba(31,61,46,0.07)" : "transparent", border: 0,
+                      padding: "8px 16px", cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 11,
+                      textAlign: "left", transition: "background 100ms",
+                    }}
+                  >
+                    {user.avatar_url ? (
+                      <img src={user.avatar_url} alt={user.username} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface-alt)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--ink-mute)" }}>
+                        {user.username[0]?.toUpperCase()}
                       </div>
                     )}
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-mute)", marginTop: 1, fontWeight: 500 }}>
-                      @{user.username}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {user.display_name && (
+                        <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {user.display_name}
+                        </div>
+                      )}
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-mute)", marginTop: 1, fontWeight: 500 }}>
+                        @{user.username}
+                      </div>
                     </div>
-                  </div>
-                  <ArrowRight style={{ width: 13, height: 13, color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2.2} />
-                </button>
-              ))}
+                    <ArrowRight style={{ width: 13, height: 13, color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2.2} />
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -333,19 +404,40 @@ export function GlobalSpotlight({ open, onClose }: Props) {
               {suggestions.recent.length > 0 && (
                 <div>
                   <SectionLabel>RECENTLY VISITED</SectionLabel>
-                  {suggestions.recent.map((p) => <ParkRow key={p.park_code} park={p} onPick={() => handleSelect(`/parks/${p.park_code}`)} />)}
+                  {suggestions.recent.map((p) => (
+                    <ParkRow
+                      key={p.park_code}
+                      park={p}
+                      onPick={() => handleSelect(`/parks/${p.park_code}`)}
+                      active={activeHref === `/parks/${p.park_code}`}
+                    />
+                  ))}
                 </div>
               )}
               {suggestions.bucket.length > 0 && (
                 <div>
                   <SectionLabel>ON YOUR BUCKET LIST</SectionLabel>
-                  {suggestions.bucket.map((p) => <ParkRow key={p.park_code} park={p} onPick={() => handleSelect(`/parks/${p.park_code}`)} />)}
+                  {suggestions.bucket.map((p) => (
+                    <ParkRow
+                      key={p.park_code}
+                      park={p}
+                      onPick={() => handleSelect(`/parks/${p.park_code}`)}
+                      active={activeHref === `/parks/${p.park_code}`}
+                    />
+                  ))}
                 </div>
               )}
               {suggestions.discover.length > 0 && (
                 <div>
                   <SectionLabel>DISCOVER</SectionLabel>
-                  {suggestions.discover.map((p) => <ParkRow key={p.park_code} park={p} onPick={() => handleSelect(`/parks/${p.park_code}`)} />)}
+                  {suggestions.discover.map((p) => (
+                    <ParkRow
+                      key={p.park_code}
+                      park={p}
+                      onPick={() => handleSelect(`/parks/${p.park_code}`)}
+                      active={activeHref === `/parks/${p.park_code}`}
+                    />
+                  ))}
                 </div>
               )}
             </>
@@ -354,7 +446,14 @@ export function GlobalSpotlight({ open, onClose }: Props) {
               <SectionLabel>
                 {q ? `${filteredParks.length} PARK${filteredParks.length !== 1 ? "S" : ""}` : `${filteredParks.length} PARKS`}
               </SectionLabel>
-              {filteredParks.map((p) => <ParkRow key={p.park_code} park={p} onPick={() => handleSelect(`/parks/${p.park_code}`)} />)}
+              {filteredParks.map((p) => (
+                <ParkRow
+                  key={p.park_code}
+                  park={p}
+                  onPick={() => handleSelect(`/parks/${p.park_code}`)}
+                  active={activeHref === `/parks/${p.park_code}`}
+                />
+              ))}
             </div>
           ) : q && users.length === 0 ? (
             <div style={{ padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-mute)" }}>
@@ -366,7 +465,7 @@ export function GlobalSpotlight({ open, onClose }: Props) {
         {/* Footer */}
         <div style={{ padding: "8px 14px", borderTop: "0.5px solid var(--hairline-soft)", display: "flex", alignItems: "center", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", letterSpacing: "0.6px", fontWeight: 600 }}>
           <span>↑↓ NAVIGATE · ⏎ OPEN</span>
-          <span>⌘K TOGGLE</span>
+          <span>⌘K CLOSE</span>
         </div>
       </div>
     </div>

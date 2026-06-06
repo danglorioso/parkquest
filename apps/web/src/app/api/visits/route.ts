@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { visits } from '@/lib/db/schema';
+import { visits, parks } from '@/lib/db/schema';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 
 export async function GET() {
   try {
@@ -14,16 +14,32 @@ export async function GET() {
 
     const userVisits = await db
       .select({
+        id: visits.id,
         park_code: visits.park_code,
+        park_name: parks.name,
+        states: parks.states,
         visited_date: visits.visited_date,
+        end_date: visits.end_date,
         is_bucket_list: visits.is_bucket_list,
+        rating: visits.rating,
+        crowd: visits.crowd,
+        difficulty: visits.difficulty,
+        weather_conditions: visits.weather_conditions,
+        activities: visits.activities,
+        companions: visits.companions,
+        would_return: visits.would_return,
+        highlight: visits.highlight,
         title: visits.title,
         notes: visits.notes,
         photos: visits.photos,
+        cover_photo: visits.cover_photo,
         visibility: visits.visibility,
+        created_at: visits.created_at,
       })
       .from(visits)
-      .where(eq(visits.clerk_user_id, userId));
+      .leftJoin(parks, eq(visits.park_code, parks.park_code))
+      .where(eq(visits.clerk_user_id, userId))
+      .orderBy(desc(visits.visited_date));
 
     return NextResponse.json(userVisits);
   } catch (error) {
@@ -41,7 +57,11 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { park_code, is_bucket_list, visited_date, title, notes, photos, visibility } = body;
+    const {
+      park_code, is_bucket_list, visited_date, end_date,
+      rating, crowd, difficulty, weather_conditions, activities,
+      companions, would_return, highlight, title, notes, photos, cover_photo, visibility,
+    } = body;
 
     if (!park_code) {
       return NextResponse.json({ error: 'Park code is required' }, { status: 400 });
@@ -49,6 +69,7 @@ export async function POST(request: Request) {
 
     const isBucketList = is_bucket_list === true;
     const visitDate = visited_date ? new Date(visited_date) : (isBucketList ? null : new Date());
+    const endDate = end_date ? new Date(end_date) : null;
     const visitVisibility = visibility || 'private';
 
     const existingVisit = await db
@@ -62,7 +83,7 @@ export async function POST(request: Request) {
       if (isBucketList && !existing.is_bucket_list) {
         const updated = await db
           .update(visits)
-          .set({ is_bucket_list: true, visited_date: null as unknown as Date })
+          .set({ is_bucket_list: true, visited_date: null as unknown as Date, end_date: null as unknown as Date })
           .where(eq(visits.id, existing.id))
           .returning();
         return NextResponse.json({ message: 'Park added to bucket list', visit: updated[0] });
@@ -73,9 +94,19 @@ export async function POST(request: Request) {
           .set({
             is_bucket_list: false,
             visited_date: visitDate as Date,
+            end_date: endDate as Date,
+            rating: rating !== undefined ? rating : existing.rating,
+            crowd: crowd !== undefined ? crowd : existing.crowd,
+            difficulty: difficulty !== undefined ? difficulty : existing.difficulty,
+            weather_conditions: weather_conditions !== undefined ? weather_conditions : existing.weather_conditions,
+            activities: activities !== undefined ? activities : existing.activities,
+            companions: companions !== undefined ? companions : existing.companions,
+            would_return: would_return !== undefined ? would_return : existing.would_return,
+            highlight: highlight !== undefined ? highlight : existing.highlight,
             title: title !== undefined ? title : existing.title,
             notes: notes !== undefined ? notes : existing.notes,
             photos: photos !== undefined ? photos : existing.photos,
+            cover_photo: cover_photo !== undefined ? cover_photo : existing.cover_photo,
             visibility: visitVisibility,
             updated_at: new Date(),
           })
@@ -95,10 +126,20 @@ export async function POST(request: Request) {
         clerk_user_id: userId,
         park_code,
         visited_date: visitDate as any,
+        end_date: endDate as Date | null,
         is_bucket_list: isBucketList,
+        rating: rating || null,
+        crowd: crowd || null,
+        difficulty: difficulty || null,
+        weather_conditions: weather_conditions || null,
+        activities: activities || null,
+        companions: companions || null,
+        would_return: would_return || null,
+        highlight: highlight || null,
         title: title || null,
         notes: notes || null,
         photos: photos || null,
+        cover_photo: cover_photo || null,
         visibility: isBucketList ? 'private' : visitVisibility,
       })
       .returning();

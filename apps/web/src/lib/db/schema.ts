@@ -10,6 +10,7 @@ export const parks = pgTable('parks', {
   description: text('description'),
   latitude: varchar('latitude', { length: 50 }),
   longitude: varchar('longitude', { length: 50 }),
+  image_url: text('image_url'),
   created_at: timestamp('created_at').defaultNow(),
 });
 
@@ -28,10 +29,19 @@ export const visits = pgTable('visits', {
   clerk_user_id: varchar('clerk_user_id', { length: 255 }).notNull(),
   park_code: varchar('park_code', { length: 10 }).notNull().references(() => parks.park_code),
   visited_date: timestamp('visited_date'), // null = bucket list item
+  end_date: timestamp('end_date'),         // null = single-day visit
   rating: integer('rating'),
+  crowd: integer('crowd'),                 // 1-5 scale
+  difficulty: integer('difficulty'),       // 1-5 scale
+  weather_conditions: jsonb('weather_conditions').$type<string[]>(),
+  activities: jsonb('activities').$type<string[]>(),
+  companions: jsonb('companions').$type<string[]>(), // clerk_user_ids
+  would_return: varchar('would_return', { length: 10 }), // 'yes' | 'maybe' | 'no'
+  highlight: text('highlight'),
   title: varchar('title', { length: 255 }),
   notes: text('notes'),
-  photos: jsonb('photos'),
+  photos: jsonb('photos').$type<string[]>(),
+  cover_photo: text('cover_photo'),
   visibility: varchar('visibility', { length: 20 }).default('private'), // 'public' | 'friends' | 'private'
   is_bucket_list: boolean('is_bucket_list').default(false),
   created_at: timestamp('created_at').defaultNow(),
@@ -90,3 +100,19 @@ export type Like = typeof likes.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
 export type NewComment = typeof comments.$inferInsert;
 export type UserBadge = typeof userBadges.$inferSelect;
+
+export const notifications = pgTable('notifications', {
+  id: serial('id').primaryKey(),
+  recipient_id: varchar('recipient_id', { length: 255 }).notNull(),
+  actor_id: varchar('actor_id', { length: 255 }),
+  type: varchar('type', { length: 50 }).notNull(), // 'follow' | 'like' | 'comment' | 'post' | 'system' | 'recommendation'
+  post_id: integer('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+  visit_id: integer('visit_id').references(() => visits.id, { onDelete: 'cascade' }),
+  park_code: varchar('park_code', { length: 10 }).references(() => parks.park_code),
+  metadata: jsonb('metadata').$type<{ message?: string; excerpt?: string }>(),
+  read: boolean('read').default(false).notNull(),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;

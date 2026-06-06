@@ -13,6 +13,7 @@ export async function GET() {
         latitude: parks.latitude,
         longitude: parks.longitude,
         description: parks.description,
+        image_url: parks.image_url,
       })
       .from(parks)
       .where(
