@@ -32,16 +32,11 @@ interface BadgeData {
   progress_target: number | null;
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
+// ── Activity types ────────────────────────────────────────────────────────────
 
-const MOCK_ACTIVITY = [
-  { initials: "MJ", name: "Maya",   what: "visited",                 where: "Olympic NP",       badge: false, when: "2h" },
-  { initials: "JD", name: "Jordan", what: "unlocked",                where: "Camp Wanderer",     badge: true,  when: "5h" },
-  { initials: "RS", name: "Rin",    what: "added to bucket list:",   where: "Glacier Bay",       badge: false, when: "1d" },
-  { initials: "SM", name: "Sam",    what: "logged visit #15 at",     where: "Arches",            badge: false, when: "2d" },
-  { initials: "NG", name: "Nora",   what: "started following you",   where: "",                  badge: false, when: "3d" },
-  { initials: "MJ", name: "Maya",   what: "commented on your post about", where: "Acadia",       badge: false, when: "4d" },
-];
+type ActivityEvent =
+  | { type: "visit" | "bucket" | "post"; user_id: string; username: string | null; display_name: string | null; avatar_url: string | null; park_name: string | null; created_at: string | null }
+  | { type: "badge"; user_id: string; username: string | null; display_name: string | null; avatar_url: string | null; badge_id: string; badge_name: string; badge_emoji: string; created_at: string | null };
 
 const MOCK_TRIPS = [
   { month: "JUN", day: "8",  name: "Crater Lake",  state: "OR", away: "17 days away",  company: "3 companions" },

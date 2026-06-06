@@ -42,11 +42,12 @@ export interface UserProfile {
   updated_at: Date | null;
 }
 
+export type FriendshipStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted';
+
 export interface PublicProfile extends UserProfile {
   parks_visited: number;
-  follower_count: number;
-  following_count: number;
-  is_following: boolean;
+  friend_count: number;
+  friendship_status: FriendshipStatus;
 }
 
 export interface Post {
@@ -70,12 +71,21 @@ export interface EnrichedPost extends Post {
   liked_by_me: boolean;
 }
 
-export interface Follow {
+export interface Friend {
   clerk_user_id: string;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
-  followed_at: Date | null;
+  friends_since: Date | null;
+}
+
+export interface FriendRequest {
+  friendship_id: number;
+  clerk_user_id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  requested_at: Date | null;
 }
 
 export interface EnrichedComment {

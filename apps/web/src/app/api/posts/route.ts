@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, desc, inArray, sql } from 'drizzle-orm';
+import { eq, desc, and, or, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { posts, parks, userProfiles, follows, notifications } from '@/lib/db/schema';
+import { posts, parks, userProfiles, friendships, notifications } from '@/lib/db/schema';
 
 function enrichedPostsQuery(whereClause: Parameters<typeof db.select>[0] extends never ? never : any) {
   return db
@@ -83,15 +83,22 @@ export async function POST(request: Request) {
       .values({ clerk_user_id: userId, caption: caption ?? null, photos: photos ?? null, park_code: park_code ?? null, visit_id: visit_id ?? null })
       .returning();
 
-    // Notify followers about the new post (fire and forget)
-    db.select({ follower_id: follows.follower_id })
-      .from(follows)
-      .where(eq(follows.following_id, userId))
-      .then((followers) => {
-        if (followers.length === 0) return;
+    // Notify friends about the new post (fire and forget)
+    db.select({
+        friend_id: sql<string>`CASE WHEN ${friendships.requester_id} = ${userId} THEN ${friendships.recipient_id} ELSE ${friendships.requester_id} END`,
+      })
+      .from(friendships)
+      .where(
+        and(
+          or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId)),
+          eq(friendships.status, 'accepted')
+        )
+      )
+      .then((friends) => {
+        if (friends.length === 0) return;
         return db.insert(notifications).values(
-          followers.map(({ follower_id }) => ({
-            recipient_id: follower_id,
+          friends.map(({ friend_id }) => ({
+            recipient_id: friend_id,
             actor_id: userId,
             type: 'post' as const,
             post_id: post.id,

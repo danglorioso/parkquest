@@ -1134,7 +1134,7 @@ function PhotoUploader({ photos, cover, onAddPhotos, onRemove, onSetCover }: {
 function VisibilityChoice({ value, onChange }: { value: VisitDraft["visibility"]; onChange: (v: VisitDraft["visibility"]) => void }) {
   const opts: { v: VisitDraft["visibility"]; desc: string }[] = [
     { v: "Private", desc: "Only you. A private journal entry." },
-    { v: "Friends", desc: "People you follow back." },
+    { v: "Friends", desc: "Visible to your friends." },
     { v: "Public",  desc: "Anyone on ParkQuest." },
   ];
   const IconFor = { Private: Lock, Friends: Users, Public: Globe };

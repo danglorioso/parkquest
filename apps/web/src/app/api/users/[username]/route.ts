@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, count, and, isNotNull, sql } from 'drizzle-orm';
+import { eq, count, and, or, isNotNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { userProfiles, visits, follows, parks } from '@/lib/db/schema';
+import { userProfiles, visits, friendships, parks } from '@/lib/db/schema';
 
 export async function GET(
   _req: Request,
@@ -22,7 +22,7 @@ export async function GET(
 
     const targetId = profile.clerk_user_id;
 
-    const [[visitStats], [followerCount], [followingCount], recentVisits] = await Promise.all([
+    const [[visitStats], [friendCount], recentVisits] = await Promise.all([
       db
         .select({ count: count() })
         .from(visits)
@@ -31,8 +31,12 @@ export async function GET(
           eq(visits.is_bucket_list, false),
           isNotNull(visits.visited_date),
         )),
-      db.select({ count: count() }).from(follows).where(eq(follows.following_id, targetId)),
-      db.select({ count: count() }).from(follows).where(eq(follows.follower_id, targetId)),
+      db.select({ count: count() }).from(friendships).where(
+        and(
+          or(eq(friendships.requester_id, targetId), eq(friendships.recipient_id, targetId)),
+          eq(friendships.status, 'accepted')
+        )
+      ),
       db
         .select({
           park_code: parks.park_code,
@@ -51,22 +55,38 @@ export async function GET(
         .limit(6),
     ]);
 
-    const isFollowing = viewerId
-      ? (await db
-          .select()
-          .from(follows)
-          .where(and(eq(follows.follower_id, viewerId), eq(follows.following_id, targetId)))
-          .limit(1)).length > 0
-      : false;
+    let friendship_status: 'none' | 'pending_sent' | 'pending_received' | 'accepted' = 'none';
+    let friendship_id: number | null = null;
+    if (viewerId && viewerId !== targetId) {
+      const [existing] = await db
+        .select()
+        .from(friendships)
+        .where(
+          or(
+            and(eq(friendships.requester_id, viewerId), eq(friendships.recipient_id, targetId)),
+            and(eq(friendships.requester_id, targetId), eq(friendships.recipient_id, viewerId))
+          )
+        )
+        .limit(1);
+
+      if (existing) {
+        friendship_id = existing.id;
+        if (existing.status === 'accepted') {
+          friendship_status = 'accepted';
+        } else if (existing.status === 'pending') {
+          friendship_status = existing.requester_id === viewerId ? 'pending_sent' : 'pending_received';
+        }
+      }
+    }
 
     const isOwnProfile = viewerId === targetId;
 
     return NextResponse.json({
       ...profile,
       parks_visited: visitStats.count,
-      follower_count: followerCount.count,
-      following_count: followingCount.count,
-      is_following: isFollowing,
+      friend_count: friendCount.count,
+      friendship_status,
+      friendship_id,
       is_own_profile: isOwnProfile,
       recent_visits: recentVisits,
     });

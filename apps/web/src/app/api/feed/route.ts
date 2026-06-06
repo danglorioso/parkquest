@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, desc, inArray, sql } from 'drizzle-orm';
+import { eq, desc, and, or, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { posts, follows, parks, userProfiles } from '@/lib/db/schema';
+import { posts, friendships, parks, userProfiles } from '@/lib/db/schema';
 
 export async function GET(request: Request) {
   try {
@@ -13,12 +13,19 @@ export async function GET(request: Request) {
     const limit = Math.min(Number(searchParams.get('limit') ?? '20'), 50);
     const offset = Number(searchParams.get('offset') ?? '0');
 
-    const followedRows = await db
-      .select({ following_id: follows.following_id })
-      .from(follows)
-      .where(eq(follows.follower_id, userId));
+    const friendRows = await db
+      .select({
+        friend_id: sql<string>`CASE WHEN ${friendships.requester_id} = ${userId} THEN ${friendships.recipient_id} ELSE ${friendships.requester_id} END`,
+      })
+      .from(friendships)
+      .where(
+        and(
+          or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId)),
+          eq(friendships.status, 'accepted')
+        )
+      );
 
-    const feedUserIds = [userId, ...followedRows.map(r => r.following_id)];
+    const feedUserIds = [userId, ...friendRows.map(r => r.friend_id)];
 
     const feedPosts = await db
       .select({

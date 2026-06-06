@@ -650,7 +650,7 @@ function FeedRightRail({ visited, total }: { visited: number; total: number }) {
       {/* Explorers nearby */}
       <RailPanel
         kicker="EXPLORERS · NEAR YOU"
-        title="Follow suggestions"
+        title="People you may know"
         action={<DesktopButton ghost size="sm">See all</DesktopButton>}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -676,7 +676,7 @@ function FeedRightRail({ visited, total }: { visited: number; total: number }) {
                   fontSize: 11,
                 }}
               >
-                Follow
+                Add Friend
               </button>
             </div>
           ))}
@@ -823,7 +823,7 @@ export default function FeedPage() {
       <DesktopHeader
         kicker="THE FEED"
         title="Out there"
-        sub="Latest posts from explorers you follow"
+        sub="Latest posts from your friends"
         actions={
           <>
             <DesktopButton size="sm">
@@ -870,7 +870,7 @@ export default function FeedPage() {
               fontSize: 14,
             }}
           >
-            Nothing in your feed yet — follow some explorers or log your first visit.
+            Nothing in your feed yet — add some friends or log your first visit.
           </div>
         )}
 

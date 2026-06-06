@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { MapPin, Users, UserCheck, TreePine } from "lucide-react";
+import { MapPin, Users, UserCheck, UserPlus, Clock, TreePine } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { fullStateName } from "@/lib/stateNames";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+type FriendshipStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted';
 
 interface RecentVisit {
   park_code: string;
@@ -23,9 +25,9 @@ interface ProfileData {
   bio: string | null;
   avatar_url: string | null;
   parks_visited: number;
-  follower_count: number;
-  following_count: number;
-  is_following: boolean;
+  friend_count: number;
+  friendship_status: FriendshipStatus;
+  friendship_id: number | null;
   is_own_profile: boolean;
   recent_visits: RecentVisit[];
 }
@@ -84,6 +86,96 @@ function VisitCard({ visit, onClick }: { visit: RecentVisit; onClick: () => void
   );
 }
 
+// ── Friend action button ───────────────────────────────────────────────────────
+
+function FriendButton({
+  status,
+  busy,
+  onAddFriend,
+  onCancelRequest,
+  onAcceptRequest,
+  onDeclineRequest,
+  onUnfriend,
+}: {
+  status: FriendshipStatus;
+  busy: boolean;
+  onAddFriend: () => void;
+  onCancelRequest: () => void;
+  onAcceptRequest: () => void;
+  onDeclineRequest: () => void;
+  onUnfriend: () => void;
+}) {
+  const base: React.CSSProperties = {
+    flexShrink: 0,
+    borderRadius: 10,
+    padding: "9px 18px",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: busy ? "wait" : "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    opacity: busy ? 0.7 : 1,
+    transition: "opacity 120ms",
+    border: "none",
+  };
+
+  if (status === 'accepted') {
+    return (
+      <button
+        onClick={onUnfriend}
+        disabled={busy}
+        style={{ ...base, background: "var(--surface)", color: "var(--ink)", border: "0.5px solid var(--hairline)" }}
+      >
+        <UserCheck size={14} /> Friends
+      </button>
+    );
+  }
+
+  if (status === 'pending_sent') {
+    return (
+      <button
+        onClick={onCancelRequest}
+        disabled={busy}
+        style={{ ...base, background: "var(--surface)", color: "var(--ink-mute)", border: "0.5px solid var(--hairline)" }}
+      >
+        <Clock size={14} /> Request Sent
+      </button>
+    );
+  }
+
+  if (status === 'pending_received') {
+    return (
+      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+        <button
+          onClick={onAcceptRequest}
+          disabled={busy}
+          style={{ ...base, background: "var(--primary)", color: "#FFFBF1" }}
+        >
+          <UserCheck size={14} /> Accept
+        </button>
+        <button
+          onClick={onDeclineRequest}
+          disabled={busy}
+          style={{ ...base, background: "var(--surface)", color: "var(--ink)", border: "0.5px solid var(--hairline)" }}
+        >
+          Decline
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={onAddFriend}
+      disabled={busy}
+      style={{ ...base, background: "var(--primary)", color: "#FFFBF1" }}
+    >
+      <UserPlus size={14} /> Add Friend
+    </button>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
@@ -93,7 +185,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [followBusy, setFollowBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!username) return;
@@ -109,22 +201,58 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [username]);
 
-  const toggleFollow = async () => {
-    if (!profile || !isSignedIn || followBusy) return;
-    setFollowBusy(true);
-    const method = profile.is_following ? "DELETE" : "POST";
-    try {
-      const res = await fetch(`/api/follows/${profile.clerk_user_id}`, { method });
-      if (res.ok) {
-        setProfile((p) => p ? {
-          ...p,
-          is_following: !p.is_following,
-          follower_count: p.is_following ? p.follower_count - 1 : p.follower_count + 1,
-        } : p);
-      }
-    } catch {}
-    finally { setFollowBusy(false); }
+  const withBusy = (fn: () => Promise<void>) => async () => {
+    if (!profile || !isSignedIn || busy) return;
+    setBusy(true);
+    try { await fn(); } catch {}
+    finally { setBusy(false); }
   };
+
+  const handleAddFriend = withBusy(async () => {
+    const res = await fetch('/api/friends', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: profile!.clerk_user_id }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setProfile(p => p ? { ...p, friendship_status: data.status ?? 'pending_sent' } : p);
+    }
+  });
+
+  const handleCancelRequest = withBusy(async () => {
+    const res = await fetch(`/api/friends?userId=${profile!.clerk_user_id}`, { method: 'DELETE' });
+    if (res.ok) setProfile(p => p ? { ...p, friendship_status: 'none' } : p);
+  });
+
+  const handleAcceptRequest = withBusy(async () => {
+    if (!profile!.friendship_id) return;
+    const res = await fetch('/api/friends', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ friendshipId: profile!.friendship_id, action: 'accept' }),
+    });
+    if (res.ok) {
+      setProfile(p => p ? { ...p, friendship_status: 'accepted', friend_count: p.friend_count + 1 } : p);
+    }
+  });
+
+  const handleDeclineRequest = withBusy(async () => {
+    if (!profile!.friendship_id) return;
+    const res = await fetch('/api/friends', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ friendshipId: profile!.friendship_id, action: 'reject' }),
+    });
+    if (res.ok) setProfile(p => p ? { ...p, friendship_status: 'none', friendship_id: null } : p);
+  });
+
+  const handleUnfriend = withBusy(async () => {
+    const res = await fetch(`/api/friends?userId=${profile!.clerk_user_id}`, { method: 'DELETE' });
+    if (res.ok) {
+      setProfile(p => p ? { ...p, friendship_status: 'none', friend_count: Math.max(0, p.friend_count - 1) } : p);
+    }
+  });
 
   return (
     <DesktopShell>
@@ -185,33 +313,17 @@ export default function ProfilePage() {
                 )}
               </div>
 
-              {/* Follow button */}
+              {/* Friend button */}
               {!profile.is_own_profile && isSignedIn && (
-                <button
-                  onClick={toggleFollow}
-                  disabled={followBusy}
-                  style={{
-                    flexShrink: 0,
-                    background: profile.is_following ? "var(--surface)" : "var(--primary)",
-                    color: profile.is_following ? "var(--ink)" : "#FFFBF1",
-                    border: profile.is_following ? "0.5px solid var(--hairline)" : "none",
-                    borderRadius: 10,
-                    padding: "9px 18px",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: followBusy ? "wait" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    opacity: followBusy ? 0.7 : 1,
-                    transition: "opacity 120ms",
-                  }}
-                >
-                  {profile.is_following
-                    ? <><UserCheck size={14} /> Following</>
-                    : <><Users size={14} /> Follow</>
-                  }
-                </button>
+                <FriendButton
+                  status={profile.friendship_status}
+                  busy={busy}
+                  onAddFriend={handleAddFriend}
+                  onCancelRequest={handleCancelRequest}
+                  onAcceptRequest={handleAcceptRequest}
+                  onDeclineRequest={handleDeclineRequest}
+                  onUnfriend={handleUnfriend}
+                />
               )}
             </div>
 
@@ -227,8 +339,7 @@ export default function ProfilePage() {
             }}>
               {[
                 { value: profile.parks_visited, label: "PARKS VISITED" },
-                { value: profile.follower_count, label: "FOLLOWERS" },
-                { value: profile.following_count, label: "FOLLOWING" },
+                { value: profile.friend_count, label: "FRIENDS" },
               ].map((s, i, arr) => (
                 <div
                   key={s.label}
