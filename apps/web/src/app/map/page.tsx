@@ -11,6 +11,7 @@ import { MapRightPanel } from "@/components/desktop/MapRightPanel";
 import { MapSpotlight } from "@/components/desktop/MapSpotlight";
 import { LogVisitModal } from "@/components/LogVisitModal";
 import type { VisitDraft } from "@/components/LogVisitModal";
+import type { NpsSummary } from "@/app/api/parks/nps-all/route";
 
 const USAMap = dynamic(() => import("@/components/USAMapGL"), {
   ssr: false,
@@ -59,6 +60,7 @@ export default function Home() {
 
   const [parks, setParks] = useState<ParkForMap[]>([]);
   const [visitedParksCount, setVisitedParksCount] = useState(0);
+  const [npsCache, setNpsCache] = useState<Record<string, NpsSummary>>({});
   const [logVisitOpen, setLogVisitOpen] = useState(false);
   const [logVisitDraft, setLogVisitDraft] = useState<Partial<VisitDraft> | undefined>(undefined);
   const [logVisitEditMode, setLogVisitEditMode] = useState(false);
@@ -180,6 +182,13 @@ export default function Home() {
 
   useEffect(() => {
     void (async () => { await fetchParksAndVisits(); })();
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/parks/nps-all')
+      .then((r) => r.json())
+      .then((data: Record<string, NpsSummary>) => setNpsCache(data))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -352,6 +361,7 @@ export default function Home() {
             <MapRightPanel
               key={selectedPark.park_code}
               park={selectedPark}
+              prefetchedNps={npsCache[selectedPark.park_code]}
               onClose={() => setSelectedParkCode(null)}
               onMarkVisited={() => handleMarkVisited(selectedPark.park_code)}
               onAddToBucketList={() => handleAddToBucketList(selectedPark.park_code)}

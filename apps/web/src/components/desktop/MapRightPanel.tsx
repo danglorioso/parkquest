@@ -5,6 +5,7 @@ import { X, Check, Bookmark, BookmarkX, ArrowRight, Pencil, ChevronLeft, Chevron
 import { fullStateName } from "@/lib/stateNames";
 import { LightboxModal, type LightboxImage } from "@/components/LightboxModal";
 import type { NpsData } from "@/app/api/parks/[park_code]/nps/route";
+import type { NpsSummary } from "@/app/api/parks/nps-all/route";
 
 interface VisitEntry {
   id: number;
@@ -53,6 +54,7 @@ interface Props {
   onAddToBucketList: () => void;
   onRemoveFromBucketList: () => void;
   onEditVisit: () => void;
+  prefetchedNps?: NpsSummary;
 }
 
 function useEscapeKey(onClose: () => void, blocked: boolean) {
@@ -142,14 +144,37 @@ function CarouselArrow({ dir, onClick }: { dir: "left" | "right"; onClick: (e: R
   );
 }
 
-export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList, onRemoveFromBucketList, onEditVisit }: Props) {
-  const [npsImages, setNpsImages] = useState<LightboxImage[]>(
+export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList, onRemoveFromBucketList, onEditVisit, prefetchedNps }: Props) {
+  const [fetchedImages, setFetchedImages] = useState<LightboxImage[]>(
     park.image_url ? [{ url: park.image_url }] : []
   );
+  const [fetchedNpsData, setFetchedNpsData] = useState<NpsData | null>(null);
   const [imgIdx, setImgIdx]       = useState(0);
   const [lightbox, setLightbox]   = useState<number | null>(null);
   const [closing, setClosing]     = useState(false);
-  const [npsData, setNpsData]     = useState<NpsData | null>(null);
+
+  const npsImages: LightboxImage[] = prefetchedNps
+    ? (prefetchedNps.images.length > 0
+        ? prefetchedNps.images.map((img) => ({ url: img.url, caption: img.title || undefined }))
+        : park.image_url ? [{ url: park.image_url }] : [])
+    : fetchedImages;
+
+  const npsData: NpsData | null = prefetchedNps
+    ? {
+        images: prefetchedNps.images.map((img) => ({ ...img, credit: "" })),
+        activities: prefetchedNps.activities,
+        entranceFees: prefetchedNps.entranceFees,
+        topics: [],
+        operatingHours: [],
+        directionsInfo: "",
+        directionsUrl: "",
+        weatherInfo: "",
+        phone: "",
+        email: "",
+        url: "",
+        designation: "",
+      }
+    : fetchedNpsData;
   const [expandedVisits, setExpandedVisits] = useState<Set<number>>(new Set());
 
   const handleClose = useCallback(() => {
@@ -160,6 +185,7 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
   useEscapeKey(handleClose, lightbox !== null);
 
   useEffect(() => {
+    if (prefetchedNps) return;
     fetch(`/api/parks/${park.park_code}/images`)
       .then((r) => r.json())
       .then((data) => {
@@ -169,14 +195,14 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
             caption: img.title || undefined,
           })
         );
-        setNpsImages(imgs);
+        setFetchedImages(imgs);
       })
       .catch(() => {});
     fetch(`/api/parks/${park.park_code}/nps`)
       .then((r) => r.json())
-      .then(setNpsData)
+      .then(setFetchedNpsData)
       .catch(() => {});
-  }, [park.park_code]);
+  }, [park.park_code, prefetchedNps]);
 
   // Carousel shows only NPS images — user photos appear in the visits section below
   const allImages: LightboxImage[] = npsImages;
@@ -299,7 +325,7 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
             >
               {park.name}
             </a>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", letterSpacing: "0.8px", fontWeight: 600 }}>
                 {firstState}
               </div>
