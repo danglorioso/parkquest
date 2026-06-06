@@ -1,4 +1,5 @@
 # ParkQuest
+Created by [Dan Glorioso](https://danglorioso.com).
 
 **Chase all 63. Leave your mark.**
 
@@ -19,11 +20,3 @@ A web and mobile app built for people who take the parks seriously. Log the park
 - Social feed to share and follow along
 
 ---
-
-## Status
-
-Actively in development. If you're interested in contributing or following along, reach out.
-
----
-
-*Built with passion for the parks.*
