@@ -8,6 +8,7 @@ import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { DesktopHeader } from "@/components/desktop/DesktopHeader";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
 import { BadgeCelebration } from "@/components/BadgeCelebration";
+import { BadgeShareModal } from "@/components/BadgeShareModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -617,6 +618,7 @@ export default function BadgesPage() {
 
 function FeaturedCard({ badge }: { badge: BadgeData }) {
   const [celebrating, setCelebrating] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const t = TIERS[badge.tier] ?? TIERS.bronze;
   const dateStr = badge.earned_at
     ? new Date(badge.earned_at)
@@ -691,13 +693,23 @@ function FeaturedCard({ badge }: { badge: BadgeData }) {
           <DesktopButton primary size="sm" onClick={() => setCelebrating(true)}>
             <Sparkles size={13} strokeWidth={2} /> Replay celebration
           </DesktopButton>
-          <DesktopButton size="sm">
-            <Share2 size={13} strokeWidth={2} /> Share
+          <DesktopButton size="sm" onClick={() => setSharing(true)}>
+            <Share2 size={13} strokeWidth={2} /> Share to feed
           </DesktopButton>
         </div>
       </div>
       {celebrating && (
-        <BadgeCelebration badge={badge} onClose={() => setCelebrating(false)} />
+        <BadgeCelebration
+          badge={badge}
+          onClose={() => setCelebrating(false)}
+          onShare={() => { setCelebrating(false); setSharing(true); }}
+        />
+      )}
+      {sharing && (
+        <BadgeShareModal
+          badge={{ ...badge, id: badge.id }}
+          onClose={() => setSharing(false)}
+        />
       )}
     </div>
   );

@@ -4,23 +4,39 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import {
-  Heart, MessageCircle, Share2, Bookmark,
+  Heart, MessageCircle, Bookmark,
   MoreHorizontal, MapPin, ChevronLeft, ChevronRight,
-  Filter, Plus, Search,
+  Filter, Plus, Search, Award,
 } from "lucide-react";
 import Link from "next/link";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { DesktopHeader } from "@/components/desktop/DesktopHeader";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
 import { CreatePostModal } from "@/components/CreatePostModal";
+import { ALL_BADGES } from "@/lib/badges";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface QuotedPost {
+  id: number;
+  caption: string | null;
+  photos: string[] | null;
+  park_code: string | null;
+  park_name: string | null;
+  badge_id: string | null;
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+}
 
 interface FeedPost {
   id: number;
   caption: string | null;
   photos: string[] | null;
   park_code: string | null;
+  badge_id: string | null;
+  quoted_post_id: number | null;
+  quoted_post: QuotedPost | null;
   created_at: string;
   clerk_user_id: string;
   park_name: string | null;
@@ -233,16 +249,90 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
   );
 }
 
+// ── BadgePostHeader ───────────────────────────────────────────────────────────
+
+const BADGE_TIERS: Record<string, { fill: string; label: string }> = {
+  bronze:    { fill: "#B27339", label: "BRONZE" },
+  silver:    { fill: "#A8A39B", label: "SILVER" },
+  gold:      { fill: "#D4A93F", label: "GOLD" },
+  platinum:  { fill: "#6E97A3", label: "PLATINUM" },
+  legendary: { fill: "#8B5DBF", label: "LEGENDARY" },
+};
+
+// ── QuotedPostBlock ───────────────────────────────────────────────────────────
+
+function QuotedPostBlock({ quoted }: { quoted: QuotedPost }) {
+  const name = quoted.display_name ?? quoted.username ?? "Explorer";
+  const preview = quoted.photos?.[0] ?? null;
+  return (
+    <div style={{ margin: "0 18px 12px" }}>
+      <div style={{
+        border: "0.5px solid var(--hairline)",
+        borderRadius: 12,
+        overflow: "hidden",
+        background: "var(--bg)",
+      }}>
+        {preview && (
+          <img src={preview} alt="" style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }} />
+        )}
+        <div style={{ padding: "9px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
+            <div style={{
+              width: 20, height: 20, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
+              background: "var(--surface-alt)", display: "flex", alignItems: "center",
+              justifyContent: "center", fontSize: 7, fontWeight: 700, color: "var(--ink-mute)",
+              fontFamily: "var(--font-mono)",
+            }}>
+              {quoted.avatar_url
+                ? <img src={quoted.avatar_url} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()}
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: "var(--ink)" }}>{name}</div>
+            {quoted.username && (
+              <div style={{ fontSize: 11, color: "var(--ink-mute)" }}>@{quoted.username}</div>
+            )}
+          </div>
+          {quoted.park_name && (
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 3, marginBottom: 4,
+              fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--primary)",
+              fontWeight: 700, letterSpacing: "0.4px",
+            }}>
+              <MapPin size={10} strokeWidth={2.4} />
+              {quoted.park_name.toUpperCase()}
+            </div>
+          )}
+          {quoted.caption && (
+            <div style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.45 }}>
+              {quoted.caption.length > 160 ? quoted.caption.slice(0, 160) + "…" : quoted.caption}
+            </div>
+          )}
+          {!quoted.caption && (
+            <div style={{ fontSize: 12, color: "var(--ink-mute)", fontStyle: "italic" }}>
+              {quoted.badge_id ? "Badge earned" : "Park visit"}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── PostCard ──────────────────────────────────────────────────────────────────
 
 function PostCard({
   post,
   onLike,
+  onQuote,
 }: {
   post: FeedPost;
   onLike: (id: number, liked: boolean) => void;
+  onQuote: (post: FeedPost) => void;
 }) {
-  const photos = post.photos && post.photos.length > 0 ? post.photos : [""]; // one empty = gradient placeholder
+  const isBadgePost = !!post.badge_id;
+  const isQuotePost = !!post.quoted_post_id && !!post.quoted_post;
+  const hasPhotos = !isBadgePost && post.photos && post.photos.length > 0;
+  const photos = hasPhotos ? post.photos! : [""];
   const name = post.display_name ?? post.username ?? "Explorer";
 
   return (
@@ -254,6 +344,52 @@ function PostCard({
         overflow: "hidden",
       }}
     >
+      {/* Badge banner */}
+      {isBadgePost && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "10px 18px",
+          background: "var(--surface-alt)",
+          borderBottom: "0.5px solid var(--hairline-soft)",
+        }}>
+          <Award size={14} strokeWidth={2} style={{ color: "var(--primary)", flexShrink: 0 }} />
+          <span style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "1.2px",
+            color: "var(--primary)",
+            fontWeight: 700,
+          }}>
+            BADGE EARNED
+          </span>
+        </div>
+      )}
+
+      {/* Quote banner */}
+      {isQuotePost && !isBadgePost && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "10px 18px",
+          background: "var(--surface-alt)",
+          borderBottom: "0.5px solid var(--hairline-soft)",
+        }}>
+          <Repeat2 size={14} strokeWidth={2} style={{ color: "var(--ink-mute)", flexShrink: 0 }} />
+          <span style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "1.2px",
+            color: "var(--ink-mute)",
+            fontWeight: 700,
+          }}>
+            QUOTED POST
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div
         style={{
@@ -273,7 +409,7 @@ function PostCard({
               </div>
             )}
           </div>
-          {post.park_name && (
+          {post.park_name && !isBadgePost && (
             <Link
               href={`/parks/${post.park_code}`}
               style={{ textDecoration: "none" }}
@@ -325,8 +461,15 @@ function PostCard({
         </div>
       )}
 
-      {/* Photo carousel */}
-      <PhotoCarousel photos={photos} parkCode={post.park_code} />
+      {/* Quoted post block */}
+      {isQuotePost && post.quoted_post && (
+        <QuotedPostBlock quoted={post.quoted_post} />
+      )}
+
+      {/* Photo carousel — only for regular/quote posts with photos */}
+      {!isBadgePost && (
+        <PhotoCarousel photos={photos} parkCode={post.park_code} />
+      )}
 
       {/* Action row */}
       <div
@@ -356,9 +499,9 @@ function PostCard({
           <span>{post.comment_count}</span>
         </ActionButton>
 
-        <ActionButton>
-          <Share2 size={22} strokeWidth={2.0} style={{ color: "var(--ink)" }} />
-          <span>Share</span>
+        <ActionButton onClick={() => onQuote(post)}>
+          <Repeat2 size={22} strokeWidth={2.0} style={{ color: "var(--ink)" }} />
+          <span>Quote</span>
         </ActionButton>
 
         <div style={{ flex: 1 }} />
@@ -881,6 +1024,7 @@ export default function FeedPage() {
   const [visited, setVisited] = useState(0);
   const [total, setTotal]   = useState(63);
   const [showCreate, setShowCreate] = useState(false);
+  const [quotingPost, setQuotingPost] = useState<FeedPost | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [trending, setTrending] = useState<TrendingPark[]>([]);
@@ -970,16 +1114,22 @@ export default function FeedPage() {
     }
   };
 
+  const refreshFeed = () =>
+    fetch("/api/feed").then(r => r.ok ? r.json() : []).then(setPosts).catch(() => {});
+
   return (
     <>
     {showCreate && (
       <CreatePostModal
         onClose={() => setShowCreate(false)}
-        onPost={() => {
-          setShowCreate(false);
-          // Refresh feed after posting
-          fetch("/api/feed").then(r => r.ok ? r.json() : []).then(setPosts).catch(() => {});
-        }}
+        onPost={() => { setShowCreate(false); refreshFeed(); }}
+      />
+    )}
+    {quotingPost && (
+      <QuotePostModal
+        post={quotingPost}
+        onClose={() => setQuotingPost(null)}
+        onPost={() => { setQuotingPost(null); refreshFeed(); }}
       />
     )}
     <DesktopShell
@@ -1050,7 +1200,7 @@ export default function FeedPage() {
         )}
 
         {posts.map((post) => (
-          <PostCard key={post.id} post={post} onLike={handleLike} />
+          <PostCard key={post.id} post={post} onLike={handleLike} onQuote={setQuotingPost} />
         ))}
 
         {!loading && posts.length > 0 && (

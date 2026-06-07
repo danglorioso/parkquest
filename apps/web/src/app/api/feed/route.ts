@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, desc, and, or, sql } from 'drizzle-orm';
+import { eq, desc, and, or, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, friendships, parks, userProfiles } from '@/lib/db/schema';
 
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
     const friendIds = new Set(friendRows.map(r => r.friend_id));
 
-    // Fetch all posts (all are public); newest first
+    // Fetch all posts; newest first
     const feedPosts = await db
       .select({
         id: posts.id,
@@ -36,6 +36,8 @@ export async function GET(request: Request) {
         photos: posts.photos,
         park_code: posts.park_code,
         visit_id: posts.visit_id,
+        quoted_post_id: posts.quoted_post_id,
+        badge_id: posts.badge_id,
         created_at: posts.created_at,
         clerk_user_id: posts.clerk_user_id,
         park_name: parks.name,
@@ -53,7 +55,45 @@ export async function GET(request: Request) {
       .limit(limit)
       .offset(offset);
 
-    // Normalize photos to URL strings and annotate friend/own posts
+    // Fetch quoted posts in one batch
+    const quotedIds = feedPosts
+      .map(p => p.quoted_post_id)
+      .filter((id): id is number => id != null);
+
+    let quotedMap = new Map<number, object>();
+    if (quotedIds.length > 0) {
+      const quotedPosts = await db
+        .select({
+          id: posts.id,
+          caption: posts.caption,
+          photos: posts.photos,
+          park_code: posts.park_code,
+          badge_id: posts.badge_id,
+          created_at: posts.created_at,
+          clerk_user_id: posts.clerk_user_id,
+          park_name: parks.name,
+          username: userProfiles.username,
+          display_name: userProfiles.display_name,
+          avatar_url: userProfiles.avatar_url,
+        })
+        .from(posts)
+        .leftJoin(parks, eq(posts.park_code, parks.park_code))
+        .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
+        .where(inArray(posts.id, quotedIds));
+
+      for (const qp of quotedPosts) {
+        quotedMap.set(qp.id, {
+          ...qp,
+          photos: Array.isArray(qp.photos)
+            ? (qp.photos as Array<{ url: string } | string>).map(ph =>
+                typeof ph === 'string' ? ph : ph.url
+              )
+            : null,
+        });
+      }
+    }
+
+    // Normalize and annotate
     const normalized = feedPosts.map(p => ({
       ...p,
       is_friend_post: p.clerk_user_id === userId || friendIds.has(p.clerk_user_id),
@@ -62,12 +102,13 @@ export async function GET(request: Request) {
             typeof ph === 'string' ? ph : ph.url
           )
         : null,
+      quoted_post: p.quoted_post_id ? quotedMap.get(p.quoted_post_id) ?? null : null,
     }));
 
-    // Sort: own + friend posts first, then everyone else — preserve recency within each group
+    // Own + friend posts first, preserve recency within groups
     normalized.sort((a, b) => {
       if (a.is_friend_post !== b.is_friend_post) return a.is_friend_post ? -1 : 1;
-      return 0; // already ordered by created_at DESC from the DB
+      return 0;
     });
 
     return NextResponse.json(normalized);

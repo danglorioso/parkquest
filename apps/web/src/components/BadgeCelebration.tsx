@@ -12,6 +12,7 @@ interface CelebrationBadge {
 interface BadgeCelebrationProps {
   badge: CelebrationBadge;
   onClose: () => void;
+  onShare?: (badge: CelebrationBadge) => void;
 }
 
 const TIERS: Record<string, { name: string; fill: string; light: string; glow: string }> = {
@@ -24,7 +25,7 @@ const TIERS: Record<string, { name: string; fill: string; light: string; glow: s
 
 const CONFETTI_COLORS = ["#C56B3D", "#D89A3A", "#2F7A4A", "#FFFBF1", "#6E97A3"];
 
-export function BadgeCelebration({ badge, onClose }: BadgeCelebrationProps) {
+export function BadgeCelebration({ badge, onClose, onShare }: BadgeCelebrationProps) {
   const id = useId().replace(/:/g, "");
   const t = TIERS[badge.tier] ?? TIERS.bronze;
 
@@ -150,24 +151,41 @@ export function BadgeCelebration({ badge, onClose }: BadgeCelebrationProps) {
           {badge.description}
         </div>
 
-        {/* CTA */}
-        <button
-          onClick={onClose}
-          style={{
-            marginTop: 28,
-            background: "#FFFBF1",
-            color: "#1B1A16",
-            border: 0,
-            padding: "12px 28px",
-            borderRadius: 100,
-            cursor: "pointer",
-            fontWeight: 700,
-            fontSize: 14,
-            animation: "pqTextIn 400ms 1000ms both",
-          }}
-        >
-          Share to feed
-        </button>
+        {/* CTAs */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 28, animation: "pqTextIn 400ms 1000ms both" }}>
+          {onShare && (
+            <button
+              onClick={() => { onShare(badge); onClose(); }}
+              style={{
+                background: "#FFFBF1",
+                color: "#1B1A16",
+                border: 0,
+                padding: "12px 24px",
+                borderRadius: 100,
+                cursor: "pointer",
+                fontWeight: 700,
+                fontSize: 14,
+              }}
+            >
+              Share to feed
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            style={{
+              background: "transparent",
+              color: "rgba(255,251,241,0.7)",
+              border: "1.5px solid rgba(255,251,241,0.35)",
+              padding: "12px 24px",
+              borderRadius: 100,
+              cursor: "pointer",
+              fontWeight: 700,
+              fontSize: 14,
+            }}
+          >
+            {onShare ? "Maybe later" : "Dismiss"}
+          </button>
+        </div>
       </div>
     </div>
   );

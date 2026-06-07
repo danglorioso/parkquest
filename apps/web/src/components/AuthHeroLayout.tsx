@@ -1890,9 +1890,12 @@ interface AuthHeroLayoutProps {
 
 export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
   const leftRef = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<"signin" | "signup" | "username" | "forgot_password">(
-    () => forcedMode ?? (localStorage.getItem("pq_returning") ? "signin" : "signup")
-  );
+  const [mode, setMode] = useState<"signin" | "signup" | "username" | "forgot_password">(() => {
+    if (forcedMode) return forcedMode;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("mode") === "signin") return "signin";
+    return localStorage.getItem("pq_returning") ? "signin" : "signup";
+  });
   const [prefilledEmail, setPrefilledEmail] = useState("");
   const [signInMessage, setSignInMessage] = useState<string | null>(null);
   const [forgotEmail, setForgotEmail] = useState("");

@@ -4,26 +4,6 @@ import { eq, desc, and, or, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, parks, userProfiles, friendships, notifications } from '@/lib/db/schema';
 
-function enrichedPostsQuery(whereClause: Parameters<typeof db.select>[0] extends never ? never : any) {
-  return db
-    .select({
-      id: posts.id,
-      caption: posts.caption,
-      photos: posts.photos,
-      park_code: posts.park_code,
-      visit_id: posts.visit_id,
-      created_at: posts.created_at,
-      clerk_user_id: posts.clerk_user_id,
-      park_name: parks.name,
-      username: userProfiles.username,
-      display_name: userProfiles.display_name,
-      avatar_url: userProfiles.avatar_url,
-    })
-    .from(posts)
-    .leftJoin(parks, eq(posts.park_code, parks.park_code))
-    .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id));
-}
-
 export async function GET(request: Request) {
   try {
     const { userId: viewerId } = await auth();
@@ -40,6 +20,8 @@ export async function GET(request: Request) {
         photos: posts.photos,
         park_code: posts.park_code,
         visit_id: posts.visit_id,
+        quoted_post_id: posts.quoted_post_id,
+        badge_id: posts.badge_id,
         created_at: posts.created_at,
         clerk_user_id: posts.clerk_user_id,
         park_name: parks.name,
@@ -73,17 +55,29 @@ export async function POST(request: Request) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { caption, photos, park_code, visit_id } = await request.json();
-    if (!caption && (!photos || photos.length === 0)) {
+    const { caption, photos, park_code, visit_id, quoted_post_id, badge_id } = await request.json();
+
+    const isBadgePost = !!badge_id;
+    const isQuotePost = !!quoted_post_id;
+
+    if (!isBadgePost && !isQuotePost && !caption && (!photos || photos.length === 0)) {
       return NextResponse.json({ error: 'Post must have a caption or photos' }, { status: 400 });
     }
 
     const [post] = await db
       .insert(posts)
-      .values({ clerk_user_id: userId, caption: caption ?? null, photos: photos ?? null, park_code: park_code ?? null, visit_id: visit_id ?? null })
+      .values({
+        clerk_user_id: userId,
+        caption: caption ?? null,
+        photos: photos ?? null,
+        park_code: park_code ?? null,
+        visit_id: visit_id ?? null,
+        quoted_post_id: quoted_post_id ?? null,
+        badge_id: badge_id ?? null,
+      })
       .returning();
 
-    // Notify friends about the new post (fire and forget)
+    // Notify friends (fire and forget)
     db.select({
         friend_id: sql<string>`CASE WHEN ${friendships.requester_id} = ${userId} THEN ${friendships.recipient_id} ELSE ${friendships.requester_id} END`,
       })
