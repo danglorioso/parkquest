@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import {
   Home, Sparkles, Map, User, Award, Compass,
@@ -884,27 +884,31 @@ export function DesktopShell({
         onLogVisit={handleLogVisit}
         onOpenSpotlight={handleOpenSpotlight}
       />
-      <MobileDrawer
-        open={mobileMenuOpen}
-        onClose={() => setMobileMenuOpen(false)}
-        visitedCount={visitedCount}
-        totalCount={totalCount}
-        bucketCount={bucketCount}
-        username={user?.username}
-        onLogVisit={handleLogVisit}
-        onEditAccount={() => setEditOpen(true)}
-      />
+      <Suspense>
+        <MobileDrawer
+          open={mobileMenuOpen}
+          onClose={() => setMobileMenuOpen(false)}
+          visitedCount={visitedCount}
+          totalCount={totalCount}
+          bucketCount={bucketCount}
+          username={user?.username}
+          onLogVisit={handleLogVisit}
+          onEditAccount={() => setEditOpen(true)}
+        />
+      </Suspense>
 
       {/* Desktop-only: left sidebar */}
-      <DesktopSidebar
-        visitedCount={visitedCount}
-        totalCount={totalCount}
-        bucketCount={bucketCount}
-        username={user?.username}
-        onLogVisit={handleLogVisit}
-        onEditAccount={() => setEditOpen(true)}
-        onOpenSpotlight={handleOpenSpotlight}
-      />
+      <Suspense>
+        <DesktopSidebar
+          visitedCount={visitedCount}
+          totalCount={totalCount}
+          bucketCount={bucketCount}
+          username={user?.username}
+          onLogVisit={handleLogVisit}
+          onEditAccount={() => setEditOpen(true)}
+          onOpenSpotlight={handleOpenSpotlight}
+        />
+      </Suspense>
 
       {/* Main content — offset by header height on mobile */}
       <div className="flex flex-1 min-w-0 pt-[54px] md:pt-0 md:min-h-0" style={{ background: "var(--bg)" }}>

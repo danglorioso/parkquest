@@ -198,6 +198,8 @@ export default function ParkPage({
   const [visitJournal, setVisitJournal] = useState<{ title: string | null; notes: string | null; photos: string[] | null; visibility: string | null }>({ title: null, notes: null, photos: null, visibility: null });
   const [heroLoaded, setHeroLoaded] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [carouselDisplayedIndex, setCarouselDisplayedIndex] = useState(0);
+  const [carouselImgLoading, setCarouselImgLoading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showAllActivities, setShowAllActivities] = useState(true);
   const [showAllTopics, setShowAllTopics] = useState(true);
@@ -500,7 +502,11 @@ export default function ParkPage({
                   src={park.images[carouselIndex].url}
                   alt={park.images[carouselIndex].altText}
                   className="w-full h-full object-cover"
+                  onLoad={() => { setCarouselDisplayedIndex(carouselIndex); setCarouselImgLoading(false); }}
                 />
+                {carouselImgLoading && (
+                  <div className="absolute inset-0 bg-gray-800 animate-pulse" />
+                )}
                 {/* Expand button in corner */}
                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors">
@@ -512,14 +518,14 @@ export default function ParkPage({
                 {park.images.length > 1 && (
                   <>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setCarouselIndex((i) => (i - 1 + park.images.length) % park.images.length); }}
+                      onClick={(e) => { e.stopPropagation(); setCarouselImgLoading(true); setCarouselIndex((i) => (i - 1 + park.images.length) % park.images.length); }}
                       className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 bg-black/40 hover:bg-black/70 text-white rounded-full transition-colors opacity-0 group-hover:opacity-100"
                       aria-label="Previous photo"
                     >
                       <ChevronLeft className="h-5 w-5" />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setCarouselIndex((i) => (i + 1) % park.images.length); }}
+                      onClick={(e) => { e.stopPropagation(); setCarouselImgLoading(true); setCarouselIndex((i) => (i + 1) % park.images.length); }}
                       className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 bg-black/40 hover:bg-black/70 text-white rounded-full transition-colors opacity-0 group-hover:opacity-100"
                       aria-label="Next photo"
                     >
@@ -537,13 +543,13 @@ export default function ParkPage({
               </div>
 
               {/* Caption */}
-              {(park.images[carouselIndex].title || park.images[carouselIndex].caption) && (
+              {(park.images[carouselDisplayedIndex].title || park.images[carouselDisplayedIndex].caption) && (
                 <div className="px-4 py-3 border-t border-gray-100">
-                  {park.images[carouselIndex].title && (
-                    <p className="text-sm font-medium text-gray-800">{park.images[carouselIndex].title}</p>
+                  {park.images[carouselDisplayedIndex].title && (
+                    <p className="text-sm font-medium text-gray-800">{park.images[carouselDisplayedIndex].title}</p>
                   )}
-                  {park.images[carouselIndex].caption && (
-                    <p className="text-xs text-gray-400 mt-0.5">{park.images[carouselIndex].caption}</p>
+                  {park.images[carouselDisplayedIndex].caption && (
+                    <p className="text-xs text-gray-400 mt-0.5">{park.images[carouselDisplayedIndex].caption}</p>
                   )}
                 </div>
               )}
@@ -554,9 +560,9 @@ export default function ParkPage({
                   {park.images.map((_, i) => (
                     <button
                       key={i}
-                      onClick={() => setCarouselIndex(i)}
+                      onClick={() => { setCarouselImgLoading(true); setCarouselIndex(i); }}
                       className={`rounded-full transition-all ${
-                        i === carouselIndex
+                        i === carouselDisplayedIndex
                           ? "w-4 h-2 bg-emerald-500"
                           : "w-2 h-2 bg-gray-300 hover:bg-gray-400"
                       }`}
