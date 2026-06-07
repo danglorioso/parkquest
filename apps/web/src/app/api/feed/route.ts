@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, desc, and, or, inArray, sql } from 'drizzle-orm';
+import { eq, desc, and, or, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, friendships, parks, userProfiles } from '@/lib/db/schema';
 
@@ -25,7 +25,12 @@ export async function GET(request: Request) {
         )
       );
 
-    const feedUserIds = [userId, ...friendRows.map(r => r.friend_id)];
+    const friendIds = friendRows.map(r => r.friend_id);
+
+    // Show all posts (all are public); rank own + friends' posts first
+    const friendListLiteral = friendIds.length > 0
+      ? `ARRAY[${friendIds.map(id => `'${id}'`).join(',')}]::text[]`
+      : `ARRAY[]::text[]`;
 
     const feedPosts = await db
       .select({
@@ -43,16 +48,29 @@ export async function GET(request: Request) {
         like_count: sql<number>`(SELECT COUNT(*)::int FROM likes WHERE likes.post_id = ${posts.id})`,
         comment_count: sql<number>`(SELECT COUNT(*)::int FROM comments WHERE comments.post_id = ${posts.id})`,
         liked_by_me: sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${userId})`,
+        is_friend_post: sql<boolean>`(${posts.clerk_user_id} = ${userId} OR ${posts.clerk_user_id} = ANY(${sql.raw(friendListLiteral)}))`,
       })
       .from(posts)
       .leftJoin(parks, eq(posts.park_code, parks.park_code))
       .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
-      .where(inArray(posts.clerk_user_id, feedUserIds))
-      .orderBy(desc(posts.created_at))
+      .orderBy(
+        sql`(${posts.clerk_user_id} = ${userId} OR ${posts.clerk_user_id} = ANY(${sql.raw(friendListLiteral)})) DESC`,
+        desc(posts.created_at),
+      )
       .limit(limit)
       .offset(offset);
 
-    return NextResponse.json(feedPosts);
+    // Extract photo URLs from stored objects
+    const normalized = feedPosts.map(p => ({
+      ...p,
+      photos: Array.isArray(p.photos)
+        ? (p.photos as Array<{ url: string } | string>).map(ph =>
+            typeof ph === 'string' ? ph : ph.url
+          )
+        : null,
+    }));
+
+    return NextResponse.json(normalized);
   } catch (error) {
     console.error('Error fetching feed:', error);
     return NextResponse.json({ error: 'Failed to fetch feed' }, { status: 500 });

@@ -7,11 +7,12 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   MapPin, Users, UserCheck, UserPlus, Clock,
-  TreePine, Award, ChevronLeft,
+  TreePine, Award, ChevronLeft, X,
 } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import Logo from "@/components/Logo";
 import type { MapPark } from "@/components/USAMapGL";
+import { ALL_BADGES } from "@/lib/badges";
 
 const USAMap = dynamic(() => import("@/components/USAMapGL"), {
   ssr: false,
@@ -94,6 +95,105 @@ const TIER_BG: Record<string, string> = {
   bronze: "#FDF5EB", silver: "#F4F6F7", gold: "#FEF9E6",
   platinum: "#EBF4F7", legendary: "#F5EFFE",
 };
+
+function BadgeModal({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
+  const def = ALL_BADGES.find((b) => b.id === badge.badge_id);
+  const tierColor = TIER_COLOR[badge.tier] ?? "#888";
+  const tierBg = TIER_BG[badge.tier] ?? "#F9F9F9";
+  const earnedDate = badge.earned_at
+    ? new Date(badge.earned_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : null;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--bg)",
+          borderRadius: 18,
+          border: "0.5px solid var(--hairline)",
+          padding: "32px 28px",
+          maxWidth: 360,
+          width: "100%",
+          position: "relative",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.18)",
+        }}
+      >
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute", top: 14, right: 14,
+            background: "none", border: "none", cursor: "pointer",
+            color: "var(--ink-mute)", padding: 4, borderRadius: 6,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <X size={16} />
+        </button>
+
+        {/* Emoji + tier badge */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
+          <div style={{
+            width: 72, height: 72, borderRadius: 20,
+            background: tierBg,
+            border: `2px solid ${tierColor}44`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 36, marginBottom: 12,
+          }}>
+            {badge.emoji}
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 20, color: "var(--ink)", textAlign: "center", letterSpacing: -0.3 }}>
+            {badge.name}
+          </div>
+          <div style={{
+            fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1.6px",
+            color: tierColor, fontWeight: 700, textTransform: "uppercase",
+            marginTop: 5,
+          }}>
+            {badge.tier}
+          </div>
+        </div>
+
+        {/* Description */}
+        {def && (
+          <div style={{
+            background: "var(--surface)",
+            border: "0.5px solid var(--hairline)",
+            borderRadius: 10,
+            padding: "14px 16px",
+            marginBottom: 16,
+          }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "1.2px", color: "var(--ink-mute)", fontWeight: 600, marginBottom: 6 }}>
+              HOW TO EARN
+            </div>
+            <div style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55 }}>
+              {def.description}
+            </div>
+          </div>
+        )}
+
+        {/* Earned date */}
+        {earnedDate ? (
+          <div style={{ textAlign: "center", fontSize: 12, color: "var(--ink-mute)" }}>
+            Earned on <span style={{ fontWeight: 650, color: "var(--ink-soft)" }}>{earnedDate}</span>
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", fontSize: 12, color: "var(--ink-mute)", fontStyle: "italic" }}>
+            Not yet earned
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function explorerRank(n: number) {
   if (n >= 63) return "NATIONAL LEGEND";
@@ -376,47 +476,45 @@ function ProfileSkeleton() {
   return (
     <>
       <style>{`@keyframes pq-shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }`}</style>
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 28px 80px" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 22, marginBottom: 28 }}>
-          <Bone w={84} h={84} r={42} />
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
-            <Bone w={180} h={22} r={6} />
-            <Bone w={120} h={13} r={4} />
-            <Bone w={260} h={13} r={4} />
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 22, marginBottom: 28 }}>
+        <Bone w={84} h={84} r={42} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
+          <Bone w={180} h={22} r={6} />
+          <Bone w={120} h={13} r={4} />
+          <Bone w={260} h={13} r={4} />
+        </div>
+      </div>
+      {/* Stats row */}
+      <div style={{ display: "flex", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 14, overflow: "hidden", marginBottom: 28 }}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} style={{ flex: 1, padding: "18px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, borderRight: i < 4 ? "0.5px solid var(--hairline)" : "none" }}>
+            <Bone w={36} h={28} r={4} />
+            <Bone w={52} h={10} r={3} />
           </div>
+        ))}
+      </div>
+      {/* Map + passport */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 16, marginBottom: 28 }}>
+        <Bone h={240} r={14} />
+        <Bone h={240} r={14} />
+      </div>
+      {/* Badges */}
+      <div style={{ marginBottom: 28 }}>
+        <Bone w={100} h={12} r={4} style={{ marginBottom: 14 }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          {Array.from({ length: 4 }).map((_, i) => <Bone key={i} w={120} h={38} r={8} />)}
         </div>
-        {/* Stats row */}
-        <div style={{ display: "flex", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 14, overflow: "hidden", marginBottom: 28 }}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} style={{ flex: 1, padding: "18px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, borderRight: i < 4 ? "0.5px solid var(--hairline)" : "none" }}>
-              <Bone w={36} h={28} r={4} />
-              <Bone w={52} h={10} r={3} />
-            </div>
-          ))}
-        </div>
-        {/* Map + passport */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 16, marginBottom: 28 }}>
-          <Bone h={240} r={14} />
-          <Bone h={240} r={14} />
-        </div>
-        {/* Badges */}
-        <div style={{ marginBottom: 28 }}>
-          <Bone w={100} h={12} r={4} style={{ marginBottom: 14 }} />
-          <div style={{ display: "flex", gap: 8 }}>
-            {Array.from({ length: 4 }).map((_, i) => <Bone key={i} w={120} h={38} r={8} />)}
+      </div>
+      {/* Journal */}
+      <div>
+        <Bone w={80} h={12} r={4} style={{ marginBottom: 20 }} />
+        <Bone w={48} h={20} r={4} style={{ marginBottom: 16 }} />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} style={{ paddingLeft: 20, marginBottom: 14, position: "relative" }}>
+            <Bone h={70} r={10} />
           </div>
-        </div>
-        {/* Journal */}
-        <div>
-          <Bone w={80} h={12} r={4} style={{ marginBottom: 20 }} />
-          <Bone w={48} h={20} r={4} style={{ marginBottom: 16 }} />
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} style={{ paddingLeft: 20, marginBottom: 14, position: "relative" }}>
-              <Bone h={70} r={10} />
-            </div>
-          ))}
-        </div>
+        ))}
       </div>
     </>
   );
@@ -433,6 +531,7 @@ export default function ProfilePage() {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
 
   useEffect(() => {
     if (!username) return;
@@ -691,14 +790,20 @@ export default function ProfilePage() {
           <Section title="BADGES EARNED" icon={Award}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {profile.badges.map((b) => (
-                <div key={b.badge_id}
-                  title={b.name}
+                <button
+                  key={b.badge_id}
+                  onClick={() => setSelectedBadge(b)}
                   style={{
                     display: "flex", alignItems: "center", gap: 6,
                     background: TIER_BG[b.tier] ?? "#F9F9F9",
                     border: `1px solid ${TIER_COLOR[b.tier] ?? "#ccc"}33`,
                     borderRadius: 8, padding: "5px 10px",
-                  }}>
+                    cursor: "pointer",
+                    transition: "filter 120ms",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(0.96)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; }}
+                >
                   <span style={{ fontSize: 15 }}>{b.emoji}</span>
                   <div>
                     <div style={{ fontSize: 11.5, fontWeight: 650, color: "var(--ink)", lineHeight: 1.2 }}>{b.name}</div>
@@ -706,11 +811,15 @@ export default function ProfilePage() {
                       {b.tier}
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </Section>
         </div>
+      )}
+
+      {selectedBadge && (
+        <BadgeModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
       )}
 
       {/* ── Passport stamps ── */}

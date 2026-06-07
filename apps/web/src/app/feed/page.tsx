@@ -30,6 +30,7 @@ interface FeedPost {
   like_count: number;
   comment_count: number;
   liked_by_me: boolean;
+  is_friend_post: boolean;
 }
 
 // ── Deterministic park gradient ───────────────────────────────────────────────
@@ -997,7 +998,7 @@ export default function FeedPage() {
       <DesktopHeader
         kicker="THE FEED"
         title="Out there"
-        sub="Latest posts from your friends"
+        sub="Latest posts from your friends and the community"
         actions={
           <>
             <DesktopButton size="sm">
@@ -1044,7 +1045,7 @@ export default function FeedPage() {
               fontSize: 14,
             }}
           >
-            Nothing in your feed yet — add some friends or log your first visit.
+            No posts yet — be the first to share a park!
           </div>
         )}
 
