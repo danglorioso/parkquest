@@ -1126,8 +1126,8 @@ export default function ParkDetailPage({
   const [nps, setNps] = useState<NpsData | null>(null);
   const [forecast, setForecast] = useState<WeatherForecast | null>(null);
   const [journalOpen, setJournalOpen] = useState(false);
-  const [activitiesExpanded, setActivitiesExpanded] = useState(false);
-  const [topicsExpanded, setTopicsExpanded] = useState(false);
+  const [activitiesExpanded, setActivitiesExpanded] = useState(true);
+  const [topicsExpanded, setTopicsExpanded] = useState(true);
   const [lightbox, setLightbox] = useState<{ images: LightboxImage[]; index: number } | null>(null);
   const [heroLoaded, setHeroLoaded]   = useState(false);
   const [stripLoaded, setStripLoaded] = useState([false, false, false, false]);

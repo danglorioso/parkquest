@@ -199,6 +199,8 @@ export default function ParkPage({
   const [heroLoaded, setHeroLoaded] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [showAllActivities, setShowAllActivities] = useState(true);
+  const [showAllTopics, setShowAllTopics] = useState(true);
 
   interface WeatherPeriod {
     name: string;
@@ -570,7 +572,7 @@ export default function ParkPage({
           {park.activities?.length > 0 && (
             <Section title="Activities" icon={<Tag className="h-4 w-4" />}>
               <div className="flex flex-wrap gap-2">
-                {park.activities.map((a) => (
+                {(showAllActivities ? park.activities : park.activities.slice(0, 8)).map((a) => (
                   <Link
                     key={a.id}
                     href={`/parks?activityId=${a.id}`}
@@ -580,6 +582,14 @@ export default function ParkPage({
                   </Link>
                 ))}
               </div>
+              {park.activities.length > 8 && (
+                <button
+                  onClick={() => setShowAllActivities((v) => !v)}
+                  className="mt-2 text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                >
+                  {showAllActivities ? "Show less" : `Show ${park.activities.length - 8} more`}
+                </button>
+              )}
             </Section>
           )}
 
@@ -821,7 +831,7 @@ export default function ParkPage({
           {park.topics?.length > 0 && (
             <SideCard title="Topics" icon={<Tag className="h-4 w-4" />}>
               <div className="flex flex-wrap gap-1.5">
-                {park.topics.map((t) => (
+                {(showAllTopics ? park.topics : park.topics.slice(0, 6)).map((t) => (
                   <span
                     key={t.id}
                     className="px-2.5 py-0.5 bg-sky-50 text-sky-700 text-xs rounded-full border border-sky-200"
@@ -830,6 +840,14 @@ export default function ParkPage({
                   </span>
                 ))}
               </div>
+              {park.topics.length > 6 && (
+                <button
+                  onClick={() => setShowAllTopics((v) => !v)}
+                  className="mt-2 text-xs text-sky-600 hover:text-sky-700 font-medium"
+                >
+                  {showAllTopics ? "Show less" : `Show ${park.topics.length - 6} more`}
+                </button>
+              )}
             </SideCard>
           )}
 
