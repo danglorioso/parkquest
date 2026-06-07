@@ -7,9 +7,10 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   MapPin, Users, UserCheck, UserPlus, Clock,
-  TreePine, Footprints, Award,
+  TreePine, Award, ChevronLeft,
 } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
+import Logo from "@/components/Logo";
 import type { MapPark } from "@/components/USAMapGL";
 
 const USAMap = dynamic(() => import("@/components/USAMapGL"), {
@@ -356,6 +357,71 @@ function JournalTimeline({ entries }: { entries: JournalEntry[] }) {
   );
 }
 
+// ── Skeleton ──────────────────────────────────────────────────────────────────
+
+function Bone({ w = "100%", h = 16, r = 6, style }: { w?: number | string; h?: number; r?: number; style?: React.CSSProperties }) {
+  return (
+    <div style={{
+      width: w, height: h, borderRadius: r,
+      background: "linear-gradient(90deg, var(--surface-alt) 25%, var(--hairline) 50%, var(--surface-alt) 75%)",
+      backgroundSize: "200% 100%",
+      animation: "pq-shimmer 1.4s ease-in-out infinite",
+      flexShrink: 0,
+      ...style,
+    }} />
+  );
+}
+
+function ProfileSkeleton() {
+  return (
+    <>
+      <style>{`@keyframes pq-shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }`}</style>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 28px 80px" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 22, marginBottom: 28 }}>
+          <Bone w={84} h={84} r={42} />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
+            <Bone w={180} h={22} r={6} />
+            <Bone w={120} h={13} r={4} />
+            <Bone w={260} h={13} r={4} />
+          </div>
+        </div>
+        {/* Stats row */}
+        <div style={{ display: "flex", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 14, overflow: "hidden", marginBottom: 28 }}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} style={{ flex: 1, padding: "18px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, borderRight: i < 4 ? "0.5px solid var(--hairline)" : "none" }}>
+              <Bone w={36} h={28} r={4} />
+              <Bone w={52} h={10} r={3} />
+            </div>
+          ))}
+        </div>
+        {/* Map + passport */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 16, marginBottom: 28 }}>
+          <Bone h={240} r={14} />
+          <Bone h={240} r={14} />
+        </div>
+        {/* Badges */}
+        <div style={{ marginBottom: 28 }}>
+          <Bone w={100} h={12} r={4} style={{ marginBottom: 14 }} />
+          <div style={{ display: "flex", gap: 8 }}>
+            {Array.from({ length: 4 }).map((_, i) => <Bone key={i} w={120} h={38} r={8} />)}
+          </div>
+        </div>
+        {/* Journal */}
+        <div>
+          <Bone w={80} h={12} r={4} style={{ marginBottom: 20 }} />
+          <Bone w={48} h={20} r={4} style={{ marginBottom: 16 }} />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} style={{ paddingLeft: 20, marginBottom: 14, position: "relative" }}>
+              <Bone h={70} r={10} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
@@ -442,11 +508,13 @@ export default function ProfilePage() {
 
   const stateAbbr = (states: string) => states.split(",")[0].trim();
 
-  const emptyOrLoading = (
-    <div style={{ textAlign: "center", padding: "80px 0", color: "var(--ink-mute)", fontSize: 14 }}>
-      {loading ? "Loading…" : error ? "Failed to load profile." : notFound ? `@${username} doesn't exist.` : null}
-    </div>
-  );
+  const emptyOrLoading = loading
+    ? <ProfileSkeleton />
+    : (
+      <div style={{ textAlign: "center", padding: "80px 0", color: "var(--ink-mute)", fontSize: 14 }}>
+        {error ? "Failed to load profile." : notFound ? `@${username} doesn't exist.` : null}
+      </div>
+    );
 
   const memberSince = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })
@@ -454,6 +522,24 @@ export default function ProfilePage() {
 
   const content = profile ? (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 28px 80px" }}>
+
+      {/* ── Back button ── */}
+      {!profile.is_own_profile && (
+        <button
+          onClick={() => router.push("/friends")}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            background: "none", border: "none", cursor: "pointer",
+            color: "var(--ink-mute)", fontSize: 13, fontWeight: 600,
+            padding: "0 0 20px", marginLeft: -4,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--ink)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--ink-mute)"; }}
+        >
+          <ChevronLeft size={15} strokeWidth={2.5} />
+          Back
+        </button>
+      )}
 
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 22, marginBottom: 28 }}>
@@ -757,10 +843,7 @@ export default function ProfilePage() {
         display: "flex", alignItems: "center", justifyContent: "space-between",
         height: 54,
       }}>
-        <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 7, color: "var(--primary)" }}>
-          <Footprints size={20} strokeWidth={2} />
-          <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: -0.3 }}>ParkQuest</span>
-        </Link>
+        <Logo />
         <div style={{ display: "flex", gap: 8 }}>
           <Link href="/sign-in" style={{ textDecoration: "none" }}>
             <button style={{

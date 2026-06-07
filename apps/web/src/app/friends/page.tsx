@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, UserCheck, Clock, UserRound, UserPlus } from "lucide-react";
+import { Users, UserCheck, Clock, UserRound, UserPlus, Search } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -15,6 +15,13 @@ interface FriendUser {
   display_name: string | null;
   avatar_url: string | null;
   friends_since: string | null;
+}
+
+interface SearchUser {
+  clerk_user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
 }
 
 interface PendingUser {
@@ -60,6 +67,11 @@ export default function FriendsPage() {
   const [respondedTo, setRespondedTo] = useState<Set<number>>(new Set());
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<Set<number>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -80,6 +92,28 @@ export default function FriendsPage() {
       setOutgoing([]);
     });
   }, [isLoaded, isSignedIn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    if (!searchQuery.trim()) { setSearchResults([]); setSearchLoading(false); return; }
+    setSearchLoading(true);
+    searchDebounce.current = setTimeout(() => {
+      fetch(`/api/users?search=${encodeURIComponent(searchQuery.trim())}&limit=12`)
+        .then(r => r.ok ? r.json() : [])
+        .then((data: SearchUser[]) => { setSearchResults(data); setSearchLoading(false); })
+        .catch(() => setSearchLoading(false));
+    }, 280);
+  }, [searchQuery]);
+
+  const handleAddFromSearch = async (targetId: string) => {
+    setSentIds(prev => new Set(prev).add(targetId));
+    const res = await fetch("/api/friends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: targetId }),
+    });
+    if (!res.ok) setSentIds(prev => { const s = new Set(prev); s.delete(targetId); return s; });
+  };
 
   const handleRespond = async (friendshipId: number, action: 'accept' | 'reject') => {
     if (busy.has(friendshipId)) return;
@@ -183,8 +217,31 @@ export default function FriendsPage() {
   if (!isLoaded || friends === null) {
     return (
       <DesktopShell>
-        <div style={{ maxWidth: 640, margin: "0 auto", padding: "48px 32px", textAlign: "center", color: "var(--ink-mute)", fontSize: 14 }}>
-          Loading…
+        <div style={{ maxWidth: 640, margin: "0 auto", padding: "48px 32px" }}>
+          {/* Header */}
+          <div style={{ marginBottom: 36 }}>
+            <div style={{ height: 28, width: 120, borderRadius: 6, background: "var(--surface-alt)", marginBottom: 8 }} />
+            <div style={{ height: 14, width: 260, borderRadius: 4, background: "var(--surface-alt)" }} />
+          </div>
+          {/* Search bar */}
+          <div style={{ height: 42, borderRadius: 10, background: "var(--surface-alt)", marginBottom: 36 }} />
+          {/* Section label */}
+          <div style={{ height: 10, width: 80, borderRadius: 3, background: "var(--surface-alt)", marginBottom: 14 }} />
+          {/* Friend rows */}
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 14,
+              padding: "12px 16px", background: "var(--surface)",
+              border: "0.5px solid var(--hairline)", borderRadius: 12, marginBottom: 8,
+            }}>
+              <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--surface-alt)", flexShrink: 0 }} />
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ height: 13, width: `${[55, 70, 45][i - 1]}%`, borderRadius: 4, background: "var(--surface-alt)" }} />
+                <div style={{ height: 11, width: `${[35, 45, 30][i - 1]}%`, borderRadius: 3, background: "var(--surface-alt)" }} />
+              </div>
+              <div style={{ height: 32, width: 80, borderRadius: 8, background: "var(--surface-alt)", flexShrink: 0 }} />
+            </div>
+          ))}
         </div>
       </DesktopShell>
     );
@@ -201,6 +258,96 @@ export default function FriendsPage() {
           <p style={{ fontSize: 13.5, color: "var(--ink-mute)" }}>
             Manage your friends and pending requests.
           </p>
+        </div>
+
+        {/* Search */}
+        <div style={{ marginBottom: 36, position: "relative" }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 9,
+            background: "var(--surface)", border: "0.5px solid var(--hairline)",
+            borderRadius: 10, padding: "10px 14px",
+          }}>
+            <Search size={14} strokeWidth={2} style={{ color: "var(--ink-mute)", flexShrink: 0 }} />
+            <input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search by name or username…"
+              style={{
+                flex: 1, border: "none", background: "transparent", outline: "none",
+                fontSize: 13.5, color: "var(--ink)", fontFamily: "inherit",
+              }}
+            />
+            {searchLoading && (
+              <div style={{
+                width: 13, height: 13, borderRadius: "50%",
+                border: "2px solid var(--hairline)", borderTopColor: "var(--primary)",
+                animation: "pqSpin 600ms linear infinite", flexShrink: 0,
+              }} />
+            )}
+            <style>{`@keyframes pqSpin { to { transform: rotate(360deg) } }`}</style>
+          </div>
+
+          {searchQuery.trim() && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 50,
+              background: "var(--bg)", border: "0.5px solid var(--hairline)",
+              borderRadius: 10, overflow: "hidden",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+              maxHeight: 360, overflowY: "auto",
+            }}>
+              {searchResults.length === 0 && !searchLoading ? (
+                <div style={{ padding: "20px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-mute)" }}>
+                  No users found for &ldquo;{searchQuery}&rdquo;
+                </div>
+              ) : (
+                searchResults.map(u => {
+                  const name = u.display_name || u.username;
+                  const friendIds = new Set((friends ?? []).map(f => f.clerk_user_id));
+                  const pendingIncomingIds = new Set((incoming ?? []).map(f => f.clerk_user_id));
+                  const pendingOutgoingIds = new Set((outgoing ?? []).map(f => f.clerk_user_id));
+                  const isFriend   = friendIds.has(u.clerk_user_id);
+                  const isIncoming = pendingIncomingIds.has(u.clerk_user_id);
+                  const isSent     = sentIds.has(u.clerk_user_id) || pendingOutgoingIds.has(u.clerk_user_id);
+                  return (
+                    <div key={u.clerk_user_id} style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: "10px 14px", borderBottom: "0.5px solid var(--hairline-soft)",
+                    }}>
+                      <Link href={`/profile/${u.username}`} style={{ textDecoration: "none", flexShrink: 0 }}>
+                        <Avatar url={u.avatar_url} name={name} size={36} />
+                      </Link>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Link href={`/profile/${u.username}`} style={{ textDecoration: "none" }}>
+                          <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-mute)" }}>@{u.username}</div>
+                        </Link>
+                      </div>
+                      {isFriend ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 600, color: "var(--primary)", padding: "5px 11px", borderRadius: 7, background: "rgba(31,61,46,0.07)" }}>
+                          <Users size={11} strokeWidth={2.5} /> Friends
+                        </div>
+                      ) : isIncoming ? (
+                        <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-mute)", padding: "5px 11px", borderRadius: 7, background: "var(--surface-alt)", border: "0.5px solid var(--hairline)" }}>
+                          Respond ↑
+                        </div>
+                      ) : isSent ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 600, color: "var(--ink-mute)", padding: "5px 11px", borderRadius: 7, background: "var(--surface-alt)", border: "0.5px solid var(--hairline)" }}>
+                          <Clock size={11} strokeWidth={2.5} /> Pending
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleAddFromSearch(u.clerk_user_id)}
+                          style={{ display: "flex", alignItems: "center", gap: 5, background: "var(--primary)", color: "#fff", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: "5px 12px" }}
+                        >
+                          <UserPlus size={12} strokeWidth={2.5} /> Add
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
 
         {/* Incoming requests */}

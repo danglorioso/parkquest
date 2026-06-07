@@ -565,25 +565,58 @@ function RailPanel({
   );
 }
 
-// ── Mock data for rail ────────────────────────────────────────────────────────
+// ── Types for right rail ──────────────────────────────────────────────────────
 
-const MOCK_NEARBY = [
-  { name: "Maya Jensen",  handle: "@maya",   parks: 31, avatar: null },
-  { name: "Jordan Park",  handle: "@jpark",  parks: 18, avatar: null },
-  { name: "Rin Suzuki",   handle: "@rinsuz", parks: 24, avatar: null },
-  { name: "Sam Morales",  handle: "@samm",   parks: 12, avatar: null },
-];
+interface SuggestedUser {
+  clerk_user_id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  mutual_friends: number;
+  shared_parks: number;
+  visit_count: number;
+}
 
-const MOCK_TRENDING = [
-  { name: "Yosemite NP",        count: 48 },
-  { name: "Glacier NP",         count: 34 },
-  { name: "Zion NP",            count: 29 },
-  { name: "Arches NP",          count: 22 },
-];
+interface TrendingPark {
+  park_code: string | null;
+  park_name: string | null;
+  post_count: number;
+  period: 'week' | 'all_time' | 'popular';
+}
 
 // ── Right rail ────────────────────────────────────────────────────────────────
 
-function FeedRightRail({ visited, total }: { visited: number; total: number }) {
+function FeedRightRail({
+  visited,
+  total,
+  suggestions,
+  suggestionsLoading,
+  onAddFriend,
+  trending,
+  trendingLoading,
+}: {
+  visited: number;
+  total: number;
+  suggestions: SuggestedUser[];
+  suggestionsLoading: boolean;
+  onAddFriend: (userId: string) => Promise<void>;
+  trending: TrendingPark[];
+  trendingLoading: boolean;
+}) {
+  const [sentSet, setSentSet] = useState<Set<string>>(new Set());
+  const [pendingSet, setPendingSet] = useState<Set<string>>(new Set());
+
+  const handleAdd = async (userId: string) => {
+    if (sentSet.has(userId) || pendingSet.has(userId)) return;
+    setPendingSet(prev => new Set(prev).add(userId));
+    try {
+      await onAddFriend(userId);
+      setSentSet(prev => new Set(prev).add(userId));
+    } finally {
+      setPendingSet(prev => { const s = new Set(prev); s.delete(userId); return s; });
+    }
+  };
+
   return (
     <div
       style={{
@@ -594,8 +627,10 @@ function FeedRightRail({ visited, total }: { visited: number; total: number }) {
       }}
     >
       {/* Search */}
-      <div
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("pq:open-spotlight"))}
         style={{
+          width: "100%",
           background: "var(--surface)",
           border: "0.5px solid var(--hairline)",
           borderRadius: 10,
@@ -603,22 +638,23 @@ function FeedRightRail({ visited, total }: { visited: number; total: number }) {
           display: "flex",
           alignItems: "center",
           gap: 8,
+          cursor: "pointer",
+          fontFamily: "inherit",
+          textAlign: "left",
         }}
       >
         <Search size={14} strokeWidth={2.2} style={{ color: "var(--ink-mute)", flexShrink: 0 }} />
-        <input
-          placeholder="Search parks, people, posts…"
+        <span
           style={{
             flex: 1,
-            border: "none",
-            outline: "none",
-            background: "transparent",
-            fontFamily: "var(--font-sans)",
             fontSize: 12.5,
-            color: "var(--ink)",
+            color: "var(--ink-mute)",
+            fontWeight: 500,
           }}
-        />
-        <div
+        >
+          Search parks, people, posts…
+        </span>
+        <span
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 9.5,
@@ -631,8 +667,8 @@ function FeedRightRail({ visited, total }: { visited: number; total: number }) {
           }}
         >
           ⌘K
-        </div>
-      </div>
+        </span>
+      </button>
 
       {/* Quest ring */}
       <RailPanel
@@ -647,83 +683,187 @@ function FeedRightRail({ visited, total }: { visited: number; total: number }) {
         <QuestRing visited={visited} total={total} />
       </RailPanel>
 
-      {/* Explorers nearby */}
+      {/* People you may know */}
       <RailPanel
-        kicker="EXPLORERS · NEAR YOU"
+        kicker="SUGGESTED"
         title="People you may know"
-        action={<DesktopButton ghost size="sm">See all</DesktopButton>}
+        action={
+          <Link href="/friends" style={{ textDecoration: "none" }}>
+            <DesktopButton ghost size="sm">See all</DesktopButton>
+          </Link>
+        }
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {MOCK_NEARBY.map((u) => (
-            <div key={u.handle} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Avatar url={u.avatar} name={u.name} size={34} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)" }}>{u.name}</div>
-                <div style={{ fontSize: 11, color: "var(--ink-mute)" }}>
-                  {u.handle} · {u.parks} parks
+        {suggestionsLoading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[55, 70, 45, 65].map((nameW, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--surface-alt)", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+                  <div style={{ height: 12, width: `${nameW}%`, borderRadius: 4, background: "var(--surface-alt)" }} />
+                  <div style={{ height: 10, width: `${nameW - 15}%`, borderRadius: 4, background: "var(--surface-alt)" }} />
                 </div>
+                <div style={{ height: 26, width: 74, borderRadius: 100, border: "1px solid var(--hairline)", flexShrink: 0 }} />
               </div>
-              <button
-                style={{
-                  background: "transparent",
-                  border: "1px solid var(--primary)",
-                  color: "var(--primary)",
-                  padding: "4px 10px",
-                  borderRadius: 100,
-                  cursor: "pointer",
-                  fontFamily: "var(--font-sans)",
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              >
-                Add Friend
-              </button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : suggestions.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--ink-mute)", textAlign: "center", padding: "8px 0" }}>
+            No suggestions yet — add some friends to discover more explorers.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {suggestions.map((u) => {
+              const name = u.display_name ?? u.username ?? "Explorer";
+              const handle = u.username ? `@${u.username}` : "";
+              const isSent    = sentSet.has(u.clerk_user_id);
+              const isPending = pendingSet.has(u.clerk_user_id);
+              const subtext = u.mutual_friends > 0
+                ? `${u.mutual_friends} mutual friend${u.mutual_friends !== 1 ? "s" : ""}`
+                : u.shared_parks > 0
+                ? `${u.shared_parks} shared park${u.shared_parks !== 1 ? "s" : ""}`
+                : u.visit_count > 0
+                ? `${u.visit_count} park${u.visit_count !== 1 ? "s" : ""} visited`
+                : "Explorer";
+              return (
+                <div key={u.clerk_user_id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Link href={`/profile/${u.username}`} style={{ textDecoration: "none", flexShrink: 0 }}>
+                    <Avatar url={u.avatar_url} name={name} size={34} />
+                  </Link>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Link href={`/profile/${u.username}`} style={{ textDecoration: "none" }}>
+                      <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)" }}>{name}</div>
+                    </Link>
+                    <div style={{ fontSize: 11, color: "var(--ink-mute)" }}>
+                      {handle && `${handle} · `}{subtext}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleAdd(u.clerk_user_id)}
+                    disabled={isSent || isPending}
+                    style={{
+                      background: isSent ? "var(--surface-alt)" : "transparent",
+                      border: `1px solid ${isSent ? "var(--hairline)" : "var(--primary)"}`,
+                      color: isSent ? "var(--ink-mute)" : "var(--primary)",
+                      padding: "4px 10px",
+                      borderRadius: 100,
+                      cursor: isSent || isPending ? "default" : "pointer",
+                      fontFamily: "var(--font-sans)",
+                      fontWeight: 700,
+                      fontSize: 11,
+                      opacity: isPending ? 0.6 : 1,
+                      transition: "all 140ms ease",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {isSent ? "Sent" : isPending ? "…" : "Add Friend"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </RailPanel>
 
       {/* Trending */}
-      <RailPanel kicker="TRENDING" title="Most posted this week">
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {MOCK_TRENDING.map((t, i) => (
-            <div
-              key={t.name}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "6px 0",
-              }}
-            >
+      <RailPanel
+        kicker="TRENDING"
+        title={
+          trending.length > 0 && trending[0].period === 'week'
+            ? "Most posted this week"
+            : trending.length > 0 && trending[0].period === 'popular'
+            ? "Most visited parks"
+            : "Most posted parks"
+        }
+      >
+        <style>{`.pq-trending-link:hover > div { text-decoration: underline; text-underline-offset: 2px; }`}</style>
+        {trendingLoading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {[70, 55, 65, 50, 60].map((w, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+                <div style={{ width: 18, height: 12, borderRadius: 3, background: "var(--surface-alt)", flexShrink: 0 }} />
+                <div style={{ flex: 1, height: 12, width: `${w}%`, borderRadius: 3, background: "var(--surface-alt)" }} />
+                <div style={{ width: 40, height: 12, borderRadius: 3, background: "var(--surface-alt)", flexShrink: 0 }} />
+              </div>
+            ))}
+          </div>
+        ) : trending.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--ink-mute)", textAlign: "center", padding: "8px 0" }}>
+            No posts yet — be the first to share a park!
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {trending.map((t, i) => (
               <div
+                key={t.park_code ?? i}
                 style={{
-                  width: 18,
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  color: "var(--ink-mute)",
-                  fontWeight: 700,
-                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "6px 0",
                 }}
               >
-                {i + 1}.
+                <div
+                  style={{
+                    width: 18,
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    color: "var(--ink-mute)",
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {i + 1}.
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {t.park_code ? (
+                    <Link
+                      href={`/parks/${t.park_code}`}
+                      className="pq-trending-link"
+                      style={{ textDecoration: "none" }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 12.5,
+                          color: "var(--ink)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {t.park_name ?? t.park_code}
+                      </div>
+                    </Link>
+                  ) : (
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontSize: 12.5,
+                        color: "var(--ink)",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {t.park_name ?? "Unknown park"}
+                    </div>
+                  )}
+                </div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    color: "var(--primary)",
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {t.post_count} {t.period === 'popular' ? 'visits' : 'posts'}
+                </div>
               </div>
-              <div style={{ flex: 1, fontWeight: 600, fontSize: 12.5, color: "var(--ink)" }}>
-                {t.name}
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  color: "var(--primary)",
-                  fontWeight: 700,
-                }}
-              >
-                {t.count} posts
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </RailPanel>
     </div>
   );
@@ -740,6 +880,10 @@ export default function FeedPage() {
   const [visited, setVisited] = useState(0);
   const [total, setTotal]   = useState(63);
   const [showCreate, setShowCreate] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [trending, setTrending] = useState<TrendingPark[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(true);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
@@ -763,7 +907,27 @@ export default function FeedPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
+
+    fetch("/api/users/suggestions")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setSuggestions(data))
+      .catch(console.error)
+      .finally(() => setSuggestionsLoading(false));
+
+    fetch("/api/posts/trending")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setTrending(data))
+      .catch(console.error)
+      .finally(() => setTrendingLoading(false));
   }, [isSignedIn]);
+
+  const handleAddFriend = async (targetId: string) => {
+    await fetch("/api/friends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: targetId }),
+    });
+  };
 
   const handleLike = async (postId: number, currentlyLiked: boolean) => {
     // Optimistic update
@@ -818,7 +982,17 @@ export default function FeedPage() {
       />
     )}
     <DesktopShell
-      rightRail={<FeedRightRail visited={visited} total={total} />}
+      rightRail={
+        <FeedRightRail
+          visited={visited}
+          total={total}
+          suggestions={suggestions}
+          suggestionsLoading={suggestionsLoading}
+          onAddFriend={handleAddFriend}
+          trending={trending}
+          trendingLoading={trendingLoading}
+        />
+      }
     >
       <DesktopHeader
         kicker="THE FEED"

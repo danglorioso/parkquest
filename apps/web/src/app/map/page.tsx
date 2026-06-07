@@ -80,6 +80,14 @@ export default function Home() {
 
   const [spotOpen, setSpotOpen] = useState(false);
   const [flyToTarget, setFlyToTarget] = useState<{ coords: [number, number]; rightPadding: number } | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const fetchParksAndVisits = async () => {
     try {
@@ -272,7 +280,7 @@ export default function Home() {
 
   if (isSignedIn) {
     return (
-      <DesktopShell fullbleed>
+      <DesktopShell fullbleed onOpenSpotlight={() => setSpotOpen(true)}>
         {/* Full-bleed map area with absolute floating panels */}
         <div className="relative h-full w-full" style={{ background: "#E8E2D0" }}>
 
@@ -342,10 +350,11 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Top-center — Spotlight search */}
+          {/* Top-center — Spotlight search (pushed below filter pill on mobile) */}
           <MapSpotlight
             parks={parks}
             open={spotOpen}
+            topPx={isMobile ? 68 : 16}
             onToggle={() => setSpotOpen((s) => !s)}
             onClose={() => setSpotOpen(false)}
             onPick={(code) => {

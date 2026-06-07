@@ -262,12 +262,13 @@ interface SidebarProps {
   visitedCount: number;
   totalCount: number;
   bucketCount: number;
+  username?: string | null;
   onLogVisit?: () => void;
   onEditAccount: () => void;
   onOpenSpotlight: () => void;
 }
 
-function DesktopSidebar({ visitedCount, totalCount, bucketCount, onLogVisit, onEditAccount, onOpenSpotlight }: SidebarProps) {
+function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLogVisit, onEditAccount, onOpenSpotlight }: SidebarProps) {
   const pathname = usePathname();
   const pct = totalCount > 0 ? (visitedCount / totalCount) * 100 : 0;
 
@@ -354,8 +355,10 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, onLogVisit, onE
               {group.group}
             </div>
             {group.items.map((item) => {
-              const isActive =
-                pathname === item.href || pathname.startsWith(item.href + "/");
+              const onOtherProfile = pathname.startsWith("/profile/") && pathname !== `/profile/${username}`;
+              const isActive = item.id === "friends"
+                ? (pathname === item.href || pathname.startsWith(item.href + "/") || onOtherProfile)
+                : pathname === item.href || pathname.startsWith(item.href + "/");
               const Icon = item.icon;
               const count =
                 "countKey" in item && item.countKey === "visited"
@@ -381,12 +384,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, onLogVisit, onE
                   {isActive && (
                     <div
                       className="absolute left-0 rounded-sm"
-                      style={{
-                        top: 8,
-                        bottom: 8,
-                        width: 3,
-                        background: "var(--primary)",
-                      }}
+                      style={{ top: 8, bottom: 8, width: 3, background: "var(--primary)" }}
                     />
                   )}
                   <Icon
@@ -398,11 +396,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, onLogVisit, onE
                   {count != null && (
                     <span
                       className="font-semibold tabular-nums"
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 10,
-                        color: "var(--ink-mute)",
-                      }}
+                      style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)" }}
                     >
                       {count}
                     </span>
@@ -410,6 +404,35 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, onLogVisit, onE
                 </Link>
               );
             })}
+            {/* My Profile — appended to COLLECTIONS */}
+            {group.group === "COLLECTIONS" && username && (() => {
+              const profileHref = `/profile/${username}`;
+              const isActive = pathname === profileHref;
+              return (
+                <Link
+                  href={profileHref}
+                  className="relative flex items-center gap-[10px] w-full transition-colors"
+                  style={{
+                    padding: "7px 18px",
+                    background: isActive ? "rgba(31,61,46,0.08)" : "transparent",
+                    color: isActive ? "var(--primary)" : "var(--ink-soft)",
+                    fontWeight: isActive ? 700 : 500,
+                    fontSize: 13,
+                    textDecoration: "none",
+                  }}
+                >
+                  {isActive && (
+                    <div className="absolute left-0 rounded-sm" style={{ top: 8, bottom: 8, width: 3, background: "var(--primary)" }} />
+                  )}
+                  <User
+                    className="w-4 h-4 shrink-0"
+                    strokeWidth={isActive ? 2.2 : 1.8}
+                    style={{ color: isActive ? "var(--primary)" : "var(--ink-soft)" }}
+                  />
+                  <span className="flex-1">My Profile</span>
+                </Link>
+              );
+            })()}
           </div>
         ))}
       </nav>
@@ -549,6 +572,7 @@ function MobileDrawer({
   visitedCount,
   totalCount,
   bucketCount,
+  username,
   onLogVisit,
   onEditAccount,
 }: {
@@ -557,6 +581,7 @@ function MobileDrawer({
   visitedCount: number;
   totalCount: number;
   bucketCount: number;
+  username?: string | null;
   onLogVisit: () => void;
   onEditAccount: () => void;
 }) {
@@ -647,7 +672,10 @@ function MobileDrawer({
                 {group.group}
               </div>
               {group.items.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                const onOtherProfile = pathname.startsWith("/profile/") && pathname !== `/profile/${username}`;
+                const isActive = item.id === "friends"
+                  ? (pathname === item.href || pathname.startsWith(item.href + "/") || onOtherProfile)
+                  : pathname === item.href || pathname.startsWith(item.href + "/");
                 const Icon = item.icon;
                 const count =
                   "countKey" in item && item.countKey === "visited" ? visitedCount
@@ -685,6 +713,35 @@ function MobileDrawer({
                   </Link>
                 );
               })}
+              {group.group === "COLLECTIONS" && username && (() => {
+                const profileHref = `/profile/${username}`;
+                const isActive = pathname === profileHref;
+                return (
+                  <Link
+                    href={profileHref}
+                    onClick={onClose}
+                    className="relative flex items-center gap-[10px] w-full transition-colors"
+                    style={{
+                      padding: "9px 18px",
+                      background: isActive ? "rgba(31,61,46,0.08)" : "transparent",
+                      color: isActive ? "var(--primary)" : "var(--ink-soft)",
+                      fontWeight: isActive ? 700 : 500,
+                      fontSize: 14,
+                      textDecoration: "none",
+                    }}
+                  >
+                    {isActive && (
+                      <div className="absolute left-0 rounded-sm" style={{ top: 8, bottom: 8, width: 3, background: "var(--primary)" }} />
+                    )}
+                    <User
+                      className="w-[18px] h-[18px] shrink-0"
+                      strokeWidth={isActive ? 2.2 : 1.8}
+                      style={{ color: isActive ? "var(--primary)" : "var(--ink-soft)" }}
+                    />
+                    <span className="flex-1">My Profile</span>
+                  </Link>
+                );
+              })()}
             </div>
           ))}
         </nav>
@@ -757,14 +814,19 @@ export function DesktopShell({
   const handleOpenSpotlight = onOpenSpotlightOverride ?? (() => setSpotlightOpen(true));
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
+    const keyHandler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setSpotlightOpen((s) => !s);
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    const customHandler = () => setSpotlightOpen(true);
+    window.addEventListener("keydown", keyHandler);
+    window.addEventListener("pq:open-spotlight", customHandler);
+    return () => {
+      window.removeEventListener("keydown", keyHandler);
+      window.removeEventListener("pq:open-spotlight", customHandler);
+    };
   }, []);
 
   useEffect(() => {
@@ -830,6 +892,7 @@ export function DesktopShell({
         visitedCount={visitedCount}
         totalCount={totalCount}
         bucketCount={bucketCount}
+        username={user?.username}
         onLogVisit={handleLogVisit}
         onEditAccount={() => setEditOpen(true)}
       />
@@ -839,6 +902,7 @@ export function DesktopShell({
         visitedCount={visitedCount}
         totalCount={totalCount}
         bucketCount={bucketCount}
+        username={user?.username}
         onLogVisit={handleLogVisit}
         onEditAccount={() => setEditOpen(true)}
         onOpenSpotlight={handleOpenSpotlight}
