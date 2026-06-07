@@ -435,6 +435,22 @@ function ExplorePageInner() {
             ))}
           </div>
         )}
+
+        {/* Data Attribution Disclaimer */}
+        <div className="border-t border-gray-200 mt-8 pt-6">
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Park information is sourced directly from the{" "}
+            <a
+              href="https://www.nps.gov"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-gray-600"
+            >
+              National Park Service (NPS)
+            </a>
+            . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details with official sources before your visit.
+          </p>
+        </div>
       </div>
     </div>
   );

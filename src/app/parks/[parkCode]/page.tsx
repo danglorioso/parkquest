@@ -639,7 +639,7 @@ export default function ParkPage({
                       ))}
                     </div>
                   )}
-                  <p className="text-[10px] text-gray-400">Forecast from <a href="https://weather.gov" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">weather.gov</a></p>
+                  <p className="text-[10px] text-gray-400">Forecast from the <a href="https://www.weather.gov" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">National Weather Service</a></p>
                 </div>
               ) : park.weatherInfo ? (
                 <p className="text-gray-700 leading-relaxed">{park.weatherInfo}</p>
@@ -868,6 +868,33 @@ export default function ParkPage({
         </div>
       </div>
 
+
+      {/* Data Attribution Disclaimer */}
+      <div className="max-w-5xl mx-auto w-full px-4 sm:px-8 pb-8">
+        <div className="border-t border-gray-200 pt-6">
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Park information is sourced directly from the{" "}
+            <a
+              href="https://www.nps.gov"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-gray-600"
+            >
+              National Park Service (NPS)
+            </a>
+            . Weather forecasts are provided by the{" "}
+            <a
+              href="https://www.weather.gov"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-gray-600"
+            >
+              National Weather Service (NWS)
+            </a>
+            . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed on this page. Always verify details with official sources before your visit.
+          </p>
+        </div>
+      </div>
 
       <VisitDateDialog
         open={showVisitDateDialog}

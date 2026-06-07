@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useMemo, Suspense } from "react";
 import { useUser } from "@clerk/nextjs";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Search, X, Check, Bookmark, Plus } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
+import Logo from "@/components/Logo";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -132,7 +133,7 @@ function CardSkeleton({ index }: { index: number }) {
 
 // ── ParkCard ──────────────────────────────────────────────────────────────────
 
-function ParkCard({ park, status }: { park: Park; status: "visited" | "bucketList" | "notVisited" }) {
+function ParkCard({ park, status, showStatus = true }: { park: Park; status: "visited" | "bucketList" | "notVisited"; showStatus?: boolean }) {
   const [imgFailed, setImgFailed] = useState(false);
   const gradient = parkGradient(park.park_code);
   const stateAbbr = park.states.split(",")[0]?.trim() ?? park.states;
@@ -172,30 +173,32 @@ function ParkCard({ park, status }: { park: Park; status: "visited" | "bucketLis
           )}
           {/* Gradient overlay so badge stays readable over photos */}
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0) 50%)" }} />
-          <div
-            style={{
-              position: "absolute",
-              top: 10,
-              left: 10,
-              background:
-                status === "visited"    ? "#2F7A4A" :
-                status === "bucketList" ? "#C48A20" :
-                "rgba(30,30,30,0.52)",
-              backdropFilter: status === "notVisited" ? "blur(6px)" : undefined,
-              borderRadius: 100,
-              padding: "4px 10px",
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
-            {status === "visited"    && <Check    size={10} strokeWidth={2.8} color="#fff" />}
-            {status === "bucketList" && <Bookmark size={10} strokeWidth={2.5} color="#fff" />}
-            {status === "notVisited" && <Plus     size={10} strokeWidth={2.8} color="#fff" />}
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", letterSpacing: "0.3px" }}>
-              {STATUS_LABEL[status]}
-            </span>
-          </div>
+          {showStatus && (
+            <div
+              style={{
+                position: "absolute",
+                top: 10,
+                left: 10,
+                background:
+                  status === "visited"    ? "#2F7A4A" :
+                  status === "bucketList" ? "#C48A20" :
+                  "rgba(30,30,30,0.52)",
+                backdropFilter: status === "notVisited" ? "blur(6px)" : undefined,
+                borderRadius: 100,
+                padding: "4px 10px",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              {status === "visited"    && <Check    size={10} strokeWidth={2.8} color="#fff" />}
+              {status === "bucketList" && <Bookmark size={10} strokeWidth={2.5} color="#fff" />}
+              {status === "notVisited" && <Plus     size={10} strokeWidth={2.8} color="#fff" />}
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", letterSpacing: "0.3px" }}>
+                {STATUS_LABEL[status]}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Info */}
@@ -258,6 +261,7 @@ interface FilterSidebarProps {
   onTopicToggle: (t: string) => void;
   onClearTopics: () => void;
   onResetAll: () => void;
+  isPublic?: boolean;
 }
 
 function FilterSidebar({
@@ -267,6 +271,7 @@ function FilterSidebar({
   activityFilters, onActivityToggle, onClearActivities,
   topicFilters, onTopicToggle, onClearTopics,
   onResetAll,
+  isPublic = false,
 }: FilterSidebarProps) {
   const visitedCount = useMemo(() => parks.filter((p) => parkStatus(p.park_code, visits) === "visited").length, [parks, visits]);
   const bucketCount = useMemo(() => parks.filter((p) => parkStatus(p.park_code, visits) === "bucketList").length, [parks, visits]);
@@ -277,16 +282,20 @@ function FilterSidebar({
     parks.forEach((p) => {
       (activitiesMap[p.park_code] ?? []).forEach((a) => { freq[a] = (freq[a] ?? 0) + 1; });
     });
-    return Object.entries(freq).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name).slice(0, 35);
-  }, [parks, activitiesMap]);
+    const top = Object.entries(freq).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name).slice(0, 35);
+    const extras = activityFilters.filter((a) => !top.includes(a));
+    return [...extras, ...top];
+  }, [parks, activitiesMap, activityFilters]);
 
   const allTopics = useMemo(() => {
     const freq: Record<string, number> = {};
     parks.forEach((p) => {
       (topicsMap[p.park_code] ?? []).forEach((t) => { freq[t] = (freq[t] ?? 0) + 1; });
     });
-    return Object.entries(freq).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name).slice(0, 55);
-  }, [parks, topicsMap]);
+    const top = Object.entries(freq).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name).slice(0, 55);
+    const extras = topicFilters.filter((t) => !top.includes(t));
+    return [...extras, ...top];
+  }, [parks, topicsMap, topicFilters]);
 
   const rowStyle = (active: boolean): React.CSSProperties => ({
     display: "flex",
@@ -312,6 +321,8 @@ function FilterSidebar({
     fontWeight: 700,
   };
 
+  const hasActiveFilters = statusFilter !== "all" || stateFilter !== "all" || activityFilters.length > 0 || topicFilters.length > 0;
+
   return (
     <aside
       style={{
@@ -333,41 +344,45 @@ function FilterSidebar({
             background: "none", border: "none", cursor: "pointer", fontSize: 10,
             fontFamily: "var(--font-mono)", fontWeight: 700, padding: 0, letterSpacing: "0.4px",
             color: "var(--primary)",
-            visibility: (statusFilter !== "all" || stateFilter !== "all" || activityFilters.length > 0 || topicFilters.length > 0) ? "visible" : "hidden",
+            visibility: hasActiveFilters ? "visible" : "hidden",
           }}
         >
           Reset
         </button>
       </div>
 
-      {/* Status */}
-      <div style={{ padding: "0 8px 20px" }}>
-        <div style={sectionLabel}>Status</div>
-        {([
-          { value: "all",        label: "All parks",   count: parks.length },
-          { value: "visited",    label: "Visited",     count: visitedCount },
-          { value: "bucketList", label: "Bucket list", count: bucketCount },
-          { value: "notVisited", label: "Not yet",     count: notYetCount },
-        ] as { value: StatusFilter; label: string; count: number }[]).map(({ value, label, count }) => (
-          <button key={value} onClick={() => onStatusFilter(value)} style={rowStyle(statusFilter === value)}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {value !== "all" && (
-                <div style={{
-                  width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-                  background: value === "visited" ? "#2F7A4A" : value === "bucketList" ? "#D89A3A" : "transparent",
-                  border: value === "notVisited" ? "1.5px solid var(--ink-mute)" : "none",
-                }} />
-              )}
-              <span style={{ fontSize: 12.5, fontWeight: statusFilter === value ? 700 : 500, color: statusFilter === value ? "var(--primary)" : "var(--ink)" }}>
-                {label}
-              </span>
-            </div>
-            {!loading && <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", fontWeight: 600 }}>{count}</span>}
-          </button>
-        ))}
-      </div>
+      {/* Status — hidden for public/unauthenticated view */}
+      {!isPublic && (
+        <>
+          <div style={{ padding: "0 8px 20px" }}>
+            <div style={sectionLabel}>Status</div>
+            {([
+              { value: "all",        label: "All parks",   count: parks.length },
+              { value: "visited",    label: "Visited",     count: visitedCount },
+              { value: "bucketList", label: "Bucket list", count: bucketCount },
+              { value: "notVisited", label: "Not yet",     count: notYetCount },
+            ] as { value: StatusFilter; label: string; count: number }[]).map(({ value, label, count }) => (
+              <button key={value} onClick={() => onStatusFilter(value)} style={rowStyle(statusFilter === value)}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {value !== "all" && (
+                    <div style={{
+                      width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                      background: value === "visited" ? "#2F7A4A" : value === "bucketList" ? "#D89A3A" : "transparent",
+                      border: value === "notVisited" ? "1.5px solid var(--ink-mute)" : "none",
+                    }} />
+                  )}
+                  <span style={{ fontSize: 12.5, fontWeight: statusFilter === value ? 700 : 500, color: statusFilter === value ? "var(--primary)" : "var(--ink)" }}>
+                    {label}
+                  </span>
+                </div>
+                {!loading && <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", fontWeight: 600 }}>{count}</span>}
+              </button>
+            ))}
+          </div>
 
-      <div style={{ height: "0.5px", background: "var(--hairline)", margin: "0 16px 20px" }} />
+          <div style={{ height: "0.5px", background: "var(--hairline)", margin: "0 16px 20px" }} />
+        </>
+      )}
 
       {/* Location — states grouped by region */}
       <div style={{ padding: "0 8px 20px" }}>
@@ -468,7 +483,6 @@ function chipStyle(active: boolean): React.CSSProperties {
 
 function ParksPageContent() {
   const { isLoaded, isSignedIn } = useUser();
-  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [parks, setParks] = useState<Park[]>([]);
@@ -494,17 +508,14 @@ function ParksPageContent() {
   });
 
   useEffect(() => {
-    if (isLoaded && !isSignedIn) router.push("/");
-  }, [isLoaded, isSignedIn, router]);
+    if (!isLoaded) return;
 
-  useEffect(() => {
-    if (!isSignedIn) return;
+    const parksPromise = fetch("/api/parks").then((r) => r.ok ? r.json() : []);
+    const visitsPromise = isSignedIn
+      ? fetch("/api/visits").then((r) => r.ok ? r.json() : [])
+      : Promise.resolve([]);
 
-    // Parks + visits unblock the grid and status/region filters immediately
-    Promise.all([
-      fetch("/api/parks").then((r) => r.ok ? r.json() : []),
-      fetch("/api/visits").then((r) => r.ok ? r.json() : []),
-    ]).then(([p, v]) => {
+    Promise.all([parksPromise, visitsPromise]).then(([p, v]) => {
       setParks(p);
       setVisits(v);
       setLoading(false);
@@ -519,7 +530,7 @@ function ParksPageContent() {
       setTopicsMap(t);
       setFiltersLoading(false);
     });
-  }, [isSignedIn]);
+  }, [isLoaded, isSignedIn]);
 
   const toggleActivity = (activity: string) => {
     setActivityFilters((prev) =>
@@ -562,29 +573,164 @@ function ParksPageContent() {
 
   const hasFilter = query || statusFilter !== "all" || stateFilter !== "all" || activityFilters.length > 0 || topicFilters.length > 0;
 
+  const filterSidebarProps = {
+    parks,
+    visits,
+    activitiesMap,
+    topicsMap,
+    loading,
+    filtersLoading,
+    statusFilter,
+    onStatusFilter: setStatusFilter,
+    stateFilter,
+    onStateFilter: setStateFilter,
+    activityFilters,
+    onActivityToggle: toggleActivity,
+    onClearActivities: () => setActivityFilters([]),
+    topicFilters,
+    onTopicToggle: toggleTopic,
+    onClearTopics: () => setTopicFilters([]),
+    onResetAll: () => { setStatusFilter("all"); setStateFilter("all"); setActivityFilters([]); setTopicFilters([]); setQuery(""); },
+  };
+
+  const parkGrid = (
+    <>
+      {hasFilter && (
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", letterSpacing: "1px", marginBottom: 14, fontWeight: 600 }}>
+          {filtered.length} RESULT{filtered.length !== 1 ? "S" : ""}
+        </div>
+      )}
+      {loading ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
+          {Array.from({ length: 18 }).map((_, i) => <CardSkeleton key={i} index={i} />)}
+        </div>
+      ) : filtered.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
+          {filtered.map((park) => (
+            <ParkCard key={park.park_code} park={park} status={parkStatus(park.park_code, visits)} showStatus={isSignedIn} />
+          ))}
+        </div>
+      ) : (
+        <div style={{ textAlign: "center", padding: "80px 0", color: "var(--ink-mute)" }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🏔</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>No parks found</div>
+          <div style={{ fontSize: 13 }}>Try adjusting your search or filters.</div>
+        </div>
+      )}
+    </>
+  );
+
+  // Public layout for unauthenticated users
+  if (isLoaded && !isSignedIn) {
+    return (
+      <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+        {/* Public top nav */}
+        <div style={{
+          position: "sticky", top: 0, zIndex: 100,
+          background: "rgba(245,239,224,0.92)",
+          backdropFilter: "blur(20px) saturate(160%)",
+          WebkitBackdropFilter: "blur(20px) saturate(160%)",
+          borderBottom: "0.5px solid var(--hairline)",
+          padding: "0 24px",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          height: 54,
+        }}>
+          <Logo />
+          <div style={{ display: "flex", gap: 8 }}>
+            <Link href="/sign-in" style={{ textDecoration: "none" }}>
+              <button style={{
+                background: "transparent", border: "0.5px solid var(--hairline)",
+                borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600,
+                color: "var(--ink)", cursor: "pointer",
+              }}>Sign in</button>
+            </Link>
+            <Link href="/sign-up" style={{ textDecoration: "none" }}>
+              <button style={{
+                background: "var(--primary)", border: "none",
+                borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 700,
+                color: "#FFFBF1", cursor: "pointer",
+              }}>Get started</button>
+            </Link>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", height: "calc(100vh - 54px)", overflow: "hidden" }}>
+          <FilterSidebar {...filterSidebarProps} isPublic />
+
+          <div style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
+            <div style={{ padding: "28px 32px", paddingBottom: 100 }}>
+              {/* Header */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.6px", color: "var(--ink-mute)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>
+                  <span style={{ visibility: loading ? "hidden" : "visible" }}>{parks.length} National Parks</span>
+                </div>
+                <div style={{ fontWeight: 900, fontSize: 30, color: "var(--ink)", letterSpacing: -0.8 }}>
+                  Explore the Parks
+                </div>
+              </div>
+
+              {/* Search bar */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 12, padding: "10px 14px", marginBottom: 20 }}>
+                <Search size={15} style={{ color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2} />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search parks…"
+                  style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 14, fontWeight: 500, color: "var(--ink)", fontFamily: "var(--font-sans)" }}
+                />
+                {query && (
+                  <button onClick={() => setQuery("")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-mute)", display: "flex", padding: 0 }}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {parkGrid}
+            </div>
+          </div>
+        </div>
+
+        {/* Sticky sign-up banner */}
+        <div style={{
+          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200,
+          background: "var(--primary)", padding: "16px 24px",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+        }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#FFFBF1" }}>
+              Track your national park adventures
+            </div>
+            <div style={{ fontSize: 12.5, color: "rgba(255,251,241,0.75)", marginTop: 2 }}>
+              Log visits, earn badges, and connect with friends who love the outdoors.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <Link href="/sign-in" style={{ textDecoration: "none" }}>
+              <button style={{
+                background: "rgba(255,251,241,0.15)", border: "1px solid rgba(255,251,241,0.35)",
+                borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600,
+                color: "#FFFBF1", cursor: "pointer",
+              }}>Sign in</button>
+            </Link>
+            <Link href="/sign-up" style={{ textDecoration: "none" }}>
+              <button style={{
+                background: "#FFFBF1", border: "none",
+                borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700,
+                color: "var(--primary)", cursor: "pointer",
+              }}>Create free account</button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Authenticated layout
   return (
     <DesktopShell fullbleed>
       <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
 
-        <FilterSidebar
-          parks={parks}
-          visits={visits}
-          activitiesMap={activitiesMap}
-          topicsMap={topicsMap}
-          loading={loading}
-          filtersLoading={filtersLoading}
-          statusFilter={statusFilter}
-          onStatusFilter={setStatusFilter}
-          stateFilter={stateFilter}
-          onStateFilter={setStateFilter}
-          activityFilters={activityFilters}
-          onActivityToggle={toggleActivity}
-          onClearActivities={() => setActivityFilters([])}
-          topicFilters={topicFilters}
-          onTopicToggle={toggleTopic}
-          onClearTopics={() => setTopicFilters([])}
-          onResetAll={() => { setStatusFilter("all"); setStateFilter("all"); setActivityFilters([]); setTopicFilters([]); setQuery(""); }}
-        />
+        <FilterSidebar {...filterSidebarProps} />
 
         <div style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
           <div style={{ padding: "28px 32px" }}>
@@ -640,33 +786,7 @@ function ParksPageContent() {
               )}
             </div>
 
-            {/* Results count */}
-            {hasFilter && (
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", letterSpacing: "1px", marginBottom: 14, fontWeight: 600 }}>
-                {filtered.length} RESULT{filtered.length !== 1 ? "S" : ""}
-              </div>
-            )}
-
-            {/* Grid */}
-            {loading ? (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
-                {Array.from({ length: 18 }).map((_, i) => (
-                  <CardSkeleton key={i} index={i} />
-                ))}
-              </div>
-            ) : filtered.length > 0 ? (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
-                {filtered.map((park) => (
-                  <ParkCard key={park.park_code} park={park} status={parkStatus(park.park_code, visits)} />
-                ))}
-              </div>
-            ) : (
-              <div style={{ textAlign: "center", padding: "80px 0", color: "var(--ink-mute)" }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>🏔</div>
-                <div style={{ fontWeight: 700, fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>No parks found</div>
-                <div style={{ fontSize: 13 }}>Try adjusting your search or filters.</div>
-              </div>
-            )}
+            {parkGrid}
           </div>
         </div>
       </div>
