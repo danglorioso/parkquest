@@ -1024,9 +1024,9 @@ function ParkInfoContent({
                     <div style={{ fontWeight: 900, fontSize: 18, color: "var(--primary)", letterSpacing: -0.5, lineHeight: 1, flexShrink: 0, paddingTop: 2 }}>
                       ${parseFloat(fee.cost).toFixed(0)}
                     </div>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)", marginBottom: 2 }}>{fee.title}</div>
-                      {fee.description && <div style={{ fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.5 }}>{fee.description}</div>}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink)", marginBottom: 2, overflowWrap: "break-word" }}>{fee.title}</div>
+                      {fee.description && <div style={{ fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.5, overflowWrap: "break-word" }}>{fee.description}</div>}
                     </div>
                   </div>
                 ))}
@@ -1102,6 +1102,21 @@ function ParkInfoContent({
           )}
         </div>
       )}
+
+      {/* Data attribution */}
+      <div style={{ padding: "20px 32px 32px", borderTop: "0.5px solid var(--hairline)", marginTop: 8 }}>
+        <p style={{ fontSize: 11, color: "var(--ink-mute)", lineHeight: 1.6, margin: 0 }}>
+          Park information is sourced directly from the{" "}
+          <a href="https://www.nps.gov" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>
+            National Park Service (NPS)
+          </a>
+          . Weather forecasts are provided by the{" "}
+          <a href="https://www.weather.gov" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>
+            National Weather Service (NWS)
+          </a>
+          . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details with official sources before your visit.
+        </p>
+      </div>
     </div>
   );
 }

@@ -508,6 +508,15 @@ function ParksPageContent() {
   });
 
   useEffect(() => {
+    const s = searchParams.get("status");
+    if (s === "visited" || s === "bucketList" || s === "notVisited") {
+      setStatusFilter(s);
+    } else {
+      setStatusFilter("all");
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!isLoaded) return;
 
     const parksPromise = fetch("/api/parks").then((r) => r.ok ? r.json() : []);
@@ -615,6 +624,17 @@ function ParksPageContent() {
           <div style={{ fontSize: 32, marginBottom: 12 }}>🏔</div>
           <div style={{ fontWeight: 700, fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>No parks found</div>
           <div style={{ fontSize: 13 }}>Try adjusting your search or filters.</div>
+        </div>
+      )}
+      {!loading && (
+        <div style={{ marginTop: 32, paddingTop: 20, borderTop: "0.5px solid var(--hairline)" }}>
+          <p style={{ fontSize: 11, color: "var(--ink-mute)", lineHeight: 1.6, margin: 0 }}>
+            Park information is sourced directly from the{" "}
+            <a href="https://www.nps.gov" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>
+              National Park Service (NPS)
+            </a>
+            . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details with official sources before your visit.
+          </p>
         </div>
       )}
     </>
