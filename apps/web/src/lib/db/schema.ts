@@ -55,6 +55,8 @@ export const posts = pgTable('posts', {
   visit_id: integer('visit_id').references(() => visits.id, { onDelete: 'set null' }),
   caption: text('caption'),
   photos: jsonb('photos').$type<{ url: string; key: string; name: string }[]>(),
+  quoted_post_id: integer('quoted_post_id'),  // set for quote/repost posts
+  badge_id: varchar('badge_id', { length: 100 }), // set for badge share posts
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 });

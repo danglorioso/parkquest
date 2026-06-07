@@ -3,7 +3,7 @@
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
-import { Filter, Sparkles, Share2 } from "lucide-react";
+import { Sparkles, Share2 } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { DesktopHeader } from "@/components/desktop/DesktopHeader";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
@@ -480,16 +480,6 @@ export default function BadgesPage() {
           kicker={`${earned.length} OF ${badges.length} EARNED · ${earnedPct}%`}
           title="Badge collection"
           sub="Five tiers, every milestone marked. Earn them by exploring."
-          actions={
-            <>
-              <DesktopButton size="sm">
-                <Filter size={13} strokeWidth={2} /> Filter
-              </DesktopButton>
-              <DesktopButton size="sm" primary>
-                <Sparkles size={13} strokeWidth={2} /> Replay last
-              </DesktopButton>
-            </>
-          }
         />
 
         {/* ── Tier filter ─────────────────────────────────────────── */}
