@@ -21,6 +21,7 @@ interface Props {
   onToggle: () => void;
   onClose: () => void;
   onPick: (code: string) => void;
+  topPx?: number;
 }
 
 const STATUS_DOT: Record<ParkStatus, string> = {
@@ -135,7 +136,7 @@ function SpotGroup({
   );
 }
 
-export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) {
+export function MapSpotlight({ parks, open, onToggle, onClose, onPick, topPx = 16 }: Props) {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<TabFilter>("all");
   const [activeIdx, setActiveIdx] = useState(-1);
@@ -233,7 +234,7 @@ export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) 
         onClick={onToggle}
         style={{
           position: "absolute",
-          top: 16,
+          top: topPx,
           left: "50%",
           transform: "translateX(-50%)",
           zIndex: 20,
@@ -280,7 +281,7 @@ export function MapSpotlight({ parks, open, onToggle, onClose, onPick }: Props) 
       ref={panelRef}
       style={{
         position: "absolute",
-        top: 16,
+        top: topPx,
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: 30,

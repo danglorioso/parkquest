@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { X, Check, Bookmark, BookmarkX, ArrowRight, Pencil, ChevronLeft, ChevronRight, ChevronDown, Footprints, DollarSign } from "lucide-react";
 import { fullStateName } from "@/lib/stateNames";
 import { LightboxModal, type LightboxImage } from "@/components/LightboxModal";
@@ -152,6 +152,29 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
   const [imgIdx, setImgIdx]       = useState(0);
   const [lightbox, setLightbox]   = useState<number | null>(null);
   const [closing, setClosing]     = useState(false);
+  const [isMobile, setIsMobile]   = useState(false);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const touchStartY = useRef(0);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const delta = touchStartY.current - e.changedTouches[0].clientY;
+    if (delta > 40) setSheetExpanded(true);
+    else if (delta < -40) {
+      if (sheetExpanded) setSheetExpanded(false);
+      else handleClose();
+    }
+  };
 
   const npsImages: LightboxImage[] = prefetchedNps
     ? (prefetchedNps.images.length > 0
@@ -234,29 +257,60 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
     ? [...park.visits].sort((a, b) => new Date(b.visited_date).getTime() - new Date(a.visited_date).getTime())
     : [];
 
+  const mobileStyle: React.CSSProperties = {
+    position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 20,
+    height: sheetExpanded ? "90%" : "52%",
+    background: "rgba(255,251,241,0.97)",
+    backdropFilter: "blur(28px) saturate(160%)",
+    WebkitBackdropFilter: "blur(28px) saturate(160%)",
+    borderTop: "0.5px solid var(--hairline)",
+    borderRadius: "16px 16px 0 0",
+    boxShadow: "0 -4px 24px rgba(0,0,0,0.18)",
+    display: "flex", flexDirection: "column", overflow: "hidden",
+    transform: closing ? "translateY(100%)" : "translateY(0)",
+    transition: closing
+      ? "transform 190ms cubic-bezier(.5,.1,.7,.9)"
+      : "transform 220ms cubic-bezier(.2,.7,.3,1), height 280ms cubic-bezier(.4,0,.2,1)",
+  };
+
+  const desktopStyle: React.CSSProperties = {
+    position: "absolute", top: 16, right: 16, bottom: 16, width: 360, zIndex: 20,
+    background: "rgba(255,251,241,0.94)",
+    backdropFilter: "blur(28px) saturate(160%)",
+    WebkitBackdropFilter: "blur(28px) saturate(160%)",
+    border: "0.5px solid var(--hairline)", borderRadius: 14,
+    boxShadow: "0 12px 36px rgba(0,0,0,0.18)",
+    display: "flex", flexDirection: "column", overflow: "hidden",
+    animation: closing
+      ? "pqPeekOutD 190ms cubic-bezier(.5,.1,.7,.9) forwards"
+      : "pqPeekInD 220ms cubic-bezier(.2,.7,.3,1)",
+  };
+
   return (
     <>
-      <div
-        style={{
-          position: "absolute", top: 16, right: 16, bottom: 16, width: 360, zIndex: 20,
-          background: "rgba(255,251,241,0.94)",
-          backdropFilter: "blur(28px) saturate(160%)",
-          WebkitBackdropFilter: "blur(28px) saturate(160%)",
-          border: "0.5px solid var(--hairline)", borderRadius: 14,
-          boxShadow: "0 12px 36px rgba(0,0,0,0.18)",
-          display: "flex", flexDirection: "column", overflow: "hidden",
-          animation: closing
-            ? "pqPeekOutD 190ms cubic-bezier(.5,.1,.7,.9) forwards"
-            : "pqPeekInD 220ms cubic-bezier(.2,.7,.3,1)",
-        }}
-      >
+      <div style={isMobile ? mobileStyle : desktopStyle}>
         <style>{`
           @keyframes pqPeekInD  { from { opacity:0; transform:translateX(8px) } to   { opacity:1; transform:translateX(0) } }
           @keyframes pqPeekOutD { from { opacity:1; transform:translateX(0) }    to   { opacity:0; transform:translateX(8px) } }
         `}</style>
 
+        {/* Mobile drag handle */}
+        {isMobile && (
+          <div
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            style={{
+              flexShrink: 0, padding: "10px 0 6px", display: "flex",
+              alignItems: "center", justifyContent: "center",
+              cursor: "grab", touchAction: "none",
+            }}
+          >
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--hairline)" }} />
+          </div>
+        )}
+
         {/* Hero / carousel */}
-        <div style={{ position: "relative", height: 200, flexShrink: 0, background: parkGradient(park.park_code) }}>
+        <div style={{ position: "relative", height: isMobile ? 140 : 200, flexShrink: 0, background: parkGradient(park.park_code) }}>
           {heroImage && (
             <img
               src={heroImage.url}
