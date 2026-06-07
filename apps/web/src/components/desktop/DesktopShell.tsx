@@ -277,7 +277,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
 
   return (
     <aside
-      className="hidden md:flex flex-col shrink-0 overflow-y-auto"
+      className="hidden md:flex flex-col shrink-0 overflow-hidden"
       style={{
         width: 232,
         background: "rgba(245,239,224,0.5)",

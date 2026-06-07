@@ -40,14 +40,11 @@ export default function RootLayout({
           <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(localStorage.getItem('pq-dark')==='1')document.documentElement.classList.add('dark');var p=localStorage.getItem('pq-palette')||'forest';var pv={canyon:{'--primary':'#7B3A1F','--primary-deep':'#582410','--accent':'#D89A3A','--accent-2':'#C56B3D'},glacier:{'--primary':'#2D4F66','--primary-deep':'#1A3548','--accent':'#C7864B','--accent-2':'#D89A3A'},dusk:{'--primary':'#3A2E5C','--primary-deep':'#241B40','--accent':'#D9764A','--accent-2':'#D89A3A'}};if(pv[p])Object.entries(pv[p]).forEach(function(e){document.documentElement.style.setProperty(e[0],e[1])});}catch(e){}})();` }} />
         </head>
         <body
-          className={`${archivo.variable} ${jetbrainsMono.variable} antialiased min-h-screen flex flex-col`}
+          className={`${archivo.variable} ${jetbrainsMono.variable} antialiased`}
         >
           <ThemeProvider>
             <OnboardingGuard />
-            <div className="flex-1">
-              {children}
-            </div>
-
+            {children}
           </ThemeProvider>
 
           {/* Vercel Analytics */}

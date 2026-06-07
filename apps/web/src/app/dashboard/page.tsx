@@ -566,7 +566,7 @@ export default function DashboardPage() {
                 style={{
                   position: "relative",
                   flex: 1,
-                  minHeight: 220,
+                  minHeight: 320,
                   overflow: "hidden",
                   background: "#CECDBC",
                   cursor: "pointer",
