@@ -825,6 +825,148 @@ function CloudShape({ variant }: { variant: number }) {
   </>;
 }
 
+function MobileHeroSection() {
+  return (
+    <div
+      className="md:hidden relative overflow-hidden"
+      style={{
+        height: "40svh",
+        minHeight: 240,
+        background: "linear-gradient(180deg, var(--primary-deep) 0%, var(--primary) 100%)",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "flex-end",
+      }}
+    >
+      {/* Animated topo overlay */}
+      <div style={{
+        position: "absolute", inset: 0, pointerEvents: "none",
+        backgroundImage: topoPattern("#FFFBF1", 0.14),
+        backgroundSize: "300px 300px",
+        animation: "pqTopoDrift 90s linear infinite",
+      }} />
+
+      {/* Sun glow */}
+      <div style={{
+        position: "absolute",
+        right: "10%",
+        top: "16%",
+        width: 160,
+        height: 160,
+        borderRadius: "50%",
+        background: "radial-gradient(circle, var(--accent-2) 0%, rgba(216,154,58,0.53) 30%, transparent 70%)",
+        filter: "blur(8px)",
+        animation: "pqSunGlow 8s ease-in-out infinite",
+      }} />
+
+      {/* Drifting clouds */}
+      <div style={{
+        position: "absolute", inset: 0, pointerEvents: "none",
+        maskImage: "linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%)",
+        WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%)",
+      }}>
+        {CLOUDS.slice(0, 5).map((c, i) => (
+          <div key={`mcloud-${i}`} style={{
+            position: "absolute", top: c.top, left: 0, right: 0, height: 28, opacity: c.opacity,
+          }}>
+            <svg viewBox="0 0 200 36" preserveAspectRatio="none" style={{
+              width: c.width, height: "100%",
+              animation: `pqCloud ${c.duration}s ${c.delay}s linear infinite`,
+              animationFillMode: "backwards",
+            }}>
+              <CloudShape variant={c.variant} />
+            </svg>
+          </div>
+        ))}
+      </div>
+
+      {/* Mountains */}
+      <svg
+        viewBox="0 0 600 800"
+        preserveAspectRatio="xMidYMax slice"
+        style={{ position: "absolute", top: 0, bottom: 0, left: "-5%", width: "110%", height: "100%", animation: "pqMountainDriftC 24s ease-in-out infinite" }}
+      >
+        <g style={{ animation: "pqMountainDriftA 18s ease-in-out infinite", transformOrigin: "center" }}>
+          <path d="M0 800 L0 540 L80 430 L160 500 L240 340 L320 440 L400 300 L480 420 L560 360 L600 390 L600 800 Z" fill="rgba(0,0,0,0.20)" />
+        </g>
+        <g style={{ animation: "pqMountainDriftB 22s ease-in-out infinite", transformOrigin: "center" }}>
+          <path d="M0 800 L0 620 L100 540 L200 580 L280 500 L380 560 L460 500 L560 560 L600 540 L600 800 Z" fill="rgba(0,0,0,0.34)" />
+        </g>
+        <path d="M0 800 L0 700 L120 660 L240 680 L360 650 L480 680 L600 660 L600 800 Z" fill="rgba(0,0,0,0.48)" />
+      </svg>
+
+      {/* Stars */}
+      {STARS.map(([x, y, o, delay], i) => (
+        <div
+          key={`ms-${i}`}
+          style={{
+            position: "absolute",
+            top: `${(y / 420) * 90}%`,
+            left: `${(x / 750) * 100}%`,
+            width: 2 + (i % 3),
+            height: 2 + (i % 3),
+            borderRadius: "50%",
+            background: "#FFFBF1",
+            opacity: o,
+            animation: `pqStarTwinkle ${3 + (i % 5)}s ${delay}s ease-in-out infinite`,
+            "--o": o,
+          } as React.CSSProperties}
+        />
+      ))}
+
+      {/* Shooting stars */}
+      {SHOOTING_STARS.slice(0, 4).map((s, i) => (
+        <div
+          key={`mss-${i}`}
+          style={{
+            position: "absolute",
+            top: `${(s.top / 160) * 70}%`,
+            right: s.right,
+            width: Math.round(s.width * 0.75),
+            height: s.height,
+            borderRadius: 2,
+            background: "linear-gradient(90deg, #FFFBF1 0%, rgba(255,251,241,0.9) 30%, transparent 100%)",
+            animation: `pqShootingStar ${s.duration}s ${s.delay}s ease-out infinite`,
+            animationFillMode: "backwards",
+            pointerEvents: "none",
+            "--ss-dx": `${Math.round(s.dx * 0.65)}px`,
+            "--ss-dy": `${Math.round(s.dy * 0.65)}px`,
+          } as React.CSSProperties}
+        />
+      ))}
+
+      {/* Wordmark */}
+      <div style={{ position: "absolute", top: 28, left: 24, color: "#FFFBF1", zIndex: 2, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginTop: -2 }}>
+          <path d="M3 20L9 9l3 5 3-7 6 13H3z" />
+          <circle cx="20" cy="4" r="3.5" fill="#FFFBF1" stroke="none" />
+        </svg>
+        <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: -0.4 }}>
+          Park<span style={{ fontWeight: 500 }}>Quest</span>
+        </span>
+      </div>
+
+      {/* Tagline anchored to bottom */}
+      <div style={{ position: "relative", padding: "0 24px 32px", color: "#FFFBF1", zIndex: 2 }}>
+        <div style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 9.5,
+          letterSpacing: "2.5px",
+          opacity: 0.70,
+          textTransform: "uppercase",
+          fontWeight: 600,
+          marginBottom: 8,
+        }}>
+          63 PARKS · ONE QUEST
+        </div>
+        <div style={{ fontWeight: 800, fontSize: 34, letterSpacing: -1, lineHeight: 1.05 }}>
+          Every park.<br />One journal.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HeroSection({ onScroll }: { onScroll: () => void }) {
   return (
     <div
@@ -1104,8 +1246,8 @@ function AboutSection() {
   return (
     <div
       id="about"
+      className="px-6 py-16 md:px-[60px] md:py-[80px]"
       style={{
-        padding: "80px 60px",
         background: "rgba(255,251,241,0.04)",
         borderTop: "0.5px solid rgba(255,251,241,0.10)",
       }}
@@ -1208,8 +1350,8 @@ function AboutSection() {
 function FeaturesSection() {
   return (
     <div
+      className="px-6 py-16 md:px-[60px] md:py-[80px]"
       style={{
-        padding: "80px 60px",
         background: "rgba(0,0,0,0.18)",
         borderTop: "0.5px solid rgba(255,251,241,0.10)",
       }}
@@ -1239,7 +1381,7 @@ function FeaturesSection() {
       >
         Built for explorers,<br /> and everyone else.
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 32 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
         {FEATURES.map((f, i) => (
           <div
             key={i}
@@ -1390,8 +1532,8 @@ function ScreenPreview({
 function ScreenshotsSection() {
   return (
     <div
+      className="px-6 py-16 md:px-[60px] md:py-[80px]"
       style={{
-        padding: "80px 60px",
         background: "#FAF3E0",
         position: "relative",
         overflow: "hidden",
@@ -1433,9 +1575,9 @@ function ScreenshotsSection() {
         >
           Premium feel.<br />Outdoor soul.
         </div>
-        <div style={{ display: "flex", gap: 18, marginTop: 36, paddingBottom: 10 }}>
+        <div className="flex gap-4 mt-9 pb-2 overflow-x-auto md:overflow-x-visible">
           {SCREENS.map((s, i) => (
-            <div key={i} style={{ flex: 1, marginTop: s.mt }}>
+            <div key={i} className="flex-shrink-0 md:flex-1" style={{ width: 260, marginTop: s.mt }}>
               <ScreenPreview {...s} />
             </div>
           ))}
@@ -1449,8 +1591,8 @@ function SocialProofSection() {
   const avatarColors = ["#2F7A4A", "#D89A3A", "#2D4F66", "#8B5DBF", "#C56B3D"];
   return (
     <div
+      className="px-6 py-16 md:px-[60px] md:py-[80px]"
       style={{
-        padding: "80px 60px",
         background: "rgba(0,0,0,0.30)",
         borderTop: "0.5px solid rgba(255,251,241,0.10)",
       }}
@@ -1555,8 +1697,8 @@ function SocialProofSection() {
 function FinalCTASection({ onAbout }: { onAbout: () => void }) {
   return (
     <div
+      className="px-6 pt-16 pb-20 md:px-[60px] md:pt-[80px] md:pb-[100px]"
       style={{
-        padding: "80px 60px 100px",
         background: "linear-gradient(180deg, var(--primary) 0%, var(--primary-deep) 100%)",
         position: "relative",
         overflow: "hidden",
@@ -1764,18 +1906,18 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
 
   return (
     <div
-      style={{
-        display: "flex",
-        height: "100vh",
-        overflow: "hidden",
-      }}
+      className="flex flex-col md:flex-row md:h-screen md:overflow-hidden"
+      style={{ minHeight: "100dvh" }}
     >
       <style>{ANIMATIONS}</style>
 
-      {/* Left — scrollable marketing column */}
+      {/* Mobile-only full hero with art */}
+      <MobileHeroSection />
+
+      {/* Left — scrollable marketing column (desktop only) */}
       <div
         ref={leftRef}
-        className="pq-left-col"
+        className="pq-left-col hidden md:block"
         style={{
           flex: "1.2",
           overflowY: "auto",
@@ -1792,18 +1934,12 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
         <FinalCTASection onAbout={scrollToAbout} />
       </div>
 
-      {/* Right — sticky sign-in/sign-up form */}
+      {/* Right — form panel (full-width on mobile, fixed 480px on desktop) */}
       <div
+        className="w-full md:w-[480px] md:flex-shrink-0 flex flex-col justify-center px-6 py-10 md:px-[60px] md:py-[60px] overflow-y-auto"
         style={{
-          width: 480,
-          flexShrink: 0,
-          padding: "60px",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
           background: "var(--bg)",
           borderLeft: "0.5px solid var(--hairline)",
-          overflowY: "auto",
         }}
       >
         {/* Kicker */}
@@ -1928,8 +2064,20 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
             .
           </div>
         )}
+      </div>
 
-
+      {/* Mobile-only: marketing sections below the form */}
+      <div
+        className="md:hidden"
+        style={{
+          background: "linear-gradient(180deg, var(--primary-deep) 0%, var(--primary) 50%, var(--primary-deep) 100%)",
+        }}
+      >
+        <AboutSection />
+        <FeaturesSection />
+        <ScreenshotsSection />
+        <SocialProofSection />
+        <FinalCTASection onAbout={scrollToAbout} />
       </div>
     </div>
   );
