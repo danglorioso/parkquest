@@ -1023,7 +1023,7 @@ export default function ParkDetailPage({
                 gridTemplateColumns: "repeat(4, 1fr)",
               }}
             >
-              <StatTile label="State" value={stateName} sm />
+              <StatTile label="State" value={stateName} />
               <StatTile label="Status" value={status === "visited" ? "Visited" : status === "bucketList" ? "Bucket list" : "Not visited"} border />
               <StatTile
                 label="Visits"
@@ -1190,7 +1190,7 @@ export default function ParkDetailPage({
                     />
                   </div>
                   <Link
-                    href="/map"
+                    href={`/map?park=${park.park_code}`}
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
                       marginTop: 8, padding: "7px 0",

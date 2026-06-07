@@ -477,9 +477,13 @@ function ParksPageContent() {
   const [topicsMap, setTopicsMap] = useState<Record<string, string[]>>({});
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [stateFilter, setStateFilter] = useState("all");
   const searchParams = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    const s = searchParams.get("status");
+    if (s === "visited" || s === "bucketList" || s === "notVisited") return s;
+    return "all";
+  });
   const [activityFilters, setActivityFilters] = useState<string[]>(() => {
     const a = searchParams.get("activity");
     return a ? [decodeURIComponent(a)] : [];

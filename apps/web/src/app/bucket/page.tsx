@@ -3,8 +3,8 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export default function VisitedRedirect() {
+export default function BucketRedirect() {
   const router = useRouter();
-  useEffect(() => { router.replace("/parks?status=visited"); }, [router]);
+  useEffect(() => { router.replace("/parks?status=bucketList"); }, [router]);
   return null;
 }
