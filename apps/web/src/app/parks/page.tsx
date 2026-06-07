@@ -148,14 +148,12 @@ function ParkCard({ park, status, showStatus = true }: { park: Park; status: "vi
           borderRadius: 14,
           overflow: "hidden",
           cursor: "pointer",
-          transition: "transform 0.15s ease, box-shadow 0.15s ease",
+          transition: "box-shadow 0.18s ease",
         }}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
-          (e.currentTarget as HTMLDivElement).style.boxShadow = "0 6px 24px rgba(0,0,0,0.10)";
+          (e.currentTarget as HTMLDivElement).style.boxShadow = "0 0 0 2px #2F7A4A, 0 4px 20px rgba(47,122,74,0.18)";
         }}
         onMouseLeave={(e) => {
-          (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
           (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
         }}
       >
