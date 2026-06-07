@@ -442,10 +442,11 @@ export default function DashboardPage() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: 12,
             marginBottom: 22,
           }}
         >
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
                 fontFamily: "var(--font-mono)",
@@ -502,7 +503,7 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-          <div style={{ flexShrink: 0 }}>
+          <div className="self-start md:self-auto" style={{ flexShrink: 0 }}>
             <AccountMenu compact onEditAccount={() => setEditOpen(true)} />
           </div>
         </div>

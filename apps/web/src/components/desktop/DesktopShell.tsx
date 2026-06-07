@@ -529,11 +529,12 @@ function MobileHeader({
         <Menu style={{ width: 22, height: 22 }} strokeWidth={2} />
       </button>
 
-      <Link href="/dashboard" style={{ textDecoration: "none" }}>
-        <Wordmark />
+      <Link href="/dashboard" style={{ textDecoration: "none", display: "flex", alignItems: "center" }}>
+        <Wordmark size="large" />
       </Link>
 
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <NotificationCenter compact />
         <button
           onClick={onOpenSpotlight}
           style={{
@@ -558,7 +559,6 @@ function MobileHeader({
           <Plus style={{ width: 14, height: 14 }} strokeWidth={2.4} />
           Log
         </button>
-        <NotificationCenter />
       </div>
     </div>
   );

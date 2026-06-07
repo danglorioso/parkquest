@@ -184,7 +184,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 }
 
-export function NotificationCenter() {
+export function NotificationCenter({ compact = false }: { compact?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -276,38 +276,39 @@ export function NotificationCenter() {
           title="Notifications"
           style={{
             position: "relative",
-            width: 36,
-            height: 36,
+            width: compact ? "auto" : 36,
+            height: compact ? "auto" : 36,
             borderRadius: 10,
-            background: open ? "rgba(31,61,46,0.06)" : "transparent",
-            border: `0.5px solid ${open ? "var(--hairline)" : "var(--hairline-soft)"}`,
+            background: compact ? "transparent" : (open ? "rgba(31,61,46,0.06)" : "transparent"),
+            border: compact ? "none" : `0.5px solid ${open ? "var(--hairline)" : "var(--hairline-soft)"}`,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
+            padding: compact ? "6px 8px" : 0,
             transition: "background 120ms",
           }}
         >
-          <Bell style={{ width: 15, height: 15, color: "var(--ink-soft)" }} strokeWidth={2} />
+          <Bell style={{ width: compact ? 18 : 15, height: compact ? 18 : 15, color: "var(--ink-soft)" }} strokeWidth={2} />
           {displayCount > 0 && (
             <div style={{
               position: "absolute",
-              top: 4,
-              right: 4,
-              minWidth: 14,
-              height: 14,
-              borderRadius: 7,
+              top: compact ? 2 : 4,
+              right: compact ? 2 : 4,
+              minWidth: compact ? 13 : 14,
+              height: compact ? 13 : 14,
+              borderRadius: compact ? 6.5 : 7,
               background: "#DC2626",
               border: "1.5px solid var(--bg)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 8,
+              fontSize: compact ? 7.5 : 8,
               fontWeight: 700,
               color: "#fff",
               fontFamily: "var(--font-mono)",
-              padding: "0 3px",
+              padding: compact ? "0 2px" : "0 3px",
               lineHeight: 1,
             }}>
               {displayCount > 99 ? "99+" : displayCount}
