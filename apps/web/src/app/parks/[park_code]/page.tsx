@@ -859,7 +859,7 @@ function ParkInfoContent({
                 <Plus size={14} strokeWidth={2.4} /> Log another visit
               </DesktopButton>
             )}
-            <Link href="/map" style={{ textDecoration: "none" }}>
+            <Link href={`/map?park=${park.park_code}`} style={{ textDecoration: "none" }}>
               <DesktopButton>
                 <MapPin size={14} strokeWidth={2} /> View on map
               </DesktopButton>
@@ -1004,7 +1004,7 @@ function ParkInfoContent({
                 />
               </div>
               {isSignedIn && (
-                <Link href="/map" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8, padding: "7px 0", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 8, fontSize: 11.5, fontWeight: 600, color: "var(--ink-mute)", textDecoration: "none" }}>
+                <Link href={`/map?park=${park.park_code}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8, padding: "7px 0", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 8, fontSize: 11.5, fontWeight: 600, color: "var(--ink-mute)", textDecoration: "none" }}>
                   <ArrowUpRight size={12} strokeWidth={2.2} /> Open full map
                 </Link>
               )}
