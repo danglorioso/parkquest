@@ -7,7 +7,6 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   MapPin, Bookmark, Award, Mountain,
-  Plus, ChevronRight,
 } from "lucide-react";
 import { DesktopShell, AccountMenu } from "@/components/desktop/DesktopShell";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
@@ -39,11 +38,6 @@ type ActivityEvent =
   | { type: "visit" | "bucket" | "post"; user_id: string; username: string | null; display_name: string | null; avatar_url: string | null; park_name: string | null; created_at: string | null }
   | { type: "badge"; user_id: string; username: string | null; display_name: string | null; avatar_url: string | null; badge_id: string; badge_name: string; badge_emoji: string; created_at: string | null };
 
-const MOCK_TRIPS = [
-  { month: "JUN", day: "8",  name: "Crater Lake",  state: "OR", away: "17 days away",  company: "3 companions" },
-  { month: "AUG", day: "14", name: "Denali",        state: "AK", away: "84 days",       company: "Solo" },
-  { month: "OCT", day: "3",  name: "Mesa Verde",    state: "CO", away: "Autumn trip",   company: "2 companions" },
-];
 
 const TIER_COLOR: Record<string, string> = {
   bronze:    "#B27339",
@@ -121,7 +115,8 @@ function Panel({
           padding: fullbleed ? 0 : "12px 18px 16px",
           flex: 1,
           minHeight: 0,
-          ...(fullbleed ? { display: "flex", flexDirection: "column" } : {}),
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         {children}
@@ -638,13 +633,13 @@ export default function DashboardPage() {
               </div>
             }
           >
-            <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
               {loading ? (
                 <div style={{ padding: "20px 0", textAlign: "center", fontSize: 12.5, color: "var(--ink-mute)" }}>
                   Loading…
                 </div>
               ) : activityItems.length === 0 ? (
-                <div style={{ padding: "24px 0", textAlign: "center" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, textAlign: "center", padding: "24px 0" }}>
                   <div style={{ fontSize: 13, color: "var(--ink)", fontWeight: 600, marginBottom: 6 }}>
                     Nothing here yet
                   </div>
@@ -675,82 +670,13 @@ export default function DashboardPage() {
           <Panel
             kicker="UP NEXT"
             title="Trips on deck"
-            action={
-              <Link href="/planner" style={{ textDecoration: "none" }}>
-                <DesktopButton size="sm">
-                  <Plus size={13} strokeWidth={2.2} /> New trip
-                </DesktopButton>
-              </Link>
-            }
           >
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {MOCK_TRIPS.map((trip, i) => (
-                <div
-                  key={i}
-                  style={{
-                    background: "var(--surface-alt)",
-                    border: "0.5px solid var(--hairline-soft)",
-                    borderRadius: 10,
-                    padding: "10px 12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    cursor: "pointer",
-                  }}
-                >
-                  {/* Date block */}
-                  <div
-                    style={{
-                      width: 44,
-                      padding: "6px 0",
-                      textAlign: "center",
-                      background: "var(--primary)",
-                      color: "#FFFBF1",
-                      borderRadius: 8,
-                      fontWeight: 800,
-                      lineHeight: 1.1,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 9,
-                        letterSpacing: "1.2px",
-                        opacity: 0.85,
-                        fontFamily: "var(--font-mono)",
-                      }}
-                    >
-                      {trip.month}
-                    </div>
-                    <div style={{ fontSize: 15 }}>{trip.day}</div>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>
-                      {trip.name}
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 10,
-                          color: "var(--ink-mute)",
-                          letterSpacing: "0.6px",
-                          marginLeft: 6,
-                          fontWeight: 600,
-                        }}
-                      >
-                        · {trip.state}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "var(--ink-mute)", marginTop: 1 }}>
-                      {trip.away} · {trip.company}
-                    </div>
-                  </div>
-                  <ChevronRight
-                    size={14}
-                    strokeWidth={2}
-                    style={{ color: "var(--ink-mute)", flexShrink: 0 }}
-                  />
-                </div>
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "24px 16px", textAlign: "center" }}>
+              <div style={{ fontSize: 22 }}>🗺️</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>Coming soon</div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-mute)", maxWidth: 220 }}>
+                Trip planning is on the way. You&apos;ll be able to schedule and manage your upcoming park adventures here.
+              </div>
             </div>
           </Panel>
 
