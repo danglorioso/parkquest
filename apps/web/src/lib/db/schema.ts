@@ -1,5 +1,5 @@
 import {
-  pgTable, text, timestamp, varchar, integer,
+  pgTable, text, timestamp, varchar, integer, real,
   serial, jsonb, boolean, unique, primaryKey,
 } from 'drizzle-orm/pg-core';
 
@@ -30,7 +30,7 @@ export const visits = pgTable('visits', {
   park_code: varchar('park_code', { length: 10 }).notNull().references(() => parks.park_code),
   visited_date: timestamp('visited_date'), // null = bucket list item
   end_date: timestamp('end_date'),         // null = single-day visit
-  rating: integer('rating'),
+  rating: real('rating'),
   crowd: integer('crowd'),                 // 1-5 scale
   difficulty: integer('difficulty'),       // 1-5 scale
   weather_conditions: jsonb('weather_conditions').$type<string[]>(),

@@ -348,7 +348,8 @@ function ParkPickerDialog({ parks, value, onClose, onPick }: {
   const [q, setQ] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { const t = setTimeout(() => inputRef.current?.focus(), 60); return () => clearTimeout(t); }, []);
-  const list = q.trim() ? parks.filter(p => p.name.toLowerCase().includes(q.toLowerCase()) || p.states.toLowerCase().includes(q.toLowerCase())) : parks;
+  const list = (q.trim() ? parks.filter(p => p.name.toLowerCase().includes(q.toLowerCase()) || p.states.toLowerCase().includes(q.toLowerCase())) : parks)
+    .slice().sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 120, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1649,7 +1650,7 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
           </div>
 
           <div ref={centerRef} style={{ flex: 1, overflowY: "auto", padding: "20px 28px 24px" }}>
-            {restoreBannerDraft && !editMode && (
+            {restoreBannerDraft && !editMode && step === 0 && (
               <div style={{ background: "rgba(31,61,46,0.07)", border: "0.5px solid rgba(31,61,46,0.18)", borderRadius: 12, padding: "11px 14px", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>You have a saved draft</div>
@@ -1659,6 +1660,9 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
                 </div>
                 <button onClick={() => { dispatch({ type: 'set-draft', draft: restoreBannerDraft.draft }); draftId.current = restoreBannerDraft.id; setRestoreBannerDraft(null); }} style={{ padding: "7px 14px", borderRadius: 8, border: 0, background: "var(--primary)", color: "#FFFBF1", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
                   Restore
+                </button>
+                <button onClick={() => { deleteDraft(restoreBannerDraft.id); setRestoreBannerDraft(null); }} style={{ padding: "7px 14px", borderRadius: 8, border: "0.5px solid var(--hairline)", background: "transparent", color: "var(--ink-mute)", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+                  Discard
                 </button>
                 <button onClick={() => setRestoreBannerDraft(null)} style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-mute)", lineHeight: 0, padding: 4, flexShrink: 0 }}>
                   <X style={{ width: 14, height: 14 }} strokeWidth={2.4} />
