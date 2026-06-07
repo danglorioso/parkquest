@@ -67,6 +67,7 @@ export default function Home() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [selectedParkCode, setSelectedParkCode] = useState<string | null>(null);
   const initialFlyDoneRef = useRef(false);
+  const initialParkCodeRef = useRef<string | null>(null);
 
   // Derive selected park from parks state so it auto-updates after status changes
   const selectedPark = selectedParkCode
@@ -82,7 +83,10 @@ export default function Home() {
   // Read ?park= from URL on mount and pre-select that park
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("park");
-    if (code) setSelectedParkCode(code);
+    if (code) {
+      initialParkCodeRef.current = code;
+      setSelectedParkCode(code);
+    }
   }, []);
 
   const [spotOpen, setSpotOpen] = useState(false);
@@ -222,15 +226,15 @@ export default function Home() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
-  // After parks load: fly to the URL-specified park once
+  // After parks load: fly to the URL-specified park once (not triggered by clicking dots)
   useEffect(() => {
-    if (initialFlyDoneRef.current || parks.length === 0 || !selectedParkCode) return;
-    const park = parks.find((p) => p.park_code === selectedParkCode);
+    if (initialFlyDoneRef.current || parks.length === 0 || !initialParkCodeRef.current) return;
+    const park = parks.find((p) => p.park_code === initialParkCodeRef.current);
     if (park) {
       setFlyToTarget({ coords: [...park.position] as [number, number], rightPadding: 376 });
       initialFlyDoneRef.current = true;
     }
-  }, [parks, selectedParkCode]);
+  }, [parks]);
 
   const selectPark = (code: string) => {
     setSelectedParkCode(code);
