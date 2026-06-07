@@ -3,7 +3,7 @@
 import React from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { type FilterStatus } from "@/components/desktop/MapLeftPanel";
@@ -66,6 +66,7 @@ export default function Home() {
   const [logVisitEditMode, setLogVisitEditMode] = useState(false);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [selectedParkCode, setSelectedParkCode] = useState<string | null>(null);
+  const initialFlyDoneRef = useRef(false);
 
   // Derive selected park from parks state so it auto-updates after status changes
   const selectedPark = selectedParkCode
@@ -77,6 +78,12 @@ export default function Home() {
       router.push('/');
     }
   }, [isSignedIn, isLoaded, router]);
+
+  // Read ?park= from URL on mount and pre-select that park
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("park");
+    if (code) setSelectedParkCode(code);
+  }, []);
 
   const [spotOpen, setSpotOpen] = useState(false);
   const [flyToTarget, setFlyToTarget] = useState<{ coords: [number, number]; rightPadding: number } | null>(null);
@@ -215,6 +222,26 @@ export default function Home() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
+  // After parks load: fly to the URL-specified park once
+  useEffect(() => {
+    if (initialFlyDoneRef.current || parks.length === 0 || !selectedParkCode) return;
+    const park = parks.find((p) => p.park_code === selectedParkCode);
+    if (park) {
+      setFlyToTarget({ coords: [...park.position] as [number, number], rightPadding: 376 });
+      initialFlyDoneRef.current = true;
+    }
+  }, [parks, selectedParkCode]);
+
+  const selectPark = (code: string) => {
+    setSelectedParkCode(code);
+    window.history.replaceState(null, "", `/map?park=${code}`);
+  };
+
+  const deselectPark = () => {
+    setSelectedParkCode(null);
+    window.history.replaceState(null, "", "/map");
+  };
+
   const handleMarkVisited = (parkCode: string) => {
     setLogVisitDraft({ parkCode });
     setLogVisitEditMode(false);
@@ -289,8 +316,8 @@ export default function Home() {
             className="h-full w-full"
             parks={filteredParks}
             selectedParkCode={selectedParkCode}
-            onSelectPark={setSelectedParkCode}
-            onDeselect={() => setSelectedParkCode(null)}
+            onSelectPark={selectPark}
+            onDeselect={deselectPark}
             flyToTarget={flyToTarget}
           />
 
@@ -325,7 +352,7 @@ export default function Home() {
             ].map((f, i, arr) => (
               <React.Fragment key={f.key}>
                 <button
-                  onClick={() => { setFilterStatus(f.key); setSelectedParkCode(null); }}
+                  onClick={() => { setFilterStatus(f.key); deselectPark(); }}
                   style={{
                     background: filterStatus === f.key ? "rgba(31,61,46,0.08)" : "transparent",
                     border: 0,
@@ -360,7 +387,7 @@ export default function Home() {
             onPick={(code) => {
               const park = parks.find((p) => p.park_code === code);
               if (park) setFlyToTarget({ coords: [...park.position] as [number, number], rightPadding: 376 });
-              setSelectedParkCode(code);
+              selectPark(code);
               setSpotOpen(false);
             }}
           />
@@ -371,7 +398,7 @@ export default function Home() {
               key={selectedPark.park_code}
               park={selectedPark}
               prefetchedNps={npsCache[selectedPark.park_code]}
-              onClose={() => setSelectedParkCode(null)}
+              onClose={deselectPark}
               onMarkVisited={() => handleMarkVisited(selectedPark.park_code)}
               onAddToBucketList={() => handleAddToBucketList(selectedPark.park_code)}
               onRemoveFromBucketList={() => handleRemoveFromBucketList(selectedPark.park_code)}

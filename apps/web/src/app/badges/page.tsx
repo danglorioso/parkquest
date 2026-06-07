@@ -96,9 +96,186 @@ function BadgePatch({
   );
 }
 
+// ── BadgeDetailModal ──────────────────────────────────────────────────────────
+
+function BadgeDetailModal({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
+  const id = useId().replace(/:/g, "");
+  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const pct =
+    badge.progress_target && badge.progress_target > 0
+      ? Math.min(100, Math.round(((badge.progress_current ?? 0) / badge.progress_target) * 100))
+      : 0;
+  const earnedDateStr = badge.earned_at
+    ? new Date(badge.earned_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : null;
+  const [shared, setShared] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        background: "rgba(13,12,10,0.92)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        animation: "pqBdBg 180ms ease",
+      }}
+      onClick={onClose}
+    >
+      <style>{`
+        @keyframes pqBdBg  { from { opacity:0 } to { opacity:1 } }
+        @keyframes pqBdIn  { 0%{transform:scale(0.88) translateY(12px);opacity:0} 100%{transform:scale(1) translateY(0);opacity:1} }
+        @keyframes pqBdTxt { from{transform:translateY(8px);opacity:0} to{transform:translateY(0);opacity:1} }
+      `}</style>
+
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "relative",
+          background: "rgba(22,22,18,0.97)",
+          border: `0.5px solid ${t.fill}55`,
+          borderRadius: 20,
+          padding: "36px 32px 32px",
+          maxWidth: 380,
+          width: "calc(100vw - 40px)",
+          display: "flex", flexDirection: "column", alignItems: "center",
+          textAlign: "center",
+          animation: "pqBdIn 240ms cubic-bezier(.2,.8,.3,1) both",
+          boxShadow: `0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px ${t.fill}22`,
+        }}
+      >
+        {/* Tier glow */}
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: 20, pointerEvents: "none",
+          background: `radial-gradient(120% 80% at 50% -10%, ${t.glow} 0%, transparent 60%)`,
+        }} />
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute", top: 14, right: 14,
+            background: "rgba(255,251,241,0.08)", border: "none",
+            borderRadius: "50%", width: 28, height: 28, cursor: "pointer",
+            color: "rgba(255,251,241,0.5)", fontSize: 16, lineHeight: 1,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          ✕
+        </button>
+
+        {/* Badge patch */}
+        <div style={{ position: "relative", display: "block", animation: "pqBdIn 400ms 80ms cubic-bezier(.34,1.4,.64,1) both" }}>
+          <svg width="120" height="120" viewBox="0 0 100 100">
+            <defs>
+              <radialGradient id={`bdg${id}`} cx="38%" cy="32%" r="75%">
+                <stop offset="0%" stopColor={t.light} />
+                <stop offset="100%" stopColor={t.fill} />
+              </radialGradient>
+            </defs>
+            <circle cx="50" cy="50" r="49" fill={`url(#bdg${id})`} opacity={badge.earned ? 1 : 0.45} />
+            <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,251,241,0.55)" strokeWidth="1.5" opacity={badge.earned ? 1 : 0.5} />
+            <circle cx="50" cy="50" r="40.5" fill="none" stroke="rgba(255,251,241,0.32)" strokeWidth="1" strokeDasharray="4 3" opacity={badge.earned ? 1 : 0.5} />
+            <text x="50" y="17" textAnchor="middle" fontSize="6" fill="rgba(255,251,241,0.65)" fontFamily="serif">★ ★ ★</text>
+            <text x="50" y="91" textAnchor="middle" fontSize="6" fill="rgba(255,251,241,0.65)" fontFamily="serif">★ ★ ★</text>
+            <text x="50" y="62" textAnchor="middle" fontSize="32">{badge.emoji}</text>
+          </svg>
+        </div>
+
+        {/* Tier pill */}
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 5,
+          background: `${t.fill}22`, borderRadius: 100,
+          padding: "4px 10px", marginTop: 12,
+          fontFamily: "var(--font-mono)", fontSize: 10,
+          letterSpacing: "1.6px", color: t.fill, fontWeight: 600,
+          position: "relative",
+          animation: "pqBdTxt 300ms 160ms both",
+        }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: t.fill }} />
+          {t.name.toUpperCase()} TIER
+        </div>
+
+        {/* Name */}
+        <div style={{
+          fontWeight: 800, fontSize: 26, color: "#FFFBF1",
+          letterSpacing: -0.5, marginTop: 12, position: "relative",
+          animation: "pqBdTxt 300ms 200ms both",
+        }}>
+          {badge.name}
+        </div>
+
+        {/* Description */}
+        <div style={{
+          fontSize: 13.5, color: "rgba(255,251,241,0.65)",
+          marginTop: 8, lineHeight: 1.55, position: "relative",
+          animation: "pqBdTxt 300ms 280ms both",
+        }}>
+          {badge.description}
+        </div>
+
+        {/* Earned date OR progress */}
+        <div style={{ marginTop: 20, position: "relative", animation: "pqBdTxt 300ms 360ms both" }}>
+          {badge.earned && earnedDateStr ? (
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              background: "rgba(255,251,241,0.07)", borderRadius: 8,
+              padding: "8px 14px",
+              fontFamily: "var(--font-mono)", fontSize: 11,
+              letterSpacing: "0.6px", color: "rgba(255,251,241,0.55)", fontWeight: 600,
+            }}>
+              ✦ Earned {earnedDateStr}
+            </div>
+          ) : badge.progress_current !== null && badge.progress_target !== null ? (
+            <div style={{ padding: "0 8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "rgba(255,251,241,0.4)", letterSpacing: "0.6px", fontWeight: 600 }}>PROGRESS</span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: t.fill, fontWeight: 700, letterSpacing: "0.4px" }}>
+                  {badge.progress_current} / {badge.progress_target}
+                </span>
+              </div>
+              <div style={{ height: 5, background: "rgba(255,251,241,0.10)", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: t.fill, borderRadius: 3, transition: "width 0.6s ease" }} />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Share to feed — earned badges only */}
+        {badge.earned && (
+          <div style={{ marginTop: 20, position: "relative", animation: "pqBdTxt 300ms 440ms both" }}>
+            <button
+              onClick={() => setShared(true)}
+              disabled={shared}
+              style={{
+                background: shared ? "rgba(255,251,241,0.08)" : "#FFFBF1",
+                color: shared ? "rgba(255,251,241,0.4)" : "#1B1A16",
+                border: "none", borderRadius: 100,
+                padding: "10px 24px", cursor: shared ? "default" : "pointer",
+                fontWeight: 700, fontSize: 13,
+                display: "inline-flex", alignItems: "center", gap: 7,
+                transition: "background 0.2s, color 0.2s",
+              }}
+            >
+              <Share2 size={13} strokeWidth={2.2} />
+              {shared ? "Shared to feed" : "Share to feed"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── BadgeCell ─────────────────────────────────────────────────────────────────
 
-function BadgeCell({ badge }: { badge: BadgeData }) {
+function BadgeCell({ badge, onClick }: { badge: BadgeData; onClick: () => void }) {
   const t = TIERS[badge.tier] ?? TIERS.bronze;
   const pct =
     badge.progress_target && badge.progress_target > 0
@@ -115,6 +292,7 @@ function BadgeCell({ badge }: { badge: BadgeData }) {
 
   return (
     <div
+      onClick={onClick}
       style={{
         background: "var(--surface)",
         borderRadius: 14,
@@ -260,9 +438,10 @@ export default function BadgesPage() {
   const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
 
-  const [badges, setBadges]       = useState<BadgeData[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [badges, setBadges]         = useState<BadgeData[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
+  const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
@@ -395,7 +574,7 @@ export default function BadgesPage() {
               }}
             >
               {visibleEarned.map((b) => (
-                <BadgeCell key={b.id} badge={b} />
+                <BadgeCell key={b.id} badge={b} onClick={() => setSelectedBadge(b)} />
               ))}
             </div>
           </div>
@@ -416,7 +595,7 @@ export default function BadgesPage() {
               }}
             >
               {visibleLocked.map((b) => (
-                <BadgeCell key={b.id} badge={b} />
+                <BadgeCell key={b.id} badge={b} onClick={() => setSelectedBadge(b)} />
               ))}
             </div>
           </div>
@@ -436,6 +615,10 @@ export default function BadgesPage() {
           </div>
         )}
       </div>
+
+      {selectedBadge && (
+        <BadgeDetailModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+      )}
     </DesktopShell>
   );
 }

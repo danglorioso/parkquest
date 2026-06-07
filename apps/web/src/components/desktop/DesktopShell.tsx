@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -36,8 +36,8 @@ const NAV = [
   {
     group: "COLLECTIONS",
     items: [
-      { id: "visited", href: "/visits",  icon: Check,    label: "Visited",    countKey: "visited" as const },
-      { id: "bucket",  href: "/bucket",  icon: Bookmark, label: "Bucket list", countKey: "bucket" as const },
+      { id: "visited", href: "/parks?status=visited",    icon: Check,    label: "Visited",    countKey: "visited" as const },
+      { id: "bucket",  href: "/parks?status=bucketList", icon: Bookmark, label: "Bucket list", countKey: "bucket" as const },
       { id: "journal", href: "/journal", icon: PenLine,  label: "Journal" },
     ],
   },
@@ -243,8 +243,36 @@ interface SidebarProps {
   onOpenSpotlight: () => void;
 }
 
+function navIsActive(
+  id: string,
+  href: string,
+  pathname: string,
+  searchParams: ReturnType<typeof useSearchParams>,
+  username?: string | null,
+): boolean {
+  if (id === "friends") {
+    return pathname === href || pathname.startsWith(href + "/") ||
+      (pathname.startsWith("/profile/") && pathname !== `/profile/${username}`);
+  }
+  if (id === "parks") {
+    const s = searchParams.get("status");
+    return pathname === "/parks" && (!s || s === "all");
+  }
+  if (href.includes("?")) {
+    const [hrefPath, hrefQuery] = href.split("?");
+    if (pathname !== hrefPath) return false;
+    const params = new URLSearchParams(hrefQuery);
+    for (const [key, value] of params.entries()) {
+      if (searchParams.get(key) !== value) return false;
+    }
+    return true;
+  }
+  return pathname === href || pathname.startsWith(href + "/");
+}
+
 function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLogVisit, onEditAccount, onOpenSpotlight }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const pct = totalCount > 0 ? (visitedCount / totalCount) * 100 : 0;
 
   return (
@@ -330,10 +358,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
               {group.group}
             </div>
             {group.items.map((item) => {
-              const onOtherProfile = pathname.startsWith("/profile/") && pathname !== `/profile/${username}`;
-              const isActive = item.id === "friends"
-                ? (pathname === item.href || pathname.startsWith(item.href + "/") || onOtherProfile)
-                : pathname === item.href || pathname.startsWith(item.href + "/");
+              const isActive = navIsActive(item.id, item.href, pathname, searchParams, username);
               const Icon = item.icon;
               const count =
                 "countKey" in item && item.countKey === "visited"
@@ -561,6 +586,7 @@ function MobileDrawer({
   onEditAccount: () => void;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const pct = totalCount > 0 ? (visitedCount / totalCount) * 100 : 0;
 
   useEffect(() => {
@@ -647,10 +673,7 @@ function MobileDrawer({
                 {group.group}
               </div>
               {group.items.map((item) => {
-                const onOtherProfile = pathname.startsWith("/profile/") && pathname !== `/profile/${username}`;
-                const isActive = item.id === "friends"
-                  ? (pathname === item.href || pathname.startsWith(item.href + "/") || onOtherProfile)
-                  : pathname === item.href || pathname.startsWith(item.href + "/");
+                const isActive = navIsActive(item.id, item.href, pathname, searchParams, username);
                 const Icon = item.icon;
                 const count =
                   "countKey" in item && item.countKey === "visited" ? visitedCount
