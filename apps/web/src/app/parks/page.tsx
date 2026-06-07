@@ -573,7 +573,7 @@ function ParksPageContent() {
         return p.name.toLowerCase().includes(q) || p.states.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q);
       }
       return true;
-    });
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }, [parks, visits, activitiesMap, topicsMap, query, statusFilter, stateFilter, activityFilters, topicFilters]);
 
   const visitedCount = useMemo(() => parks.filter((p) => parkStatus(p.park_code, visits) === "visited").length, [parks, visits]);

@@ -1,8 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Check } from "lucide-react";
+import { Check, Globe, Users, Lock } from "lucide-react";
+
+const AUDIENCE_OPTS = [
+  { value: "friends", label: "Friends", icon: Users },
+  { value: "public",  label: "Public",  icon: Globe  },
+  { value: "private", label: "Only me", icon: Lock   },
+] as const;
+type Audience = "friends" | "public" | "private";
 
 interface CelebrationBadge {
   id?: string;
@@ -29,22 +36,34 @@ export interface BadgeShareModalProps {
 export function BadgeShareModal({ badge, onClose, onPost }: BadgeShareModalProps) {
   const { user } = useUser();
   const [caption, setCaption] = useState("");
+  const [audience, setAudience] = useState<Audience>("friends");
   const [submitting, setSubmitting] = useState(false);
+  const [alreadyShared, setAlreadyShared] = useState(false);
   const t = TIERS[badge.tier] ?? TIERS.bronze;
-  const name = user?.fullName ?? user?.username ?? "Explorer";
+  const badgeKey = badge.id ?? badge.name;
+
+  useEffect(() => {
+    if (!user) return;
+    fetch(`/api/posts?userId=${user.id}&badgeId=${encodeURIComponent(badgeKey)}&limit=1`)
+      .then(r => r.json())
+      .then((rows: unknown[]) => { if (rows.length > 0) setAlreadyShared(true); })
+      .catch(() => {});
+  }, [user, badgeKey]);
 
   const handleShare = async () => {
     setSubmitting(true);
     try {
-      await fetch("/api/posts", {
+      const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          badge_id: badge.id ?? badge.name,
+          badge_id: badgeKey,
           caption: caption.trim() || null,
+          visibility: audience,
           photos: [],
         }),
       });
+      if (res.status === 409) { setAlreadyShared(true); return; }
       onPost?.();
       onClose();
     } catch {
@@ -86,16 +105,20 @@ export function BadgeShareModal({ badge, onClose, onPost }: BadgeShareModalProps
             }}>Cancel</button>
             <button
               onClick={handleShare}
-              disabled={submitting}
+              disabled={submitting || alreadyShared}
+              title={alreadyShared ? "Already shared to feed" : undefined}
               style={{
-                background: "var(--primary)", border: "none", color: "#FFFBF1",
+                background: alreadyShared ? "var(--surface-alt)" : "var(--primary)",
+                border: alreadyShared ? "0.5px solid var(--hairline)" : "none",
+                color: alreadyShared ? "var(--ink-mute)" : "#FFFBF1",
                 padding: "5px 14px", borderRadius: 8,
-                cursor: submitting ? "not-allowed" : "pointer",
+                cursor: submitting || alreadyShared ? "not-allowed" : "pointer",
                 fontWeight: 700, fontSize: 12.5, display: "flex", alignItems: "center", gap: 5,
                 opacity: submitting ? 0.55 : 1,
               }}
             >
-              <Check size={13} strokeWidth={2.4} /> Share
+              <Check size={13} strokeWidth={2.4} />
+              {alreadyShared ? "Already shared" : "Share"}
             </button>
           </div>
         </div>
@@ -136,8 +159,34 @@ export function BadgeShareModal({ badge, onClose, onPost }: BadgeShareModalProps
           </div>
         </div>
 
+        {/* Visibility picker */}
+        <div style={{ padding: "14px 18px 0", display: "flex", gap: 6 }}>
+          {AUDIENCE_OPTS.map(opt => {
+            const Icon = opt.icon;
+            const active = audience === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => setAudience(opt.value)}
+                style={{
+                  flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                  padding: "7px 0", borderRadius: 8, cursor: "pointer",
+                  border: active ? "1.5px solid var(--primary)" : "0.5px solid var(--hairline)",
+                  background: active ? "var(--primary)18" : "transparent",
+                  color: active ? "var(--primary)" : "var(--ink-mute)",
+                  fontWeight: 700, fontSize: 12, fontFamily: "var(--font-sans)",
+                  transition: "all 120ms ease",
+                }}
+              >
+                <Icon size={13} strokeWidth={2.2} />
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Caption */}
-        <div style={{ padding: "14px 18px 4px" }}>
+        <div style={{ padding: "12px 18px 4px" }}>
           <textarea
             autoFocus
             value={caption}

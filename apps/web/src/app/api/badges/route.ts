@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { visits, parks, userBadges } from '@/lib/db/schema';
+import { visits, parks, userBadges, posts } from '@/lib/db/schema';
 import { ALL_BADGES, computeStats, type BadgeDefinition } from '@/lib/badges';
 
 export async function GET() {
@@ -38,6 +38,21 @@ export async function GET() {
       newBadges.forEach((b: BadgeDefinition) => {
         earnedIds.add(b.id);
         earnedMap.set(b.id, new Date());
+      });
+    }
+
+    // Revoke badges the user no longer qualifies for, and delete their badge share posts
+    const revokedIds = ALL_BADGES
+      .filter((badge: BadgeDefinition) => earnedIds.has(badge.id) && !badge.criteria(stats))
+      .map((b: BadgeDefinition) => b.id);
+    if (revokedIds.length > 0) {
+      await Promise.all([
+        db.delete(userBadges).where(and(eq(userBadges.clerk_user_id, userId), inArray(userBadges.badge_id, revokedIds))),
+        db.delete(posts).where(and(eq(posts.clerk_user_id, userId), inArray(posts.badge_id, revokedIds))),
+      ]);
+      revokedIds.forEach(id => {
+        earnedIds.delete(id);
+        earnedMap.delete(id);
       });
     }
 

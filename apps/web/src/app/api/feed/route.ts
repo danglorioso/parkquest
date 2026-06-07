@@ -26,9 +26,11 @@ export async function GET(request: Request) {
         )
       );
 
-    const friendIds = new Set(friendRows.map(r => r.friend_id));
+    const friendIdList = friendRows.map(r => r.friend_id);
+    const friendIds = new Set(friendIdList);
 
-    // Fetch all posts; newest first
+    // Fetch only the user's own posts and friends' posts
+    const allowedIds = [userId, ...friendIdList];
     const feedPosts = await db
       .select({
         id: posts.id,
@@ -51,6 +53,7 @@ export async function GET(request: Request) {
       .from(posts)
       .leftJoin(parks, eq(posts.park_code, parks.park_code))
       .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
+      .where(inArray(posts.clerk_user_id, allowedIds))
       .orderBy(desc(posts.created_at))
       .limit(limit)
       .offset(offset);

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, desc, and, or, inArray, sql } from 'drizzle-orm';
+import { eq, desc, and, or, inArray, sql, isNotNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, parks, userProfiles, friendships, notifications } from '@/lib/db/schema';
 
@@ -39,8 +39,10 @@ export async function GET(request: Request) {
       .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
       .$dynamic();
 
+    const badgeId = searchParams.get('badgeId');
     if (userId) query = query.where(eq(posts.clerk_user_id, userId));
     if (parkCode) query = query.where(eq(posts.park_code, parkCode));
+    if (badgeId) query = query.where(eq(posts.badge_id, badgeId));
 
     const results = await query.orderBy(desc(posts.created_at)).limit(limit).offset(offset);
     return NextResponse.json(results);
@@ -62,6 +64,17 @@ export async function POST(request: Request) {
 
     if (!isBadgePost && !isQuotePost && !caption && (!photos || photos.length === 0)) {
       return NextResponse.json({ error: 'Post must have a caption or photos' }, { status: 400 });
+    }
+
+    if (isBadgePost) {
+      const [existing] = await db
+        .select({ id: posts.id })
+        .from(posts)
+        .where(and(eq(posts.clerk_user_id, userId), eq(posts.badge_id, badge_id)))
+        .limit(1);
+      if (existing) {
+        return NextResponse.json({ error: 'You have already shared this badge' }, { status: 409 });
+      }
     }
 
     const [post] = await db

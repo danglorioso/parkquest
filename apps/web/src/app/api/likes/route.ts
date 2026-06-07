@@ -1,9 +1,35 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { likes, posts, notifications, userProfiles } from '@/lib/db/schema';
 import { sendPushToUser } from '@/lib/push';
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const postId = searchParams.get('postId');
+    if (!postId) return NextResponse.json({ error: 'postId is required' }, { status: 400 });
+
+    const rows = await db
+      .select({
+        user_id: likes.user_id,
+        display_name: userProfiles.display_name,
+        username: userProfiles.username,
+        avatar_url: userProfiles.avatar_url,
+      })
+      .from(likes)
+      .leftJoin(userProfiles, eq(likes.user_id, userProfiles.clerk_user_id))
+      .where(eq(likes.post_id, Number(postId)))
+      .orderBy(desc(likes.created_at))
+      .limit(10);
+
+    return NextResponse.json(rows);
+  } catch (error) {
+    console.error('Error fetching likes:', error);
+    return NextResponse.json({ error: 'Failed to fetch likes' }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   try {

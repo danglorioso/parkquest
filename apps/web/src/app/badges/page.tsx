@@ -99,7 +99,7 @@ function BadgePatch({
 
 // ── BadgeDetailModal ──────────────────────────────────────────────────────────
 
-function BadgeDetailModal({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
+function BadgeDetailModal({ badge, onClose, onShare }: { badge: BadgeData; onClose: () => void; onShare: (badge: BadgeData) => void }) {
   const id = useId().replace(/:/g, "");
   const t = TIERS[badge.tier] ?? TIERS.bronze;
   const pct =
@@ -109,7 +109,6 @@ function BadgeDetailModal({ badge, onClose }: { badge: BadgeData; onClose: () =>
   const earnedDateStr = badge.earned_at
     ? new Date(badge.earned_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
     : null;
-  const [shared, setShared] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -250,22 +249,20 @@ function BadgeDetailModal({ badge, onClose }: { badge: BadgeData; onClose: () =>
 
         {/* Share to feed — earned badges only */}
         {badge.earned && (
-          <div style={{ marginTop: 20, position: "relative", animation: "pqBdTxt 300ms 440ms both" }}>
+          <div style={{ marginTop: 20, animation: "pqBdTxt 300ms 440ms both" }}>
             <button
-              onClick={() => setShared(true)}
-              disabled={shared}
+              onClick={() => { onShare(badge); onClose(); }}
               style={{
-                background: shared ? "rgba(255,251,241,0.08)" : "#FFFBF1",
-                color: shared ? "rgba(255,251,241,0.4)" : "#1B1A16",
+                background: "#FFFBF1",
+                color: "#1B1A16",
                 border: "none", borderRadius: 100,
-                padding: "10px 24px", cursor: shared ? "default" : "pointer",
+                padding: "10px 24px", cursor: "pointer",
                 fontWeight: 700, fontSize: 13,
                 display: "inline-flex", alignItems: "center", gap: 7,
-                transition: "background 0.2s, color 0.2s",
               }}
             >
               <Share2 size={13} strokeWidth={2.2} />
-              {shared ? "Shared to feed" : "Share to feed"}
+              Share to feed
             </button>
           </div>
         )}
@@ -443,6 +440,7 @@ export default function BadgesPage() {
   const [loading, setLoading]       = useState(true);
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
+  const [sharingBadge, setSharingBadge] = useState<BadgeData | null>(null);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
@@ -608,7 +606,17 @@ export default function BadgesPage() {
       </div>
 
       {selectedBadge && (
-        <BadgeDetailModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+        <BadgeDetailModal
+          badge={selectedBadge}
+          onClose={() => setSelectedBadge(null)}
+          onShare={b => { setSelectedBadge(null); setSharingBadge(b); }}
+        />
+      )}
+      {sharingBadge && (
+        <BadgeShareModal
+          badge={sharingBadge}
+          onClose={() => setSharingBadge(null)}
+        />
       )}
     </DesktopShell>
   );

@@ -2,17 +2,17 @@
 
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useCallback } from "react";
 import {
   Heart, MessageCircle, Bookmark,
   MoreHorizontal, MapPin, ChevronLeft, ChevronRight,
-  Filter, Plus, Search, Award,
+  Filter, Plus, Search, Award, Send,
 } from "lucide-react";
 import Link from "next/link";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { DesktopHeader } from "@/components/desktop/DesktopHeader";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
-import { CreatePostModal } from "@/components/CreatePostModal";
+import { LogVisitModal } from "@/components/LogVisitModal";
 import { ALL_BADGES } from "@/lib/badges";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -48,6 +48,18 @@ interface FeedPost {
   liked_by_me: boolean;
   is_friend_post: boolean;
 }
+
+// ── Badge lookup ──────────────────────────────────────────────────────────────
+
+const BADGE_MAP = new Map(ALL_BADGES.map(b => [b.id, b]));
+
+const BADGE_TIER_COLORS: Record<string, { fill: string; light: string }> = {
+  bronze:    { fill: "#B27339", light: "#D4A070" },
+  silver:    { fill: "#A8A39B", light: "#C5C0B8" },
+  gold:      { fill: "#D4A93F", light: "#EBC96A" },
+  platinum:  { fill: "#6E97A3", light: "#95B8C2" },
+  legendary: { fill: "#8B5DBF", light: "#B08ADE" },
+};
 
 // ── Deterministic park gradient ───────────────────────────────────────────────
 
@@ -249,69 +261,282 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
   );
 }
 
-// ── BadgePostHeader ───────────────────────────────────────────────────────────
+// ── BadgePostBody ─────────────────────────────────────────────────────────────
 
-const BADGE_TIERS: Record<string, { fill: string; label: string }> = {
-  bronze:    { fill: "#B27339", label: "BRONZE" },
-  silver:    { fill: "#A8A39B", label: "SILVER" },
-  gold:      { fill: "#D4A93F", label: "GOLD" },
-  platinum:  { fill: "#6E97A3", label: "PLATINUM" },
-  legendary: { fill: "#8B5DBF", label: "LEGENDARY" },
-};
+function BadgePostBody({ badgeId }: { badgeId: string }) {
+  const badge = BADGE_MAP.get(badgeId);
+  if (!badge) return null;
+  const colors = BADGE_TIER_COLORS[badge.tier] ?? BADGE_TIER_COLORS.bronze;
 
-// ── QuotedPostBlock ───────────────────────────────────────────────────────────
-
-function QuotedPostBlock({ quoted }: { quoted: QuotedPost }) {
-  const name = quoted.display_name ?? quoted.username ?? "Explorer";
-  const preview = quoted.photos?.[0] ?? null;
   return (
-    <div style={{ margin: "0 18px 12px" }}>
+    <div style={{ padding: "0 18px 16px" }}>
       <div style={{
-        border: "0.5px solid var(--hairline)",
-        borderRadius: 12,
-        overflow: "hidden",
-        background: "var(--bg)",
+        borderRadius: 14,
+        padding: "18px 20px",
+        background: `linear-gradient(140deg, ${colors.fill}1a 0%, ${colors.light}14 100%)`,
+        border: `0.5px solid ${colors.fill}40`,
+        display: "flex",
+        alignItems: "center",
+        gap: 18,
       }}>
-        {preview && (
-          <img src={preview} alt="" style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }} />
-        )}
-        <div style={{ padding: "9px 12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-            <div style={{
-              width: 20, height: 20, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
-              background: "var(--surface-alt)", display: "flex", alignItems: "center",
-              justifyContent: "center", fontSize: 7, fontWeight: 700, color: "var(--ink-mute)",
-              fontFamily: "var(--font-mono)",
-            }}>
-              {quoted.avatar_url
-                ? <img src={quoted.avatar_url} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                : name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()}
-            </div>
-            <div style={{ fontWeight: 700, fontSize: 12, color: "var(--ink)" }}>{name}</div>
-            {quoted.username && (
-              <div style={{ fontSize: 11, color: "var(--ink-mute)" }}>@{quoted.username}</div>
-            )}
+        <div style={{
+          width: 64, height: 64, borderRadius: "50%", flexShrink: 0,
+          background: `linear-gradient(140deg, ${colors.light} 0%, ${colors.fill} 100%)`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 30,
+          boxShadow: `0 6px 20px ${colors.fill}50`,
+        }}>
+          {badge.emoji}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1.4px",
+            color: colors.fill, fontWeight: 700, marginBottom: 3,
+            textTransform: "uppercase",
+          }}>
+            {badge.tier} badge
           </div>
-          {quoted.park_name && (
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: 3, marginBottom: 4,
-              fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--primary)",
-              fontWeight: 700, letterSpacing: "0.4px",
-            }}>
-              <MapPin size={10} strokeWidth={2.4} />
-              {quoted.park_name.toUpperCase()}
-            </div>
-          )}
-          {quoted.caption && (
-            <div style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.45 }}>
-              {quoted.caption.length > 160 ? quoted.caption.slice(0, 160) + "…" : quoted.caption}
-            </div>
-          )}
-          {!quoted.caption && (
-            <div style={{ fontSize: 12, color: "var(--ink-mute)", fontStyle: "italic" }}>
-              {quoted.badge_id ? "Badge earned" : "Park visit"}
-            </div>
-          )}
+          <div style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)", letterSpacing: -0.3, lineHeight: 1.2 }}>
+            {badge.name}
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-mute)", marginTop: 4, lineHeight: 1.45 }}>
+            {badge.description}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── LikesTooltip ──────────────────────────────────────────────────────────────
+
+interface Liker { user_id: string; display_name: string | null; username: string | null; }
+
+function LikesTooltip({ postId, likeCount, onLike, children }: {
+  postId: number;
+  likeCount: number;
+  onLike: () => void;
+  children: React.ReactNode;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [likers, setLikers] = useState<Liker[]>([]);
+  const [fetched, setFetched] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const show = () => {
+    timerRef.current = setTimeout(() => {
+      if (wrapRef.current) {
+        const r = wrapRef.current.getBoundingClientRect();
+        setPos({ x: r.left + r.width / 2, y: r.top });
+      }
+      setVisible(true);
+      if (!fetched && likeCount > 0) {
+        fetch(`/api/likes?postId=${postId}`)
+          .then(r => r.ok ? r.json() : [])
+          .then((rows: Liker[]) => { setLikers(rows); setFetched(true); })
+          .catch(() => {});
+      }
+    }, 250);
+  };
+
+  const hide = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setVisible(false);
+  };
+
+  const label = (() => {
+    if (likeCount === 0) return null;
+    const names = likers.map(l => l.display_name ?? l.username ?? "Someone");
+    if (names.length === 0) return `${likeCount} like${likeCount !== 1 ? "s" : ""}`;
+    if (names.length <= 3) return names.join(", ");
+    return `${names.slice(0, 2).join(", ")} and ${likeCount - 2} others`;
+  })();
+
+  return (
+    <div ref={wrapRef} style={{ display: "inline-flex" }} onMouseEnter={show} onMouseLeave={hide}>
+      <div onClick={onLike}>{children}</div>
+      {visible && label && (
+        <div style={{
+          position: "fixed",
+          left: pos.x,
+          top: pos.y - 8,
+          transform: "translate(-50%, -100%)",
+          background: "var(--ink)",
+          color: "var(--bg)",
+          padding: "5px 10px",
+          borderRadius: 7,
+          fontSize: 11.5,
+          fontWeight: 600,
+          fontFamily: "var(--font-sans)",
+          whiteSpace: "nowrap",
+          pointerEvents: "none",
+          zIndex: 9999,
+          letterSpacing: 0.1,
+        }}>
+          {label}
+          <div style={{
+            position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
+            width: 0, height: 0,
+            borderLeft: "5px solid transparent",
+            borderRight: "5px solid transparent",
+            borderTop: "5px solid var(--ink)",
+          }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── CommentsPanel ─────────────────────────────────────────────────────────────
+
+interface CommentRow {
+  id: number;
+  content: string;
+  created_at: string;
+  user_id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+function CommentsPanel({ postId, onCountChange }: { postId: number; onCountChange: (delta: number) => void }) {
+  const { user } = useUser();
+  const [rows, setRows] = useState<CommentRow[]>([]);
+  const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/comments?postId=${postId}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setRows)
+      .catch(() => {});
+    setTimeout(() => inputRef.current?.focus(), 60);
+  }, [postId]);
+
+  const submit = useCallback(async () => {
+    const text = draft.trim();
+    if (!text || submitting) return;
+    setSubmitting(true);
+    setDraft("");
+    try {
+      const res = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, content: text }),
+      });
+      if (res.ok) {
+        const newComment = await res.json();
+        setRows(prev => [...prev, {
+          ...newComment,
+          username: user?.username ?? null,
+          display_name: user?.fullName ?? null,
+          avatar_url: user?.imageUrl ?? null,
+        }]);
+        onCountChange(1);
+      }
+    } catch {
+      setDraft(text);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [draft, submitting, postId, user, onCountChange]);
+
+  const myName = user?.fullName ?? user?.username ?? "You";
+  const myInitials = myName.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+
+  return (
+    <div style={{ borderTop: "0.5px solid var(--hairline-soft)" }}>
+      {/* Comment list */}
+      {rows.length > 0 && (
+        <div style={{ padding: "10px 18px 4px", display: "flex", flexDirection: "column", gap: 12 }}>
+          {rows.map(c => {
+            const cname = c.display_name ?? c.username ?? "Explorer";
+            const initials = cname.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+            return (
+              <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <div style={{ display: "flex", gap: 9, alignItems: "center" }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                    overflow: "hidden", background: "var(--surface-alt)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 9, fontWeight: 700, color: "var(--ink-mute)", fontFamily: "var(--font-mono)",
+                  }}>
+                    {c.avatar_url
+                      ? <img src={c.avatar_url} alt={cname} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : initials}
+                  </div>
+                  <div style={{
+                    flex: 1, minWidth: 0,
+                    background: "var(--surface-alt)", borderRadius: "4px 12px 12px 12px",
+                    padding: "7px 11px",
+                    border: "0.5px solid var(--hairline)",
+                    display: "flex", alignItems: "center",
+                  }}>
+                    <span style={{ fontWeight: 700, fontSize: 12, color: "var(--ink)", marginRight: 6 }}>{cname}</span>
+                    <span style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1 }}>{c.content}</span>
+                  </div>
+                </div>
+                <div style={{
+                  paddingLeft: 37,
+                  fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-mute)",
+                  letterSpacing: "0.3px",
+                }}>
+                  {relTime(c.created_at)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Input row */}
+      <div style={{ display: "flex", gap: 9, alignItems: "center", padding: "10px 18px 14px" }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+          background: "var(--surface-alt)", display: "flex", alignItems: "center",
+          justifyContent: "center", fontSize: 9, fontWeight: 700, color: "var(--ink-mute)",
+          fontFamily: "var(--font-mono)",
+        }}>
+          {user?.imageUrl
+            ? <img src={user.imageUrl} alt={myName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : myInitials}
+        </div>
+        <div style={{
+          flex: 1, display: "flex", alignItems: "center",
+          background: "var(--surface-alt)", border: "0.5px solid var(--hairline)",
+          borderRadius: 20, paddingLeft: 13, paddingRight: 6, gap: 6,
+        }}>
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
+            placeholder="Add a comment…"
+            style={{
+              flex: 1, background: "transparent", border: "none", outline: "none",
+              fontSize: 13, color: "var(--ink)", fontFamily: "var(--font-sans)",
+              padding: "7px 0",
+            }}
+          />
+          <button
+            onClick={submit}
+            disabled={!draft.trim() || submitting}
+            className="hover:opacity-75 transition-opacity"
+            style={{
+              background: draft.trim() ? "var(--primary)" : "transparent",
+              border: "none", borderRadius: 16,
+              width: 28, height: 28, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: draft.trim() ? "pointer" : "default",
+              color: draft.trim() ? "#FFFBF1" : "var(--ink-mute)",
+              transition: "background 140ms ease",
+            }}
+          >
+            <Send size={13} strokeWidth={2.2} />
+          </button>
         </div>
       </div>
     </div>
@@ -323,17 +548,17 @@ function QuotedPostBlock({ quoted }: { quoted: QuotedPost }) {
 function PostCard({
   post,
   onLike,
-  onQuote,
 }: {
   post: FeedPost;
   onLike: (id: number, liked: boolean) => void;
-  onQuote: (post: FeedPost) => void;
 }) {
+  const [showComments, setShowComments] = useState(false);
+  const [commentDelta, setCommentDelta] = useState(0);
   const isBadgePost = !!post.badge_id;
-  const isQuotePost = !!post.quoted_post_id && !!post.quoted_post;
   const hasPhotos = !isBadgePost && post.photos && post.photos.length > 0;
   const photos = hasPhotos ? post.photos! : [""];
   const name = post.display_name ?? post.username ?? "Explorer";
+  const commentCount = post.comment_count + commentDelta;
 
   return (
     <div
@@ -367,29 +592,6 @@ function PostCard({
         </div>
       )}
 
-      {/* Quote banner */}
-      {isQuotePost && !isBadgePost && (
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "10px 18px",
-          background: "var(--surface-alt)",
-          borderBottom: "0.5px solid var(--hairline-soft)",
-        }}>
-          <Repeat2 size={14} strokeWidth={2} style={{ color: "var(--ink-mute)", flexShrink: 0 }} />
-          <span style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: "1.2px",
-            color: "var(--ink-mute)",
-            fontWeight: 700,
-          }}>
-            QUOTED POST
-          </span>
-        </div>
-      )}
-
       {/* Header */}
       <div
         style={{
@@ -399,15 +601,16 @@ function PostCard({
           padding: "14px 18px",
         }}
       >
-        <Avatar url={post.avatar_url} name={name} size={40} />
+        <Link href={`/profile/${post.username}`} style={{ textDecoration: "none", flexShrink: 0 }}>
+          <Avatar url={post.avatar_url} name={name} size={40} />
+        </Link>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <Link href={`/profile/${post.username}`} style={{ textDecoration: "none" }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{name}</div>
-            {post.username && (
-              <div style={{ fontSize: 12.5, color: "var(--ink-mute)" }}>
-                @{post.username} · {relTime(post.created_at)}
-              </div>
-            )}
+          </Link>
+          <div style={{ fontSize: 12, color: "var(--ink-mute)", marginTop: 1 }}>
+            {post.username && <span>@{post.username} · </span>}
+            {relTime(post.created_at)}
           </div>
           {post.park_name && !isBadgePost && (
             <Link
@@ -419,7 +622,7 @@ function PostCard({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 4,
-                  marginTop: 2,
+                  marginTop: 3,
                   fontFamily: "var(--font-mono)",
                   fontSize: 10.5,
                   color: "var(--primary)",
@@ -461,119 +664,102 @@ function PostCard({
         </div>
       )}
 
-      {/* Quoted post block */}
-      {isQuotePost && post.quoted_post && (
-        <QuotedPostBlock quoted={post.quoted_post} />
+      {/* Badge body */}
+      {isBadgePost && post.badge_id && (
+        <BadgePostBody badgeId={post.badge_id} />
       )}
 
-      {/* Photo carousel — only for regular/quote posts with photos */}
+      {/* Photo carousel — only for regular posts with photos */}
       {!isBadgePost && (
         <PhotoCarousel photos={photos} parkCode={post.park_code} />
       )}
 
       {/* Action row */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 18,
-          padding: "14px 18px 6px",
-        }}
-      >
-        <ActionButton
-          active={post.liked_by_me}
-          onClick={() => onLike(post.id, post.liked_by_me)}
-          color={post.liked_by_me ? "#D45040" : undefined}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "12px 18px 14px",
+        borderTop: "0.5px solid var(--hairline-soft)",
+      }}>
+        {/* Like */}
+        <LikesTooltip
+          postId={post.id}
+          likeCount={post.like_count}
+          onLike={() => onLike(post.id, post.liked_by_me)}
         >
-          <Heart
-            size={22}
-            strokeWidth={2.0}
-            fill={post.liked_by_me ? "#D45040" : "none"}
-            style={{ color: post.liked_by_me ? "#D45040" : "var(--ink)" }}
-          />
-          <span>{post.like_count.toLocaleString()}</span>
-        </ActionButton>
+          <button
+            className="hover:opacity-75 transition-opacity"
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: post.liked_by_me ? "rgba(212,80,64,0.10)" : "var(--surface-alt)",
+              border: post.liked_by_me ? "0.5px solid rgba(212,80,64,0.38)" : "0.5px solid var(--hairline)",
+              borderRadius: 9, padding: "6px 12px", cursor: "pointer",
+              color: post.liked_by_me ? "#D45040" : "var(--ink-soft)",
+              transition: "background 140ms ease, border-color 140ms ease, color 140ms ease",
+            }}
+          >
+            <Heart
+              size={15} strokeWidth={2.2}
+              fill={post.liked_by_me ? "#D45040" : "none"}
+              style={{ color: "inherit", flexShrink: 0 }}
+            />
+            <span style={{
+              fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700,
+              letterSpacing: "0.5px", lineHeight: 1,
+            }}>
+              {post.like_count > 0 ? post.like_count.toLocaleString() : "Like"}
+            </span>
+          </button>
+        </LikesTooltip>
 
-        <ActionButton>
-          <MessageCircle size={22} strokeWidth={2.0} style={{ color: "var(--ink)" }} />
-          <span>{post.comment_count}</span>
-        </ActionButton>
-
-        <ActionButton onClick={() => onQuote(post)}>
-          <Repeat2 size={22} strokeWidth={2.0} style={{ color: "var(--ink)" }} />
-          <span>Quote</span>
-        </ActionButton>
+        {/* Comment */}
+        <button
+          onClick={() => setShowComments(v => !v)}
+          className="hover:opacity-75 transition-opacity"
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            background: showComments ? "rgba(31,61,46,0.10)" : "var(--surface-alt)",
+            border: showComments ? "0.5px solid rgba(31,61,46,0.30)" : "0.5px solid var(--hairline)",
+            borderRadius: 9, padding: "6px 12px", cursor: "pointer",
+            color: showComments ? "var(--primary)" : "var(--ink-soft)",
+            transition: "background 140ms ease, border-color 140ms ease, color 140ms ease",
+          }}
+        >
+          <MessageCircle size={15} strokeWidth={2.2} style={{ color: "inherit", flexShrink: 0 }} />
+          <span style={{
+            fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700,
+            letterSpacing: "0.5px", lineHeight: 1,
+          }}>
+            {commentCount > 0 ? commentCount.toLocaleString() : "Comment"}
+          </span>
+        </button>
 
         <div style={{ flex: 1 }} />
 
+        {/* Save */}
         <button
+          className="hover:opacity-75 transition-opacity"
           style={{
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            color: "var(--ink)",
-            display: "flex",
-            alignItems: "center",
+            display: "flex", alignItems: "center", gap: 6,
+            background: "var(--surface-alt)",
+            border: "0.5px solid var(--hairline)",
+            borderRadius: 9, padding: "6px 10px", cursor: "pointer",
+            color: "var(--ink-soft)",
           }}
         >
-          <Bookmark size={20} strokeWidth={1.8} />
+          <Bookmark size={15} strokeWidth={2.2} style={{ color: "inherit", flexShrink: 0 }} />
         </button>
       </div>
 
-      {/* Comments link */}
-      {post.comment_count > 0 && (
-        <div style={{ padding: "8px 18px 16px" }}>
-          <button
-            style={{
-              background: "transparent",
-              border: "none",
-              padding: 0,
-              fontSize: 12.5,
-              color: "var(--ink-mute)",
-              cursor: "pointer",
-              fontFamily: "var(--font-sans)",
-            }}
-          >
-            View all {post.comment_count} comment{post.comment_count !== 1 ? "s" : ""}
-          </button>
-        </div>
+      {/* Comments panel */}
+      {showComments && (
+        <CommentsPanel
+          postId={post.id}
+          onCountChange={delta => setCommentDelta(prev => prev + delta)}
+        />
       )}
     </div>
-  );
-}
-
-function ActionButton({
-  children,
-  onClick,
-  active,
-  color,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  active?: boolean;
-  color?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        background: "transparent",
-        border: "none",
-        cursor: "pointer",
-        padding: 0,
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        color: color ?? "var(--ink)",
-        fontSize: 14,
-        fontWeight: 600,
-        transform: active ? "scale(1.06)" : "scale(1)",
-        transition: "transform 120ms ease",
-        fontFamily: "var(--font-sans)",
-      }}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -1024,7 +1210,6 @@ export default function FeedPage() {
   const [visited, setVisited] = useState(0);
   const [total, setTotal]   = useState(63);
   const [showCreate, setShowCreate] = useState(false);
-  const [quotingPost, setQuotingPost] = useState<FeedPost | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [trending, setTrending] = useState<TrendingPark[]>([]);
@@ -1119,19 +1304,11 @@ export default function FeedPage() {
 
   return (
     <>
-    {showCreate && (
-      <CreatePostModal
-        onClose={() => setShowCreate(false)}
-        onPost={() => { setShowCreate(false); refreshFeed(); }}
-      />
-    )}
-    {quotingPost && (
-      <QuotePostModal
-        post={quotingPost}
-        onClose={() => setQuotingPost(null)}
-        onPost={() => { setQuotingPost(null); refreshFeed(); }}
-      />
-    )}
+    <LogVisitModal
+      open={showCreate}
+      onClose={() => setShowCreate(false)}
+      onPosted={() => { setShowCreate(false); refreshFeed(); }}
+    />
     <DesktopShell
       rightRail={
         <FeedRightRail
@@ -1155,7 +1332,7 @@ export default function FeedPage() {
               <Filter size={13} strokeWidth={2} /> Filter
             </DesktopButton>
             <DesktopButton size="sm" primary onClick={() => setShowCreate(true)}>
-              <Plus size={13} strokeWidth={2.4} /> New post
+              <Plus size={13} strokeWidth={2.4} /> Log visit
             </DesktopButton>
           </>
         }
@@ -1200,7 +1377,7 @@ export default function FeedPage() {
         )}
 
         {posts.map((post) => (
-          <PostCard key={post.id} post={post} onLike={handleLike} onQuote={setQuotingPost} />
+          <PostCard key={post.id} post={post} onLike={handleLike} />
         ))}
 
         {!loading && posts.length > 0 && (
@@ -1214,7 +1391,7 @@ export default function FeedPage() {
               color: "var(--ink-mute)",
             }}
           >
-            ◆ END OF FEED · ALL CAUGHT UP
+            ◆ END OF FEED · ALL CAUGHT UP ◆
           </div>
         )}
       </div>
