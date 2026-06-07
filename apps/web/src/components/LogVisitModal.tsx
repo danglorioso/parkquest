@@ -66,6 +66,7 @@ export interface VisitDraft {
   photos: string[];
   cover: string | null;
   visibility: "Private" | "Friends" | "Public";
+  caption: string;
 }
 
 interface ParkData { park_code: string; name: string; states: string; }
@@ -294,7 +295,7 @@ function makeBlankDraft(): VisitDraft {
     rating: 0, crowd: 0, difficulty: 0,
     weather: { conds: [] }, activities: [],
     companions: [], wouldReturn: null,
-    highlight: "", notes: "", photos: [], cover: null, visibility: "Friends",
+    highlight: "", notes: "", photos: [], cover: null, visibility: "Friends", caption: "",
   };
 }
 
@@ -1134,9 +1135,9 @@ function PhotoUploader({ photos, cover, onAddPhotos, onRemove, onSetCover }: {
 
 function VisibilityChoice({ value, onChange }: { value: VisitDraft["visibility"]; onChange: (v: VisitDraft["visibility"]) => void }) {
   const opts: { v: VisitDraft["visibility"]; desc: string }[] = [
-    { v: "Private", desc: "Only you. A private journal entry." },
-    { v: "Friends", desc: "Visible to your friends." },
-    { v: "Public",  desc: "Anyone on ParkQuest." },
+    { v: "Private", desc: "Only you. Not posted to the feed." },
+    { v: "Friends", desc: "Posted to your friends' feeds." },
+    { v: "Public",  desc: "Posted publicly for all explorers." },
   ];
   const IconFor = { Private: Lock, Friends: Users, Public: Globe };
   return (
@@ -1252,8 +1253,8 @@ function VisitPreview({ draft, park, userName, avatarUrl }: {
             <div style={{ ...mono, fontSize: 9, letterSpacing: 0.6, color: "var(--accent)", background: "rgba(197,107,61,0.1)", padding: "2px 7px", borderRadius: 100, fontWeight: 700 }}>{days} DAYS</div>
           )}
         </div>
-        {draft.title  && <div style={{ fontWeight: 800, fontSize: 17, color: "var(--ink)", letterSpacing: -0.3, lineHeight: 1.15, marginBottom: 5 }}>{draft.title}</div>}
-        {draft.notes  && <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>{draft.notes.length > 160 ? draft.notes.slice(0, 160) + "…" : draft.notes}</div>}
+        {draft.title   && <div style={{ fontWeight: 800, fontSize: 17, color: "var(--ink)", letterSpacing: -0.3, lineHeight: 1.15, marginBottom: 5 }}>{draft.title}</div>}
+        {draft.caption && <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>{draft.caption.length > 160 ? draft.caption.slice(0, 160) + "…" : draft.caption}</div>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
           {selectedWeather.map(w => <PreviewChip key={w.id} icon={w.icon}>{w.label}</PreviewChip>)}
           {draft.crowd > 0 && <PreviewChip icon="crowd">{CROWD_LABELS[draft.crowd - 1]}</PreviewChip>}
@@ -1382,9 +1383,28 @@ function StepJournal({ draft, set, activities, npsActivityNames }: { draft: Visi
 
 function StepShare({ draft, set }: { draft: VisitDraft; set: SetFn }) {
   return (
-    <Section title="Who can see this?">
-      <VisibilityChoice value={draft.visibility} onChange={v => set("visibility", v)} />
-    </Section>
+    <>
+      <Section title="Add a caption" mb={18}>
+        <textarea
+          value={draft.caption}
+          onChange={e => set("caption", e.target.value.slice(0, 500))}
+          placeholder="Share what made this trip special…"
+          rows={4}
+          style={{
+            width: "100%", background: "var(--surface)", border: "0.5px solid var(--hairline)",
+            borderRadius: 14, padding: "13px 14px", fontSize: 14, color: "var(--ink)",
+            outline: "none", fontFamily: "inherit", resize: "none", lineHeight: 1.5,
+            boxSizing: "border-box",
+          }}
+        />
+        <div style={{ textAlign: "right", fontSize: 11, color: "var(--ink-mute)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
+          {draft.caption.length}/500
+        </div>
+      </Section>
+      <Section title="Who can see this?">
+        <VisibilityChoice value={draft.visibility} onChange={v => set("visibility", v)} />
+      </Section>
+    </>
   );
 }
 
@@ -1557,7 +1577,7 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
       if (editMode && initialDraft?.parkCode && initialDraft.parkCode !== draft.parkCode) {
         await fetch(`/api/visits?park_code=${initialDraft.parkCode}`, { method: "DELETE" });
       }
-      await fetch("/api/visits", {
+      const visitRes = await fetch("/api/visits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1579,6 +1599,23 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
           visibility:         draft.visibility.toLowerCase(),
         }),
       });
+
+      if (!editMode && draft.visibility !== "Private") {
+        const { visit } = await visitRes.json();
+        if (visit?.id) {
+          await fetch("/api/posts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              caption:   draft.caption || null,
+              photos:    draft.photos.length > 0 ? draft.photos : null,
+              park_code: draft.parkCode,
+              visit_id:  visit.id,
+            }),
+          });
+        }
+      }
+
       onPosted?.();
       handleClose();
     } catch {

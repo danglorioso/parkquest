@@ -61,8 +61,9 @@ export async function POST(request: Request) {
 
     const isBadgePost = !!badge_id;
     const isQuotePost = !!quoted_post_id;
+    const isVisitPost = !!visit_id;
 
-    if (!isBadgePost && !isQuotePost && !caption && (!photos || photos.length === 0)) {
+    if (!isBadgePost && !isQuotePost && !isVisitPost && !caption && (!photos || photos.length === 0)) {
       return NextResponse.json({ error: 'Post must have a caption or photos' }, { status: 400 });
     }
 
