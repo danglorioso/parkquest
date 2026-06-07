@@ -13,6 +13,7 @@ export async function GET(request: Request) {
     const limit = Math.min(Number(searchParams.get('limit') ?? '20'), 50);
     const offset = Number(searchParams.get('offset') ?? '0');
 
+    // Fetch accepted friend IDs
     const friendRows = await db
       .select({
         friend_id: sql<string>`CASE WHEN ${friendships.requester_id} = ${userId} THEN ${friendships.recipient_id} ELSE ${friendships.requester_id} END`,
@@ -25,13 +26,9 @@ export async function GET(request: Request) {
         )
       );
 
-    const friendIds = friendRows.map(r => r.friend_id);
+    const friendIds = new Set(friendRows.map(r => r.friend_id));
 
-    // Show all posts (all are public); rank own + friends' posts first
-    const friendListLiteral = friendIds.length > 0
-      ? `ARRAY[${friendIds.map(id => `'${id}'`).join(',')}]::text[]`
-      : `ARRAY[]::text[]`;
-
+    // Fetch all posts (all are public); newest first
     const feedPosts = await db
       .select({
         id: posts.id,
@@ -48,27 +45,30 @@ export async function GET(request: Request) {
         like_count: sql<number>`(SELECT COUNT(*)::int FROM likes WHERE likes.post_id = ${posts.id})`,
         comment_count: sql<number>`(SELECT COUNT(*)::int FROM comments WHERE comments.post_id = ${posts.id})`,
         liked_by_me: sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${userId})`,
-        is_friend_post: sql<boolean>`(${posts.clerk_user_id} = ${userId} OR ${posts.clerk_user_id} = ANY(${sql.raw(friendListLiteral)}))`,
       })
       .from(posts)
       .leftJoin(parks, eq(posts.park_code, parks.park_code))
       .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
-      .orderBy(
-        sql`(${posts.clerk_user_id} = ${userId} OR ${posts.clerk_user_id} = ANY(${sql.raw(friendListLiteral)})) DESC`,
-        desc(posts.created_at),
-      )
+      .orderBy(desc(posts.created_at))
       .limit(limit)
       .offset(offset);
 
-    // Extract photo URLs from stored objects
+    // Normalize photos to URL strings and annotate friend/own posts
     const normalized = feedPosts.map(p => ({
       ...p,
+      is_friend_post: p.clerk_user_id === userId || friendIds.has(p.clerk_user_id),
       photos: Array.isArray(p.photos)
         ? (p.photos as Array<{ url: string } | string>).map(ph =>
             typeof ph === 'string' ? ph : ph.url
           )
         : null,
     }));
+
+    // Sort: own + friend posts first, then everyone else — preserve recency within each group
+    normalized.sort((a, b) => {
+      if (a.is_friend_post !== b.is_friend_post) return a.is_friend_post ? -1 : 1;
+      return 0; // already ordered by created_at DESC from the DB
+    });
 
     return NextResponse.json(normalized);
   } catch (error) {

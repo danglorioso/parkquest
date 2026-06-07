@@ -20,7 +20,10 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ParkQuest - National Parks Tracker",
+  title: {
+    template: "%s | ParkQuest",
+    default: "ParkQuest - Track Your National Park Adventures",
+  },
   description: "Track your visits, earn badges, and explore the beauty of national parks across the country with ParkQuest.",
 };
 
