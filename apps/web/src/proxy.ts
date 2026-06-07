@@ -24,6 +24,11 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
   
+  // Allow auth pages — page components handle their own redirect logic
+  if (req.nextUrl.pathname.startsWith('/sign-in') || req.nextUrl.pathname.startsWith('/sign-up')) {
+    return NextResponse.next();
+  }
+
   // Always allow sso-callback for OAuth to complete
   if (req.nextUrl.pathname === '/sso-callback') {
     return NextResponse.next();
