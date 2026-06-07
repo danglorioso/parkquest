@@ -828,14 +828,11 @@ function CloudShape({ variant }: { variant: number }) {
 function MobileHeroSection() {
   return (
     <div
-      className="md:hidden relative overflow-hidden"
+      className="flex flex-col justify-end md:hidden relative overflow-hidden"
       style={{
         height: "40svh",
         minHeight: 240,
         background: "linear-gradient(180deg, var(--primary-deep) 0%, var(--primary) 100%)",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-end",
       }}
     >
       {/* Animated topo overlay */}
