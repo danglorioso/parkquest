@@ -28,6 +28,7 @@ const C = {
 };
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+console.log('[parks] BASE URL:', BASE);
 const CARD_GAP = 14;
 const SCREEN_W = Dimensions.get('window').width;
 const H_PAD = 16;
@@ -275,7 +276,7 @@ export default function ParksScreen() {
     setError(false);
     try {
       const [parksData, visitsData] = await Promise.all([
-        apiFetch<Park[]>('/api/parks', tok),
+        fetch(`${BASE}/api/parks`).then(r => r.json()) as Promise<Park[]>,
         apiFetch<Visit[]>('/api/visits', tok),
       ]);
       setParks(parksData);
