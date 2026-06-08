@@ -675,6 +675,63 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
+function CompanionLink({ username, displayName, avatarUrl }: {
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const ref = useRef<HTMLAnchorElement>(null);
+
+  return (
+    <>
+      <Link
+        ref={ref}
+        href={`/profile/${username}`}
+        onMouseEnter={() => {
+          if (ref.current) {
+            const r = ref.current.getBoundingClientRect();
+            setPos({ x: r.left + r.width / 2, y: r.top });
+          }
+        }}
+        onMouseLeave={() => setPos(null)}
+        style={{
+          color: "inherit", textDecoration: "underline",
+          textDecorationStyle: "dotted", textUnderlineOffset: 2,
+          cursor: "pointer",
+        }}
+      >
+        {displayName ?? `@${username}`}
+      </Link>
+      {pos && typeof document !== "undefined" && createPortal(
+        <div
+          style={{
+            position: "fixed",
+            left: pos.x, top: pos.y - 10,
+            transform: "translate(-50%, -100%)",
+            background: "var(--surface)", border: "0.5px solid var(--hairline)",
+            borderRadius: 12, padding: "10px 12px", zIndex: 9999,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.14)",
+            display: "flex", alignItems: "center", gap: 10,
+            pointerEvents: "none", whiteSpace: "nowrap",
+          }}
+        >
+          <Avatar url={avatarUrl} name={displayName ?? username} size={30} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
+              {displayName ?? username}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 1 }}>
+              @{username}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
 function MetaChip({ children }: { children: React.ReactNode }) {
   return (
     <span style={{
@@ -737,11 +794,18 @@ function VisitMeta({ post }: { post: FeedPost }) {
           const names = post.visit_companion_names;
           if (names && names.length > 0) {
             const MAX = 2;
-            const shown = names.slice(0, MAX).map(c => c.display_name ?? `@${c.username}`).join(", ");
+            const shown = names.slice(0, MAX);
             const extra = names.length - MAX;
             return (
               <MetaChip>
-                With {shown}{extra > 0 ? ` +${extra} more` : ""}
+                {"With "}
+                {shown.map((c, i) => (
+                  <span key={c.username}>
+                    {i > 0 && ", "}
+                    <CompanionLink username={c.username} displayName={c.display_name} avatarUrl={c.avatar_url} />
+                  </span>
+                ))}
+                {extra > 0 && `, +${extra} more`}
               </MetaChip>
             );
           }
