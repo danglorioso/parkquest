@@ -104,7 +104,6 @@ export default function TabsLayout() {
         options={{
           title: '',
           tabBarButton: () => <LogVisitButton />,
-          href: null,
         }}
       />
       <Tabs.Screen

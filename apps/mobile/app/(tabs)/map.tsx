@@ -8,7 +8,7 @@ import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
 
@@ -627,7 +627,7 @@ function ParkBottomSheet({
 // ── MapScreen ─────────────────────────────────────────────────────────────────
 
 export default function MapScreen() {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [token, setToken]               = useState<string | null>(null);
@@ -651,6 +651,7 @@ export default function MapScreen() {
     parks.filter(p => p.status === filterStatus);
 
   const loadData = useCallback(async () => {
+    if (!isLoaded || !isSignedIn) return;
     const tok = await getToken();
     if (!tok) return;
     setToken(tok);
@@ -715,9 +716,10 @@ export default function MapScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, [getToken, isLoaded, isSignedIn]);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const handleStatusChange = useCallback((code: string, status: ParkStatus) => {
     setParks(prev =>
