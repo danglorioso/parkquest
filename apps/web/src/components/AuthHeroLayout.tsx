@@ -80,15 +80,18 @@ const SCREENS = [
 
 // ── Form components ──────────────────────────────────────────────────────────
 
-function UsernameStep() {
+function UsernameStep({ showNameFields }: { showNameFields: boolean }) {
   const router = useRouter();
   const { user, isLoaded: userLoaded } = useUser();
   const { signUp, setActive: signUpSetActive, isLoaded: signUpLoaded } = useSignUp();
   const [username, setUsername] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const isLoaded = userLoaded && signUpLoaded;
+  const isSso = !showNameFields;
 
   const handleChange = (v: string) =>
     setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ""));
@@ -100,11 +103,13 @@ function UsernameStep() {
     setBusy(true);
     try {
       if (signUp?.status === "missing_requirements") {
-        // SSO sign-up: complete it by providing the username
-        const result = await signUp.update({ username });
+        // SSO or email+password with required fields: complete sign-up with username
+        const updates: { username: string; firstName?: string; lastName?: string } = { username };
+        if (showNameFields && firstName.trim()) updates.firstName = firstName.trim();
+        if (showNameFields && lastName.trim()) updates.lastName = lastName.trim();
+        const result = await signUp.update(updates);
         if (result.status === "complete" && result.createdSessionId) {
           await signUpSetActive!({ session: result.createdSessionId });
-          // Ensure the user_profiles row is created before navigating away
           await fetch("/api/profile");
           localStorage.setItem("pq_returning", "1");
           router.push("/dashboard");
@@ -112,9 +117,11 @@ function UsernameStep() {
           setError("Sign-up could not be completed. Please try again.");
         }
       } else if (user) {
-        // Already authenticated (email+password sign-up): just update username
-        await user.update({ username });
-        // Ensure the user_profiles row is created before navigating away
+        // Already authenticated (email+password, name not required): update username + optional name
+        const updates: { username: string; firstName?: string; lastName?: string } = { username };
+        if (firstName.trim()) updates.firstName = firstName.trim();
+        if (lastName.trim()) updates.lastName = lastName.trim();
+        await user.update(updates);
         await fetch("/api/profile");
         localStorage.setItem("pq_returning", "1");
         router.push("/dashboard");
@@ -135,6 +142,18 @@ function UsernameStep() {
 
   return (
     <form onSubmit={handleSubmit}>
+      {!isSso && (
+        <>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <DField label="First name (optional)" value={firstName} onChange={setFirstName} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <DField label="Last name (optional)" value={lastName} onChange={setLastName} />
+            </div>
+          </div>
+        </>
+      )}
       <DField label="Username" value={username} onChange={handleChange} />
       <div
         style={{
@@ -652,6 +671,8 @@ function AuthForm({
       const result = await signUp!.attemptEmailAddressVerification({ code: suCode });
       if (result.status === "complete") {
         await setSUActive!({ session: result.createdSessionId });
+        onSignUpComplete();
+      } else if (result.status === "missing_requirements") {
         onSignUpComplete();
       } else {
         setError("Verification incomplete. Please try again.");
@@ -2038,7 +2059,7 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
         {/* Form area */}
         <div style={{ marginTop: 18 }}>
           {mode === "username" ? (
-            <UsernameStep />
+            <UsernameStep showNameFields={!forcedMode} />
           ) : mode === "forgot_password" ? (
             <ForgotPasswordForm
               initialEmail={forgotEmail}
