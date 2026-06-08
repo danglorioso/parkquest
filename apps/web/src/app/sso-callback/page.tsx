@@ -9,9 +9,15 @@ export default function SSOCallback() {
   const router = useRouter();
 
   useEffect(() => {
+    const storedRedirect = sessionStorage.getItem("pq_auth_redirect") ?? "";
+    sessionStorage.removeItem("pq_auth_redirect");
+    const signInDest = storedRedirect.startsWith("/") && !storedRedirect.startsWith("//")
+      ? storedRedirect
+      : "/dashboard";
+
     handleRedirectCallback({
       signUpForceRedirectUrl: "/onboarding/username",
-      signInForceRedirectUrl: "/map",
+      signInForceRedirectUrl: signInDest,
       continueSignUpUrl: "/onboarding/username",
     }).catch(() => {
       router.replace("/");

@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   MapPin, Users, UserCheck, UserPlus, Clock,
-  TreePine, Award, ChevronLeft, X,
+  TreePine, Award, ChevronLeft, X, Lock, Pencil,
 } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import Logo from "@/components/Logo";
 import type { MapPark } from "@/components/USAMapGL";
 import { ALL_BADGES } from "@/lib/badges";
+import { PostCard, type FeedPost } from "@/components/PostCard";
+import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
 
 const USAMap = dynamic(() => import("@/components/USAMapGL"), {
   ssr: false,
@@ -41,15 +43,6 @@ interface VisitedPark {
   visited_date: string | null;
 }
 
-interface PostData {
-  id: number;
-  caption: string | null;
-  photos: { url: string; key: string; name: string }[] | null;
-  park_code: string | null;
-  park_name: string | null;
-  created_at: string | null;
-}
-
 interface ProfileData {
   clerk_user_id: string;
   username: string;
@@ -65,7 +58,7 @@ interface ProfileData {
   badges: BadgeData[];
   recent_visits: VisitedPark[];
   visited_parks: VisitedPark[];
-  recent_posts: PostData[];
+  recent_posts: FeedPost[];
   journal: JournalEntry[];
   friendship_status: FriendshipStatus;
   friendship_id: number | null;
@@ -75,14 +68,15 @@ interface ProfileData {
 interface JournalEntry {
   visit_id: number;
   visited_date: string | null;
-  park_code: string;
-  park_name: string;
-  states: string;
+  park_code: string | null;
+  park_name: string | null;
+  states: string | null;
   title: string | null;
   notes: string | null;
   rating: number | null;
   activities: string[] | null;
   visibility: string | null;
+  redacted?: boolean;
 }
 
 // ── Tier config ────────────────────────────────────────────────────────────────
@@ -333,7 +327,7 @@ function VisibilityPill({ vis }: { vis: string | null }) {
   );
 }
 
-function JournalTimeline({ entries }: { entries: JournalEntry[] }) {
+function JournalTimeline({ entries, onEdit }: { entries: JournalEntry[]; onEdit?: (visitId: number) => void }) {
   if (entries.length === 0) {
     return (
       <div style={{ padding: "32px 0", textAlign: "center", color: "var(--ink-mute)", fontSize: 13 }}>
@@ -388,63 +382,113 @@ function JournalTimeline({ entries }: { entries: JournalEntry[] }) {
                       <div style={{
                         position: "absolute", left: -19, top: 5,
                         width: 9, height: 9, borderRadius: "50%",
-                        background: "var(--visited)", border: "2px solid var(--bg)",
+                        background: entry.redacted ? "var(--hairline)" : "var(--visited)",
+                        border: "2px solid var(--bg)",
                         flexShrink: 0,
                       }} />
-                      {/* Card */}
-                      <div style={{
-                        background: "var(--surface)",
-                        border: "0.5px solid var(--hairline)",
-                        borderRadius: 10,
-                        padding: "12px 14px",
-                      }}>
-                        {/* Top row: date + park + visibility */}
-                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: entry.title || entry.notes || entry.rating || (entry.activities?.length ?? 0) > 0 ? 8 : 0 }}>
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flex: 1, minWidth: 0 }}>
-                            <span style={{
-                              fontFamily: "var(--font-mono)", fontSize: 10,
-                              letterSpacing: "0.6px", color: "var(--ink-mute)",
-                              fontWeight: 600, flexShrink: 0,
-                            }}>
-                              {mon} {day}
-                            </span>
-                            <span style={{
-                              fontWeight: 700, fontSize: 14, color: "var(--ink)",
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                            }}>
-                              {entry.park_name}
-                            </span>
-                          </div>
-                          <VisibilityPill vis={entry.visibility} />
-                        </div>
-                        {/* Custom title */}
-                        {entry.title && (
-                          <div style={{ fontSize: 12, fontWeight: 650, color: "var(--ink-soft)", marginBottom: 5, fontStyle: "italic" }}>
-                            "{entry.title}"
-                          </div>
-                        )}
-                        {/* Rating + activities row */}
-                        {(entry.rating || (entry.activities?.length ?? 0) > 0) && (
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: entry.notes ? 6 : 0 }}>
-                            {entry.rating && <StarRating n={entry.rating} />}
-                            {(entry.activities?.length ?? 0) > 0 && (
-                              <span style={{ fontSize: 11, color: "var(--ink-mute)" }}>
-                                {entry.activities!.join(" · ")}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {/* Notes */}
-                        {entry.notes && (
-                          <div style={{
-                            fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.55,
-                            display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
+                      {entry.redacted ? (
+                        /* Redacted / private visit — show date only */
+                        <div style={{
+                          background: "var(--surface)",
+                          border: "0.5px dashed var(--hairline)",
+                          borderRadius: 10,
+                          padding: "10px 14px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                        }}>
+                          <span style={{
+                            fontFamily: "var(--font-mono)", fontSize: 10,
+                            letterSpacing: "0.6px", color: "var(--ink-mute)",
+                            fontWeight: 600, flexShrink: 0,
                           }}>
-                            {entry.notes}
+                            {mon} {day}
+                          </span>
+                          <Lock size={11} style={{ color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2.5} />
+                          <span style={{ fontSize: 12.5, color: "var(--ink-mute)", fontStyle: "italic" }}>
+                            Private visit
+                          </span>
+                        </div>
+                      ) : (
+                        /* Full visit card */
+                        <div style={{
+                          background: "var(--surface)",
+                          border: "0.5px solid var(--hairline)",
+                          borderRadius: 10,
+                          padding: "12px 14px",
+                        }}>
+                          {/* Top row: date + park + visibility + edit */}
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: entry.title || entry.notes || entry.rating || (entry.activities?.length ?? 0) > 0 ? 8 : 0 }}>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flex: 1, minWidth: 0 }}>
+                              <span style={{
+                                fontFamily: "var(--font-mono)", fontSize: 10,
+                                letterSpacing: "0.6px", color: "var(--ink-mute)",
+                                fontWeight: 600, flexShrink: 0,
+                              }}>
+                                {mon} {day}
+                              </span>
+                              <span style={{
+                                fontWeight: 700, fontSize: 14, color: "var(--ink)",
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              }}>
+                                {entry.park_name}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                              <VisibilityPill vis={entry.visibility} />
+                              {onEdit && (
+                                <button
+                                  onClick={() => onEdit(entry.visit_id)}
+                                  title="Edit visit"
+                                  style={{
+                                    background: "none", border: "none", cursor: "pointer",
+                                    padding: 3, borderRadius: 5, color: "var(--ink-mute)",
+                                    display: "flex", alignItems: "center",
+                                    transition: "color 120ms, background 120ms",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = "var(--ink)";
+                                    e.currentTarget.style.background = "var(--surface-alt)";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = "var(--ink-mute)";
+                                    e.currentTarget.style.background = "none";
+                                  }}
+                                >
+                                  <Pencil size={11} strokeWidth={2.5} />
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        )}
-                      </div>
+                          {/* Custom title */}
+                          {entry.title && (
+                            <div style={{ fontSize: 12, fontWeight: 650, color: "var(--ink-soft)", marginBottom: 5, fontStyle: "italic" }}>
+                              "{entry.title}"
+                            </div>
+                          )}
+                          {/* Rating + activities row */}
+                          {(entry.rating || (entry.activities?.length ?? 0) > 0) && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: entry.notes ? 6 : 0 }}>
+                              {entry.rating && <StarRating n={entry.rating} />}
+                              {(entry.activities?.length ?? 0) > 0 && (
+                                <span style={{ fontSize: 11, color: "var(--ink-mute)" }}>
+                                  {entry.activities!.join(" · ")}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {/* Notes */}
+                          {entry.notes && (
+                            <div style={{
+                              fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.55,
+                              display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}>
+                              {entry.notes}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -525,13 +569,80 @@ function ProfileSkeleton() {
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isSignedIn, isLoaded } = useUser();
+
+  const fromPath = searchParams.get("from") ?? "/friends";
+  const fromLabel = fromPath === "/feed" ? "Feed" : "Friends";
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
+  const [editDraft, setEditDraft] = useState<Partial<VisitDraft> | undefined>();
+
+  const handleEditVisit = async (visitId: number) => {
+    const r = await fetch(`/api/visits/${visitId}`);
+    if (!r.ok) return;
+    const v = await r.json();
+    setEditDraft({
+      parkCode:   v.park_code,
+      dates:      { start: v.visited_date ? new Date(v.visited_date) : null, end: v.end_date ? new Date(v.end_date) : null },
+      rating:     v.rating     ?? 0,
+      crowd:      v.crowd      ?? 0,
+      difficulty: v.difficulty ?? 0,
+      weather:    { conds: v.weather_conditions ?? [] },
+      activities: v.activities  ?? [],
+      companions: v.companions  ?? [],
+      wouldReturn: v.would_return ?? null,
+      highlight:  v.highlight  ?? "",
+      title:      v.title      ?? "",
+      notes:      v.notes      ?? "",
+      photos:     v.photos     ?? [],
+      cover:      v.cover_photo ?? null,
+      visibility: (v.visibility
+        ? v.visibility.charAt(0).toUpperCase() + v.visibility.slice(1)
+        : "Private") as "Private" | "Friends" | "Public",
+    });
+  };
+
+  const handleLike = async (postId: number, currentlyLiked: boolean) => {
+    setProfile((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        recent_posts: prev.recent_posts.map((p) =>
+          p.id === postId
+            ? { ...p, liked_by_me: !currentlyLiked, like_count: p.like_count + (currentlyLiked ? -1 : 1) }
+            : p
+        ),
+      };
+    });
+    try {
+      if (currentlyLiked) {
+        await fetch(`/api/likes?postId=${postId}`, { method: "DELETE" });
+      } else {
+        await fetch("/api/likes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ postId }),
+        });
+      }
+    } catch {
+      setProfile((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          recent_posts: prev.recent_posts.map((p) =>
+            p.id === postId
+              ? { ...p, liked_by_me: currentlyLiked, like_count: p.like_count + (currentlyLiked ? 1 : -1) }
+              : p
+          ),
+        };
+      });
+    }
+  };
 
   useEffect(() => {
     if (!username) return;
@@ -625,7 +736,7 @@ export default function ProfilePage() {
       {/* ── Back button ── */}
       {!profile.is_own_profile && (
         <button
-          onClick={() => router.push("/friends")}
+          onClick={() => router.push(fromPath)}
           style={{
             display: "inline-flex", alignItems: "center", gap: 4,
             background: "none", border: "none", cursor: "pointer",
@@ -636,7 +747,7 @@ export default function ProfilePage() {
           onMouseLeave={(e) => { e.currentTarget.style.color = "var(--ink-mute)"; }}
         >
           <ChevronLeft size={15} strokeWidth={2.5} />
-          Back
+          Back to {fromLabel}
         </button>
       )}
 
@@ -877,49 +988,24 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* ── Recent posts ── */}
       {/* ── Journal timeline ── */}
       <div style={{ marginBottom: 28 }}>
         <Section title="JOURNAL" icon={MapPin}>
-          <JournalTimeline entries={profile.journal} />
+          <JournalTimeline
+            entries={profile.journal}
+            onEdit={profile.is_own_profile ? handleEditVisit : undefined}
+          />
         </Section>
       </div>
 
+      {/* ── Posts ── */}
       {profile.recent_posts.length > 0 && (
         <div style={{ marginBottom: 28 }}>
-          <Section title="POSTS" icon={MapPin}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-              {profile.recent_posts.map((post) => {
-                const photo = post.photos?.[0]?.url;
-                return (
-                  <div key={post.id} style={{
-                    borderRadius: 10, overflow: "hidden",
-                    border: "0.5px solid var(--hairline)",
-                    background: "var(--surface-alt)",
-                    aspectRatio: "1",
-                    position: "relative",
-                  }}>
-                    {photo ? (
-                      <img src={photo} alt={post.park_name ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : (
-                      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <TreePine size={24} style={{ color: "var(--ink-mute)" }} strokeWidth={1.5} />
-                      </div>
-                    )}
-                    {post.park_name && (
-                      <div style={{
-                        position: "absolute", bottom: 0, left: 0, right: 0,
-                        background: "linear-gradient(transparent, rgba(0,0,0,0.55))",
-                        padding: "20px 8px 7px",
-                        fontSize: 10.5, fontWeight: 700, color: "#fff",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
-                        {post.park_name}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+          <Section title="POSTS" icon={TreePine}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {profile.recent_posts.map((post) => (
+                <PostCard key={post.id} post={post} onLike={handleLike} onDelete={id => setProfile(prev => prev ? { ...prev, recent_posts: prev.recent_posts.filter(p => p.id !== id) } : prev)} onEditVisit={handleEditVisit} />
+              ))}
             </div>
           </Section>
         </div>
@@ -934,12 +1020,37 @@ export default function ProfilePage() {
 
   // Signed-in users get the full shell
   if (isLoaded && isSignedIn) {
-    return <DesktopShell>{content}</DesktopShell>;
+    return (
+      <>
+        <LogVisitModal
+          open={!!editDraft}
+          editMode
+          initialDraft={editDraft}
+          onClose={() => setEditDraft(undefined)}
+          onPosted={() => {
+            setEditDraft(undefined);
+            fetch(`/api/users/${encodeURIComponent(username)}`)
+              .then((r) => r.json())
+              .then((data) => setProfile(data))
+              .catch(() => {});
+          }}
+        />
+        <DesktopShell>{content}</DesktopShell>
+      </>
+    );
   }
 
   const displayName = profile?.display_name || (profile ? `@${profile.username}` : "This explorer");
 
   return (
+    <>
+    <LogVisitModal
+      open={!!editDraft}
+      editMode
+      initialDraft={editDraft}
+      onClose={() => setEditDraft(undefined)}
+      onPosted={() => setEditDraft(undefined)}
+    />
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
       {/* Minimal public nav */}
       <div style={{
@@ -954,7 +1065,7 @@ export default function ProfilePage() {
       }}>
         <Logo />
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href="/sign-in" style={{ textDecoration: "none" }}>
+          <Link href={`/sign-in?redirect=${encodeURIComponent(`/profile/${username}`)}`} style={{ textDecoration: "none" }}>
             <button style={{
               background: "transparent", border: "0.5px solid var(--hairline)",
               borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600,
@@ -988,7 +1099,7 @@ export default function ProfilePage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          <Link href="/sign-in" style={{ textDecoration: "none" }}>
+          <Link href={`/sign-in?redirect=${encodeURIComponent(`/profile/${username}`)}`} style={{ textDecoration: "none" }}>
             <button style={{
               background: "rgba(255,251,241,0.15)", border: "1px solid rgba(255,251,241,0.35)",
               borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600,
@@ -1005,5 +1116,6 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

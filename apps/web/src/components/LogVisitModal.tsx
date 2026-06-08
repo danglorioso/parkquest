@@ -4,6 +4,7 @@ import React, { useState, useReducer, useRef, useEffect, useCallback } from "rea
 import { useUser } from "@clerk/nextjs";
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Eye, Globe, Lock, MapPin, Search, Star, Upload, Users, X } from "lucide-react";
 import { LightboxModal } from "@/components/LightboxModal";
+import { useToast } from "@/components/ToastProvider";
 
 // ── Inline SVG icons matching the design reference exactly ────────────────
 
@@ -1461,6 +1462,7 @@ interface LogVisitModalProps {
 
 export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode = false }: LogVisitModalProps) {
   const { user } = useUser();
+  const { toast } = useToast();
   const [session, dispatch] = useReducer(sessionReducer, undefined, () => ({
     draft: makeBlankDraft(),
     step: 0,
@@ -1618,6 +1620,13 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
 
       onPosted?.();
       handleClose();
+      if (editMode) {
+        toast("Visit updated");
+      } else if (draft.visibility !== "Private") {
+        toast("Visit logged and shared to feed");
+      } else {
+        toast("Visit logged");
+      }
     } catch {
       // keep open on error
     } finally {

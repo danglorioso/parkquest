@@ -4,6 +4,35 @@ import { eq, and, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, parks, userProfiles } from '@/lib/db/schema';
 
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { id } = await params;
+    const postId = Number(id);
+    if (isNaN(postId)) return NextResponse.json({ error: 'Invalid post ID' }, { status: 400 });
+
+    const body = await req.json();
+    const caption: string | null = typeof body.caption === 'string' ? body.caption || null : null;
+
+    const updated = await db
+      .update(posts)
+      .set({ caption, updated_at: new Date() })
+      .where(and(eq(posts.id, postId), eq(posts.clerk_user_id, userId)))
+      .returning();
+
+    if (updated.length === 0) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    return NextResponse.json({ message: 'Post updated' });
+  } catch (error) {
+    console.error('Error updating post:', error);
+    return NextResponse.json({ error: 'Failed to update post' }, { status: 500 });
+  }
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }

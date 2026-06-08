@@ -110,11 +110,11 @@ export const notifications = pgTable('notifications', {
   id: serial('id').primaryKey(),
   recipient_id: varchar('recipient_id', { length: 255 }).notNull(),
   actor_id: varchar('actor_id', { length: 255 }),
-  type: varchar('type', { length: 50 }).notNull(), // 'friend_request' | 'friend_accepted' | 'like' | 'comment' | 'post' | 'system' | 'recommendation'
+  type: varchar('type', { length: 50 }).notNull(), // 'friend_request' | 'friend_accepted' | 'like' | 'comment' | 'post' | 'visit_logged' | 'badge_earned' | 'system' | 'recommendation'
   post_id: integer('post_id').references(() => posts.id, { onDelete: 'cascade' }),
   visit_id: integer('visit_id').references(() => visits.id, { onDelete: 'cascade' }),
   park_code: varchar('park_code', { length: 10 }).references(() => parks.park_code),
-  metadata: jsonb('metadata').$type<{ message?: string; excerpt?: string; friendship_id?: number }>(),
+  metadata: jsonb('metadata').$type<{ message?: string; excerpt?: string; friendship_id?: number; badge_id?: string; badge_name?: string; badge_emoji?: string }>(),
   read: boolean('read').default(false).notNull(),
   created_at: timestamp('created_at').defaultNow().notNull(),
 });

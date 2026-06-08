@@ -189,9 +189,10 @@ function UsernameStep() {
   );
 }
 
-function ForgotPasswordForm({ initialEmail = "", onBack }: {
+function ForgotPasswordForm({ initialEmail = "", onBack, redirectTo = "" }: {
   initialEmail?: string;
   onBack: () => void;
+  redirectTo?: string;
 }) {
   const { signIn, setActive, isLoaded } = useSignIn();
   const router = useRouter();
@@ -273,7 +274,7 @@ function ForgotPasswordForm({ initialEmail = "", onBack }: {
       });
       if (result.status === "complete") {
         await setActive!({ session: result.createdSessionId });
-        router.push("/dashboard");
+        router.push(redirectTo && redirectTo.startsWith("/") ? redirectTo : "/dashboard");
       }
     } catch (err: unknown) {
       const clerkErr = err as { errors?: Array<{ longMessage?: string; message?: string }> };
@@ -428,6 +429,7 @@ function AuthForm({
   onForgotPassword,
   initialSignInEmail = "",
   signInMessage = null,
+  redirectTo = "",
 }: {
   mode: "signin" | "signup";
   onSignUpComplete: () => void;
@@ -435,6 +437,7 @@ function AuthForm({
   onForgotPassword?: (email: string) => void;
   initialSignInEmail?: string;
   signInMessage?: string | null;
+  redirectTo?: string;
 }) {
   const router = useRouter();
   const { signIn, setActive: setSIActive, isLoaded: siLoaded } = useSignIn();
@@ -528,6 +531,9 @@ function AuthForm({
     setOauthLoading(strategy === "oauth_google" ? "google" : "apple");
     try {
       if (mode === "signin") {
+        if (redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")) {
+          sessionStorage.setItem("pq_auth_redirect", redirectTo);
+        }
         await signIn!.authenticateWithRedirect({
           strategy,
           redirectUrl: "/sso-callback",
@@ -557,7 +563,7 @@ function AuthForm({
       if (result.status === "complete") {
         await setSIActive!({ session: result.createdSessionId });
         localStorage.setItem("pq_returning", "1");
-        router.push("/dashboard");
+        router.push(redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/dashboard");
       } else if ((result.status as string) === "needs_client_trust") {
         const emailFactor = result.supportedFirstFactors?.find(
           (f) => f.strategy === "email_code"
@@ -591,7 +597,7 @@ function AuthForm({
       if (result.status === "complete") {
         await setSIActive!({ session: result.createdSessionId });
         localStorage.setItem("pq_returning", "1");
-        router.push("/dashboard");
+        router.push(redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/dashboard");
       }
     } catch (err: unknown) {
       const clerkErr = err as { errors?: Array<{ longMessage?: string; message?: string }> };
@@ -1896,6 +1902,10 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
     if (params.get("mode") === "signin") return "signin";
     return localStorage.getItem("pq_returning") ? "signin" : "signup";
   });
+  const [redirectTo] = useState<string>(() => {
+    const raw = new URLSearchParams(window.location.search).get("redirect") ?? "";
+    return raw.startsWith("/") && !raw.startsWith("//") ? raw : "";
+  });
   const [prefilledEmail, setPrefilledEmail] = useState("");
   const [signInMessage, setSignInMessage] = useState<string | null>(null);
   const [forgotEmail, setForgotEmail] = useState("");
@@ -2029,6 +2039,7 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
             <ForgotPasswordForm
               initialEmail={forgotEmail}
               onBack={() => { setForgotEmail(""); setMode("signin"); }}
+              redirectTo={redirectTo}
             />
           ) : (
             <AuthForm
@@ -2038,6 +2049,7 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
               onForgotPassword={(email) => { setForgotEmail(email); setMode("forgot_password"); }}
               initialSignInEmail={mode === "signin" ? prefilledEmail : ""}
               signInMessage={mode === "signin" ? signInMessage : null}
+              redirectTo={redirectTo}
             />
           )}
         </div>

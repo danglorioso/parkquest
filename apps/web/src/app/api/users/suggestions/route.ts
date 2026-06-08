@@ -4,14 +4,16 @@ import { eq, and, or, ne, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { friendships, userProfiles, visits } from '@/lib/db/schema';
 
-const SUGGESTION_COUNT = 4;
 const W_MUTUAL_FRIEND  = 3;
 const W_SHARED_PARK    = 2;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { searchParams } = new URL(request.url);
+    const SUGGESTION_COUNT = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '4', 10), 1), 20);
 
     // ── Step 1: all existing relationships ───────────────────────────────────
     const myRelationships = await db

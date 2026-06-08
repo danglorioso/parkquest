@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import {
-  Bell, UserPlus, Heart, MessageCircle, MapPin, Sparkles, X, UserCheck, BellOff,
+  Bell, UserPlus, Heart, MessageCircle, MapPin, Sparkles, X, UserCheck, BellOff, Trophy,
 } from "lucide-react";
 
-type NotificationType = "friend_request" | "friend_accepted" | "like" | "comment" | "post" | "system" | "recommendation";
+type NotificationType = "friend_request" | "friend_accepted" | "like" | "comment" | "post" | "visit_logged" | "badge_earned" | "system" | "recommendation";
 
 interface NotificationItem {
   id: number;
@@ -18,7 +18,7 @@ interface NotificationItem {
   post_id: number | null;
   park_code: string | null;
   park_name: string | null;
-  metadata: { message?: string; excerpt?: string; friendship_id?: number } | null;
+  metadata: { message?: string; excerpt?: string; friendship_id?: number; badge_id?: string; badge_name?: string; badge_emoji?: string } | null;
   read: boolean;
   created_at: string;
 }
@@ -41,6 +41,8 @@ const TYPE_CONFIG: Record<NotificationType, { icon: React.ElementType; bg: strin
   like:            { icon: Heart,         bg: "#FEE2E2", color: "#DC2626" },
   comment:         { icon: MessageCircle, bg: "#D1FAE5", color: "#059669" },
   post:            { icon: MapPin,        bg: "#DCFCE7", color: "#16A34A" },
+  visit_logged:    { icon: MapPin,        bg: "#DCFCE7", color: "#16A34A" },
+  badge_earned:    { icon: Trophy,        bg: "#FEF3C7", color: "#D97706" },
   system:          { icon: Sparkles,      bg: "#FEF3C7", color: "#D97706" },
   recommendation:  { icon: Sparkles,      bg: "#FEF3C7", color: "#D97706" },
 };
@@ -53,6 +55,10 @@ function notificationText(n: NotificationItem): string {
     case "like":            return `${name} liked your post`;
     case "comment":         return `${name} commented on your post`;
     case "post":            return n.park_name ? `${name} posted at ${n.park_name}` : `${name} shared a new post`;
+    case "visit_logged":    return n.park_name ? `${name} visited ${n.park_name}` : `${name} logged a visit`;
+    case "badge_earned":    return n.metadata?.badge_emoji
+      ? `${n.metadata.badge_emoji} You earned the ${n.metadata.badge_name ?? "badge"} badge!`
+      : `You earned a new badge: ${n.metadata?.badge_name ?? "Unknown"}`;
     default:                return n.metadata?.message ?? "New notification";
   }
 }

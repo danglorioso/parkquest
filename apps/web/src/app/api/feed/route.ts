@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, desc, and, or, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { posts, friendships, parks, userProfiles } from '@/lib/db/schema';
+import { posts, friendships, parks, userProfiles, visits } from '@/lib/db/schema';
 
 export async function GET(request: Request) {
   try {
@@ -49,10 +49,20 @@ export async function GET(request: Request) {
         like_count: sql<number>`(SELECT COUNT(*)::int FROM likes WHERE likes.post_id = ${posts.id})`,
         comment_count: sql<number>`(SELECT COUNT(*)::int FROM comments WHERE comments.post_id = ${posts.id})`,
         liked_by_me: sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${userId})`,
+        visit_date:             visits.visited_date,
+        visit_rating:           visits.rating,
+        visit_activities:       visits.activities,
+        visit_weather:          visits.weather_conditions,
+        visit_crowd:            visits.crowd,
+        visit_difficulty:       visits.difficulty,
+        visit_companion_count:  sql<number>`COALESCE(jsonb_array_length(${visits.companions}), 0)`,
+        visit_companion_names:  sql<Array<{username: string; display_name: string | null; avatar_url: string | null}> | null>`(SELECT json_agg(json_build_object('username', up.username, 'display_name', up.display_name, 'avatar_url', up.avatar_url)) FROM user_profiles up WHERE up.clerk_user_id = ANY(SELECT jsonb_array_elements_text(${visits.companions})))`,
+        visit_highlight:        visits.highlight,
       })
       .from(posts)
       .leftJoin(parks, eq(posts.park_code, parks.park_code))
       .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
+      .leftJoin(visits, eq(posts.visit_id, visits.id))
       .where(inArray(posts.clerk_user_id, allowedIds))
       .orderBy(desc(posts.created_at))
       .limit(limit)
@@ -106,6 +116,7 @@ export async function GET(request: Request) {
           )
         : null,
       quoted_post: p.quoted_post_id ? quotedMap.get(p.quoted_post_id) ?? null : null,
+      visit_date: p.visit_date ? p.visit_date.toISOString() : null,
     }));
 
     // Own + friend posts first, preserve recency within groups

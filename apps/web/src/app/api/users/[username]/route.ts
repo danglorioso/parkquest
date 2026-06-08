@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, count, and, or, isNotNull, sql } from 'drizzle-orm';
+import { eq, count, and, or, isNotNull, sql, desc } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles, visits, friendships, parks, userBadges, posts } from '@/lib/db/schema';
 import { ALL_BADGES } from '@/lib/badges';
@@ -72,18 +72,42 @@ export async function GET(
         .where(eq(userBadges.clerk_user_id, targetId))
         .orderBy(userBadges.earned_at),
       db.select({
-        id:         posts.id,
-        caption:    posts.caption,
-        photos:     posts.photos,
-        park_code:  posts.park_code,
-        park_name:  parks.name,
-        created_at: posts.created_at,
+        id:                   posts.id,
+        caption:              posts.caption,
+        photos:               posts.photos,
+        park_code:            posts.park_code,
+        park_name:            parks.name,
+        badge_id:             posts.badge_id,
+        quoted_post_id:       posts.quoted_post_id,
+        visit_id:             posts.visit_id,
+        visit_visibility:     visits.visibility,
+        created_at:           posts.created_at,
+        clerk_user_id:        posts.clerk_user_id,
+        username:             userProfiles.username,
+        display_name:         userProfiles.display_name,
+        avatar_url:           userProfiles.avatar_url,
+        like_count:           sql<number>`(SELECT COUNT(*)::int FROM likes WHERE likes.post_id = ${posts.id})`,
+        comment_count:        sql<number>`(SELECT COUNT(*)::int FROM comments WHERE comments.post_id = ${posts.id})`,
+        liked_by_me:          viewerId
+          ? sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${viewerId})`
+          : sql<boolean>`false`,
+        visit_date:           visits.visited_date,
+        visit_rating:         visits.rating,
+        visit_activities:     visits.activities,
+        visit_weather:        visits.weather_conditions,
+        visit_crowd:          visits.crowd,
+        visit_difficulty:     visits.difficulty,
+        visit_companion_count: sql<number>`COALESCE(jsonb_array_length(${visits.companions}), 0)`,
+        visit_companion_names: sql<Array<{username: string; display_name: string | null; avatar_url: string | null}> | null>`(SELECT json_agg(json_build_object('username', up.username, 'display_name', up.display_name, 'avatar_url', up.avatar_url)) FROM user_profiles up WHERE up.clerk_user_id = ANY(SELECT jsonb_array_elements_text(${visits.companions})))`,
+        visit_highlight:      visits.highlight,
       })
         .from(posts)
         .leftJoin(parks, eq(posts.park_code, parks.park_code))
+        .leftJoin(visits, eq(posts.visit_id, visits.id))
+        .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
         .where(eq(posts.clerk_user_id, targetId))
-        .orderBy(sql`${posts.created_at} desc`)
-        .limit(9),
+        .orderBy(desc(posts.created_at))
+        .limit(20),
       // Friendship row between viewer and target
       isOtherUser
         ? db.select().from(friendships).where(or(
@@ -147,26 +171,43 @@ export async function GET(
     // Visited parks (map + stamps): all actual visits, no visibility filter (just counts/locations)
     const visitedParks = actualVisits;
 
-    // Journal entries: visibility-filtered, most recent first
-    const journal = actualVisits
-      .filter((v) => {
-        const vis = v.visibility ?? 'private';
-        if (canSeePrivate) return true;
-        if (canSeeFriends && (vis === 'public' || vis === 'friends')) return true;
-        return vis === 'public';
-      })
-      .map((v) => ({
+    // Journal entries: visible ones shown in full, private ones shown as redacted placeholders
+    const journal = actualVisits.map((v) => {
+      const vis = v.visibility ?? 'private';
+      const canSee = canSeePrivate
+        || (canSeeFriends && (vis === 'public' || vis === 'friends'))
+        || vis === 'public';
+
+      if (canSee) {
+        return {
+          visit_id:     v.id,
+          visited_date: v.visited_date,
+          park_code:    v.park_code,
+          park_name:    v.name,
+          states:       v.states,
+          title:        v.title,
+          notes:        v.notes,
+          rating:       v.rating,
+          activities:   v.activities,
+          visibility:   v.visibility,
+          redacted:     false,
+        };
+      }
+      // Redacted: only preserve the date so it can be grouped by month/year
+      return {
         visit_id:     v.id,
         visited_date: v.visited_date,
-        park_code:    v.park_code,
-        park_name:    v.name,
-        states:       v.states,
-        title:        v.title,
-        notes:        v.notes,
-        rating:       v.rating,
-        activities:   v.activities,
+        park_code:    null,
+        park_name:    null,
+        states:       null,
+        title:        null,
+        notes:        null,
+        rating:       null,
+        activities:   null,
         visibility:   v.visibility,
-      }));
+        redacted:     true,
+      };
+    });
 
     // Badges with metadata, most recent first
     const badges = earnedBadges.map((b) => ({
@@ -176,6 +217,47 @@ export async function GET(
       emoji:     BADGE_MAP.get(b.badge_id)?.emoji ?? '🏅',
       tier:      BADGE_MAP.get(b.badge_id)?.tier ?? 'bronze',
     })).reverse();
+
+    // Filter posts by visibility of linked visit (badge/quote posts always visible)
+    const visiblePosts = recentPosts
+      .filter((p) => {
+        const vis = p.visit_visibility ?? 'public';
+        if (canSeePrivate) return true;
+        if (vis === 'private') return false;
+        if (vis === 'friends') return canSeeFriends;
+        return true; // public
+      })
+      .map((p) => ({
+        id:                   p.id,
+        caption:              p.caption,
+        visit_id:             p.visit_id,
+        photos:               Array.isArray(p.photos)
+          ? (p.photos as Array<{ url: string } | string>).map(ph => typeof ph === 'string' ? ph : ph.url)
+          : null,
+        park_code:            p.park_code,
+        park_name:            p.park_name,
+        badge_id:             p.badge_id,
+        quoted_post_id:       p.quoted_post_id,
+        quoted_post:          null,
+        created_at:           p.created_at,
+        clerk_user_id:        p.clerk_user_id,
+        username:             p.username,
+        display_name:         p.display_name,
+        avatar_url:           p.avatar_url,
+        like_count:           p.like_count,
+        comment_count:        p.comment_count,
+        liked_by_me:          p.liked_by_me,
+        is_friend_post:       true,
+        visit_date:           p.visit_date ? p.visit_date.toISOString() : null,
+        visit_rating:         p.visit_rating,
+        visit_activities:     p.visit_activities,
+        visit_weather:        p.visit_weather,
+        visit_crowd:          p.visit_crowd,
+        visit_difficulty:     p.visit_difficulty,
+        visit_companion_count: p.visit_companion_count,
+        visit_companion_names: p.visit_companion_names,
+        visit_highlight:      p.visit_highlight,
+      }));
 
     return NextResponse.json({
       ...profile,
@@ -190,7 +272,7 @@ export async function GET(
       is_own_profile:    isOwnProfile,
       recent_visits:     visitedParks.slice(0, 6),
       visited_parks:     visitedParks,
-      recent_posts:      recentPosts,
+      recent_posts:      visiblePosts,
       journal,
     });
   } catch (error) {

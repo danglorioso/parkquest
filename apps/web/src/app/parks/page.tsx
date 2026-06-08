@@ -655,7 +655,7 @@ function ParksPageContent() {
         }}>
           <Logo />
           <div style={{ display: "flex", gap: 8 }}>
-            <Link href="/sign-in" style={{ textDecoration: "none" }}>
+            <Link href="/sign-in?redirect=/parks" style={{ textDecoration: "none" }}>
               <button style={{
                 background: "transparent", border: "0.5px solid var(--hairline)",
                 borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600,
@@ -723,7 +723,7 @@ function ParksPageContent() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <Link href="/sign-in" style={{ textDecoration: "none" }}>
+            <Link href="/sign-in?redirect=/parks" style={{ textDecoration: "none" }}>
               <button style={{
                 background: "rgba(255,251,241,0.15)", border: "1px solid rgba(255,251,241,0.35)",
                 borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600,

@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { ClerkProvider } from "@clerk/nextjs";
 import OnboardingGuard from "../components/OnboardingGuard";
 import { ThemeProvider } from "../components/ThemeProvider";
+import { ToastProvider } from "../components/ToastProvider";
 import 'leaflet/dist/leaflet.css';
 
 const archivo = Archivo({
@@ -43,8 +44,10 @@ export default function RootLayout({
           className={`${archivo.variable} ${jetbrainsMono.variable} antialiased`}
         >
           <ThemeProvider>
-            <OnboardingGuard />
-            {children}
+            <ToastProvider>
+              <OnboardingGuard />
+              {children}
+            </ToastProvider>
           </ThemeProvider>
 
           {/* Vercel Analytics */}

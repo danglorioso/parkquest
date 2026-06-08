@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Check, Globe, Users, Lock } from "lucide-react";
+import { useToast } from "@/components/ToastProvider";
 
 const AUDIENCE_OPTS = [
   { value: "friends", label: "Friends", icon: Users },
@@ -35,6 +36,7 @@ export interface BadgeShareModalProps {
 
 export function BadgeShareModal({ badge, onClose, onPost }: BadgeShareModalProps) {
   const { user } = useUser();
+  const { toast } = useToast();
   const [caption, setCaption] = useState("");
   const [audience, setAudience] = useState<Audience>("friends");
   const [submitting, setSubmitting] = useState(false);
@@ -66,6 +68,7 @@ export function BadgeShareModal({ badge, onClose, onPost }: BadgeShareModalProps
       if (res.status === 409) { setAlreadyShared(true); return; }
       onPost?.();
       onClose();
+      toast(`${badge.emoji} Badge shared to feed`);
     } catch {
       // user can retry
     } finally {

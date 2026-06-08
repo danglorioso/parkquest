@@ -1,8 +1,32 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { visits, parks } from '@/lib/db/schema';
+import { visits, parks, friendships, notifications } from '@/lib/db/schema';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, or, sql } from 'drizzle-orm';
+
+async function notifyFriendsOfVisit(userId: string, visitId: number, park_code: string) {
+  const friends = await db
+    .select({
+      friend_id: sql<string>`CASE WHEN ${friendships.requester_id} = ${userId} THEN ${friendships.recipient_id} ELSE ${friendships.requester_id} END`,
+    })
+    .from(friendships)
+    .where(
+      and(
+        or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId)),
+        eq(friendships.status, 'accepted')
+      )
+    );
+  if (friends.length === 0) return;
+  await db.insert(notifications).values(
+    friends.map(({ friend_id }) => ({
+      recipient_id: friend_id,
+      actor_id: userId,
+      type: 'visit_logged' as const,
+      visit_id: visitId,
+      park_code,
+    }))
+  );
+}
 
 export async function GET() {
   try {
@@ -112,8 +136,12 @@ export async function POST(request: Request) {
           })
           .where(eq(visits.id, existing.id))
           .returning();
+        const wasConverted = existing.is_bucket_list;
+        if (wasConverted && visitVisibility !== 'private') {
+          notifyFriendsOfVisit(userId, existing.id, park_code).catch(() => {});
+        }
         return NextResponse.json({
-          message: existing.is_bucket_list ? 'Park marked as visited' : 'Visit updated',
+          message: wasConverted ? 'Park marked as visited' : 'Visit updated',
           visit: updated[0],
         });
       }
@@ -143,6 +171,10 @@ export async function POST(request: Request) {
         visibility: isBucketList ? 'private' : visitVisibility,
       })
       .returning();
+
+    if (!isBucketList && visitVisibility !== 'private') {
+      notifyFriendsOfVisit(userId, newVisit[0].id, park_code).catch(() => {});
+    }
 
     return NextResponse.json({
       message: isBucketList ? 'Park added to bucket list' : 'Park marked as visited',

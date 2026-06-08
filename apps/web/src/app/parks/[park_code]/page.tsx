@@ -649,7 +649,7 @@ function JournalColumn({
 
 // ── Public sign-up CTA panel (replaces journal for logged-out visitors) ────────
 
-function SignUpPanel({ parkName }: { parkName: string }) {
+function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: string }) {
   const paperBg = "#FAF3E0";
   const inkPaper = "#3A2E1C";
 
@@ -698,7 +698,7 @@ function SignUpPanel({ parkName }: { parkName: string }) {
             Create free account
           </button>
         </Link>
-        <Link href="/sign-in" style={{ textDecoration: "none" }}>
+        <Link href={`/sign-in?redirect=${encodeURIComponent(`/parks/${parkCode}`)}`} style={{ textDecoration: "none" }}>
           <button style={{
             width: "100%",
             background: "transparent",
@@ -1274,7 +1274,7 @@ export default function ParkDetailPage({
         }}>
           <Logo />
           <div style={{ display: "flex", gap: 8 }}>
-            <Link href="/sign-in" style={{ textDecoration: "none" }}>
+            <Link href={`/sign-in?redirect=${encodeURIComponent(`/parks/${park_code}`)}`} style={{ textDecoration: "none" }}>
               <button style={{
                 background: "transparent", border: "0.5px solid var(--hairline)",
                 borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600,
@@ -1293,7 +1293,7 @@ export default function ParkDetailPage({
 
         <div style={{ display: "flex", height: "calc(100vh - 54px)", overflow: "hidden" }}>
           <ParkInfoContent {...sharedInfoProps} />
-          <SignUpPanel parkName={park.name} />
+          <SignUpPanel parkName={park.name} parkCode={park.park_code} />
         </div>
 
         {/* Sticky sign-up banner */}
@@ -1311,7 +1311,7 @@ export default function ParkDetailPage({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <Link href="/sign-in" style={{ textDecoration: "none" }}>
+            <Link href={`/sign-in?redirect=${encodeURIComponent(`/parks/${park_code}`)}`} style={{ textDecoration: "none" }}>
               <button style={{
                 background: "rgba(255,251,241,0.15)", border: "1px solid rgba(255,251,241,0.35)",
                 borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600,

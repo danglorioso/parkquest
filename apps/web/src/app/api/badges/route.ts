@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { visits, parks, userBadges, posts } from '@/lib/db/schema';
+import { visits, parks, userBadges, posts, notifications } from '@/lib/db/schema';
 import { ALL_BADGES, computeStats, type BadgeDefinition } from '@/lib/badges';
 
 export async function GET() {
@@ -39,6 +39,15 @@ export async function GET() {
         earnedIds.add(b.id);
         earnedMap.set(b.id, new Date());
       });
+      // Notify user of each new badge (fire and forget)
+      db.insert(notifications)
+        .values(newBadges.map((b: BadgeDefinition) => ({
+          recipient_id: userId,
+          actor_id: null,
+          type: 'badge_earned' as const,
+          metadata: { badge_id: b.id, badge_name: b.name, badge_emoji: b.emoji },
+        })))
+        .catch(() => {});
     }
 
     // Revoke badges the user no longer qualifies for, and delete their badge share posts

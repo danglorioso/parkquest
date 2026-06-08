@@ -2,7 +2,8 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { X, Camera, Loader2 } from "lucide-react";
+import { X, Camera, Loader2, Mail } from "lucide-react";
+import { useToast } from "@/components/ToastProvider";
 
 interface Props {
   open: boolean;
@@ -23,28 +24,42 @@ const INPUT: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <label style={{ fontWeight: 600, fontSize: 12, color: "var(--ink)" }}>{label}</label>
       {children}
-      {hint && <span style={{ fontSize: 10.5, color: "var(--ink-mute)" }}>{hint}</span>}
+      {error && <span style={{ fontSize: 11, color: "#C04040" }}>{error}</span>}
     </div>
   );
 }
 
 export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props) {
   const { user } = useUser();
+  const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [firstName, setFirstName] = useState("");
   const [lastName,  setLastName]  = useState("");
   const [username,  setUsername]  = useState("");
   const [bio,       setBio]       = useState("");
+  const [email,     setEmail]     = useState("");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile,    setAvatarFile]    = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
+  const [usernameError, setUsernameError] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
+
+  // Escape key to close
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !saving) onOpenChange(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, saving, onOpenChange]);
 
   // Load current values whenever dialog opens
   useEffect(() => {
@@ -52,10 +67,12 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
     setFirstName(user.firstName ?? "");
     setLastName(user.lastName ?? "");
     setUsername(user.username ?? "");
+    setEmail(user.primaryEmailAddress?.emailAddress ?? "");
     setAvatarPreview(null);
     setAvatarFile(null);
     setError("");
-    // Fetch bio from our DB
+    setUsernameError("");
+    setEmailSent(false);
     fetch("/api/profile")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => data && setBio(data.bio ?? ""))
@@ -69,12 +86,20 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
     setAvatarPreview(URL.createObjectURL(file));
   };
 
+  const validateUsername = (val: string) => {
+    if (val.length < 3) return "Username must be at least 3 characters";
+    return "";
+  };
+
   const handleSave = async () => {
     if (!user) return;
+    const uErr = validateUsername(username.trim());
+    if (uErr) { setUsernameError(uErr); return; }
+
     setError("");
+    setUsernameError("");
     setSaving(true);
     try {
-      // Clerk-side updates — non-fatal if Clerk rejects (e.g. username feature disabled)
       if (avatarFile) {
         try { await user.setProfileImage({ file: avatarFile }); } catch { /* ignore */ }
       }
@@ -82,7 +107,22 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
         await user.update({ firstName: firstName.trim(), lastName: lastName.trim() });
       } catch { /* ignore */ }
 
-      // DB save — this is the authoritative source; errors here are shown to the user
+      // Handle email change — Clerk sends a verification link to the new address
+      const currentEmail = user.primaryEmailAddress?.emailAddress ?? "";
+      const newEmail = email.trim();
+      if (newEmail && newEmail !== currentEmail) {
+        try {
+          const addr = await user.createEmailAddress({ email: newEmail });
+          await addr.prepareVerification({ strategy: "email_link", redirectUrl: window.location.origin });
+          setEmailSent(true);
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : "Failed to initiate email change");
+          setSaving(false);
+          return;
+        }
+      }
+
+      // DB save
       const res = await fetch("/api/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -95,12 +135,18 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error ?? "Failed to save");
+        const msg: string = data.error ?? "Failed to save";
+        if (msg.toLowerCase().includes("username")) {
+          setUsernameError(msg);
+        } else {
+          setError(msg);
+        }
         return;
       }
 
       onSaved?.();
-      onOpenChange(false);
+      toast(emailSent ? "Profile saved — check your email to verify the new address" : "Profile saved");
+      if (!emailSent) onOpenChange(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -112,7 +158,6 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
 
   const displayAvatar = avatarPreview ?? user?.imageUrl ?? null;
   const initials = ([firstName[0], lastName[0]].filter(Boolean).join("").toUpperCase() || user?.username?.[0]?.toUpperCase()) ?? "?";
-  const email = user?.primaryEmailAddress?.emailAddress;
 
   return (
     <div
@@ -153,7 +198,7 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
         </div>
 
         {/* Body */}
-        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 18, maxHeight: "60vh", overflowY: "auto" }}>
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 18 }}>
 
           {/* Avatar */}
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -206,17 +251,17 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
           </div>
 
           {/* Username */}
-          <Field label="Username" hint="3–20 characters · letters, numbers, underscores">
+          <Field label="Username" error={usernameError}>
             <div style={{ display: "flex", alignItems: "center" }}>
               <span style={{ padding: "9px 10px", background: "var(--surface-alt)", border: "0.5px solid var(--hairline)", borderRight: "none", borderRadius: "8px 0 0 8px", fontSize: 13.5, color: "var(--ink-mute)", fontWeight: 600, flexShrink: 0 }}>@</span>
               <input
                 style={{ ...INPUT, borderRadius: "0 8px 8px 0", borderLeft: "none" }}
                 value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                onChange={(e) => { setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")); setUsernameError(""); }}
+                onBlur={() => { const e = validateUsername(username.trim()); if (e) setUsernameError(e); }}
                 maxLength={20}
-                placeholder="yourhandle"
+                placeholder="username"
                 onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.boxShadow = "0 0 0 2px rgba(47,122,74,0.12)"; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = ""; e.currentTarget.style.boxShadow = ""; }}
               />
             </div>
           </Field>
@@ -238,12 +283,25 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
             </div>
           </Field>
 
-          {/* Email — read-only */}
-          {email && (
-            <Field label="Email" hint="Email changes are managed through account security.">
-              <div style={{ ...INPUT, background: "var(--surface-alt)", color: "var(--ink-soft)", cursor: "default" }}>
-                {email}
+          {/* Email */}
+          {emailSent ? (
+            <div style={{ display: "flex", gap: 10, padding: "12px 14px", background: "rgba(47,122,74,0.07)", border: "0.5px solid rgba(47,122,74,0.25)", borderRadius: 10, alignItems: "flex-start" }}>
+              <Mail style={{ width: 15, height: 15, color: "var(--primary)", flexShrink: 0, marginTop: 1 }} strokeWidth={2} />
+              <div style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.5 }}>
+                A verification link was sent to <strong>{email}</strong>. Click it to confirm the change — your current email stays active until then.
               </div>
+            </div>
+          ) : (
+            <Field label="Email">
+              <input
+                style={INPUT}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.boxShadow = "0 0 0 2px rgba(47,122,74,0.12)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = ""; e.currentTarget.style.boxShadow = ""; }}
+              />
             </Field>
           )}
 
@@ -261,16 +319,18 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
             disabled={saving}
             style={{ padding: "9px 18px", borderRadius: 9, border: "0.5px solid var(--hairline)", background: "var(--surface-alt)", color: "var(--ink)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
           >
-            Cancel
+            {emailSent ? "Done" : "Cancel"}
           </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || username.trim().length < 3}
-            style={{ padding: "9px 20px", borderRadius: 9, border: "none", background: "var(--primary)", color: "#FFFBF1", fontWeight: 700, fontSize: 13, cursor: saving ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 7, opacity: (saving || username.trim().length < 3) ? 0.6 : 1 }}
-          >
-            {saving && <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />}
-            {saving ? "Saving…" : "Save changes"}
-          </button>
+          {!emailSent && (
+            <button
+              onClick={handleSave}
+              disabled={saving || username.trim().length < 3}
+              style={{ padding: "9px 20px", borderRadius: 9, border: "none", background: "var(--primary)", color: "#FFFBF1", fontWeight: 700, fontSize: 13, cursor: saving ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 7, opacity: (saving || username.trim().length < 3) ? 0.6 : 1 }}
+            >
+              {saving && <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />}
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          )}
         </div>
       </div>
     </div>

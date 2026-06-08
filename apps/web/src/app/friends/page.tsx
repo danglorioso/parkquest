@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, UserCheck, Clock, UserRound, UserPlus, Search } from "lucide-react";
+import { Users, UserCheck, Clock, UserRound, UserPlus, Search, Sparkles } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -22,6 +22,16 @@ interface SearchUser {
   username: string;
   display_name: string | null;
   avatar_url: string | null;
+}
+
+interface SuggestedUser {
+  clerk_user_id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  mutual_friends: number;
+  shared_parks: number;
+  visit_count: number;
 }
 
 interface PendingUser {
@@ -71,11 +81,15 @@ export default function FriendsPage() {
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [sentSuggestionIds, setSentSuggestionIds] = useState<Set<string>>(new Set());
+  const [pendingSuggestionIds, setPendingSuggestionIds] = useState<Set<string>>(new Set());
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isLoaded) return;
-    if (!isSignedIn) { router.replace("/sign-in"); return; }
+    if (!isSignedIn) { router.replace("/sign-in?redirect=/friends"); return; }
     const userId = user.id;
 
     Promise.all([
@@ -91,6 +105,12 @@ export default function FriendsPage() {
       setIncoming([]);
       setOutgoing([]);
     });
+
+    fetch('/api/users/suggestions?limit=8')
+      .then(r => r.ok ? r.json() : [])
+      .then(setSuggestions)
+      .catch(() => {})
+      .finally(() => setSuggestionsLoading(false));
   }, [isLoaded, isSignedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -104,6 +124,21 @@ export default function FriendsPage() {
         .catch(() => setSearchLoading(false));
     }, 280);
   }, [searchQuery]);
+
+  const handleAddSuggested = async (targetId: string) => {
+    if (sentSuggestionIds.has(targetId) || pendingSuggestionIds.has(targetId)) return;
+    setPendingSuggestionIds(prev => new Set(prev).add(targetId));
+    try {
+      const res = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: targetId }),
+      });
+      if (res.ok) setSentSuggestionIds(prev => new Set(prev).add(targetId));
+    } finally {
+      setPendingSuggestionIds(prev => { const s = new Set(prev); s.delete(targetId); return s; });
+    }
+  };
 
   const handleAddFromSearch = async (targetId: string) => {
     setSentIds(prev => new Set(prev).add(targetId));
@@ -190,11 +225,11 @@ export default function FriendsPage() {
       border: "0.5px solid var(--hairline)",
       borderRadius: 12,
     }}>
-      <Link href={`/profile/${username}`} style={{ textDecoration: "none", flexShrink: 0 }}>
+      <Link href={`/profile/${username}?from=/friends`} style={{ textDecoration: "none", flexShrink: 0 }}>
         <Avatar url={avatarUrl} name={displayName || username} />
       </Link>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <Link href={`/profile/${username}`} style={{ textDecoration: "none" }}>
+        <Link href={`/profile/${username}?from=/friends`} style={{ textDecoration: "none" }}>
           {displayName && (
             <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {displayName}
@@ -313,11 +348,11 @@ export default function FriendsPage() {
                       display: "flex", alignItems: "center", gap: 12,
                       padding: "10px 14px", borderBottom: "0.5px solid var(--hairline-soft)",
                     }}>
-                      <Link href={`/profile/${u.username}`} style={{ textDecoration: "none", flexShrink: 0 }}>
+                      <Link href={`/profile/${u.username}?from=/friends`} style={{ textDecoration: "none", flexShrink: 0 }}>
                         <Avatar url={u.avatar_url} name={name} size={36} />
                       </Link>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <Link href={`/profile/${u.username}`} style={{ textDecoration: "none" }}>
+                        <Link href={`/profile/${u.username}?from=/friends`} style={{ textDecoration: "none" }}>
                           <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
                           <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-mute)" }}>@{u.username}</div>
                         </Link>
@@ -349,6 +384,86 @@ export default function FriendsPage() {
             </div>
           )}
         </div>
+
+        {/* People You May Know */}
+        {!searchQuery.trim() && (suggestionsLoading || suggestions.length > 0) && (
+          <Section title="PEOPLE YOU MAY KNOW" icon={Sparkles}>
+            {suggestionsLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {[55, 70, 45, 65, 60, 50].map((nameW, i) => (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 14,
+                    padding: "12px 16px", background: "var(--surface)",
+                    border: "0.5px solid var(--hairline)", borderRadius: 12,
+                  }}>
+                    <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--surface-alt)", flexShrink: 0 }} />
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ height: 13, width: `${nameW}%`, borderRadius: 4, background: "var(--surface-alt)" }} />
+                      <div style={{ height: 11, width: `${nameW - 20}%`, borderRadius: 3, background: "var(--surface-alt)" }} />
+                    </div>
+                    <div style={{ height: 32, width: 90, borderRadius: 8, background: "var(--surface-alt)", flexShrink: 0 }} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {suggestions.map(u => {
+                  const name = u.display_name ?? u.username ?? "Explorer";
+                  const handle = u.username ? `@${u.username}` : "";
+                  const subtext = u.mutual_friends > 0
+                    ? `${u.mutual_friends} mutual friend${u.mutual_friends !== 1 ? "s" : ""}`
+                    : u.shared_parks > 0
+                    ? `${u.shared_parks} shared park${u.shared_parks !== 1 ? "s" : ""}`
+                    : u.visit_count > 0
+                    ? `${u.visit_count} park${u.visit_count !== 1 ? "s" : ""} visited`
+                    : "Explorer";
+                  const isSent    = sentSuggestionIds.has(u.clerk_user_id);
+                  const isPending = pendingSuggestionIds.has(u.clerk_user_id);
+                  return (
+                    <div key={u.clerk_user_id} style={{
+                      display: "flex", alignItems: "center", gap: 14,
+                      padding: "12px 16px", background: "var(--surface)",
+                      border: "0.5px solid var(--hairline)", borderRadius: 12,
+                    }}>
+                      <Link href={`/profile/${u.username}?from=/friends`} style={{ textDecoration: "none", flexShrink: 0 }}>
+                        <Avatar url={u.avatar_url} name={name} />
+                      </Link>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Link href={`/profile/${u.username}?from=/friends`} style={{ textDecoration: "none" }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {name}
+                          </div>
+                        </Link>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-mute)", fontWeight: 600 }}>
+                          {handle && `${handle} · `}{subtext}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleAddSuggested(u.clerk_user_id)}
+                        disabled={isSent || isPending}
+                        style={{
+                          ...btnBase,
+                          background: isSent ? "var(--surface-alt)" : "var(--primary)",
+                          color: isSent ? "var(--ink-mute)" : "#FFFBF1",
+                          border: isSent ? "0.5px solid var(--hairline)" : "none",
+                          opacity: isPending ? 0.6 : 1,
+                          cursor: isSent || isPending ? "default" : "pointer",
+                          display: "flex", alignItems: "center", gap: 5,
+                        }}
+                      >
+                        {isSent ? (
+                          <><UserCheck size={12} strokeWidth={2.5} /> Sent</>
+                        ) : (
+                          <><UserPlus size={12} strokeWidth={2.5} /> {isPending ? "…" : "Add Friend"}</>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Section>
+        )}
 
         {/* Incoming requests */}
         {pendingIncoming.length > 0 && (
