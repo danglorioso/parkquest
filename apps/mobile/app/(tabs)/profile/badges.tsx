@@ -290,31 +290,36 @@ export default function BadgesScreen() {
   const { getToken } = useAuth();
   const [badges,        setBadges]        = useState<BadgeData[]>([]);
   const [loading,       setLoading]       = useState(true);
+  const [error,         setError]         = useState(false);
   const [tierFilter,    setTierFilter]    = useState<TierFilter>('all');
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      const tok = await getToken();
-      if (!tok) return;
-      try {
-        const res = await fetch(`${BASE}/api/badges`, { headers: { Authorization: `Bearer ${tok}` } });
-        if (res.ok) {
-          const { badges: data } = await res.json();
-          const sorted = [...(data ?? [])].sort((a: BadgeData, b: BadgeData) => {
-            const aT = a.earned_at ? new Date(a.earned_at).getTime() : 0;
-            const bT = b.earned_at ? new Date(b.earned_at).getTime() : 0;
-            return bT - aT;
-          });
-          setBadges(sorted);
-        }
-      } catch (e) {
-        console.error('Badges load error:', e);
-      } finally {
-        setLoading(false);
+  const loadBadges = useCallback(async () => {
+    const tok = await getToken();
+    if (!tok) return;
+    setError(false);
+    try {
+      const res = await fetch(`${BASE}/api/badges`, { headers: { Authorization: `Bearer ${tok}` } });
+      if (res.ok) {
+        const { badges: data } = await res.json();
+        const sorted = [...(data ?? [])].sort((a: BadgeData, b: BadgeData) => {
+          const aT = a.earned_at ? new Date(a.earned_at).getTime() : 0;
+          const bT = b.earned_at ? new Date(b.earned_at).getTime() : 0;
+          return bT - aT;
+        });
+        setBadges(sorted);
+      } else {
+        setError(true);
       }
-    })();
+    } catch (e) {
+      console.error('Badges load error:', e);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [getToken]);
+
+  useEffect(() => { loadBadges(); }, [loadBadges]);
 
   const earned  = useMemo(() => badges.filter(b => b.earned), [badges]);
   const visible = useMemo(
@@ -468,6 +473,23 @@ export default function BadgesScreen() {
     );
   }
 
+  if (error) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
+          <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
+          <TouchableOpacity
+            onPress={() => { setLoading(true); loadBadges(); }}
+            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+          >
+            <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
       <FlatList
@@ -499,16 +521,17 @@ const styles = StyleSheet.create({
 
   // Page header
   pageHeader: {
-    paddingHorizontal: H_PAD, paddingTop: 22, paddingBottom: 4,
+    paddingHorizontal: H_PAD, paddingTop: 22, paddingBottom: 18,
+    borderBottomWidth: 0.5, borderBottomColor: 'rgba(27,26,22,0.06)',
   },
   headerKicker: {
-    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 3,
+    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 5,
   },
   headerTitle: {
-    fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.4,
+    fontSize: 30, fontWeight: '800', color: C.ink, letterSpacing: -0.6,
   },
   headerSub: {
-    fontSize: 13, color: C.inkMute, marginTop: 3,
+    fontSize: 14, color: C.inkMute, marginTop: 6,
   },
 
   // Filter bar
@@ -546,10 +569,10 @@ const styles = StyleSheet.create({
     fontSize: 10, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6,
   },
   featuredName: {
-    fontSize: 22, fontWeight: '800', color: C.ink, letterSpacing: -0.5,
+    fontSize: 28, fontWeight: '800', color: C.ink, letterSpacing: -0.5,
   },
   featuredDesc: {
-    fontSize: 13.5, color: C.inkSoft, lineHeight: 19,
+    fontSize: 14, color: C.inkSoft, lineHeight: 21,
   },
 
   // Section headers
@@ -577,7 +600,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: 14, borderWidth: 0.5, borderColor: C.hairline,
     paddingTop: 16, paddingHorizontal: 12, paddingBottom: 12,
-    alignItems: 'center', gap: 6,
+    alignItems: 'center', gap: 8,
     overflow: 'hidden', position: 'relative',
   },
   cellName: {

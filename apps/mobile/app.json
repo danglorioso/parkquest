@@ -8,17 +8,27 @@
     "scheme": "parkquest",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F2EBDB"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.danglorioso.parkquest",
-      "developmentTeam": "U8AK9PG243"
+      "buildNumber": "1",
+      "developmentTeam": "U8AK9PG243",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ParkQuest uses your camera to capture and share photos from your park visits."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.parkquest.app"
+      "package": "com.parkquest.app",
+      "versionCode": 1
     },
     "plugins": [
       "expo-router",

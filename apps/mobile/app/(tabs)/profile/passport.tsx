@@ -213,7 +213,7 @@ function PassportDataPage({
       </View>
 
       {/* Stats */}
-      <View style={{ flexDirection: 'row', borderTopWidth: 0.5, borderTopColor: P_FAINT, borderBottomWidth: 0.5, borderBottomColor: P_FAINT, paddingVertical: 14, marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', borderTopWidth: 0.5, borderTopColor: P_FAINT, borderBottomWidth: 0.5, borderBottomColor: P_FAINT, paddingVertical: 14, marginTop: 26, marginBottom: 12 }}>
         {[
           { label: 'VISITED', value: visitedCount, suf: '/63' },
           { label: 'STATES',  value: statesCount,  suf: '/50' },
@@ -251,10 +251,13 @@ function PassportDataPage({
           <Text style={st.dataMetaLabel}>BEARER SIGNATURE</Text>
           <Text style={st.dataSignature}>{name}</Text>
         </View>
-        <View style={{ borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: visitedCount > 0 ? 'rgba(31,92,46,0.12)' : 'transparent' }}>
-          <Text style={{ fontSize: 9, fontWeight: '800', letterSpacing: 1.2, color: visitedCount > 0 ? '#1F5C2E' : P_MUTE }}>
-            {visitedCount > 0 ? '● ACTIVE' : '○ INACTIVE'}
-          </Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={st.dataMetaLabel}>STATUS</Text>
+          <View style={{ borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2, backgroundColor: visitedCount > 0 ? 'rgba(31,92,46,0.12)' : 'transparent' }}>
+            <Text style={{ fontSize: 9, fontWeight: '800', letterSpacing: 1.2, color: visitedCount > 0 ? '#1F5C2E' : P_MUTE }}>
+              {visitedCount > 0 ? '● ACTIVE' : '○ INACTIVE'}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -422,12 +425,14 @@ export default function PassportScreen() {
   const [badgeCount,  setBadgeCount]  = useState(0);
   const [totalBadges, setTotalBadges] = useState(0);
   const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState(false);
   const [open,        setOpen]        = useState(false);
 
   const load = useCallback(async () => {
     const tok = await getToken();
     if (!tok) return;
     setLoading(true);
+    setError(false);
     try {
       const [profRes, visitsRes, parksRes, badgesRes] = await Promise.allSettled([
         fetch(`${BASE}/api/profile`, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.ok ? r.json() : null),
@@ -435,6 +440,9 @@ export default function PassportScreen() {
         fetch(`${BASE}/api/parks`,   { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.ok ? r.json() : []),
         fetch(`${BASE}/api/badges`,  { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.ok ? r.json() : { badges: [] }),
       ]);
+      if ([profRes, visitsRes, parksRes, badgesRes].every(r => r.status === 'rejected')) {
+        setError(true);
+      }
       if (profRes.status   === 'fulfilled' && profRes.value)   setProfile(profRes.value);
       if (visitsRes.status === 'fulfilled') setVisits(visitsRes.value ?? []);
       if (parksRes.status  === 'fulfilled') setAllParks(parksRes.value ?? []);
@@ -445,6 +453,7 @@ export default function PassportScreen() {
       }
     } catch (e) {
       console.error('Passport load:', e);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -559,6 +568,23 @@ export default function PassportScreen() {
     </View>
   );
 
+  if (error && allParks.length === 0) {
+    return (
+      <SafeAreaView style={st.screen} edges={['bottom']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
+          <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
+          <TouchableOpacity
+            onPress={() => load()}
+            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+          >
+            <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={st.screen} edges={['bottom']}>
       {loading ? (
@@ -612,13 +638,13 @@ const st = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 20, paddingBottom: 20,
   },
   kicker: {
-    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.2, marginBottom: 3,
+    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 5,
   },
   pageTitle: {
-    fontSize: 26, fontWeight: '900', color: C.ink, letterSpacing: -0.5,
+    fontSize: 30, fontWeight: '800', color: C.ink, letterSpacing: -0.6,
   },
   pageSub: {
-    fontSize: 13, color: C.inkMute, marginTop: 2,
+    fontSize: 14, color: C.inkMute, marginTop: 6,
   },
 
   toggleBtn: {
@@ -636,7 +662,7 @@ const st = StyleSheet.create({
     borderWidth: 0.5, borderColor: C.hairline, marginTop: 8,
   },
   stampsSectionTitle: {
-    fontSize: 18, fontWeight: '800', color: P_INK, letterSpacing: -0.3, marginTop: 2,
+    fontSize: 20, fontWeight: '800', color: P_INK, letterSpacing: -0.3, marginTop: 2,
   },
   progressPill: {
     backgroundColor: C.surfaceAlt, borderRadius: 20,
@@ -677,23 +703,23 @@ const st = StyleSheet.create({
     borderWidth: 0.5, borderColor: COVER_FOIL + '44',
   },
   coverCountry: {
-    fontSize: 8, fontWeight: '600', color: COVER_FOIL, letterSpacing: 2.5, textAlign: 'center',
+    fontSize: 9, fontWeight: '600', color: COVER_FOIL, letterSpacing: 2.5, textAlign: 'center',
   },
   coverTitle: {
     fontSize: 24, fontWeight: '900', color: COVER_FOIL, letterSpacing: 5,
     textShadowColor: '#8A5E18', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 0,
   },
   coverSubtitle: {
-    fontSize: 12, fontWeight: '700', color: COVER_FOIL, letterSpacing: 4, marginTop: 3, opacity: 0.85,
+    fontSize: 13, fontWeight: '700', color: COVER_FOIL, letterSpacing: 4, marginTop: 3, opacity: 0.85,
   },
   coverTagline: {
-    fontSize: 7.5, fontWeight: '500', color: COVER_FOIL, letterSpacing: 2, opacity: 0.55, marginTop: 14,
+    fontSize: 9, fontWeight: '500', color: COVER_FOIL, letterSpacing: 2.5, opacity: 0.55, marginTop: 14,
   },
 
   // Data page
   dataPage: {
     backgroundColor: PAPER,
-    borderRadius: 14, borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 18, borderWidth: 0.5, borderColor: C.hairline,
     padding: 16,
     shadowColor: 'rgba(58,42,18,0.1)', shadowOffset: { width: 0, height: 8 }, shadowRadius: 22, shadowOpacity: 1,
     elevation: 4,
@@ -712,45 +738,45 @@ const st = StyleSheet.create({
     fontSize: 9, fontWeight: '600', color: FOIL, letterSpacing: 1.2,
   },
   dataPhoto: {
-    width: 90, height: 110, borderWidth: 0.5, borderColor: P_MUTE,
+    width: 108, height: 130, borderWidth: 0.5, borderColor: P_MUTE,
     backgroundColor: C.surfaceAlt, overflow: 'hidden', flexShrink: 0,
   },
   dataBearer: {
-    fontSize: 8, fontWeight: '600', color: P_MUTE, letterSpacing: 1.4, textTransform: 'uppercase',
+    fontSize: 8.5, fontWeight: '600', color: P_MUTE, letterSpacing: 1.6, textTransform: 'uppercase',
   },
   dataName: {
-    fontSize: 20, fontWeight: '900', color: P_INK, letterSpacing: -0.5, lineHeight: 22, marginTop: 4,
+    fontSize: 26, fontWeight: '900', color: P_INK, letterSpacing: -0.6, lineHeight: 28, marginTop: 4,
   },
   dataUsername: {
     fontSize: 11, fontWeight: '600', color: P_INK, letterSpacing: 0.4, marginTop: 4,
   },
   dataBio: {
-    fontSize: 11.5, color: P_INK, lineHeight: 16, fontStyle: 'italic', opacity: 0.8, marginTop: 6,
+    fontSize: 13, color: P_INK, lineHeight: 19, fontStyle: 'italic', opacity: 0.85, marginTop: 10,
   },
   dataStat: {
     flex: 1, paddingHorizontal: 8,
   },
   dataStatLabel: {
-    fontSize: 7.5, fontWeight: '600', color: P_MUTE, letterSpacing: 1.2, textTransform: 'uppercase',
+    fontSize: 8, fontWeight: '600', color: P_MUTE, letterSpacing: 1.5, textTransform: 'uppercase',
   },
   dataStatVal: {
-    fontSize: 20, fontWeight: '900', color: P_INK, letterSpacing: -0.5,
+    fontSize: 24, fontWeight: '900', color: P_INK, letterSpacing: -1,
   },
   dataStatSuf: {
-    fontSize: 8.5, fontWeight: '600', color: P_MUTE,
+    fontSize: 9, fontWeight: '600', color: P_MUTE,
   },
   dataMetaLabel: {
-    fontSize: 7.5, fontWeight: '600', color: P_MUTE, letterSpacing: 1.2, textTransform: 'uppercase',
+    fontSize: 7.5, fontWeight: '600', color: P_MUTE, letterSpacing: 1.5, textTransform: 'uppercase',
   },
   dataMetaVal: {
-    fontSize: 11, fontWeight: '700', color: P_INK, marginTop: 2, letterSpacing: 0.2,
+    fontSize: 11.5, fontWeight: '700', color: P_INK, marginTop: 2, letterSpacing: 0.3,
   },
   dataSignature: {
     fontStyle: 'italic', fontSize: 17, color: P_INK, marginTop: 3, letterSpacing: 0.5,
   },
   mrz: {
-    marginTop: 10, fontSize: 8, letterSpacing: 0.6, color: P_MUTE,
-    lineHeight: 13, borderTopWidth: 0.5, borderTopColor: P_FAINT, paddingTop: 8,
+    marginTop: 10, fontSize: 9, letterSpacing: 1.2, color: P_MUTE,
+    lineHeight: 14, borderTopWidth: 0.5, borderTopColor: P_FAINT, paddingTop: 8,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
 });

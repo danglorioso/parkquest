@@ -73,9 +73,9 @@ const CROWD_LABELS  = ['Empty', 'Quiet', 'Moderate', 'Busy', 'Packed'];
 const DIFF_LABELS   = ['Easy', 'Light', 'Moderate', 'Hard', 'Strenuous'];
 const ALL_ACTIVITIES= ['hiking','camping','backpacking','climbing','kayaking','rafting','fishing','diving','wildlife','photography','stargazing','tours','cycling','mountaineering'];
 const RETURN_OPTS   = [
-  { id: 'yes',   label: 'Definitely',   color: C.visited },
-  { id: 'maybe', label: 'Maybe',        color: C.bucket  },
-  { id: 'no',    label: 'Probably not', color: C.inkMute },
+  { id: 'yes',   label: 'Definitely',   color: C.visited, icon: 'heart-outline' as const,  iconFilled: 'heart' as const },
+  { id: 'maybe', label: 'Maybe',        color: C.bucket,  icon: 'repeat-outline' as const, iconFilled: 'repeat' as const },
+  { id: 'no',    label: 'Probably not', color: C.inkMute, icon: 'cloud-outline' as const,  iconFilled: 'cloud' as const },
 ];
 const STEPS = ['Where & when', 'The visit', 'Journal', 'Share'];
 const STAR_SIZE = 36;
@@ -209,22 +209,65 @@ function WeatherGrid({ value, onChange }: { value: string[]; onChange: (v: strin
 // ── ActivityChips ─────────────────────────────────────────────────────────────
 
 function ActivityChips({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [customQ, setCustomQ] = useState('');
+
   const toggle = (a: string) =>
     onChange(value.includes(a) ? value.filter(x => x !== a) : value.length < 8 ? [...value, a] : value);
+
+  const removeCustom = (a: string) => onChange(value.filter(x => x !== a));
+
+  const addCustom = () => {
+    const trimmed = customQ.trim();
+    if (!trimmed || value.length >= 8) return;
+    const std = ALL_ACTIVITIES.find(a => a.toLowerCase() === trimmed.toLowerCase());
+    const key = std ?? trimmed;
+    if (!value.some(v => v.toLowerCase() === key.toLowerCase())) onChange([...value, key]);
+    setCustomQ('');
+  };
+
+  const customActivities = value.filter(a => !ALL_ACTIVITIES.includes(a));
+
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-      {ALL_ACTIVITIES.map(a => {
-        const on = value.includes(a);
-        return (
-          <TouchableOpacity
-            key={a} onPress={() => toggle(a)} activeOpacity={0.7}
-            style={[styles.activityChip, { backgroundColor: on ? C.primary : C.surfaceAlt, borderColor: on ? C.primary : C.hairline }]}
-          >
-            {on && <Ionicons name="checkmark" size={11} color="#FFFBF1" />}
-            <Text style={[styles.activityChipText, { color: on ? '#FFFBF1' : C.inkSoft }]}>{a}</Text>
-          </TouchableOpacity>
-        );
-      })}
+    <View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+        {ALL_ACTIVITIES.map(a => {
+          const on = value.includes(a);
+          return (
+            <TouchableOpacity
+              key={a} onPress={() => toggle(a)} activeOpacity={0.7}
+              style={[styles.activityChip, { backgroundColor: on ? C.primary : C.surfaceAlt, borderColor: on ? C.primary : C.hairline }]}
+            >
+              {on && <Ionicons name="checkmark" size={11} color="#FFFBF1" />}
+              <Text style={[styles.activityChipText, { color: on ? '#FFFBF1' : C.inkSoft }]}>{a}</Text>
+            </TouchableOpacity>
+          );
+        })}
+        {customActivities.map(a => (
+          <View key={a} style={[styles.activityChip, { backgroundColor: C.primary, borderColor: C.primary }]}>
+            <Text style={[styles.activityChipText, { color: '#FFFBF1' }]}>{a}</Text>
+            <TouchableOpacity onPress={() => removeCustom(a)} hitSlop={6}>
+              <Ionicons name="close" size={11} color="rgba(255,251,241,0.8)" />
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+      {value.length < 8 && (
+        <View style={[styles.searchRow, { marginTop: 10 }]}>
+          <Ionicons name="add" size={14} color={C.inkMute} />
+          <TextInput
+            value={customQ} onChangeText={setCustomQ}
+            placeholder="Add another activity…" placeholderTextColor={C.inkMute}
+            style={styles.searchInput}
+            autoCorrect={false} autoCapitalize="none"
+            onSubmitEditing={addCustom} returnKeyType="done"
+          />
+          {customQ.length > 0 && (
+            <TouchableOpacity onPress={addCustom}>
+              <Ionicons name="checkmark-circle" size={16} color={C.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -236,12 +279,14 @@ function ReturnRow({ value, onChange }: { value: Draft['wouldReturn']; onChange:
     <View style={{ flexDirection: 'row', gap: 7 }}>
       {RETURN_OPTS.map(o => {
         const on = value === o.id;
+        const textCol = on ? '#FFFBF1' : C.inkSoft;
         return (
           <TouchableOpacity
             key={o.id} onPress={() => onChange(on ? null : o.id as Draft['wouldReturn'])} activeOpacity={0.7}
             style={[styles.returnBtn, { backgroundColor: on ? o.color : C.surfaceAlt, borderColor: on ? o.color : C.hairline }]}
           >
-            <Text style={[styles.returnBtnText, { color: on ? '#FFFBF1' : C.inkSoft }]}>{o.label}</Text>
+            <Ionicons name={on ? o.iconFilled : o.icon} size={14} color={textCol} />
+            <Text style={[styles.returnBtnText, { color: textCol }]}>{o.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -738,18 +783,26 @@ function StepVisit({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(
       <Section title="Conditions">
         <View style={styles.card}>
           <View style={{ marginBottom: 14, paddingBottom: 14, borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft }}>
-            <Text style={[styles.sectionTitle, { fontSize: 13.5, marginBottom: 8 }]}>Crowd level</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Ionicons name="people-outline" size={15} color={C.inkMute} />
+              <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>Crowd level</Text>
+            </View>
             <ScaleRow value={draft.crowd} onChange={v => set('crowd', v)} labels={CROWD_LABELS} />
           </View>
           <View>
-            <Text style={[styles.sectionTitle, { fontSize: 13.5, marginBottom: 8 }]}>Trail difficulty</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Ionicons name="walk-outline" size={15} color={C.inkMute} />
+              <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>Trail difficulty</Text>
+            </View>
             <ScaleRow value={draft.difficulty} onChange={v => set('difficulty', v)} labels={DIFF_LABELS} />
           </View>
         </View>
       </Section>
 
       <Section title="Weather">
-        <WeatherGrid value={draft.weather} onChange={v => set('weather', v)} />
+        <View style={styles.card}>
+          <WeatherGrid value={draft.weather} onChange={v => set('weather', v)} />
+        </View>
       </Section>
 
       <Section title="Would you go back?">
@@ -821,7 +874,7 @@ function StepJournal({ draft, set, token }: {
 function StepShare({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void }) {
   return (
     <View>
-      <Section kicker="04" title="Share">
+      <Section title="Add a caption">
         <View style={styles.textFieldWrap}>
           <TextInput
             value={draft.caption} onChangeText={v => set('caption', v.slice(0, 500))}
@@ -984,7 +1037,7 @@ export default function LogVisitModal() {
 
       {/* Step kicker */}
       <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
-        <Text style={styles.kicker}>STEP {step + 1} OF {STEPS.length} · {STEPS[step].toUpperCase()}</Text>
+        <Text style={styles.kicker}>STEP {String(step + 1).padStart(2, '0')} OF {String(STEPS.length).padStart(2, '0')} · {STEPS[step].toUpperCase()}</Text>
       </View>
 
       {/* Content */}
@@ -1058,12 +1111,12 @@ const styles = StyleSheet.create({
     fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4,
   },
   sectionTitle: {
-    fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.3, marginTop: 2,
+    fontSize: 19, fontWeight: '800', color: C.ink, letterSpacing: -0.3, marginTop: 2,
   },
 
   // Card wrapper
   card: {
-    backgroundColor: C.surface, borderRadius: 14, borderWidth: 0.5, borderColor: C.hairline, padding: 14,
+    backgroundColor: C.surface, borderRadius: 18, borderWidth: 0.5, borderColor: C.hairline, padding: 14,
   },
 
   // Star rating
@@ -1102,7 +1155,7 @@ const styles = StyleSheet.create({
   // Would return
   returnBtn: {
     flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 0.5,
-    alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
   },
   returnBtnText: {
     fontSize: 12.5, fontWeight: '700',
@@ -1274,5 +1327,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 18, paddingVertical: 11, borderRadius: 10,
     width: 120, justifyContent: 'center',
+    shadowColor: '#1F3D2E', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
 });

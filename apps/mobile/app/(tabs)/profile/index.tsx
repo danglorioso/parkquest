@@ -124,11 +124,13 @@ export default function ProfileScreen() {
   const [friendCount,  setFriendCount]  = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<BadgeSummary[]>([]);
   const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState(false);
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
     if (!tok) return;
     setLoading(true);
+    setError(false);
     try {
       const [profRes, visitsRes, badgesRes, friendsRes] = await Promise.allSettled([
         apiFetch<ProfileInfo>('/api/profile', tok),
@@ -136,6 +138,10 @@ export default function ProfileScreen() {
         apiFetch<{ badges: BadgeSummary[] }>('/api/badges', tok),
         apiFetch<any[]>('/api/friends?type=friends', tok),
       ]);
+
+      if ([profRes, visitsRes, badgesRes, friendsRes].every(r => r.status === 'rejected')) {
+        setError(true);
+      }
 
       if (profRes.status === 'fulfilled')   setProfile(profRes.value);
       if (visitsRes.status === 'fulfilled') {
@@ -156,6 +162,7 @@ export default function ProfileScreen() {
       }
     } catch (e) {
       console.error('Profile load error:', e);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -190,6 +197,23 @@ export default function ProfileScreen() {
       <SafeAreaView style={styles.screen} edges={['top']}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={C.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error && !profile) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
+          <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
+          <TouchableOpacity
+            onPress={() => loadData()}
+            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+          >
+            <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -258,10 +282,11 @@ export default function ProfileScreen() {
             <View style={styles.passportStats}>
               {[
                 { label: 'VISITED', value: `${parksVisited}/63` },
+                { label: 'BUCKET',  value: String(bucketList) },
                 { label: 'CLASS',   value: rank },
                 { label: 'BADGES',  value: String(badgesEarned) },
               ].map(s => (
-                <View key={s.label} style={{ marginRight: 16 }}>
+                <View key={s.label} style={styles.passportStatItem}>
                   <Text style={styles.passportStatLabel}>{s.label}</Text>
                   <Text style={styles.passportStatVal}>{s.value}</Text>
                 </View>
@@ -277,8 +302,8 @@ export default function ProfileScreen() {
         {earnedBadges.length > 0 && (
           <View style={styles.badgesPreview}>
             <View style={styles.sectionHeader}>
+              <Ionicons name="ribbon-outline" size={13} color={C.inkMute} />
               <Text style={styles.sectionKicker}>EARNED</Text>
-              <Text style={styles.sectionTitle}>Badges</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
               {earnedBadges.map(b => (
@@ -303,6 +328,7 @@ export default function ProfileScreen() {
         {/* ── My collection nav rows ───────────────────────────────────────── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
+            <Ionicons name="grid-outline" size={13} color={C.inkMute} />
             <Text style={styles.sectionKicker}>MY COLLECTION</Text>
           </View>
           <View style={styles.card}>
@@ -343,6 +369,7 @@ export default function ProfileScreen() {
         {/* ── Account settings ─────────────────────────────────────────────── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
+            <Ionicons name="person-outline" size={13} color={C.inkMute} />
             <Text style={styles.sectionKicker}>ACCOUNT</Text>
           </View>
           <View style={styles.card}>
@@ -401,10 +428,10 @@ const styles = StyleSheet.create({
     fontSize: 30, fontWeight: '900', color: '#FFFBF1',
   },
   heroName: {
-    fontSize: 24, fontWeight: '900', color: C.ink, letterSpacing: -0.5, textAlign: 'center',
+    fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.5, textAlign: 'center',
   },
   heroHandle: {
-    fontSize: 12, fontWeight: '600', color: C.inkMute, letterSpacing: 0.5, marginTop: 2,
+    fontSize: 12, fontWeight: '600', color: C.inkMute, letterSpacing: 0.8, marginTop: 2,
   },
   heroMeta: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap', justifyContent: 'center',
@@ -426,22 +453,22 @@ const styles = StyleSheet.create({
 
   // Stats strip
   statsStrip: {
-    flexDirection: 'row', marginHorizontal: 16, marginBottom: 16,
+    flexDirection: 'row', marginHorizontal: 16, marginBottom: 20,
     backgroundColor: C.surface, borderRadius: 14,
     borderWidth: 0.5, borderColor: C.hairline, overflow: 'hidden',
   },
   statCell: {
-    flex: 1, alignItems: 'center', paddingVertical: 14,
+    flex: 1, alignItems: 'center', paddingVertical: 18,
   },
   statValue: {
-    fontSize: 22, fontWeight: '900', color: C.ink, letterSpacing: -0.5, lineHeight: 24,
+    fontSize: 28, fontWeight: '900', color: C.ink, letterSpacing: -0.8, lineHeight: 30,
   },
   statSub: {
-    fontSize: 10, fontWeight: '600', color: C.inkMute, marginLeft: 1,
+    fontSize: 14, fontWeight: '600', color: C.inkMute, marginLeft: 1,
   },
   statLabel: {
-    fontSize: 8.5, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8,
-    textTransform: 'uppercase', marginTop: 2,
+    fontSize: 9.5, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4,
+    textTransform: 'uppercase', marginTop: 4,
   },
   statDivider: {
     width: 0.5, backgroundColor: C.hairline, marginVertical: 10,
@@ -469,18 +496,21 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   passportKicker: {
-    fontSize: 7.5, fontWeight: '600', color: 'rgba(201,169,74,0.7)',
+    fontSize: 8, fontWeight: '600', color: 'rgba(201,169,74,0.7)',
     letterSpacing: 2, marginBottom: 6,
   },
   passportName: {
-    fontSize: 18, fontWeight: '900', color: C.gold, letterSpacing: 2.5, lineHeight: 20,
+    fontSize: 20, fontWeight: '900', color: C.gold, letterSpacing: 2.5, lineHeight: 22,
   },
   passportHandle: {
     fontSize: 9, fontWeight: '600', color: 'rgba(201,169,74,0.6)', letterSpacing: 0.8, marginTop: 2,
   },
   passportStats: {
-    flexDirection: 'row', marginTop: 14, paddingTop: 12,
+    flexDirection: 'row', flexWrap: 'wrap', marginTop: 14, paddingTop: 12,
     borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.2)',
+  },
+  passportStatItem: {
+    width: '50%', marginBottom: 10,
   },
   passportStatLabel: {
     fontSize: 7, fontWeight: '600', color: 'rgba(201,169,74,0.55)', letterSpacing: 1.2,
@@ -522,10 +552,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 16, marginBottom: 16,
   },
   sectionHeader: {
-    marginBottom: 10,
+    marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 6,
   },
   sectionKicker: {
-    fontSize: 9.5, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4, textTransform: 'uppercase',
+    fontSize: 10, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4, textTransform: 'uppercase',
   },
   sectionTitle: {
     fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.2, marginTop: 2,

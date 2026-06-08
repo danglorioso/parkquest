@@ -95,7 +95,7 @@ function initials(name: string): string {
 function Avatar({ url, name, size = 44 }: { url: string | null; name: string; size?: number }) {
   const r = size / 2;
   return (
-    <View style={{ width: size, height: size, borderRadius: r, overflow: 'hidden', flexShrink: 0 }}>
+    <View style={{ width: size, height: size, borderRadius: r, overflow: 'hidden', flexShrink: 0, borderWidth: 1, borderColor: C.hairline }}>
       {url ? (
         <Image source={{ uri: url }} style={{ width: size, height: size }} resizeMode="cover" />
       ) : (
@@ -343,7 +343,7 @@ export default function FriendsScreen() {
       fetch(`${BASE}/api/friends?type=pending_outgoing`, { headers: h }).then(r => r.ok ? r.json() : []),
     ]);
 
-    if (fr.status  === 'fulfilled') setFriends(fr.value   ?? []);
+    setFriends(fr.status  === 'fulfilled' ? (fr.value  ?? []) : []);
     if (inc.status === 'fulfilled') setIncoming(inc.value ?? []);
     if (out.status === 'fulfilled') setOutgoing(out.value ?? []);
 
@@ -530,7 +530,7 @@ export default function FriendsScreen() {
 
       case 'searchbar':
         return (
-          <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+          <View style={{ paddingHorizontal: 16, marginBottom: 36 }}>
             <View style={st.searchBox}>
               <Ionicons name="search" size={14} color={C.inkMute} />
               <TextInput
@@ -704,9 +704,9 @@ export default function FriendsScreen() {
 const st = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
-  pageHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 24 },
+  pageHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 36 },
   kicker:    { fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4, marginBottom: 3 },
-  pageTitle: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.7 },
+  pageTitle: { fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
   pageSub:   { fontSize: 13.5, color: C.inkMute, marginTop: 4 },
 
   searchBox: {
@@ -753,7 +753,7 @@ const st = StyleSheet.create({
 
   btn: {
     flexDirection: 'row', alignItems: 'center',
-    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6,
     flexShrink: 0,
   },
   btnPrimary:       { backgroundColor: C.primary },

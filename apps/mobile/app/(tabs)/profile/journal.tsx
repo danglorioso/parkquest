@@ -91,10 +91,13 @@ export function gradientColor(code: string): string {
 
 function Stars({ value, size = 11 }: { value: number; size?: number }) {
   return (
-    <View style={{ flexDirection: 'row', gap: 1 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
       {Array.from({ length: 5 }).map((_, i) => (
         <Ionicons key={i} name={i < Math.round(value) ? 'star' : 'star-outline'} size={size} color={C.accent} />
       ))}
+      <Text style={{ fontSize: size - 2, fontWeight: '600', color: C.inkMute, marginLeft: 4 }}>
+        {value}/5
+      </Text>
     </View>
   );
 }
@@ -174,7 +177,12 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
         {/* Stars + visibility */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
           {entry.rating ? <Stars value={entry.rating} size={11} /> : <View />}
-          <Ionicons name={visIcon as any} size={12} color={visColor} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Ionicons name={visIcon as any} size={10} color={visColor} />
+            <Text style={{ fontSize: 9, fontWeight: '600', color: visColor, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+              {visKey}
+            </Text>
+          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -363,11 +371,11 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
   pageHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 16 },
-  kicker:     { fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4, marginBottom: 3 },
+  kicker:     { fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 4 },
   title:      { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.7 },
   subtitle:   { fontSize: 13.5, color: C.inkMute, marginTop: 6 },
 
-  filterBar:  { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 10 },
+  filterBar:  { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 18 },
   searchBox:  {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: C.surface, borderRadius: 11,
@@ -381,7 +389,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     borderWidth: 0.5, borderColor: C.hairline,
   },
-  sortBtnText: { fontSize: 12, fontWeight: '600', color: C.inkSoft },
+  sortBtnText: { fontSize: 12.5, fontWeight: '600', color: C.inkSoft },
 
   sortDropdown: {
     position: 'absolute', right: 16, zIndex: 100,
@@ -405,7 +413,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
   },
   yearPillOn:     { backgroundColor: C.primary, borderColor: C.primary },
-  yearPillText:   { fontSize: 11, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.4 },
+  yearPillText:   { fontSize: 10.5, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.4 },
   yearPillTextOn: { color: '#FFFBF1' },
 
   emptyWrap:  { alignItems: 'center', paddingVertical: 60, gap: 12 },
@@ -432,7 +440,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 100,
   },
   cardContent: {
-    flex: 1, minWidth: 0, padding: 12, paddingLeft: 13, gap: 3,
+    flex: 1, minWidth: 0, padding: 12, paddingLeft: 13, paddingRight: 14, gap: 4,
   },
   parkKicker: {
     flex: 1, fontSize: 9.5, fontWeight: '700', color: C.primary, letterSpacing: 0.8,

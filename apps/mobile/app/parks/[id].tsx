@@ -334,7 +334,16 @@ export default function ParkDetailScreen() {
   if (!park) {
     return (
       <View style={styles.loadingWrap}>
-        <Text style={{ color: C.inkMute, fontSize: 15 }}>Park not found.</Text>
+        <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} style={{ marginBottom: 10 }} />
+        <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600', marginBottom: 14 }}>
+          Failed to load park
+        </Text>
+        <TouchableOpacity
+          onPress={() => loadData()}
+          style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+        >
+          <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }

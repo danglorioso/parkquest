@@ -28,7 +28,7 @@ const C = {
 };
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
-const CARD_GAP = 10;
+const CARD_GAP = 14;
 const SCREEN_W = Dimensions.get('window').width;
 const H_PAD = 16;
 const CARD_W = (SCREEN_W - H_PAD * 2 - CARD_GAP) / 2;
@@ -109,7 +109,7 @@ function SkeletonCard() {
   return (
     <View style={[styles.card, { width: CARD_W }]}>
       <View style={[styles.cardImg, { backgroundColor: g1 }]} />
-      <View style={{ padding: 10, gap: 6 }}>
+      <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14, gap: 7 }}>
         <View style={{ width: 40, height: 8, borderRadius: 4, backgroundColor: C.surfaceAlt }} />
         <View style={{ width: '80%', height: 13, borderRadius: 5, backgroundColor: C.surfaceAlt }} />
         <View style={{ width: '100%', height: 10, borderRadius: 4, backgroundColor: C.surfaceAlt }} />
@@ -122,7 +122,14 @@ function SkeletonCard() {
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: ParkStatus }) {
-  if (status === 'notVisited') return null;
+  if (status === 'notVisited') {
+    return (
+      <View style={[styles.statusBadge, { backgroundColor: 'rgba(20,17,12,0.52)' }]}>
+        <Ionicons name="add" size={9} color="#FFFBF1" />
+        <Text style={styles.statusBadgeText}>Not visited</Text>
+      </View>
+    );
+  }
   return (
     <View style={[styles.statusBadge, {
       backgroundColor: status === 'visited' ? C.visited : C.bucket,
@@ -165,7 +172,7 @@ function ParkCard({ park, status }: { park: Park; status: ParkStatus }) {
         <View style={styles.cardImgOverlay} />
         <StatusBadge status={status} />
       </View>
-      <View style={{ padding: 10 }}>
+      <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
         <Text style={styles.cardState} numberOfLines={1}>{stateName}</Text>
         <Text style={styles.cardName} numberOfLines={2}>{park.name}</Text>
         {park.description ? (
@@ -256,6 +263,7 @@ export default function ParksScreen() {
   const [parks,   setParks]   = useState<Park[]>([]);
   const [visits,  setVisits]  = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(false);
   const [query,   setQuery]   = useState('');
   const [statusFilter,  setStatusFilter]  = useState<StatusFilter>('all');
   const [regionFilter,  setRegionFilter]  = useState('all');
@@ -264,6 +272,7 @@ export default function ParksScreen() {
     const tok = await getToken();
     if (!tok) return;
     setLoading(true);
+    setError(false);
     try {
       const [parksData, visitsData] = await Promise.all([
         apiFetch<Park[]>('/api/parks', tok),
@@ -273,6 +282,7 @@ export default function ParksScreen() {
       setVisits(visitsData);
     } catch (e) {
       console.error('Parks load failed:', e);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -331,11 +341,11 @@ export default function ParksScreen() {
     <View>
       {/* Page header */}
       <View style={styles.header}>
-        <Text style={styles.kicker}>NATIONAL PARKS</Text>
+        <Text style={styles.kicker}>{loading ? 'NATIONAL PARKS' : `${parks.length} NATIONAL PARKS`}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <Text style={styles.title}>Explore the Parks</Text>
           {!loading && (
-            <Text style={styles.counter}>{visitedCount} / {parks.length}</Text>
+            <Text style={styles.counter}>{visitedCount} / {parks.length} visited</Text>
           )}
         </View>
       </View>
@@ -386,6 +396,23 @@ export default function ParksScreen() {
       </Text>
     </View>
   ) : null;
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
+          <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load parks</Text>
+          <TouchableOpacity
+            onPress={() => loadData()}
+            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+          >
+            <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -446,10 +473,10 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   title: {
-    fontSize: 26,
+    fontSize: 30,
     fontWeight: '900',
     color: C.ink,
-    letterSpacing: -0.6,
+    letterSpacing: -0.8,
   },
   counter: {
     fontSize: 11,
@@ -561,7 +588,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardImg: {
-    height: 110,
+    height: 120,
     position: 'relative',
   },
   cardImgOverlay: {
@@ -574,39 +601,39 @@ const styles = StyleSheet.create({
     color: C.inkMute,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginBottom: 3,
+    marginBottom: 4,
   },
   cardName: {
-    fontSize: 13.5,
+    fontSize: 14,
     fontWeight: '800',
     color: C.ink,
     lineHeight: 17,
     letterSpacing: -0.2,
   },
   cardDesc: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: C.inkMute,
-    lineHeight: 15,
-    marginTop: 4,
+    lineHeight: 17,
+    marginTop: 6,
   },
 
   // Status badge
   statusBadge: {
     position: 'absolute',
-    top: 8,
-    left: 8,
+    top: 10,
+    left: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 100,
   },
   statusBadgeText: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
     color: '#FFFBF1',
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
 
   // Empty state
