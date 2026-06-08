@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   ActivityIndicator, StyleSheet,
@@ -64,7 +64,7 @@ function SkeletonCard() {
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
-  const { getToken } = useAuth();
+  const { getToken, signOut } = useAuth();
   const { user } = useUser();
   const router = useRouter();
 
@@ -73,18 +73,15 @@ export default function FeedScreen() {
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter]       = useState<Filter>('all');
-
-  // Resolve token once and keep it current
-  useEffect(() => {
-    getToken().then(setToken).catch(() => {});
-  }, [getToken]);
+  const [error, setError]         = useState(false);
 
   const loadFeed = useCallback(async (isRefresh = false) => {
     const tok = await getToken();
-    if (!tok) return;
+    if (!tok) { setLoading(false); return; }
     setToken(tok);
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+    else if (!isRefresh) setLoading(true);
+    setError(false);
     try {
       const res = await fetch(`${BASE}/api/feed`, {
         headers: { Authorization: `Bearer ${tok}` },
@@ -92,18 +89,18 @@ export default function FeedScreen() {
       if (res.ok) {
         const data = await res.json();
         setPosts(data);
+      } else {
+        setError(true);
       }
     } catch {
-      // network error — keep stale data
+      setError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [getToken]);
 
-  useEffect(() => { loadFeed(); }, [loadFeed]);
-
-  // Refresh when returning from log-visit modal
+  // useFocusEffect fires on mount AND on tab focus — don't need separate useEffect
   useFocusEffect(useCallback(() => { loadFeed(); }, [loadFeed]));
 
   const handleDelete = useCallback((id: number) => {
@@ -127,14 +124,23 @@ export default function FeedScreen() {
           <Text style={styles.title}>Out there</Text>
           <Text style={styles.subtitle}>Latest posts from your friends and the community</Text>
         </View>
-        <TouchableOpacity
-          style={styles.logBtn}
-          activeOpacity={0.8}
-          onPress={() => router.push('/(modals)/log-visit' as never)}
-        >
-          <Ionicons name="add" size={14} color="#FFFBF1" />
-          <Text style={styles.logBtnText}>Log visit</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 20 }}>
+          <TouchableOpacity
+            onPress={async () => { await signOut(); router.replace('/(auth)/sign-in' as never); }}
+            style={{ padding: 8 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={22} color={C.inkMute} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.logBtn}
+            activeOpacity={0.8}
+            onPress={() => router.push('/(modals)/log-visit' as never)}
+          >
+            <Ionicons name="add" size={14} color="#FFFBF1" />
+            <Text style={styles.logBtnText}>Log visit</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Filter chips — only show when there are posts */}
@@ -161,6 +167,17 @@ export default function FeedScreen() {
       <SkeletonCard />
       <SkeletonCard />
       <SkeletonCard />
+    </View>
+  ) : error ? (
+    <View style={styles.emptyContainer}>
+      <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
+      <Text style={[styles.emptyTitle, { marginTop: 8 }]}>Failed to load</Text>
+      <TouchableOpacity
+        onPress={() => loadFeed()}
+        style={{ marginTop: 4, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+      >
+        <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+      </TouchableOpacity>
     </View>
   ) : (
     <View style={styles.emptyContainer}>

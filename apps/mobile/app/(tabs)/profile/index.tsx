@@ -128,7 +128,7 @@ export default function ProfileScreen() {
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
-    if (!tok) return;
+    if (!tok) { setLoading(false); return; }
     setLoading(true);
     setError(false);
     try {
