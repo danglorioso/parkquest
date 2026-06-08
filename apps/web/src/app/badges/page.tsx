@@ -221,7 +221,7 @@ function BadgeDetailModal({ badge, onClose, onShare }: { badge: BadgeData; onClo
         </div>
 
         {/* Earned date OR progress */}
-        <div style={{ marginTop: 20, position: "relative", animation: "pqBdTxt 300ms 360ms both" }}>
+        <div style={{ marginTop: 20, position: "relative", animation: "pqBdTxt 300ms 360ms both", width: "100%" }}>
           {badge.earned && earnedDateStr ? (
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 6,
