@@ -1,161 +1,280 @@
-import { useCallback, useState } from 'react';
-import { FlatList, View, Text, ActivityIndicator, RefreshControl, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { useAuth } from '@clerk/clerk-expo';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  View, Text, FlatList, TouchableOpacity,
+  ActivityIndicator, StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { PostCard } from '@/components/PostCard';
-import { getFeed, likePost, unlikePost, createPost } from '@/lib/api';
-import type { EnrichedPost } from '@parkquest/types';
+import { useFocusEffect } from 'expo-router';
+import { useAuth, useUser } from '@clerk/clerk-expo';
+import { PostCard, type FeedPost } from '@/components/PostCard';
 
-function CreatePostModal({ visible, onClose, onPosted }: { visible: boolean; onClose: () => void; onPosted: () => void }) {
-  const { getToken } = useAuth();
-  const [caption, setCaption] = useState('');
-  const [posting, setPosting] = useState(false);
+// ── Design tokens ─────────────────────────────────────────────────────────────
 
-  const handlePost = async () => {
-    if (!caption.trim()) return;
-    setPosting(true);
-    try {
-      const token = await getToken();
-      await createPost(token!, { caption: caption.trim() });
-      setCaption('');
-      onPosted();
-      onClose();
-    } catch (e) {
-      // silent fail for now
-    } finally {
-      setPosting(false);
-    }
-  };
+const C = {
+  bg:         '#F2EBDB',
+  surface:    '#FFFBF1',
+  surfaceAlt: '#F7F0DE',
+  ink:        '#1B1A16',
+  inkSoft:    '#3C3A33',
+  inkMute:    '#7A746A',
+  hairline:   'rgba(27,26,22,0.10)',
+  primary:    '#1F3D2E',
+};
 
+const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+// ── Filter chip ───────────────────────────────────────────────────────────────
+
+type Filter = 'all' | 'visits' | 'badges';
+
+function FilterChip({
+  label, active, onPress,
+}: { label: string; active: boolean; onPress: () => void }) {
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1">
-        <SafeAreaView className="flex-1 bg-white">
-          <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100">
-            <TouchableOpacity onPress={onClose}>
-              <Text className="text-gray-500 text-base">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="font-semibold text-gray-900">New Post</Text>
-            <TouchableOpacity onPress={handlePost} disabled={!caption.trim() || posting}>
-              <Text className={`font-semibold text-base ${caption.trim() && !posting ? 'text-brand-600' : 'text-gray-300'}`}>
-                Post
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <TextInput
-            className="flex-1 px-4 pt-4 text-base text-gray-900"
-            placeholder="Share your park adventure..."
-            placeholderTextColor="#9ca3af"
-            multiline
-            value={caption}
-            onChangeText={setCaption}
-            autoFocus
-          />
-        </SafeAreaView>
-      </KeyboardAvoidingView>
-    </Modal>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[styles.chip, active && styles.chipActive]}
+    >
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
+// ── Skeleton card ─────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <View style={styles.skeleton}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <View style={styles.skeletonAvatar} />
+        <View style={{ gap: 6, flex: 1 }}>
+          <View style={[styles.skeletonLine, { width: '55%' }]} />
+          <View style={[styles.skeletonLine, { width: '35%' }]} />
+        </View>
+      </View>
+      <View style={[styles.skeletonLine, { width: '80%', marginBottom: 6 }]} />
+      <View style={[styles.skeletonLine, { width: '60%', marginBottom: 14 }]} />
+      <View style={styles.skeletonPhoto} />
+    </View>
+  );
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
+
 export default function FeedScreen() {
   const { getToken } = useAuth();
-  const queryClient = useQueryClient();
-  const [createVisible, setCreateVisible] = useState(false);
+  const { user } = useUser();
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, refetch, isRefetching } =
-    useInfiniteQuery({
-      queryKey: ['feed'],
-      queryFn: async ({ pageParam = 0 }) => {
-        const token = await getToken();
-        return getFeed(token!, pageParam as number);
-      },
-      getNextPageParam: (lastPage, pages) =>
-        lastPage.length === 20 ? pages.length * 20 : undefined,
-      initialPageParam: 0,
-    });
+  const [token, setToken]         = useState<string | null>(null);
+  const [posts, setPosts]         = useState<FeedPost[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter]       = useState<Filter>('all');
 
-  const posts = data?.pages.flat() ?? [];
+  // Resolve token once and keep it current
+  useEffect(() => {
+    getToken().then(setToken).catch(() => {});
+  }, [getToken]);
 
-  const likeMutation = useMutation({
-    mutationFn: async ({ postId, liked }: { postId: number; liked: boolean }) => {
-      const token = await getToken();
-      return liked ? unlikePost(token!, postId) : likePost(token!, postId);
-    },
-    onMutate: async ({ postId, liked }) => {
-      await queryClient.cancelQueries({ queryKey: ['feed'] });
-      queryClient.setQueryData(['feed'], (old: typeof data) => {
-        if (!old) return old;
-        return {
-          ...old,
-          pages: old.pages.map(page =>
-            page.map(p =>
-              p.id === postId
-                ? { ...p, liked_by_me: !liked, like_count: liked ? p.like_count - 1 : p.like_count + 1 }
-                : p
-            )
-          ),
-        };
+  const loadFeed = useCallback(async (isRefresh = false) => {
+    const tok = await getToken();
+    if (!tok) return;
+    setToken(tok);
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/feed`, {
+        headers: { Authorization: `Bearer ${tok}` },
       });
-    },
-  });
+      if (res.ok) {
+        const data = await res.json();
+        setPosts(data);
+      }
+    } catch {
+      // network error — keep stale data
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [getToken]);
 
-  const renderPost = useCallback(({ item }: { item: EnrichedPost }) => (
-    <PostCard
-      post={item}
-      onLike={() => likeMutation.mutate({ postId: item.id, liked: item.liked_by_me })}
-      onComment={() => {}}
-    />
-  ), [likeMutation]);
+  useEffect(() => { loadFeed(); }, [loadFeed]);
 
-  if (isLoading) {
-    return (
-      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
-        <ActivityIndicator size="large" color="#16a34a" />
-      </SafeAreaView>
-    );
-  }
+  // Refresh when returning from log-visit modal
+  useFocusEffect(useCallback(() => { loadFeed(); }, [loadFeed]));
+
+  const handleDelete = useCallback((id: number) => {
+    setPosts(prev => prev.filter(p => p.id !== id));
+  }, []);
+
+  const filtered = posts.filter(p =>
+    filter === 'visits' ? !!p.visit_id :
+    filter === 'badges' ? !!p.badge_id :
+    true
+  );
+
+  // ── Header component ──────────────────────────────────────────────────────
+
+  const ListHeader = (
+    <View style={styles.header}>
+      {/* Page kicker + title */}
+      <Text style={styles.kicker}>THE FEED</Text>
+      <Text style={styles.title}>Out there</Text>
+      <Text style={styles.subtitle}>Latest posts from your friends and the community</Text>
+
+      {/* Filter chips — only show when there are posts */}
+      {posts.length > 0 && (
+        <View style={styles.chips}>
+          <FilterChip label="All"    active={filter === 'all'}    onPress={() => setFilter('all')} />
+          <FilterChip label="Visits" active={filter === 'visits'} onPress={() => setFilter('visits')} />
+          <FilterChip label="Badges" active={filter === 'badges'} onPress={() => setFilter('badges')} />
+        </View>
+      )}
+    </View>
+  );
+
+  // ── Footer component ──────────────────────────────────────────────────────
+
+  const ListFooter = filtered.length > 0 && !loading ? (
+    <Text style={styles.endOfFeed}>◆ END OF FEED · ALL CAUGHT UP ◆</Text>
+  ) : null;
+
+  // ── Empty / loading state ─────────────────────────────────────────────────
+
+  const ListEmpty = loading ? (
+    <View style={styles.loadingContainer}>
+      <SkeletonCard />
+      <SkeletonCard />
+      <SkeletonCard />
+    </View>
+  ) : (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyEmoji}>🌲</Text>
+      <Text style={styles.emptyTitle}>
+        {posts.length === 0
+          ? 'No posts yet'
+          : `No ${filter} posts yet`}
+      </Text>
+      <Text style={styles.emptyBody}>
+        {posts.length === 0
+          ? 'Log a visit or add friends to see activity here.'
+          : 'Try switching the filter above.'}
+      </Text>
+    </View>
+  );
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top']}>
-      <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
-        <Text className="text-lg font-bold text-brand-700">Feed</Text>
-        <TouchableOpacity onPress={() => setCreateVisible(true)} className="bg-brand-600 rounded-full w-8 h-8 items-center justify-center">
-          <Ionicons name="add" size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={posts}
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <FlatList<FeedPost>
+        data={loading ? [] : filtered}
         keyExtractor={item => String(item.id)}
-        renderItem={renderPost}
-        contentContainerStyle={posts.length === 0 ? { flex: 1 } : undefined}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor="#16a34a" />}
-        onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
-        onEndReachedThreshold={0.3}
-        ListFooterComponent={isFetchingNextPage ? <ActivityIndicator className="py-4" color="#16a34a" /> : null}
-        ListEmptyComponent={
-          <View className="flex-1 items-center justify-center gap-3 pb-20">
-            <Text className="text-5xl">🏕️</Text>
-            <Text className="text-gray-500 text-center text-base px-8">
-              No posts yet.{'\n'}Add friends to see their park adventures.
-            </Text>
-            <TouchableOpacity
-              onPress={() => setCreateVisible(true)}
-              className="bg-brand-600 rounded-xl px-6 py-3 mt-2"
-            >
-              <Text className="text-white font-semibold">Share your first post</Text>
-            </TouchableOpacity>
-          </View>
+        renderItem={({ item }) =>
+          token ? (
+            <PostCard
+              post={item}
+              token={token}
+              myUserId={user?.id ?? ''}
+              myAvatarUrl={user?.imageUrl}
+              myName={user?.fullName ?? user?.username}
+              onDelete={handleDelete}
+            />
+          ) : null
         }
-      />
-
-      <CreatePostModal
-        visible={createVisible}
-        onClose={() => setCreateVisible(false)}
-        onPosted={() => queryClient.invalidateQueries({ queryKey: ['feed'] })}
+        ListHeaderComponent={ListHeader}
+        ListFooterComponent={ListFooter}
+        ListEmptyComponent={ListEmpty}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        refreshing={refreshing}
+        onRefresh={() => loadFeed(true)}
+        // Slight performance tuning for a social feed
+        removeClippedSubviews
+        windowSize={5}
+        maxToRenderPerBatch={3}
       />
     </SafeAreaView>
   );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: C.bg,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+  },
+
+  // Header
+  header: {
+    paddingTop: 20,
+    paddingBottom: 16,
+  },
+  kicker: {
+    fontSize: 10, fontWeight: '700', letterSpacing: 1.4,
+    color: C.inkMute, marginBottom: 4,
+  },
+  title: {
+    fontSize: 26, fontWeight: '800', color: C.ink,
+    letterSpacing: -0.5, lineHeight: 30,
+  },
+  subtitle: {
+    fontSize: 13, color: C.inkMute, marginTop: 4, lineHeight: 18,
+  },
+  chips: {
+    flexDirection: 'row', gap: 6, marginTop: 14,
+  },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 100, borderWidth: 0.5, borderColor: C.hairline,
+    backgroundColor: C.surfaceAlt,
+  },
+  chipActive: {
+    backgroundColor: C.primary, borderColor: C.primary,
+  },
+  chipText: {
+    fontSize: 12, fontWeight: '600', color: C.inkSoft,
+  },
+  chipTextActive: {
+    color: '#FFFBF1',
+  },
+
+  // Footer
+  endOfFeed: {
+    textAlign: 'center', paddingVertical: 20,
+    fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: C.inkMute,
+  },
+
+  // Empty state
+  loadingContainer: { gap: 12 },
+  emptyContainer: {
+    alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 8,
+  },
+  emptyEmoji: { fontSize: 40 },
+  emptyTitle: {
+    fontSize: 17, fontWeight: '700', color: C.ink, textAlign: 'center',
+  },
+  emptyBody: {
+    fontSize: 13, color: C.inkMute, textAlign: 'center', lineHeight: 19,
+  },
+
+  // Skeleton
+  skeleton: {
+    backgroundColor: C.surface, borderRadius: 16,
+    borderWidth: 0.5, borderColor: C.hairline,
+    padding: 18, overflow: 'hidden',
+  },
+  skeletonAvatar: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: C.surfaceAlt,
+  },
+  skeletonLine: {
+    height: 12, borderRadius: 6, backgroundColor: C.surfaceAlt,
+  },
+  skeletonPhoto: {
+    height: 200, borderRadius: 10, backgroundColor: C.surfaceAlt,
+  },
+});
