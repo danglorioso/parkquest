@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
-  MapPin, Bookmark, Award, Mountain,
+  MapPin, Bookmark, Award, Mountain, type LucideIcon,
 } from "lucide-react";
 import { DesktopShell, AccountMenu } from "@/components/desktop/DesktopShell";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
@@ -141,7 +141,7 @@ function BigStat({
   unit?: string;
   color: string;
   delta: React.ReactNode;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number; style?: React.CSSProperties }>;
+  icon: LucideIcon;
   loading?: boolean;
 }) {
   return (
