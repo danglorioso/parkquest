@@ -4,8 +4,9 @@ import {
   ActivityIndicator, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
+import { Ionicons } from '@expo/vector-icons';
 import { PostCard, type FeedPost } from '@/components/PostCard';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ function SkeletonCard() {
 export default function FeedScreen() {
   const { getToken } = useAuth();
   const { user } = useUser();
+  const router = useRouter();
 
   const [token, setToken]         = useState<string | null>(null);
   const [posts, setPosts]         = useState<FeedPost[]>([]);
@@ -118,10 +120,22 @@ export default function FeedScreen() {
 
   const ListHeader = (
     <View style={styles.header}>
-      {/* Page kicker + title */}
-      <Text style={styles.kicker}>THE FEED</Text>
-      <Text style={styles.title}>Out there</Text>
-      <Text style={styles.subtitle}>Latest posts from your friends and the community</Text>
+      {/* Page kicker + title row */}
+      <View style={styles.headerTop}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.kicker}>THE FEED</Text>
+          <Text style={styles.title}>Out there</Text>
+          <Text style={styles.subtitle}>Latest posts from your friends and the community</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.logBtn}
+          activeOpacity={0.8}
+          onPress={() => router.push('/(modals)/log-visit' as never)}
+        >
+          <Ionicons name="add" size={14} color="#FFFBF1" />
+          <Text style={styles.logBtnText}>Log visit</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Filter chips — only show when there are posts */}
       {posts.length > 0 && (
@@ -213,6 +227,22 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: 20,
     paddingBottom: 16,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 0,
+  },
+  logBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: C.primary, borderRadius: 100,
+    paddingHorizontal: 12, paddingVertical: 8,
+    marginTop: 20,
+    flexShrink: 0,
+  },
+  logBtnText: {
+    fontSize: 12, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.2,
   },
   kicker: {
     fontSize: 10, fontWeight: '700', letterSpacing: 1.4,

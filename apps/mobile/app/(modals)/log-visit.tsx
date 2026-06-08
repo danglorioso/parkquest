@@ -286,10 +286,11 @@ function VisibilityPicker({ value, onChange }: { value: Draft['visibility']; onC
 
 // ── CompanionSearch ───────────────────────────────────────────────────────────
 
-function CompanionSearch({ companions, companionObjs, onChange }: {
+function CompanionSearch({ companions, companionObjs, onChange, token }: {
   companions: string[];
   companionObjs: CompanionUser[];
   onChange: (ids: string[], objs: CompanionUser[]) => void;
+  token: string | null;
 }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<CompanionUser[]>([]);
@@ -308,13 +309,15 @@ function CompanionSearch({ companions, companionObjs, onChange }: {
     if (timer.current) clearTimeout(timer.current);
     if (!q.trim()) { setResults([]); return; }
     timer.current = setTimeout(() => {
-      fetch(`${BASE}/api/users?search=${encodeURIComponent(q)}&limit=10`)
+      fetch(`${BASE}/api/users?search=${encodeURIComponent(q)}&limit=10`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
         .then(r => r.ok ? r.json() : [])
         .then(setResults)
         .catch(() => {});
     }, 250);
     return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [q]);
+  }, [q, token]);
 
   const tagged = companionObjs.filter(u => companions.includes(u.clerk_user_id));
 
@@ -791,6 +794,7 @@ function StepJournal({ draft, set, token }: {
         <CompanionSearch
           companions={draft.companions} companionObjs={draft.companionObjs}
           onChange={(ids, objs) => { set('companions', ids); set('companionObjs', objs); }}
+          token={token}
         />
       </Section>
 

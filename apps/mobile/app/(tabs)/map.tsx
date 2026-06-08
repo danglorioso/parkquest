@@ -202,6 +202,10 @@ function ParkBottomSheet({
   );
   const [imgIdx, setImgIdx] = useState(0);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [npsActivities,   setNpsActivities]   = useState<string[]>([]);
+  const [npsEntranceFees, setNpsEntranceFees] = useState<Array<{ title: string; cost: string }>>([]);
+  const [npsFeesFree,     setNpsFeesFree]     = useState<boolean | null>(null);
+  const [expandedVisits,  setExpandedVisits]  = useState<Set<number>>(new Set());
 
   // Animate in
   useEffect(() => {
@@ -213,11 +217,16 @@ function ParkBottomSheet({
     }).start();
   }, [park.park_code]);
 
-  // Lazy-load NPS images
+  // Lazy-load NPS images + data
   useEffect(() => {
     if (park.image_url) setNpsImages([park.image_url]);
     else setNpsImages([]);
     setImgIdx(0);
+    setNpsActivities([]);
+    setNpsEntranceFees([]);
+    setNpsFeesFree(null);
+    setExpandedVisits(new Set());
+
     fetch(`${BASE}/api/parks/${park.park_code}/images`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -227,6 +236,18 @@ function ParkBottomSheet({
           .map((img: { url: string }) => img.url)
           .filter(Boolean);
         if (urls.length > 0) setNpsImages(urls);
+      })
+      .catch(() => {});
+
+    fetch(`${BASE}/api/parks/${park.park_code}/nps`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { activities?: string[]; entranceFees?: Array<{ title: string; cost: string }> } | null) => {
+        if (!data) return;
+        setNpsActivities((data.activities ?? []).slice(0, 8));
+        setNpsEntranceFees(data.entranceFees ?? []);
+        setNpsFeesFree((data.entranceFees ?? []).length === 0);
       })
       .catch(() => {});
   }, [park.park_code, token, park.image_url]);
@@ -416,17 +437,102 @@ function ParkBottomSheet({
             </View>
           ) : null}
 
+          {/* Activities */}
+          {npsActivities.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.kickerRow}>
+                <Ionicons name="walk-outline" size={9} color={C.inkMute} />
+                <Text style={styles.sectionKicker}>ACTIVITIES</Text>
+              </View>
+              <View style={styles.chipWrap}>
+                {npsActivities.map(a => (
+                  <View key={a} style={styles.activityChip}>
+                    <Text style={styles.activityChipText}>{a}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Entrance fees */}
+          {npsFeesFree !== null && (
+            <View style={styles.section}>
+              <View style={styles.kickerRow}>
+                <Ionicons name="cash-outline" size={9} color={C.inkMute} />
+                <Text style={styles.sectionKicker}>ENTRANCE</Text>
+              </View>
+              {npsFeesFree ? (
+                <Text style={[styles.sectionBody, { fontWeight: '500' }]}>Free to visit</Text>
+              ) : (
+                npsEntranceFees.slice(0, 2).map((fee, i) => (
+                  <View key={i} style={styles.feeRow}>
+                    <Text style={styles.feeTitle}>{fee.title}</Text>
+                    <Text style={styles.feeCost}>${parseFloat(fee.cost).toFixed(0)}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+          )}
+
           {/* Visits */}
           {park.status === 'visited' && sortedVisits.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionKicker}>VISITS · {sortedVisits.length}</Text>
-              {sortedVisits.slice(0, 3).map(v => (
-                <View key={v.id} style={styles.visitRow}>
-                  <Text style={styles.visitDate}>{formatDateRange(v.visited_date, v.end_date)}</Text>
-                  {v.title ? <Text style={styles.visitTitle}>{v.title}</Text> : null}
-                  {v.notes ? <Text style={styles.visitNotes} numberOfLines={2}>{v.notes}</Text> : null}
-                </View>
-              ))}
+              <View style={{ gap: 5 }}>
+                {sortedVisits.slice(0, 3).map(v => {
+                  const isExpanded = expandedVisits.has(v.id);
+                  return (
+                    <View key={v.id} style={styles.visitRow}>
+                      <TouchableOpacity
+                        onPress={() => setExpandedVisits(prev => {
+                          const s = new Set(prev);
+                          s.has(v.id) ? s.delete(v.id) : s.add(v.id);
+                          return s;
+                        })}
+                        style={styles.visitRowHeader}
+                        activeOpacity={0.7}
+                      >
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.visitDate}>{formatDateRange(v.visited_date, v.end_date)}</Text>
+                          {v.title ? (
+                            <Text style={styles.visitTitle} numberOfLines={1}>{v.title}</Text>
+                          ) : null}
+                        </View>
+                        <Ionicons
+                          name="chevron-down"
+                          size={13}
+                          color={C.inkMute}
+                          style={{ transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }}
+                        />
+                      </TouchableOpacity>
+                      {isExpanded && (
+                        <View style={styles.visitExpanded}>
+                          {v.notes ? (
+                            <Text style={styles.visitNotes}>{v.notes}</Text>
+                          ) : (
+                            <Text style={[styles.visitNotes, { fontStyle: 'italic', color: C.inkMute }]}>
+                              No notes
+                            </Text>
+                          )}
+                          {sortedVisits[0]?.id === v.id && park.photos && park.photos.length > 0 && (
+                            <View style={styles.visitPhotos}>
+                              {park.photos.map(url => (
+                                <Image
+                                  key={url}
+                                  source={{ uri: url }}
+                                  style={styles.visitPhoto}
+                                  contentFit="cover"
+                                  cachePolicy="memory-disk"
+                                />
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
             </View>
           )}
         </ScrollView>
@@ -436,12 +542,21 @@ function ParkBottomSheet({
           {park.status === 'visited' ? (
             <>
               <TouchableOpacity
+                onPress={() => {
+                  if (sortedVisits[0]) router.push(`/profile/journal/${sortedVisits[0].id}` as never);
+                }}
+                style={[styles.actionBtn, { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline, flex: 1 }]}
+              >
+                <Ionicons name="pencil-outline" size={13} color={C.ink} />
+                <Text style={[styles.actionBtnText, { color: C.ink }]}>Edit visit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={handleMarkVisited}
                 disabled={!!actionLoading}
                 style={[styles.actionBtn, { backgroundColor: C.primary, flex: 1 }]}
               >
                 <Ionicons name="checkmark" size={14} color="#FFFBF1" />
-                <Text style={[styles.actionBtnText, { color: '#FFFBF1' }]}>Log another</Text>
+                <Text style={[styles.actionBtnText, { color: '#FFFBF1' }]}>Log a visit</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push(`/parks/${park.park_code}` as never)}
@@ -734,7 +849,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 100,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 4,
     gap: 4,
   },
@@ -937,15 +1052,84 @@ const styles = StyleSheet.create({
   sectionBody: {
     fontSize: 12.5,
     color: C.inkSoft,
-    lineHeight: 18,
+    lineHeight: 19,
+  },
+  kickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 8,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  activityChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 100,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    backgroundColor: C.surfaceAlt,
+  },
+  activityChipText: {
+    fontSize: 10.5,
+    fontWeight: '500',
+    color: C.inkSoft,
+  },
+  feeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 3,
+  },
+  feeTitle: {
+    fontSize: 12,
+    color: C.inkSoft,
+    lineHeight: 16,
+    flex: 1,
+    marginRight: 8,
+  },
+  feeCost: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.ink,
+    flexShrink: 0,
   },
   visitRow: {
     backgroundColor: C.surface,
     borderWidth: 0.5,
     borderColor: C.hairline,
     borderRadius: 9,
+    overflow: 'hidden',
+  },
+  visitRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 10,
-    marginBottom: 5,
+    paddingHorizontal: 11,
+    gap: 8,
+  },
+  visitExpanded: {
+    padding: 10,
+    paddingHorizontal: 11,
+    paddingTop: 8,
+    borderTopWidth: 0.5,
+    borderTopColor: C.hairlineSoft,
+    backgroundColor: C.surfaceAlt,
+  },
+  visitPhotos: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+    marginTop: 10,
+  },
+  visitPhoto: {
+    width: 56,
+    height: 56,
+    borderRadius: 7,
   },
   visitDate: {
     fontSize: 12,
@@ -959,10 +1143,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   visitNotes: {
-    fontSize: 12,
-    color: C.inkMute,
-    marginTop: 3,
-    lineHeight: 16,
+    fontSize: 12.5,
+    color: C.inkSoft,
+    lineHeight: 19,
   },
 
   // Action row

@@ -1,6 +1,6 @@
 import {
-  ActivityIndicator, Alert, Image, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Alert, FlatList, Image, Platform,
+  StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,60 +19,122 @@ const C = {
   inkMute:    '#7A746A',
   hairline:   'rgba(27,26,22,0.10)',
   primary:    '#1F3D2E',
-  primaryDeep:'#152A20',
-  accent:     '#C56B3D',
-  visited:    '#2F7A4A',
+  danger:     '#DC2626',
 };
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface UserBase {
-  id: string;
+interface FriendUser {
+  clerk_user_id: string;
   username: string;
   display_name: string | null;
   avatar_url: string | null;
-  parks_visited?: number;
+  friends_since: string | null;
 }
 
-interface FriendUser extends UserBase {
-  friendship_id?: string;
+interface PendingUser {
+  friendship_id: number;
+  clerk_user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  requested_at: string | null;
 }
 
-interface PendingUser extends UserBase {
-  friendship_id: string;
+interface SuggestedUser {
+  clerk_user_id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  mutual_friends: number;
+  shared_parks: number;
+  visit_count: number;
 }
 
-interface SuggestedUser extends UserBase {
-  mutual_friends?: number;
+interface SearchUser {
+  clerk_user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
 }
 
-type FriendAction = 'add' | 'cancel' | 'accept' | 'decline' | 'remove';
+// ── List row types ─────────────────────────────────────────────────────────────
+
+type ListRow =
+  | { _t: 'header' }
+  | { _t: 'searchbar' }
+  | { _t: 'search_results'; results: SearchUser[] }
+  | { _t: 'section'; label: string; icon: string; count?: number; accent?: boolean }
+  | { _t: 'friend';    item: FriendUser }
+  | { _t: 'incoming';  item: PendingUser }
+  | { _t: 'outgoing';  item: PendingUser }
+  | { _t: 'suggested'; item: SuggestedUser }
+  | { _t: 'skeleton' }
+  | { _t: 'empty';    message: string };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function nameOf(u: UserBase) {
-  return u.display_name || u.username;
+function uid(u: { clerk_user_id?: string; id?: string }): string {
+  return u.clerk_user_id ?? u.id ?? '';
 }
 
-function initials(u: UserBase): string {
-  const n = nameOf(u);
-  const parts = n.split(' ');
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return n.slice(0, 2).toUpperCase();
+function displayName(u: { display_name: string | null; username: string | null | undefined }): string {
+  return u.display_name ?? u.username ?? 'Explorer';
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(' ');
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
-function Avatar({ user, size = 44 }: { user: UserBase; size?: number }) {
+function Avatar({ url, name, size = 44 }: { url: string | null; name: string; size?: number }) {
   const r = size / 2;
   return (
-    <View style={{ width: size, height: size, borderRadius: r, overflow: 'hidden', backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
-      {user.avatar_url ? (
-        <Image source={{ uri: user.avatar_url }} style={{ width: size, height: size }} resizeMode="cover" />
+    <View style={{ width: size, height: size, borderRadius: r, overflow: 'hidden', flexShrink: 0 }}>
+      {url ? (
+        <Image source={{ uri: url }} style={{ width: size, height: size }} resizeMode="cover" />
       ) : (
-        <Text style={{ fontSize: size * 0.33, fontWeight: '900', color: '#FFFBF1' }}>{initials(user)}</Text>
+        <View style={{ flex: 1, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: size * 0.33, fontWeight: '900', color: '#FFFBF1' }}>
+            {initials(name)}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Skeleton row ──────────────────────────────────────────────────────────────
+
+function SkeletonRow() {
+  return (
+    <View style={[st.row, { borderBottomWidth: 0.5, borderBottomColor: C.hairline }]}>
+      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.surfaceAlt, flexShrink: 0 }} />
+      <View style={{ flex: 1, marginLeft: 14, gap: 7 }}>
+        <View style={{ height: 13, width: '55%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
+        <View style={{ height: 11, width: '35%', backgroundColor: C.surfaceAlt, borderRadius: 3 }} />
+      </View>
+      <View style={{ height: 32, width: 80, backgroundColor: C.surfaceAlt, borderRadius: 8, flexShrink: 0 }} />
+    </View>
+  );
+}
+
+// ── Section head ──────────────────────────────────────────────────────────────
+
+function SectionHead({ label, icon, count, accent }: { label: string; icon: string; count?: number; accent?: boolean }) {
+  return (
+    <View style={st.sectionHead}>
+      <Ionicons name={icon as any} size={13} color={C.inkMute} />
+      <Text style={st.sectionLabel}>{label}</Text>
+      {count != null && count > 0 && (
+        <View style={[st.badge, accent && { backgroundColor: C.danger }]}>
+          <Text style={st.badgeText}>{count}</Text>
+        </View>
       )}
     </View>
   );
@@ -80,85 +142,164 @@ function Avatar({ user, size = 44 }: { user: UserBase; size?: number }) {
 
 // ── User row ──────────────────────────────────────────────────────────────────
 
-type RowVariant = 'friend' | 'pending_incoming' | 'pending_outgoing' | 'suggested' | 'search_result';
-
-interface UserRowProps {
-  user: UserBase;
-  variant: RowVariant;
-  onAction: (action: FriendAction, user: UserBase) => void;
-  loading?: boolean;
+interface ActionState {
+  busy: boolean;
+  sent: boolean;
 }
 
-function UserRow({ user, variant, onAction, loading }: UserRowProps) {
-  const sub = user.parks_visited != null
-    ? `${user.parks_visited} park${user.parks_visited !== 1 ? 's' : ''} visited`
-    : (user as SuggestedUser).mutual_friends
-      ? `${(user as SuggestedUser).mutual_friends} mutual friend${(user as SuggestedUser).mutual_friends !== 1 ? 's' : ''}`
-      : null;
-
+function FriendRow({
+  avatarUrl, name, username, subtext, busy, onUnfriend,
+}: {
+  avatarUrl: string | null; name: string; username: string; subtext?: string;
+  busy: boolean; onUnfriend: () => void;
+}) {
   return (
-    <View style={styles.row}>
-      <Avatar user={user} size={44} />
-      <View style={{ flex: 1, marginLeft: 12, gap: 1 }}>
-        <Text style={styles.rowName}>{nameOf(user)}</Text>
-        <Text style={styles.rowHandle}>@{user.username}</Text>
-        {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
+    <View style={st.row}>
+      <Avatar url={avatarUrl} name={name} />
+      <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+        <Text style={st.rowHandle}>@{username}</Text>
+        {subtext ? <Text style={st.rowSub}>{subtext}</Text> : null}
       </View>
-      <View style={{ flexDirection: 'row', gap: 7 }}>
-        {variant === 'friend' && (
-          <TouchableOpacity
-            onPress={() => {
-              Alert.alert(
-                'Remove friend',
-                `Remove ${nameOf(user)} from your friends?`,
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Remove', style: 'destructive', onPress: () => onAction('remove', user) },
-                ]
-              );
-            }}
-            disabled={loading}
-            style={[styles.btn, styles.btnSecondary]}
-          >
-            <Text style={styles.btnSecondaryText}>Remove</Text>
-          </TouchableOpacity>
-        )}
-        {variant === 'pending_incoming' && (
-          <>
-            <TouchableOpacity onPress={() => onAction('decline', user)} disabled={loading} style={[styles.btn, styles.btnSecondary]}>
-              <Text style={styles.btnSecondaryText}>Decline</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => onAction('accept', user)} disabled={loading} style={[styles.btn, styles.btnPrimary]}>
-              {loading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.btnPrimaryText}>Accept</Text>}
-            </TouchableOpacity>
-          </>
-        )}
-        {variant === 'pending_outgoing' && (
-          <TouchableOpacity onPress={() => onAction('cancel', user)} disabled={loading} style={[styles.btn, styles.btnSecondary]}>
-            <Text style={styles.btnSecondaryText}>Sent ›</Text>
-          </TouchableOpacity>
-        )}
-        {(variant === 'suggested' || variant === 'search_result') && (
-          <TouchableOpacity onPress={() => onAction('add', user)} disabled={loading} style={[styles.btn, styles.btnPrimary]}>
-            {loading ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Text style={styles.btnPrimaryText}>+ Add</Text>
-            )}
-          </TouchableOpacity>
-        )}
+      <TouchableOpacity
+        onPress={onUnfriend} disabled={busy}
+        style={[st.btn, st.btnSecondary, busy && { opacity: 0.5 }]}
+      >
+        <Ionicons name="person-remove-outline" size={12} color={C.inkSoft} style={{ marginRight: 4 }} />
+        <Text style={st.btnSecondaryText}>Unfriend</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function IncomingRow({
+  avatarUrl, name, username, busy, onAccept, onDecline,
+}: {
+  avatarUrl: string | null; name: string; username: string;
+  busy: boolean; onAccept: () => void; onDecline: () => void;
+}) {
+  return (
+    <View style={st.row}>
+      <Avatar url={avatarUrl} name={name} />
+      <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+        <Text style={st.rowHandle}>@{username}</Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 7, flexShrink: 0 }}>
+        <TouchableOpacity onPress={onDecline} disabled={busy} style={[st.btn, st.btnSecondary, busy && { opacity: 0.5 }]}>
+          <Text style={st.btnSecondaryText}>Decline</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onAccept} disabled={busy} style={[st.btn, st.btnPrimary, busy && { opacity: 0.7 }]}>
+          {busy
+            ? <ActivityIndicator size="small" color="#FFFBF1" />
+            : <Text style={st.btnPrimaryText}>Accept</Text>}
+        </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-// ── Section header ────────────────────────────────────────────────────────────
-
-function SectionHead({ label, count }: { label: string; count?: number }) {
+function OutgoingRow({
+  avatarUrl, name, username, busy, onCancel,
+}: {
+  avatarUrl: string | null; name: string; username: string;
+  busy: boolean; onCancel: () => void;
+}) {
   return (
-    <View style={styles.sectionHead}>
-      <Text style={styles.sectionLabel}>{label}</Text>
-      {count != null && <Text style={styles.sectionCount}>{count}</Text>}
+    <View style={st.row}>
+      <Avatar url={avatarUrl} name={name} />
+      <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+        <Text style={st.rowHandle}>@{username}</Text>
+      </View>
+      <TouchableOpacity onPress={onCancel} disabled={busy} style={[st.btn, st.btnSecondary, busy && { opacity: 0.5 }]}>
+        <Ionicons name="time-outline" size={12} color={C.inkMute} style={{ marginRight: 3 }} />
+        <Text style={st.btnSecondaryText}>Cancel</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function SuggestedRow({
+  avatarUrl, name, username, subtext, state, onAdd,
+}: {
+  avatarUrl: string | null; name: string; username: string | null; subtext: string;
+  state: ActionState; onAdd: () => void;
+}) {
+  return (
+    <View style={st.row}>
+      <Avatar url={avatarUrl} name={name} />
+      <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+        <Text style={st.rowHandle} numberOfLines={1}>
+          {username ? `@${username} · ` : ''}{subtext}
+        </Text>
+      </View>
+      <TouchableOpacity
+        onPress={onAdd}
+        disabled={state.sent || state.busy}
+        style={[
+          st.btn,
+          state.sent ? st.btnSecondary : st.btnPrimary,
+          (state.busy || state.sent) && { opacity: state.busy ? 0.6 : 1 },
+        ]}
+      >
+        {state.busy ? (
+          <ActivityIndicator size="small" color={state.sent ? C.inkMute : '#FFFBF1'} />
+        ) : state.sent ? (
+          <>
+            <Ionicons name="checkmark" size={12} color={C.inkMute} style={{ marginRight: 3 }} />
+            <Text style={st.btnSecondaryText}>Sent</Text>
+          </>
+        ) : (
+          <>
+            <Ionicons name="person-add-outline" size={12} color="#FFFBF1" style={{ marginRight: 3 }} />
+            <Text style={st.btnPrimaryText}>Add Friend</Text>
+          </>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── Search result row ─────────────────────────────────────────────────────────
+
+function SearchResultRow({
+  user, isFriend, isIncoming, isSent, busy, onAdd,
+}: {
+  user: SearchUser;
+  isFriend: boolean; isIncoming: boolean; isSent: boolean;
+  busy: boolean; onAdd: () => void;
+}) {
+  const name = displayName(user);
+  return (
+    <View style={[st.row, { borderBottomWidth: 0.5, borderBottomColor: C.hairline }]}>
+      <Avatar url={user.avatar_url} name={name} size={36} />
+      <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+        <Text style={st.rowHandle}>@{user.username}</Text>
+      </View>
+      {isFriend ? (
+        <View style={st.statusChip}>
+          <Ionicons name="people-outline" size={11} color={C.primary} style={{ marginRight: 3 }} />
+          <Text style={[st.statusChipText, { color: C.primary }]}>Friends</Text>
+        </View>
+      ) : isIncoming ? (
+        <View style={st.statusChip}>
+          <Text style={st.statusChipText}>Respond ↑</Text>
+        </View>
+      ) : isSent ? (
+        <View style={st.statusChip}>
+          <Ionicons name="time-outline" size={11} color={C.inkMute} style={{ marginRight: 3 }} />
+          <Text style={st.statusChipText}>Pending</Text>
+        </View>
+      ) : (
+        <TouchableOpacity onPress={onAdd} disabled={busy} style={[st.btn, st.btnPrimary, busy && { opacity: 0.6 }]}>
+          {busy
+            ? <ActivityIndicator size="small" color="#FFFBF1" />
+            : <><Ionicons name="person-add-outline" size={12} color="#FFFBF1" style={{ marginRight: 3 }} /><Text style={st.btnPrimaryText}>Add</Text></>}
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -168,40 +309,50 @@ function SectionHead({ label, count }: { label: string; count?: number }) {
 export default function FriendsScreen() {
   const { getToken } = useAuth();
 
-  const [friends,    setFriends]    = useState<FriendUser[]>([]);
-  const [incoming,   setIncoming]   = useState<PendingUser[]>([]);
-  const [outgoing,   setOutgoing]   = useState<PendingUser[]>([]);
+  const [friends,    setFriends]    = useState<FriendUser[]  | null>(null);
+  const [incoming,   setIncoming]   = useState<PendingUser[] | null>(null);
+  const [outgoing,   setOutgoing]   = useState<PendingUser[] | null>(null);
   const [suggested,  setSuggested]  = useState<SuggestedUser[]>([]);
-  const [loading,    setLoading]    = useState(true);
+  const [sugLoading, setSugLoading] = useState(true);
 
   const [searchQ,    setSearchQ]    = useState('');
-  const [results,    setResults]    = useState<UserBase[]>([]);
+  const [results,    setResults]    = useState<SearchUser[]>([]);
   const [searching,  setSearching]  = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
 
-  const [actionId,   setActionId]   = useState<string | null>(null);
+  const [respondedTo,     setRespondedTo]     = useState<Set<number>>(new Set());
+  const [busyFriend,      setBusyFriend]      = useState<Set<string>>(new Set());
+  const [busyPending,     setBusyPending]     = useState<Set<number>>(new Set());
+  const [busySearch,      setBusySearch]      = useState<Set<string>>(new Set());
+  const [sentSearch,      setSentSearch]      = useState<Set<string>>(new Set());
+  const [sentSuggestion,  setSentSuggestion]  = useState<Set<string>>(new Set());
+  const [busySuggestion,  setBusySuggestion]  = useState<Set<string>>(new Set());
 
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loading  = friends === null;
 
-  // ── Load all friend data ───────────────────────────────────────────────────
+  // ── Load ───────────────────────────────────────────────────────────────────
 
   const loadAll = useCallback(async () => {
     const tok = await getToken();
     if (!tok) return;
     const h = { Authorization: `Bearer ${tok}` };
 
-    const [fr, inc, out, sug] = await Promise.allSettled([
-      fetch(`${BASE}/api/friends?type=friends`, { headers: h }).then(r => r.ok ? r.json() : []),
+    const [fr, inc, out] = await Promise.allSettled([
+      fetch(`${BASE}/api/friends?type=friends`,          { headers: h }).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/friends?type=pending_incoming`, { headers: h }).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/friends?type=pending_outgoing`, { headers: h }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/users/suggestions?limit=8`, { headers: h }).then(r => r.ok ? r.json() : []),
     ]);
 
     if (fr.status  === 'fulfilled') setFriends(fr.value   ?? []);
     if (inc.status === 'fulfilled') setIncoming(inc.value ?? []);
     if (out.status === 'fulfilled') setOutgoing(out.value ?? []);
-    if (sug.status === 'fulfilled') setSuggested(sug.value ?? []);
-    setLoading(false);
+
+    setSugLoading(true);
+    fetch(`${BASE}/api/users/suggestions?limit=8`, { headers: h })
+      .then(r => r.ok ? r.json() : [])
+      .then(setSuggested)
+      .catch(() => {})
+      .finally(() => setSugLoading(false));
   }, [getToken]);
 
   useFocusEffect(useCallback(() => { loadAll(); }, [loadAll]));
@@ -209,258 +360,412 @@ export default function FriendsScreen() {
   // ── Search ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!searchQ.trim()) { setResults([]); setSearchOpen(false); return; }
     if (debounce.current) clearTimeout(debounce.current);
+    if (!searchQ.trim()) { setResults([]); setSearching(false); return; }
+    setSearching(true);
     debounce.current = setTimeout(async () => {
-      setSearching(true);
-      setSearchOpen(true);
       try {
         const tok = await getToken();
         if (!tok) return;
-        const r = await fetch(`${BASE}/api/users?search=${encodeURIComponent(searchQ.trim())}&limit=12`, {
-          headers: { Authorization: `Bearer ${tok}` },
-        });
-        const data = r.ok ? await r.json() : [];
-        const friendIds = new Set(friends.map(f => f.id));
-        const inIds = new Set(incoming.map(u => u.id));
-        const outIds = new Set(outgoing.map(u => u.id));
-        setResults(
-          (data as UserBase[]).filter(u => !friendIds.has(u.id) && !inIds.has(u.id) && !outIds.has(u.id))
+        const r = await fetch(
+          `${BASE}/api/users?search=${encodeURIComponent(searchQ.trim())}&limit=12`,
+          { headers: { Authorization: `Bearer ${tok}` } },
         );
-      } catch (e) {
-        console.error('search error', e);
-      } finally {
-        setSearching(false);
-      }
-    }, 320);
+        setResults(r.ok ? await r.json() : []);
+      } catch { /* ignore */ }
+      finally { setSearching(false); }
+    }, 280);
     return () => { if (debounce.current) clearTimeout(debounce.current); };
-  }, [searchQ, getToken, friends, incoming, outgoing]);
+  }, [searchQ, getToken]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
-  const handleAction = useCallback(async (action: FriendAction, user: UserBase) => {
-    const tok = await getToken();
-    if (!tok) return;
-    setActionId(user.id);
+  async function handleRespond(r: PendingUser, action: 'accept' | 'reject') {
+    if (busyPending.has(r.friendship_id)) return;
+    setBusyPending(s => new Set([...s, r.friendship_id]));
     try {
-      if (action === 'add') {
-        await fetch(`${BASE}/api/friends`, {
-          method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id }),
-        });
-        setSuggested(s => s.filter(u => u.id !== user.id));
-        setResults(r => r.filter(u => u.id !== user.id));
-      } else if (action === 'accept') {
-        await fetch(`${BASE}/api/friends`, {
-          method: 'PATCH', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, action: 'accept' }),
-        });
-        const accepted = incoming.find(u => u.id === user.id);
-        setIncoming(s => s.filter(u => u.id !== user.id));
-        if (accepted) setFriends(s => [accepted, ...s]);
-      } else if (action === 'decline') {
-        await fetch(`${BASE}/api/friends`, {
-          method: 'PATCH', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, action: 'decline' }),
-        });
-        setIncoming(s => s.filter(u => u.id !== user.id));
-      } else if (action === 'cancel') {
-        await fetch(`${BASE}/api/friends?userId=${user.id}`, {
-          method: 'DELETE', headers: { Authorization: `Bearer ${tok}` },
-        });
-        setOutgoing(s => s.filter(u => u.id !== user.id));
-      } else if (action === 'remove') {
-        await fetch(`${BASE}/api/friends?userId=${user.id}`, {
-          method: 'DELETE', headers: { Authorization: `Bearer ${tok}` },
-        });
-        setFriends(s => s.filter(u => u.id !== user.id));
+      const tok = await getToken(); if (!tok) return;
+      const res = await fetch(`${BASE}/api/friends`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ friendshipId: r.friendship_id, action }),
+      });
+      if (res.ok) {
+        setRespondedTo(s => new Set([...s, r.friendship_id]));
+        if (action === 'accept') {
+          setFriends(s => s ? [{ clerk_user_id: r.clerk_user_id, username: r.username, display_name: r.display_name, avatar_url: r.avatar_url, friends_since: new Date().toISOString() }, ...s] : s);
+        }
       }
-    } catch (e) {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
-    } finally {
-      setActionId(null);
-    }
-  }, [getToken, incoming]);
+    } catch { Alert.alert('Error', 'Something went wrong. Try again.'); }
+    finally { setBusyPending(s => { const n = new Set(s); n.delete(r.friendship_id); return n; }); }
+  }
 
-  if (loading) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }} edges={['bottom']}>
-        <ActivityIndicator size="large" color={C.primary} />
-      </SafeAreaView>
+  function confirmUnfriend(f: FriendUser) {
+    Alert.alert(
+      'Remove friend',
+      `Remove ${displayName(f)} from your friends?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove', style: 'destructive',
+          onPress: async () => {
+            setBusyFriend(s => new Set([...s, f.clerk_user_id]));
+            try {
+              const tok = await getToken(); if (!tok) return;
+              const res = await fetch(`${BASE}/api/friends?userId=${f.clerk_user_id}`, {
+                method: 'DELETE', headers: { Authorization: `Bearer ${tok}` },
+              });
+              if (res.ok) setFriends(s => s ? s.filter(u => u.clerk_user_id !== f.clerk_user_id) : s);
+            } catch { Alert.alert('Error', 'Something went wrong.'); }
+            finally { setBusyFriend(s => { const n = new Set(s); n.delete(f.clerk_user_id); return n; }); }
+          },
+        },
+      ],
     );
   }
 
-  return (
-    <SafeAreaView style={styles.screen} edges={['bottom']}>
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+  async function handleCancelRequest(r: PendingUser) {
+    const tok = await getToken(); if (!tok) return;
+    const res = await fetch(`${BASE}/api/friends?userId=${r.clerk_user_id}`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${tok}` },
+    });
+    if (res.ok) setOutgoing(s => s ? s.filter(u => u.clerk_user_id !== r.clerk_user_id) : s);
+  }
 
-        {/* Header */}
-        <View style={styles.pageHeader}>
-          <Text style={styles.pageTitle}>Friends</Text>
-          <Text style={styles.pageSub}>
-            {friends.length} friend{friends.length !== 1 ? 's' : ''} · {incoming.length > 0 ? `${incoming.length} pending` : 'no pending requests'}
-          </Text>
-        </View>
+  async function handleAddSuggested(u: SuggestedUser) {
+    if (sentSuggestion.has(u.clerk_user_id) || busySuggestion.has(u.clerk_user_id)) return;
+    setBusySuggestion(s => new Set([...s, u.clerk_user_id]));
+    try {
+      const tok = await getToken(); if (!tok) return;
+      const res = await fetch(`${BASE}/api/friends`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: u.clerk_user_id }),
+      });
+      if (res.ok) setSentSuggestion(s => new Set([...s, u.clerk_user_id]));
+    } catch { /* ignore */ }
+    finally { setBusySuggestion(s => { const n = new Set(s); n.delete(u.clerk_user_id); return n; }); }
+  }
 
-        {/* Search bar */}
-        <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
-          <View style={styles.searchBar}>
-            <Ionicons name="search-outline" size={16} color={C.inkMute} />
-            <TextInput
-              placeholder="Search by username or name"
-              placeholderTextColor={C.inkMute}
-              style={styles.searchInput}
-              value={searchQ}
-              onChangeText={setSearchQ}
-              returnKeyType="search"
-              autoCapitalize="none"
-              autoCorrect={false}
-              clearButtonMode="while-editing"
-            />
-            {searching && <ActivityIndicator size="small" color={C.inkMute} />}
+  async function handleAddFromSearch(u: SearchUser) {
+    if (sentSearch.has(u.clerk_user_id)) return;
+    setBusySearch(s => new Set([...s, u.clerk_user_id]));
+    try {
+      const tok = await getToken(); if (!tok) return;
+      const res = await fetch(`${BASE}/api/friends`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: u.clerk_user_id }),
+      });
+      if (res.ok) setSentSearch(s => new Set([...s, u.clerk_user_id]));
+      else { /* failed — no optimistic update needed */ }
+    } catch { /* ignore */ }
+    finally { setBusySearch(s => { const n = new Set(s); n.delete(u.clerk_user_id); return n; }); }
+  }
+
+  // ── Build list rows ────────────────────────────────────────────────────────
+
+  const friendSet   = new Set((friends  ?? []).map(f => f.clerk_user_id));
+  const incomingSet = new Set((incoming ?? []).map(f => f.clerk_user_id));
+  const outgoingSet = new Set((outgoing ?? []).map(f => f.clerk_user_id));
+  const pendingIncoming = (incoming ?? []).filter(r => !respondedTo.has(r.friendship_id));
+
+  const rows: ListRow[] = [];
+
+  rows.push({ _t: 'header' });
+  rows.push({ _t: 'searchbar' });
+
+  if (searchQ.trim()) {
+    rows.push({ _t: 'search_results', results });
+  } else {
+    // Suggestions (top, like web)
+    if (sugLoading || suggested.length > 0) {
+      rows.push({ _t: 'section', label: 'PEOPLE YOU MAY KNOW', icon: 'sparkles-outline' });
+      if (sugLoading) {
+        rows.push({ _t: 'skeleton' }, { _t: 'skeleton' }, { _t: 'skeleton' });
+      } else {
+        suggested.forEach(u => rows.push({ _t: 'suggested', item: u }));
+      }
+    }
+
+    // Incoming requests
+    if (pendingIncoming.length > 0) {
+      rows.push({ _t: 'section', label: 'FRIEND REQUESTS', icon: 'person-add-outline', count: pendingIncoming.length, accent: true });
+      pendingIncoming.forEach(r => rows.push({ _t: 'incoming', item: r }));
+    }
+
+    // Friends
+    rows.push({ _t: 'section', label: 'FRIENDS', icon: 'people-outline', count: (friends ?? []).length });
+    if (loading) {
+      rows.push({ _t: 'skeleton' }, { _t: 'skeleton' }, { _t: 'skeleton' });
+    } else if ((friends ?? []).length === 0) {
+      rows.push({ _t: 'empty', message: 'No friends yet. Search above or check out the suggestions below.' });
+    } else {
+      (friends ?? []).forEach(f => rows.push({ _t: 'friend', item: f }));
+    }
+
+    // Sent requests
+    if ((outgoing ?? []).length > 0) {
+      rows.push({ _t: 'section', label: 'SENT REQUESTS', icon: 'time-outline', count: (outgoing ?? []).length });
+      (outgoing ?? []).forEach(r => rows.push({ _t: 'outgoing', item: r }));
+    }
+  }
+
+  // ── Render rows ────────────────────────────────────────────────────────────
+
+  function renderRow({ item }: { item: ListRow }) {
+    switch (item._t) {
+      case 'header':
+        return (
+          <View style={st.pageHeader}>
+            <Text style={st.kicker}>CONNECTIONS</Text>
+            <Text style={st.pageTitle}>Friends</Text>
+            <Text style={st.pageSub}>
+              {loading
+                ? 'Loading…'
+                : `${(friends ?? []).length} friend${(friends ?? []).length !== 1 ? 's' : ''} · ${pendingIncoming.length > 0 ? `${pendingIncoming.length} pending` : 'no pending requests'}`}
+            </Text>
           </View>
+        );
 
-          {/* Search results dropdown */}
-          {searchOpen && searchQ.trim().length > 0 && (
-            <View style={styles.searchDrop}>
-              {results.length === 0 && !searching ? (
-                <View style={{ padding: 16, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 13, color: C.inkMute }}>No users found for "{searchQ}"</Text>
-                </View>
-              ) : (
-                results.map(u => (
-                  <UserRow
-                    key={u.id} user={u} variant="search_result"
-                    onAction={handleAction}
-                    loading={actionId === u.id}
+      case 'searchbar':
+        return (
+          <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+            <View style={st.searchBox}>
+              <Ionicons name="search" size={14} color={C.inkMute} />
+              <TextInput
+                value={searchQ} onChangeText={setSearchQ}
+                placeholder="Search by name or username…"
+                placeholderTextColor={C.inkMute}
+                style={st.searchInput}
+                autoCorrect={false} autoCapitalize="none"
+                clearButtonMode="while-editing"
+                returnKeyType="search"
+              />
+              {searching && <ActivityIndicator size="small" color={C.inkMute} />}
+            </View>
+          </View>
+        );
+
+      case 'search_results': {
+        const { results: res } = item;
+        return (
+          <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+            {res.length === 0 && !searching ? (
+              <View style={[st.card, { padding: 20, alignItems: 'center' }]}>
+                <Text style={{ fontSize: 13, color: C.inkMute }}>No users found for "{searchQ}"</Text>
+              </View>
+            ) : (
+              <View style={st.card}>
+                {res.map(u => (
+                  <SearchResultRow
+                    key={u.clerk_user_id}
+                    user={u}
+                    isFriend={friendSet.has(u.clerk_user_id)}
+                    isIncoming={incomingSet.has(u.clerk_user_id)}
+                    isSent={sentSearch.has(u.clerk_user_id) || outgoingSet.has(u.clerk_user_id)}
+                    busy={busySearch.has(u.clerk_user_id)}
+                    onAdd={() => handleAddFromSearch(u)}
                   />
-                ))
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* Pending incoming */}
-        {incoming.length > 0 && (
-          <View style={[styles.section, { borderLeftWidth: 3, borderLeftColor: C.accent, marginHorizontal: 16 }]}>
-            <SectionHead label="FRIEND REQUESTS" count={incoming.length} />
-            {incoming.map(u => (
-              <UserRow key={u.id} user={u} variant="pending_incoming" onAction={handleAction} loading={actionId === u.id} />
-            ))}
+                ))}
+              </View>
+            )}
           </View>
-        )}
+        );
+      }
 
-        {/* Friends list */}
-        {friends.length > 0 ? (
-          <View style={[styles.section, { marginHorizontal: 16 }]}>
-            <SectionHead label="MY FRIENDS" count={friends.length} />
-            {friends.map(u => (
-              <UserRow key={u.id} user={u} variant="friend" onAction={handleAction} loading={actionId === u.id} />
-            ))}
+      case 'section':
+        return (
+          <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+            <SectionHead label={item.label} icon={item.icon} count={item.count} accent={item.accent} />
           </View>
-        ) : (
-          <View style={{ paddingHorizontal: 16, marginBottom: 20 }}>
-            <View style={styles.emptyCard}>
-              <Text style={{ fontSize: 28, marginBottom: 8 }}>🏕</Text>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }}>No friends yet</Text>
-              <Text style={{ fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 6, lineHeight: 18 }}>
-                Search above or check out the suggestions below.
-              </Text>
+        );
+
+      case 'skeleton':
+        return (
+          <View style={{ paddingHorizontal: 16, marginBottom: 2 }}>
+            <View style={st.card}>
+              <SkeletonRow />
             </View>
           </View>
-        )}
+        );
 
-        {/* People you may know */}
-        {suggested.length > 0 && (
-          <View style={[styles.section, { marginHorizontal: 16 }]}>
-            <SectionHead label="PEOPLE YOU MAY KNOW" />
-            {suggested.map(u => (
-              <UserRow key={u.id} user={u} variant="suggested" onAction={handleAction} loading={actionId === u.id} />
-            ))}
+      case 'empty':
+        return (
+          <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+            <View style={[st.card, st.emptyCard]}>
+              <Ionicons name="people-outline" size={28} color={C.inkMute} />
+              <Text style={st.emptyText}>{item.message}</Text>
+            </View>
           </View>
-        )}
+        );
 
-        {/* Sent requests */}
-        {outgoing.length > 0 && (
-          <View style={[styles.section, { marginHorizontal: 16 }]}>
-            <SectionHead label="SENT REQUESTS" count={outgoing.length} />
-            {outgoing.map(u => (
-              <UserRow key={u.id} user={u} variant="pending_outgoing" onAction={handleAction} loading={actionId === u.id} />
-            ))}
+      case 'friend': {
+        const { item: f } = item;
+        const name = displayName(f);
+        return (
+          <View style={{ paddingHorizontal: 16, marginBottom: 2 }}>
+            <View style={st.card}>
+              <FriendRow
+                avatarUrl={f.avatar_url} name={name} username={f.username}
+                subtext={f.friends_since ? `Friends since ${new Date(f.friends_since).getFullYear()}` : undefined}
+                busy={busyFriend.has(f.clerk_user_id)}
+                onUnfriend={() => confirmUnfriend(f)}
+              />
+            </View>
           </View>
-        )}
+        );
+      }
 
-      </ScrollView>
+      case 'incoming': {
+        const { item: r } = item;
+        const name = displayName(r);
+        return (
+          <View style={{ paddingHorizontal: 16, marginBottom: 2 }}>
+            <View style={st.card}>
+              <IncomingRow
+                avatarUrl={r.avatar_url} name={name} username={r.username}
+                busy={busyPending.has(r.friendship_id)}
+                onAccept={() => handleRespond(r, 'accept')}
+                onDecline={() => handleRespond(r, 'reject')}
+              />
+            </View>
+          </View>
+        );
+      }
+
+      case 'outgoing': {
+        const { item: r } = item;
+        const name = displayName(r);
+        return (
+          <View style={{ paddingHorizontal: 16, marginBottom: 2 }}>
+            <View style={st.card}>
+              <OutgoingRow
+                avatarUrl={r.avatar_url} name={name} username={r.username}
+                busy={false}
+                onCancel={() => handleCancelRequest(r)}
+              />
+            </View>
+          </View>
+        );
+      }
+
+      case 'suggested': {
+        const { item: u } = item;
+        const name = displayName(u);
+        const subtext = u.mutual_friends > 0
+          ? `${u.mutual_friends} mutual friend${u.mutual_friends !== 1 ? 's' : ''}`
+          : u.shared_parks > 0
+          ? `${u.shared_parks} shared park${u.shared_parks !== 1 ? 's' : ''}`
+          : u.visit_count > 0
+          ? `${u.visit_count} park${u.visit_count !== 1 ? 's' : ''} visited`
+          : 'Explorer';
+        return (
+          <View style={{ paddingHorizontal: 16, marginBottom: 2 }}>
+            <View style={st.card}>
+              <SuggestedRow
+                avatarUrl={u.avatar_url} name={name} username={u.username}
+                subtext={subtext}
+                state={{ sent: sentSuggestion.has(u.clerk_user_id), busy: busySuggestion.has(u.clerk_user_id) }}
+                onAdd={() => handleAddSuggested(u)}
+              />
+            </View>
+          </View>
+        );
+      }
+
+      default: return null;
+    }
+  }
+
+  return (
+    <SafeAreaView style={st.screen} edges={['bottom']}>
+      <FlatList
+        data={rows}
+        keyExtractor={(item, index) => {
+          if (item._t === 'friend')    return `friend-${item.item.clerk_user_id}`;
+          if (item._t === 'incoming')  return `incoming-${item.item.friendship_id}`;
+          if (item._t === 'outgoing')  return `outgoing-${item.item.friendship_id}`;
+          if (item._t === 'suggested') return `sug-${item.item.clerk_user_id}`;
+          return `row-${index}`;
+        }}
+        renderItem={renderRow}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={{ paddingBottom: 40 }}
+      />
     </SafeAreaView>
   );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const st = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
-  pageHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 18 },
-  pageTitle:  { fontSize: 26, fontWeight: '900', color: C.ink, letterSpacing: -0.5 },
-  pageSub:    { fontSize: 13, color: C.inkMute, marginTop: 3 },
+  pageHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 24 },
+  kicker:    { fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4, marginBottom: 3 },
+  pageTitle: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.7 },
+  pageSub:   { fontSize: 13.5, color: C.inkMute, marginTop: 4 },
 
-  searchBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: C.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: C.hairline,
-    paddingHorizontal: 12, paddingVertical: 10,
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 9,
+    backgroundColor: C.surface, borderRadius: 10,
+    borderWidth: 0.5, borderColor: C.hairline,
+    padding: 10, paddingHorizontal: 14,
   },
-  searchInput: {
-    flex: 1, fontSize: 14, color: C.ink,
-  },
-  searchDrop: {
-    backgroundColor: C.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: C.hairline,
-    marginTop: 6,
-    shadowColor: C.ink, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 4,
-    overflow: 'hidden',
-  },
+  searchInput: { flex: 1, fontSize: 13.5, color: C.ink, padding: 0 },
 
-  section: {
-    backgroundColor: C.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: C.hairline,
-    overflow: 'hidden', marginBottom: 16,
-  },
   sectionHead: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8,
-    borderBottomWidth: 0.5, borderBottomColor: C.hairline,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginBottom: 6,
   },
   sectionLabel: {
-    fontSize: 10, fontWeight: '700', color: C.inkMute, letterSpacing: 1.3,
+    fontSize: 10, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4,
   },
-  sectionCount: {
-    fontSize: 10, fontWeight: '800', color: C.surface,
+  badge: {
     backgroundColor: C.inkMute, borderRadius: 10,
-    paddingHorizontal: 5, paddingVertical: 1.5,
+    paddingHorizontal: 5, paddingVertical: 1,
+  },
+  badgeText: { fontSize: 9, fontWeight: '700', color: '#FFFBF1' },
+
+  card: {
+    backgroundColor: C.surface, borderRadius: 12,
+    borderWidth: 0.5, borderColor: C.hairline,
     overflow: 'hidden',
+    marginBottom: 8,
+  },
+  emptyCard: {
+    padding: 32, alignItems: 'center', gap: 10,
+  },
+  emptyText: {
+    fontSize: 13, color: C.inkMute, textAlign: 'center', lineHeight: 18, maxWidth: 260,
   },
 
   row: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 14, paddingVertical: 12,
-    borderBottomWidth: 0.5, borderBottomColor: C.hairline,
+    padding: 12, paddingHorizontal: 16,
   },
   rowName:   { fontSize: 14, fontWeight: '700', color: C.ink },
-  rowHandle: { fontSize: 12, color: C.inkMute },
+  rowHandle: { fontSize: 11, color: C.inkMute, marginTop: 1 },
   rowSub:    { fontSize: 11, color: C.inkMute },
 
   btn: {
+    flexDirection: 'row', alignItems: 'center',
     borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
-    minWidth: 60, alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
   },
-  btnPrimary:     { backgroundColor: C.primary },
-  btnPrimaryText: { fontSize: 12, fontWeight: '700', color: '#FFFBF1' },
-  btnSecondary:   { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.hairline },
-  btnSecondaryText: { fontSize: 12, fontWeight: '600', color: C.inkSoft },
+  btnPrimary:       { backgroundColor: C.primary },
+  btnPrimaryText:   { fontSize: 12.5, fontWeight: '700', color: '#FFFBF1' },
+  btnSecondary:     { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline },
+  btnSecondaryText: { fontSize: 12.5, fontWeight: '600', color: C.inkSoft },
 
-  emptyCard: {
-    backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.hairline,
-    padding: 28, alignItems: 'center',
+  statusChip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.surfaceAlt, borderRadius: 7,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 0.5, borderColor: C.hairline,
   },
+  statusChipText: { fontSize: 11.5, fontWeight: '600', color: C.inkMute },
 });

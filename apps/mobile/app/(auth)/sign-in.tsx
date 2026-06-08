@@ -31,7 +31,7 @@ export default function SignIn() {
       const { createdSessionId, setActive: sa } = await flow();
       if (createdSessionId && sa) {
         await sa({ session: createdSessionId });
-        router.replace('/(tabs)');
+        router.replace('/(tabs)' as never);
       }
     } catch (e: unknown) {
       const clerkErr = e as { errors?: { message: string }[] };

@@ -1,13 +1,13 @@
 import {
-  ActivityIndicator, Image, Modal, ScrollView, StyleSheet,
+  ActivityIndicator, FlatList, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
-import { fullStateName } from '@/lib/stateNames';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -26,25 +26,12 @@ const C = {
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
-const GRADIENTS = ['#1F3D2E', '#2D4F66', '#7B3A1F', '#3A2E5C', '#2F7A4A'];
-function gradientColor(code: string) {
-  return GRADIENTS[code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length];
-}
-
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS     = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTHS_ABB = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CROWD_LABELS  = ['','Empty','Quiet','Moderate','Busy','Packed'];
-const DIFF_LABELS   = ['','Easy','Light','Moderate','Hard','Strenuous'];
-const WEATHER_LABELS: Record<string, string> = {
-  clear:'Clear', partly:'Partly cloudy', cloudy:'Cloudy', rain:'Rain',
-  storm:'Storms', snow:'Snow', fog:'Fog', wind:'Windy',
-};
-const RETURN_LABELS: Record<string, string> = { yes:'Definitely', maybe:'Maybe', no:'Probably not' };
-const RETURN_EMOJI:  Record<string, string> = { yes:'❤️', maybe:'🤔', no:'☁️' };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface JournalEntry {
+export interface JournalEntry {
   id: number;
   park_code: string;
   park_name: string | null;
@@ -65,17 +52,18 @@ interface JournalEntry {
   photos: string[] | null;
   cover_photo: string | null;
   visibility: string | null;
+  created_at: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string | null): string {
+export function fmtDate(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
-function fmtRange(start: string | null, end: string | null): string {
+export function fmtRange(start: string | null, end: string | null): string {
   if (!start) return '';
   const s = new Date(start);
   if (!end) return `${MONTHS[s.getMonth()]} ${s.getDate()}, ${s.getFullYear()}`;
@@ -88,10 +76,15 @@ function fmtRange(start: string | null, end: string | null): string {
   return `${MONTHS_ABB[s.getMonth()]} ${s.getDate()}, ${s.getFullYear()} – ${MONTHS_ABB[e.getMonth()]} ${e.getDate()}, ${e.getFullYear()}`;
 }
 
-function dayCount(start: string | null, end: string | null): number {
+export function dayCount(start: string | null, end: string | null): number {
   if (!start) return 0;
   if (!end) return 1;
   return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1;
+}
+
+const GRADIENTS = ['#1F3D2E', '#2D4F66', '#7B3A1F', '#3A2E5C', '#2F7A4A'];
+export function gradientColor(code: string): string {
+  return GRADIENTS[code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length];
 }
 
 // ── Stars ─────────────────────────────────────────────────────────────────────
@@ -100,12 +93,24 @@ function Stars({ value, size = 11 }: { value: number; size?: number }) {
   return (
     <View style={{ flexDirection: 'row', gap: 1 }}>
       {Array.from({ length: 5 }).map((_, i) => (
-        <Ionicons
-          key={i}
-          name={i < Math.round(value) ? 'star' : 'star-outline'}
-          size={size} color={C.accent}
-        />
+        <Ionicons key={i} name={i < Math.round(value) ? 'star' : 'star-outline'} size={size} color={C.accent} />
       ))}
+    </View>
+  );
+}
+
+// ── Skeleton card ─────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <View style={[styles.card, { overflow: 'hidden' }]}>
+      <View style={{ width: 80, backgroundColor: C.surfaceAlt }} />
+      <View style={{ flex: 1, padding: 12, gap: 8 }}>
+        <View style={{ height: 9, width: '50%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
+        <View style={{ height: 14, width: '80%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
+        <View style={{ height: 11, width: '60%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
+        <View style={{ height: 11, width: '40%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
+      </View>
     </View>
   );
 }
@@ -113,48 +118,62 @@ function Stars({ value, size = 11 }: { value: number; size?: number }) {
 // ── Entry card ────────────────────────────────────────────────────────────────
 
 function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => void }) {
-  const cover = entry.cover_photo ?? entry.photos?.[0] ?? null;
-  const days  = dayCount(entry.visited_date, entry.end_date);
+  const cover  = entry.cover_photo ?? entry.photos?.[0] ?? null;
+  const days   = dayCount(entry.visited_date, entry.end_date);
   const visKey = (entry.visibility ?? 'private').toLowerCase();
   const visColor = visKey === 'public' ? C.visited : visKey === 'friends' ? C.primary : C.inkMute;
-  const visIcon  = visKey === 'public' ? 'globe-outline' : visKey === 'friends' ? 'people-outline' : 'lock-closed-outline';
+  const visIcon  = visKey === 'public'
+    ? 'globe-outline' : visKey === 'friends'
+    ? 'people-outline' : 'lock-closed-outline';
 
   return (
-    <TouchableOpacity onPress={onPress} style={styles.entryCard} activeOpacity={0.8}>
-      {/* Cover thumbnail */}
-      <View style={[styles.entryThumb, { backgroundColor: gradientColor(entry.park_code) }]}>
+    <TouchableOpacity onPress={onPress} style={styles.card} activeOpacity={0.78}>
+      {/* Thumbnail — matches web's 80px left column */}
+      <View style={[styles.thumb, { backgroundColor: gradientColor(entry.park_code) }]}>
         {cover && (
-          <Image source={{ uri: cover }} style={StyleSheet.absoluteFill as any} resizeMode="cover" />
+          <Image
+            source={{ uri: cover }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
         )}
         {(entry.photos?.length ?? 0) > 1 && (
-          <View style={styles.entryPhotoCount}>
+          <View style={styles.photoCountBadge}>
             <Ionicons name="images-outline" size={9} color="#FFFBF1" />
             <Text style={{ color: '#FFFBF1', fontSize: 9, fontWeight: '600' }}>{entry.photos!.length}</Text>
           </View>
         )}
       </View>
 
-      {/* Content */}
-      <View style={{ flex: 1, padding: 12, gap: 3 }}>
+      {/* Content — matches web's padding: 12px 14px 12px 13px */}
+      <View style={styles.cardContent}>
+        {/* Park name kicker */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
           <Ionicons name="location" size={10} color={C.primary} />
-          <Text style={styles.entryParkName} numberOfLines={1}>
+          <Text style={styles.parkKicker} numberOfLines={1}>
             {(entry.park_name ?? entry.park_code).toUpperCase()}
           </Text>
         </View>
+
+        {/* Title or date */}
         <Text style={styles.entryTitle} numberOfLines={1}>
           {entry.title || fmtDate(entry.visited_date)}
         </Text>
+
+        {/* Date range + duration badge */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text style={styles.entryDate}>{fmtRange(entry.visited_date, entry.end_date)}</Text>
           {days > 1 && (
-            <View style={styles.durationBadge}>
+            <View style={styles.daysBadge}>
               <Text style={{ fontSize: 9, fontWeight: '700', color: C.accent }}>{days}D</Text>
             </View>
           )}
         </View>
+
+        {/* Stars + visibility */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-          {entry.rating ? <Stars value={entry.rating} /> : <View />}
+          {entry.rating ? <Stars value={entry.rating} size={11} /> : <View />}
           <Ionicons name={visIcon as any} size={12} color={visColor} />
         </View>
       </View>
@@ -162,204 +181,35 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
   );
 }
 
-// ── Entry detail modal ────────────────────────────────────────────────────────
-
-function EntryDetailModal({ entry, onClose }: { entry: JournalEntry; onClose: () => void }) {
-  const router = useRouter();
-  const [photoIdx, setPhotoIdx] = useState(0);
-  const imgs = entry.photos ?? [];
-  const days = dayCount(entry.visited_date, entry.end_date);
-
-  useEffect(() => {
-    const coverIdx = entry.cover_photo ? Math.max(0, imgs.indexOf(entry.cover_photo)) : 0;
-    setPhotoIdx(coverIdx);
-  }, [entry.id]);
-
-  return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top', 'bottom']}>
-        {/* Header */}
-        <View style={styles.detailHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.detailClose}>
-            <Ionicons name="close" size={20} color={C.ink} />
-          </TouchableOpacity>
-          <Text style={styles.detailHeaderTitle} numberOfLines={1}>
-            {entry.park_name ?? entry.park_code}
-          </Text>
-          <View style={{ width: 36 }} />
-        </View>
-
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-          {/* Photo section */}
-          {imgs.length > 0 && (
-            <View style={[styles.detailPhoto, { backgroundColor: gradientColor(entry.park_code) }]}>
-              <Image source={{ uri: imgs[photoIdx] }} style={StyleSheet.absoluteFill as any} resizeMode="cover" />
-              {imgs.length > 1 && (
-                <>
-                  <TouchableOpacity
-                    style={[styles.photoArrow, { left: 12 }]}
-                    onPress={() => setPhotoIdx(i => (i - 1 + imgs.length) % imgs.length)}
-                  >
-                    <Ionicons name="chevron-back" size={18} color={C.ink} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.photoArrow, { right: 12 }]}
-                    onPress={() => setPhotoIdx(i => (i + 1) % imgs.length)}
-                  >
-                    <Ionicons name="chevron-forward" size={18} color={C.ink} />
-                  </TouchableOpacity>
-                  <View style={styles.photoIndicator}>
-                    <Text style={{ color: '#FFFBF1', fontSize: 11, fontWeight: '600' }}>
-                      {photoIdx + 1}/{imgs.length}
-                    </Text>
-                  </View>
-                </>
-              )}
-            </View>
-          )}
-
-          <View style={{ padding: 20 }}>
-            {/* Park + state */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <Ionicons name="location" size={13} color={C.primary} />
-              <Text style={{ fontSize: 11, fontWeight: '700', color: C.primary, letterSpacing: 0.8, textTransform: 'uppercase' }}>
-                {entry.park_name ?? entry.park_code}
-              </Text>
-              {entry.states ? (
-                <Text style={{ fontSize: 10, color: C.inkMute }}>· {fullStateName(entry.states.split(',')[0].trim())}</Text>
-              ) : null}
-            </View>
-
-            {/* Title */}
-            {entry.title && (
-              <Text style={{ fontSize: 22, fontWeight: '900', color: C.ink, letterSpacing: -0.4, lineHeight: 26, marginBottom: 10 }}>
-                {entry.title}
-              </Text>
-            )}
-
-            {/* Date + duration + rating + visibility */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 18, paddingBottom: 16, borderBottomWidth: 0.5, borderBottomColor: C.hairline }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: C.inkSoft }}>{fmtRange(entry.visited_date, entry.end_date)}</Text>
-              {days > 1 && (
-                <View style={styles.durationBadge}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: C.accent }}>{days} DAYS</Text>
-                </View>
-              )}
-              {entry.rating ? <Stars value={entry.rating} size={14} /> : null}
-            </View>
-
-            {/* Highlight */}
-            {entry.highlight ? (
-              <View style={{ marginBottom: 18 }}>
-                <Text style={styles.metaLabel}>Highlight</Text>
-                <Text style={{ fontSize: 15, fontWeight: '600', color: C.ink, fontStyle: 'italic', lineHeight: 22 }}>
-                  &ldquo;{entry.highlight}&rdquo;
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Conditions */}
-            {(entry.crowd || entry.difficulty || entry.weather_conditions?.length || entry.would_return) ? (
-              <View style={{ marginBottom: 18 }}>
-                <Text style={styles.metaLabel}>Conditions</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                  {entry.crowd ? <MetaChip>👥 {CROWD_LABELS[entry.crowd]}</MetaChip> : null}
-                  {entry.difficulty ? <MetaChip>🥾 {DIFF_LABELS[entry.difficulty]}</MetaChip> : null}
-                  {entry.weather_conditions?.map(w => <MetaChip key={w}>🌤 {WEATHER_LABELS[w] ?? w}</MetaChip>)}
-                  {entry.would_return ? <MetaChip>{RETURN_EMOJI[entry.would_return]} Return: {RETURN_LABELS[entry.would_return]}</MetaChip> : null}
-                </View>
-              </View>
-            ) : null}
-
-            {/* Activities */}
-            {entry.activities && entry.activities.length > 0 ? (
-              <View style={{ marginBottom: 18 }}>
-                <Text style={styles.metaLabel}>Activities</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                  {entry.activities.map(a => <MetaChip key={a}>{a.charAt(0).toUpperCase() + a.slice(1)}</MetaChip>)}
-                </View>
-              </View>
-            ) : null}
-
-            {/* Notes */}
-            {entry.notes ? (
-              <View style={{ marginBottom: 18 }}>
-                <Text style={styles.metaLabel}>Notes</Text>
-                <Text style={{ fontSize: 14, color: C.inkSoft, lineHeight: 21 }}>{entry.notes}</Text>
-              </View>
-            ) : null}
-
-            {/* Photos strip (if multiple) */}
-            {imgs.length > 1 && (
-              <View>
-                <Text style={styles.metaLabel}>Photos · {imgs.length}</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    {imgs.map((url, i) => (
-                      <TouchableOpacity key={url} onPress={() => setPhotoIdx(i)}>
-                        <Image
-                          source={{ uri: url }}
-                          style={[styles.thumbImg, i === photoIdx && { borderWidth: 2, borderColor: C.primary }]}
-                        />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-            )}
-
-            {/* Action: log another visit to this park */}
-            <TouchableOpacity
-              style={styles.logBtn}
-              onPress={() => { onClose(); router.push('/(modals)/log-visit' as never); }}
-            >
-              <Ionicons name="add" size={16} color="#FFFBF1" />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFBF1' }}>Log another visit</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
-function MetaChip({ children }: { children: React.ReactNode }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.surfaceAlt, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 5 }}>
-      <Text style={{ fontSize: 12, fontWeight: '600', color: C.inkSoft }}>{children}</Text>
-    </View>
-  );
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function JournalScreen() {
   const { getToken } = useAuth();
+  const router = useRouter();
+
   const [entries,    setEntries]    = useState<JournalEntry[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [query,      setQuery]      = useState('');
   const [yearFilter, setYearFilter] = useState<number | null>(null);
   const [sortBy,     setSortBy]     = useState<'newest' | 'oldest' | 'rating'>('newest');
-  const [selected,   setSelected]   = useState<JournalEntry | null>(null);
   const [sortOpen,   setSortOpen]   = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const tok = await getToken();
-      if (!tok) return;
-      try {
-        const res = await fetch(`${BASE}/api/visits`, { headers: { Authorization: `Bearer ${tok}` } });
-        if (res.ok) {
-          const data = await res.json();
-          setEntries(data.filter((e: JournalEntry) => !e.is_bucket_list && e.visited_date));
-        }
-      } catch (e) {
-        console.error('Journal load error:', e);
-      } finally {
-        setLoading(false);
+  const load = useCallback(async () => {
+    const tok = await getToken();
+    if (!tok) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/visits`, { headers: { Authorization: `Bearer ${tok}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setEntries(data.filter((e: JournalEntry) => !e.is_bucket_list && e.visited_date));
       }
-    })();
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
   }, [getToken]);
+
+  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const years = useMemo(() => {
     const s = new Set<number>();
@@ -378,44 +228,34 @@ export default function JournalScreen() {
         (e.notes ?? '').toLowerCase().includes(q)
       );
     }
-    if (sortBy === 'oldest')  list = [...list].sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
-    else if (sortBy === 'newest') list = [...list].sort((a, b) => (b.visited_date ?? '').localeCompare(a.visited_date ?? ''));
-    else if (sortBy === 'rating') list = [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-    return list;
+    if (sortBy === 'oldest')  return [...list].sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
+    if (sortBy === 'rating')  return [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    return [...list].sort((a, b) => (b.visited_date ?? '').localeCompare(a.visited_date ?? ''));
   }, [entries, query, yearFilter, sortBy]);
 
   const totalPhotos = useMemo(() => entries.reduce((n, e) => n + (e.photos?.length ?? 0), 0), [entries]);
-
   const SORT_LABELS = { newest: 'Newest first', oldest: 'Oldest first', rating: 'Top rated' };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['bottom']}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={C.primary} />
+  const ListHeader = (
+    <View>
+      {/* Page header */}
+      <View style={styles.pageHeader}>
+        <Text style={styles.kicker}>COLLECTIONS</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <Text style={styles.title}>Journal</Text>
         </View>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.screen} edges={['bottom']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerKicker}>COLLECTIONS</Text>
-        <Text style={styles.headerTitle}>Journal</Text>
         {!loading && (
-          <Text style={styles.headerSub}>
-            <Text style={{ fontWeight: '700', color: C.ink }}>{entries.length}</Text>{' '}
-            {entries.length === 1 ? 'entry' : 'entries'}
+          <Text style={styles.subtitle}>
+            <Text style={{ fontWeight: '700', color: C.ink }}>{entries.length}</Text>
+            {' '}{entries.length === 1 ? 'entry' : 'entries'}
             {totalPhotos > 0 ? <> · <Text style={{ fontWeight: '700', color: C.ink }}>{totalPhotos}</Text> photos</> : null}
-            {years.length > 0 ? <> · <Text style={{ fontWeight: '700', color: C.ink }}>{years.length}</Text> {years.length === 1 ? 'year' : 'years'}</> : null}
+            {years.length > 0 ? <> · spanning <Text style={{ fontWeight: '700', color: C.ink }}>{years.length}</Text> {years.length === 1 ? 'year' : 'years'}</> : null}
           </Text>
         )}
       </View>
 
-      {/* Filter bar */}
-      {entries.length > 0 && (
+      {/* Filter bar: search + sort */}
+      {(entries.length > 0 || query) && (
         <View style={styles.filterBar}>
           <View style={styles.searchBox}>
             <Ionicons name="search" size={14} color={C.inkMute} />
@@ -423,12 +263,8 @@ export default function JournalScreen() {
               value={query} onChangeText={setQuery}
               placeholder="Search parks, titles, notes…" placeholderTextColor={C.inkMute}
               style={styles.searchInput} autoCorrect={false} autoCapitalize="none"
+              clearButtonMode="while-editing"
             />
-            {query.length > 0 && (
-              <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
-                <Ionicons name="close-circle" size={15} color={C.inkMute} />
-              </TouchableOpacity>
-            )}
           </View>
           <TouchableOpacity onPress={() => setSortOpen(o => !o)} style={styles.sortBtn}>
             <Ionicons name="options-outline" size={15} color={C.inkSoft} />
@@ -437,13 +273,61 @@ export default function JournalScreen() {
         </View>
       )}
 
-      {/* Sort dropdown */}
+      {/* Year pills */}
+      {years.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearRow}>
+          {[null, ...years].map(y => (
+            <TouchableOpacity
+              key={y ?? 'all'} onPress={() => setYearFilter(y)}
+              style={[styles.yearPill, yearFilter === y && styles.yearPillOn]}
+            >
+              <Text style={[styles.yearPillText, yearFilter === y && styles.yearPillTextOn]}>
+                {y ?? 'All'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {/* Loading skeletons */}
+      {loading && (
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 10 }}>
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
+        </View>
+      )}
+
+      {/* Empty state */}
+      {!loading && filtered.length === 0 && (
+        <View style={styles.emptyWrap}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="journal-outline" size={22} color={C.inkMute} />
+          </View>
+          <Text style={styles.emptyTitle}>
+            {entries.length === 0 ? 'No journal entries yet' : 'No matching entries'}
+          </Text>
+          <Text style={styles.emptySub}>
+            {entries.length === 0
+              ? 'Log a visit to start your journal.'
+              : 'Try adjusting your search or filters.'}
+          </Text>
+        </View>
+      )}
+
+      {/* Section gap before list */}
+      {!loading && filtered.length > 0 && <View style={{ height: 12 }} />}
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
+      {/* Sort dropdown rendered above FlatList so it overlaps cards */}
       {sortOpen && (
         <View style={styles.sortDropdown}>
-          {(['newest', 'oldest', 'rating'] as const).map(s => (
+          {(['newest', 'oldest', 'rating'] as const).map((s, i) => (
             <TouchableOpacity
-              key={s} onPress={() => { setSortBy(s); setSortOpen(false); }}
-              style={styles.sortOption}
+              key={s}
+              onPress={() => { setSortBy(s); setSortOpen(false); }}
+              style={[styles.sortOption, i < 2 && { borderBottomWidth: 0.5, borderBottomColor: C.hairline }]}
             >
               <Text style={[styles.sortOptionText, sortBy === s && { color: C.primary, fontWeight: '700' }]}>
                 {SORT_LABELS[s]}
@@ -454,53 +338,21 @@ export default function JournalScreen() {
         </View>
       )}
 
-      {/* Year filter */}
-      {years.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearFilter}>
-          {[null, ...years].map(y => (
-            <TouchableOpacity
-              key={y ?? 'all'} onPress={() => setYearFilter(y)}
-              style={[styles.yearPill, yearFilter === y && styles.yearPillActive]}
-            >
-              <Text style={[styles.yearPillText, yearFilter === y && styles.yearPillTextActive]}>
-                {y ?? 'All'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
-      {/* Entry list */}
-      {filtered.length === 0 && !loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-          <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="journal-outline" size={22} color={C.inkMute} />
+      <FlatList
+        data={loading ? [] : filtered}
+        keyExtractor={item => String(item.id)}
+        renderItem={({ item }) => (
+          <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+            <EntryCard entry={item} onPress={() => router.push(`/profile/journal/${item.id}` as never)} />
           </View>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: C.ink }}>
-            {entries.length === 0 ? 'No journal entries yet' : 'No matching entries'}
-          </Text>
-          <Text style={{ fontSize: 13, color: C.inkMute, textAlign: 'center', maxWidth: 260, lineHeight: 18 }}>
-            {entries.length === 0
-              ? 'Log a visit to start your journal.'
-              : 'Try adjusting your search or filters.'}
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40, gap: 10 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
-          {filtered.map(entry => (
-            <EntryCard key={entry.id} entry={entry} onPress={() => setSelected(entry)} />
-          ))}
-        </ScrollView>
-      )}
-
-      {selected && (
-        <EntryDetailModal entry={selected} onClose={() => setSelected(null)} />
-      )}
+        )}
+        ListHeaderComponent={ListHeader}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={() => sortOpen && setSortOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -510,135 +362,87 @@ export default function JournalScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
-  header: {
-    paddingHorizontal: 16, paddingTop: 20, paddingBottom: 16,
-  },
-  headerKicker: {
-    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4, marginBottom: 3,
-  },
-  headerTitle: {
-    fontSize: 28, fontWeight: '900', color: C.ink, letterSpacing: -0.6,
-  },
-  headerSub: {
-    fontSize: 13, color: C.inkMute, marginTop: 4,
-  },
+  pageHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 16 },
+  kicker:     { fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4, marginBottom: 3 },
+  title:      { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.7 },
+  subtitle:   { fontSize: 13.5, color: C.inkMute, marginTop: 6 },
 
-  filterBar: {
-    flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 8,
-  },
-  searchBox: {
+  filterBar:  { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 10 },
+  searchBox:  {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: C.surface, borderRadius: 11, padding: 10,
+    backgroundColor: C.surface, borderRadius: 11,
+    paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     borderWidth: 0.5, borderColor: C.hairline,
   },
-  searchInput: {
-    flex: 1, fontSize: 13.5, color: C.ink, padding: 0,
-  },
+  searchInput: { flex: 1, fontSize: 13.5, color: C.ink, padding: 0 },
   sortBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: C.surface, borderRadius: 11, paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: C.surface, borderRadius: 11,
+    paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     borderWidth: 0.5, borderColor: C.hairline,
   },
-  sortBtnText: {
-    fontSize: 12, fontWeight: '600', color: C.inkSoft,
-  },
+  sortBtnText: { fontSize: 12, fontWeight: '600', color: C.inkSoft },
+
   sortDropdown: {
-    position: 'absolute', top: 140, right: 16, zIndex: 50,
+    position: 'absolute', right: 16, zIndex: 100,
     backgroundColor: C.surface, borderRadius: 10,
     borderWidth: 0.5, borderColor: C.hairline,
     overflow: 'hidden', minWidth: 160,
     shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.14, shadowRadius: 20,
     elevation: 10,
+    // approximate top — below the filter bar
+    top: Platform.OS === 'ios' ? 148 : 140,
   },
   sortOption: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 14, paddingVertical: 11,
-    borderBottomWidth: 0.5, borderBottomColor: C.hairline,
   },
-  sortOptionText: {
-    fontSize: 13, fontWeight: '500', color: C.inkSoft,
-  },
+  sortOptionText: { fontSize: 13, fontWeight: '500', color: C.inkSoft },
 
-  yearFilter: {
-    paddingHorizontal: 16, paddingBottom: 8, gap: 6,
-  },
+  yearRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 6 },
   yearPill: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9,
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
   },
-  yearPillActive: {
-    backgroundColor: C.primary, borderColor: C.primary,
-  },
-  yearPillText: {
-    fontSize: 11, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.4,
-  },
-  yearPillTextActive: {
-    color: '#FFFBF1',
-  },
+  yearPillOn:     { backgroundColor: C.primary, borderColor: C.primary },
+  yearPillText:   { fontSize: 11, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.4 },
+  yearPillTextOn: { color: '#FFFBF1' },
 
-  // Entry card
-  entryCard: {
-    flexDirection: 'row', backgroundColor: C.surface, borderRadius: 14,
-    borderWidth: 0.5, borderColor: C.hairline, overflow: 'hidden',
+  emptyWrap:  { alignItems: 'center', paddingVertical: 60, gap: 12 },
+  emptyIcon:  {
+    width: 52, height: 52, borderRadius: 16,
+    backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline,
+    alignItems: 'center', justifyContent: 'center',
   },
-  entryThumb: {
-    width: 82, flexShrink: 0, position: 'relative',
+  emptyTitle: { fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.2 },
+  emptySub:   { fontSize: 13, color: C.inkMute, textAlign: 'center', maxWidth: 260, lineHeight: 18 },
+
+  // Card — matches web's EntryCard layout exactly
+  card: {
+    flexDirection: 'row', backgroundColor: C.surface,
+    borderRadius: 14, borderWidth: 0.5, borderColor: C.hairline,
+    overflow: 'hidden',
   },
-  entryPhotoCount: {
+  thumb: {
+    width: 80, flexShrink: 0,
+  },
+  photoCountBadge: {
     position: 'absolute', bottom: 6, right: 6,
-    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 100,
-    flexDirection: 'row', alignItems: 'center', gap: 2,
-    paddingHorizontal: 5, paddingVertical: 2,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 100,
   },
-  entryParkName: {
-    fontSize: 9.5, fontWeight: '700', color: C.primary, letterSpacing: 0.6, flex: 1,
+  cardContent: {
+    flex: 1, minWidth: 0, padding: 12, paddingLeft: 13, gap: 3,
+  },
+  parkKicker: {
+    flex: 1, fontSize: 9.5, fontWeight: '700', color: C.primary, letterSpacing: 0.8,
   },
   entryTitle: {
-    fontSize: 14, fontWeight: '800', color: C.ink, letterSpacing: -0.2,
+    fontSize: 14, fontWeight: '800', color: C.ink, letterSpacing: -0.2, lineHeight: 17,
   },
-  entryDate: {
-    fontSize: 11.5, color: C.inkMute,
-  },
-  durationBadge: {
-    backgroundColor: 'rgba(197,107,61,0.12)', borderRadius: 100, paddingHorizontal: 6, paddingVertical: 1,
-  },
-
-  // Entry detail
-  detailHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12,
-    borderBottomWidth: 0.5, borderBottomColor: C.hairline,
-  },
-  detailClose: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: C.surfaceAlt,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  detailHeaderTitle: {
-    fontSize: 15, fontWeight: '700', color: C.ink, flex: 1, textAlign: 'center', marginHorizontal: 8,
-  },
-  detailPhoto: {
-    height: 220, position: 'relative',
-  },
-  photoArrow: {
-    position: 'absolute', top: '50%', marginTop: -18,
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,251,241,0.88)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  photoIndicator: {
-    position: 'absolute', bottom: 10, right: 12,
-    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 100,
-    paddingHorizontal: 8, paddingVertical: 3,
-  },
-  metaLabel: {
-    fontSize: 9.5, fontWeight: '600', color: C.inkMute,
-    letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 6,
-  },
-  thumbImg: {
-    width: 64, height: 64, borderRadius: 8,
-  },
-  logBtn: {
-    marginTop: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: C.primary, borderRadius: 12, paddingVertical: 13,
+  entryDate:  { fontSize: 11.5, color: C.inkMute },
+  daysBadge:  {
+    backgroundColor: C.surfaceAlt, borderRadius: 100,
+    paddingHorizontal: 6, paddingVertical: 1,
   },
 });

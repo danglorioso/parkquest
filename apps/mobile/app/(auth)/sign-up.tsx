@@ -40,7 +40,7 @@ export default function SignUp() {
       const result = await signUp.attemptEmailAddressVerification({ code });
       if (result.status === 'complete') {
         await setActive({ session: result.createdSessionId });
-        router.replace('/(tabs)');
+        router.replace('/(tabs)' as never);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Verification failed');

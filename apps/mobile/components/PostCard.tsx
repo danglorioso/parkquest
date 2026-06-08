@@ -203,7 +203,9 @@ function Lightbox({
 // ── PhotoCarousel ─────────────────────────────────────────────────────────────
 
 const SCREEN_W = Dimensions.get('window').width;
-const PHOTO_H  = 300;
+// Cards have 16px horizontal margin on each side in the feed list.
+const CARD_W   = SCREEN_W - 32;
+const PHOTO_H  = 380;
 
 function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: string | null }) {
   const [activeIdx, setActiveIdx] = useState(0);
@@ -219,7 +221,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={e => {
           const x = e.nativeEvent.contentOffset.x;
-          setActiveIdx(Math.round(x / SCREEN_W));
+          setActiveIdx(Math.round(x / CARD_W));
         }}
       >
         {photos.map((src, k) => (
@@ -227,17 +229,17 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
             key={k}
             activeOpacity={0.92}
             onPress={() => setLightboxIdx(k)}
-            style={{ width: SCREEN_W, height: PHOTO_H }}
+            style={{ width: CARD_W, height: PHOTO_H }}
           >
             {src ? (
               <Image
                 source={{ uri: src }}
-                style={{ width: SCREEN_W, height: PHOTO_H }}
+                style={{ width: CARD_W, height: PHOTO_H }}
                 contentFit="cover"
                 cachePolicy="memory-disk"
               />
             ) : (
-              <View style={{ width: SCREEN_W, height: PHOTO_H, backgroundColor: fallbackColor }} />
+              <View style={{ width: CARD_W, height: PHOTO_H, backgroundColor: fallbackColor }} />
             )}
           </TouchableOpacity>
         ))}
@@ -284,7 +286,10 @@ function BadgePostBody({ badgeId }: { badgeId: string }) {
   const col   = BADGE_TIER_COLORS[tier];
 
   return (
-    <View style={[styles.badgeBody, { borderColor: col.fill + '60' }]}>
+    <View style={[styles.badgeBody, {
+      borderColor: col.fill + '60',
+      backgroundColor: col.fill + '1a',
+    }]}>
       <View style={[styles.badgeCircle, { shadowColor: col.fill, backgroundColor: col.fill }]}>
         <Text style={styles.badgeEmoji}>{badge?.emoji ?? '🏅'}</Text>
       </View>
@@ -293,6 +298,9 @@ function BadgePostBody({ badgeId }: { badgeId: string }) {
           {tier.toUpperCase()} BADGE
         </Text>
         <Text style={styles.badgeName}>{badge?.name ?? badgeId}</Text>
+        {badge?.description ? (
+          <Text style={styles.badgeDesc}>{badge.description}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -463,9 +471,12 @@ function CommentsPanel({
         return (
           <View key={c.id} style={styles.commentRow}>
             <Avatar url={c.avatar_url} name={cname} size={28} />
-            <View style={styles.commentBubble}>
-              <Text style={styles.commentAuthor}>{cname} </Text>
-              <Text style={styles.commentContent}>{c.content}</Text>
+            <View style={{ flex: 1 }}>
+              <View style={styles.commentBubble}>
+                <Text style={styles.commentAuthor}>{cname} </Text>
+                <Text style={styles.commentContent}>{c.content}</Text>
+              </View>
+              <Text style={styles.commentTime}>{relTime(c.created_at)}</Text>
             </View>
           </View>
         );
@@ -523,6 +534,9 @@ export function PostCard({
   const [showComments, setShowComments] = useState(false);
   const [commentDelta, setCommentDelta] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
+  const [editingCaption, setEditingCaption] = useState(false);
+  const [captionDraft, setCaptionDraft] = useState(post.caption ?? '');
+  const [currentCaption, setCurrentCaption] = useState<string | null>(post.caption ?? null);
 
   const isOwnPost  = myUserId === post.clerk_user_id;
   const isBadge    = !!post.badge_id;
@@ -563,6 +577,17 @@ export function PostCard({
     setShowMenu(false);
   };
 
+  const handleSaveCaption = async () => {
+    const res = await apiReq(`/api/posts/${post.id}`, token, {
+      method: 'PATCH',
+      body: JSON.stringify({ caption: captionDraft }),
+    }).catch(() => null);
+    if (res !== null) {
+      setCurrentCaption(captionDraft || null);
+      setEditingCaption(false);
+    }
+  };
+
   return (
     <View style={styles.card}>
       {/* Badge banner */}
@@ -597,6 +622,13 @@ export function PostCard({
       {/* ... menu */}
       {showMenu && isOwnPost && (
         <View style={styles.menu}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => { setCaptionDraft(currentCaption ?? ''); setEditingCaption(true); setShowMenu(false); }}
+          >
+            <Text style={styles.menuItemText}>Edit caption</Text>
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
           <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
             <Text style={[styles.menuItemText, { color: '#D45040' }]}>Delete post</Text>
           </TouchableOpacity>
@@ -615,8 +647,33 @@ export function PostCard({
       )}
 
       {/* Caption */}
-      {post.caption ? (
-        <Text style={styles.caption}>{post.caption}</Text>
+      {editingCaption ? (
+        <View style={styles.captionEdit}>
+          <TextInput
+            value={captionDraft}
+            onChangeText={setCaptionDraft}
+            multiline
+            placeholder="Add a caption…"
+            placeholderTextColor={C.inkMute}
+            style={styles.captionInput}
+          />
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            <TouchableOpacity
+              onPress={handleSaveCaption}
+              style={[styles.captionBtn, { backgroundColor: C.primary }]}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFBF1' }}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setEditingCaption(false)}
+              style={[styles.captionBtn, { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline }]}
+            >
+              <Text style={{ fontSize: 13, color: C.ink }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : currentCaption ? (
+        <Text style={styles.caption}>{currentCaption}</Text>
       ) : null}
 
       {/* Badge body */}
@@ -759,24 +816,27 @@ const styles = StyleSheet.create({
 
   // Badge post body
   badgeBody: {
-    borderRadius: 14, padding: 16, borderWidth: 0.5,
-    flexDirection: 'row', alignItems: 'center', gap: 16,
-    backgroundColor: 'rgba(178,115,57,0.06)',
+    borderRadius: 14, padding: 18, borderWidth: 0.5,
+    flexDirection: 'row', alignItems: 'center', gap: 18,
     marginBottom: 14,
   },
   badgeCircle: {
-    width: 60, height: 60, borderRadius: 30,
+    width: 64, height: 64, borderRadius: 32,
     alignItems: 'center', justifyContent: 'center',
     shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 12,
     elevation: 6,
+    flexShrink: 0,
   },
-  badgeEmoji: { fontSize: 28 },
-  badgeText: { flex: 1 },
+  badgeEmoji: { fontSize: 30 },
+  badgeText: { flex: 1, minWidth: 0 },
   badgeTierLabel: {
     fontSize: 9, letterSpacing: 1.4, fontWeight: '700', marginBottom: 3,
   },
   badgeName: {
     fontWeight: '800', fontSize: 18, color: C.ink, letterSpacing: -0.3, lineHeight: 22,
+  },
+  badgeDesc: {
+    fontSize: 12.5, color: C.inkMute, marginTop: 4, lineHeight: 18,
   },
 
   // Chips
@@ -810,6 +870,10 @@ const styles = StyleSheet.create({
   },
   commentAuthor: { fontWeight: '700', fontSize: 12, color: C.ink },
   commentContent: { fontSize: 12.5, color: C.ink, lineHeight: 18 },
+  commentTime: {
+    paddingLeft: 9, marginTop: 3,
+    fontSize: 9.5, color: C.inkMute, letterSpacing: 0.3,
+  },
   commentInput: {
     flexDirection: 'row', alignItems: 'center',
     gap: 9, paddingHorizontal: 18, paddingVertical: 10,
@@ -831,7 +895,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: C.surface, borderRadius: 16,
     borderWidth: 0.5, borderColor: C.hairline,
-    overflow: 'hidden', marginBottom: 12,
+    overflow: 'hidden', marginBottom: 16,
   },
   badgeBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
@@ -858,6 +922,7 @@ const styles = StyleSheet.create({
   },
   menuItem: { paddingHorizontal: 14, paddingVertical: 11 },
   menuItemText: { fontSize: 14, color: C.ink },
+  menuDivider: { height: 0.5, backgroundColor: C.hairline },
   parkChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 18, paddingBottom: 10,
@@ -868,6 +933,18 @@ const styles = StyleSheet.create({
   caption: {
     paddingHorizontal: 18, paddingBottom: 12,
     fontSize: 15, color: C.ink, lineHeight: 22,
+  },
+  captionEdit: {
+    paddingHorizontal: 18, paddingBottom: 12,
+  },
+  captionInput: {
+    minHeight: 80, padding: 10, borderRadius: 8,
+    borderWidth: 0.5, borderColor: C.hairline,
+    fontSize: 15, color: C.ink, lineHeight: 22,
+    backgroundColor: C.surface,
+  },
+  captionBtn: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
   },
   padH: { paddingHorizontal: 18 },
   actionRow: {

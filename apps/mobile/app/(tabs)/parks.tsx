@@ -313,10 +313,14 @@ export default function ParksScreen() {
     setRegionFilter('all');
   }, []);
 
+  type ParkRow =
+    | { id: string; type: 'skeleton' }
+    | { id: string; type: 'pair'; left: Park; right: Park | null };
+
   // Pair items for 2-col grid
-  const rows = useMemo(() => {
+  const rows = useMemo((): ParkRow[] => {
     if (loading) return Array.from({ length: 12 }, (_, i) => ({ id: `sk-${i}`, type: 'skeleton' as const }));
-    const out: Array<{ id: string; type: 'pair'; left: Park; right: Park | null }> = [];
+    const out: ParkRow[] = [];
     for (let i = 0; i < filtered.length; i += 2) {
       out.push({ id: filtered[i].park_code, type: 'pair', left: filtered[i], right: filtered[i + 1] ?? null });
     }
