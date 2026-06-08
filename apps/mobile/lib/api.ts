@@ -1,4 +1,4 @@
-import type { EnrichedPost, EnrichedComment, PublicProfile, UserProfile, ParkWithStatus, BadgesResponse, Follow } from '@parkquest/types';
+import type { EnrichedPost, EnrichedComment, PublicProfile, UserProfile, ParkWithStatus, BadgesResponse, Friend, FriendRequest } from '@parkquest/types';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -17,6 +17,15 @@ async function req<T>(path: string, token: string | null, options: RequestInit =
   }
   return res.json() as Promise<T>;
 }
+
+// ── Activity ───────────────────────────────────────────────────────────────────
+
+export type ActivityEvent =
+  | { type: 'visit' | 'bucket' | 'post'; user_id: string; username: string | null; display_name: string | null; avatar_url: string | null; park_name: string | null; created_at: string | null }
+  | { type: 'badge'; user_id: string; username: string | null; display_name: string | null; avatar_url: string | null; badge_id: string; badge_name: string; badge_emoji: string; created_at: string | null };
+
+export const getActivity = (token: string) =>
+  req<ActivityEvent[]>('/api/activity', token);
 
 // ── Feed & Posts ───────────────────────────────────────────────────────────────
 
@@ -56,32 +65,148 @@ export const updateProfile = (token: string, updates: Partial<Pick<UserProfile, 
 export const getUserProfile = (token: string | null, userId: string) =>
   req<PublicProfile>(`/api/profile/${userId}`, token);
 
+export interface UserPublicProfile {
+  clerk_user_id: string;
+  username: string;
+  display_name: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  parks_visited: number;
+  friend_count: number;
+  friendship_status: 'none' | 'pending_sent' | 'pending_received' | 'accepted';
+  friendship_id: number | null;
+  is_own_profile: boolean;
+  badges: { badge_id: string; earned_at: string | null; name: string; emoji: string; tier: string }[];
+  recent_posts: EnrichedPost[];
+  recent_visits: { park_code: string; name: string; states: string; visited_date: string | null; image_url: string | null }[];
+}
+
+export const getUserByUsername = (token: string | null, username: string) =>
+  req<UserPublicProfile>(`/api/users/${username}`, token);
+
 export const searchUsers = (token: string | null, query: string) =>
   req<PublicProfile[]>(`/api/users?search=${encodeURIComponent(query)}`, token);
 
-// ── Follows ────────────────────────────────────────────────────────────────────
+export const getSuggestions = (token: string) =>
+  req<Array<{ clerk_user_id: string; username: string | null; display_name: string | null; avatar_url: string | null; mutual_friends: number; shared_parks: number }>>('/api/users/suggestions', token);
 
-export const followUser = (token: string, userId: string) =>
-  req('/api/follows', token, { method: 'POST', body: JSON.stringify({ userId }) });
+// ── Friends ────────────────────────────────────────────────────────────────────
 
-export const unfollowUser = (token: string, userId: string) =>
-  req(`/api/follows?userId=${userId}`, token, { method: 'DELETE' });
+export const getFriends = (token: string, userId: string) =>
+  req<Friend[]>(`/api/friends?userId=${userId}&type=friends`, token);
 
-export const getFollowers = (token: string | null, userId: string) =>
-  req<Follow[]>(`/api/follows?userId=${userId}&type=followers`, token);
+export const getPendingRequests = (token: string, userId: string) =>
+  req<FriendRequest[]>(`/api/friends?userId=${userId}&type=pending_incoming`, token);
 
-export const getFollowing = (token: string | null, userId: string) =>
-  req<Follow[]>(`/api/follows?userId=${userId}&type=following`, token);
+export const sendFriendRequest = (token: string, userId: string) =>
+  req('/api/friends', token, { method: 'POST', body: JSON.stringify({ userId }) });
 
-// ── Parks & Visits ─────────────────────────────────────────────────────────────
+export const respondFriendRequest = (token: string, friendshipId: number, action: 'accept' | 'reject') =>
+  req('/api/friends', token, { method: 'PATCH', body: JSON.stringify({ friendshipId, action }) });
+
+export const removeFriend = (token: string, userId: string) =>
+  req(`/api/friends?userId=${userId}`, token, { method: 'DELETE' });
+
+// ── Parks ──────────────────────────────────────────────────────────────────────
+
+export interface ParkDetail {
+  park_code: string;
+  name: string;
+  states: string;
+  description: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  image_url: string | null;
+}
 
 export const getParks = (token: string | null) =>
-  req<ParkWithStatus[]>('/api/parks', token);
+  req<ParkDetail[]>('/api/parks', token);
+
+export const getPark = (token: string | null, parkCode: string) =>
+  req<ParkDetail>(`/api/parks/${parkCode}`, token);
+
+export const getParkNPS = (token: string | null, parkCode: string) =>
+  req<any>(`/api/parks/${parkCode}/nps`, token);
+
+export const getParkWeather = (token: string | null, parkCode: string) =>
+  req<any>(`/api/parks/${parkCode}/weather`, token);
+
+// ── Visits ─────────────────────────────────────────────────────────────────────
+
+export interface VisitEntry {
+  id: number;
+  park_code: string;
+  park_name: string | null;
+  states: string | null;
+  visited_date: string | null;
+  end_date: string | null;
+  is_bucket_list: boolean;
+  rating: number | null;
+  crowd: number | null;
+  difficulty: number | null;
+  weather_conditions: string[] | null;
+  activities: string[] | null;
+  companions: string[] | null;
+  would_return: boolean | null;
+  highlight: string | null;
+  title: string | null;
+  notes: string | null;
+  photos: { url: string; key: string; name: string }[] | null;
+  cover_photo: { url: string; key: string; name: string } | null;
+  visibility: string | null;
+  created_at: string | null;
+}
 
 export const getVisits = (token: string) =>
-  req<ParkWithStatus[]>('/api/visits', token);
+  req<VisitEntry[]>('/api/visits', token);
+
+export const createVisit = (token: string, body: {
+  park_code: string;
+  visited_date?: string;
+  end_date?: string;
+  rating?: number;
+  notes?: string;
+  title?: string;
+  activities?: string[];
+  companions?: string[];
+  photos?: { url: string; key: string; name: string }[];
+  visibility?: string;
+  is_bucket_list?: boolean;
+}) => req<VisitEntry>('/api/visits', token, { method: 'POST', body: JSON.stringify(body) });
+
+export const updateVisit = (token: string, id: number, body: Partial<Parameters<typeof createVisit>[1]>) =>
+  req<VisitEntry>(`/api/visits/${id}`, token, { method: 'PATCH', body: JSON.stringify(body) });
+
+export const deleteVisit = (token: string, id: number) =>
+  req(`/api/visits/${id}`, token, { method: 'DELETE' });
 
 // ── Badges ─────────────────────────────────────────────────────────────────────
 
 export const getBadges = (token: string) =>
   req<BadgesResponse>('/api/badges', token);
+
+// ── Notifications ──────────────────────────────────────────────────────────────
+
+export interface NotificationItem {
+  id: number;
+  type: string;
+  is_read: boolean;
+  created_at: string | null;
+  actor_id: string;
+  actor_username: string | null;
+  actor_display_name: string | null;
+  actor_avatar_url: string | null;
+  park_code: string | null;
+  park_name: string | null;
+  post_id: number | null;
+  visit_id: number | null;
+  badge_id: string | null;
+  badge_name: string | null;
+  badge_emoji: string | null;
+}
+
+export const getNotifications = (token: string) =>
+  req<NotificationItem[]>('/api/notifications', token);
+
+export const markNotificationsRead = (token: string) =>
+  req('/api/notifications', token, { method: 'PATCH' });

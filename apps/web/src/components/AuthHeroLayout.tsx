@@ -104,6 +104,8 @@ function UsernameStep() {
         const result = await signUp.update({ username });
         if (result.status === "complete" && result.createdSessionId) {
           await signUpSetActive!({ session: result.createdSessionId });
+          // Ensure the user_profiles row is created before navigating away
+          await fetch("/api/profile");
           localStorage.setItem("pq_returning", "1");
           router.push("/dashboard");
         } else {
@@ -112,6 +114,8 @@ function UsernameStep() {
       } else if (user) {
         // Already authenticated (email+password sign-up): just update username
         await user.update({ username });
+        // Ensure the user_profiles row is created before navigating away
+        await fetch("/api/profile");
         localStorage.setItem("pq_returning", "1");
         router.push("/dashboard");
       } else {
