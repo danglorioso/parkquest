@@ -15,7 +15,11 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://parkquest.me",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cXVhbGl0eS1kb2UtMjIuY2xlcmsuYWNjb3VudHMuZGV2JA"
+      }
     }
   },
   "submit": {
