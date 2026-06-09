@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy",
-  description: "Learn how ParkQuest collects, uses, and protects your personal information.",
+  title: "Terms of Service",
+  description: "Read the Terms of Service for ParkQuest — the rules and guidelines for using the app.",
 };
 
 function topoPattern(color: string, opacity: number): string {
@@ -11,7 +11,7 @@ function topoPattern(color: string, opacity: number): string {
   return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
 }
 
-export default function PrivacyPage() {
+export default function TermsPage() {
   const EFFECTIVE_DATE = "June 9, 2026";
 
   return (
@@ -138,7 +138,7 @@ export default function PrivacyPage() {
               margin: 0,
             }}
           >
-            Privacy Policy
+            Terms of Service
           </h1>
           <div
             style={{
@@ -165,7 +165,7 @@ export default function PrivacyPage() {
           padding: "32px 32px 80px",
         }}
       >
-      <PolicyContent />
+        <TermsContent />
       </div>
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
@@ -181,8 +181,8 @@ export default function PrivacyPage() {
           <span style={{ fontSize: 12, color: "rgba(255,251,241,0.40)", fontFamily: "var(--font-mono)", letterSpacing: "0.8px" }}>
             © PARKQUEST {new Date().getFullYear()}
           </span>
-          <Link href="/terms" style={{ fontSize: 12, color: "rgba(255,251,241,0.50)", textDecoration: "none", fontFamily: "var(--font-mono)", letterSpacing: "0.8px" }}>
-            TERMS
+          <Link href="/privacy" style={{ fontSize: 12, color: "rgba(255,251,241,0.50)", textDecoration: "none", fontFamily: "var(--font-mono)", letterSpacing: "0.8px" }}>
+            PRIVACY
           </Link>
           <Link href="/support" style={{ fontSize: 12, color: "rgba(255,251,241,0.50)", textDecoration: "none", fontFamily: "var(--font-mono)", letterSpacing: "0.8px" }}>
             CONTACT
@@ -237,7 +237,7 @@ function Ul({ items }: { items: string[] }) {
   );
 }
 
-function PolicyContent() {
+function TermsContent() {
   return (
     <>
       {/* Lead */}
@@ -253,86 +253,95 @@ function PolicyContent() {
           lineHeight: 1.7,
         }}
       >
-        ParkQuest (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) is a personal project built to help you track visits to all 63 U.S. national parks, earn badges, keep a trip journal, and connect with fellow explorers. This Privacy Policy explains what information we collect when you use ParkQuest, how we use it, and the choices you have. By using ParkQuest you agree to these practices.
+        These Terms of Service (&ldquo;Terms&rdquo;) govern your access to and use of ParkQuest, including its website, web application, and any related services (collectively, the &ldquo;Service&rdquo;). By creating an account or using the Service, you agree to these Terms. If you do not agree, do not use ParkQuest.
       </div>
 
-      <Section title="1. Information We Collect">
-        <P><strong>Account information.</strong> When you create an account, we collect your email address, a username you choose, and optionally your first and last name. If you sign in with Apple or Google, we receive the profile information those providers share with us (typically your name and email address).</P>
-        <P><strong>Park visit and journal data.</strong> We store the records you create: which parks you&apos;ve marked as visited or bucket-listed, visit dates, journal entries, notes, companions you tag, and any photos you upload.</P>
-        <P><strong>Profile and social content.</strong> We store your profile photo, bio, follower/following relationships, posts you publish to the feed, reactions, and comments.</P>
-        <P><strong>Trip plans.</strong> Itineraries, dates, and parks you add to the planner are stored in your account.</P>
-        <P><strong>Support communications.</strong> If you contact us through the support form we collect your name, email address, and the message you send.</P>
-        <P><strong>Usage data.</strong> We collect anonymized analytics about how pages are visited — page views and general interaction events — to understand how the app is being used and to improve it. This data does not include personally identifiable information.</P>
+      <Section title="1. Eligibility">
+        <P>You must be at least 13 years old to use ParkQuest. By using the Service you represent that you meet this requirement. If you are under 18, you represent that your parent or guardian has reviewed and agreed to these Terms on your behalf.</P>
+        <P>ParkQuest is currently available only to users in the United States. Access from other jurisdictions is not supported and may not function correctly.</P>
       </Section>
 
-      <Section title="2. How We Use Your Information">
+      <Section title="2. Your Account">
+        <P>You are responsible for maintaining the confidentiality of your account credentials and for all activity that occurs under your account. Choose a strong password and do not share your login with others.</P>
+        <P>You agree to provide accurate information when creating your account and to keep it up to date. Usernames must be appropriate and may not impersonate another person, contain offensive language, or mislead other users.</P>
+        <P>We reserve the right to suspend or terminate accounts that violate these Terms, at our sole discretion and without prior notice when necessary to protect the Service or other users.</P>
+      </Section>
+
+      <Section title="3. Acceptable Use">
+        <P>You agree to use ParkQuest only for its intended purpose — tracking national park visits, journaling, planning trips, earning badges, and connecting with other explorers.</P>
+        <P>You must not:</P>
         <Ul items={[
-          "To operate the app and provide all features: visit tracking, badges, journaling, the map, the planner, and the social feed.",
-          "To authenticate you and keep your account secure.",
-          "To send transactional emails (email verification, password reset codes, device verification).",
-          "To calculate and award badges and achievements based on your visit history.",
-          "To show your content to followers when you choose to share it publicly.",
-          "To respond to support requests you submit.",
-          "To understand aggregate usage patterns and improve the product.",
+          "Post content that is unlawful, abusive, threatening, harassing, defamatory, obscene, or otherwise objectionable.",
+          "Upload files or content that infringe any third party's intellectual property rights.",
+          "Use the Service to send spam, unsolicited messages, or commercial solicitations to other users.",
+          "Attempt to gain unauthorized access to any part of the Service or another user's account.",
+          "Scrape, crawl, or otherwise extract data from the Service in bulk without written permission.",
+          "Use the Service in any way that could damage, disable, overburden, or impair its infrastructure.",
+          "Reverse-engineer, decompile, or attempt to extract the source code of the Service.",
+          "Use automated tools, bots, or scripts to interact with the Service in ways that could harm other users or the platform.",
         ]} />
-        <P>We do not use your information for advertising, and we do not sell your data to third parties.</P>
       </Section>
 
-      <Section title="3. Third-Party Services">
-        <P>ParkQuest relies on the following third-party services to operate. Each has its own privacy practices.</P>
-        <Ul items={[
-          "Clerk — authentication and user management. Handles sign-in, sign-up, OAuth flows, session management, and email verification. clerk.com/privacy",
-          "Apple Sign In / Google Sign In — OAuth identity providers. Used only if you choose to sign in with Apple or Google.",
-          "Vercel — hosting and edge infrastructure. Also provides the anonymous analytics we use. vercel.com/legal/privacy-policy",
-          "Cloudflare R2 — object storage used to host photos and files you upload.",
-          "Formspree — processes support form submissions and forwards them to us. formspree.io/legal/privacy-policy",
-        ]} />
-        <P>We only share with these services the minimum data needed for them to perform their function.</P>
+      <Section title="4. User Content">
+        <P><strong>Your content.</strong> You retain ownership of the content you submit to ParkQuest — journal entries, photos, posts, and other material you create (&ldquo;User Content&rdquo;).</P>
+        <P><strong>License to us.</strong> By submitting User Content, you grant ParkQuest a non-exclusive, worldwide, royalty-free license to store, display, and distribute that content as necessary to operate the Service. For content you share publicly (feed posts, public profile data), this license also covers making it visible to other users.</P>
+        <P><strong>Your responsibility.</strong> You are solely responsible for the User Content you submit. You represent that you have all necessary rights to share it and that it does not violate any law or third-party rights.</P>
+        <P><strong>Removal.</strong> We may remove User Content that violates these Terms or that we determine, in our sole discretion, is harmful to the Service or its users.</P>
       </Section>
 
-      <Section title="4. Data Sharing">
-        <P><strong>With other users.</strong> Content you share publicly (posts, your visit count visible on your profile, your follower/following lists) is visible to other ParkQuest users. Journal entries and visit details are private by default unless you explicitly publish them to the feed.</P>
-        <P><strong>With service providers.</strong> As described above, we share data with third-party services that help operate the app. These providers are contractually restricted from using your data for any purpose other than providing services to us.</P>
-        <P><strong>Legal requirements.</strong> We may disclose your information if required by law or in response to valid legal process.</P>
-        <P>We do not sell, rent, or trade your personal information to any third party.</P>
-      </Section>
-
-      <Section title="5. Photos and Uploaded Files">
-        <P>Photos you upload (profile pictures, journal photos) are stored on Cloudflare R2 object storage. Journal photos are associated with your account and only accessible to users you grant access to (or publicly, if you publish a post). You can delete uploaded photos at any time through the app, which removes them from storage.</P>
-      </Section>
-
-      <Section title="6. Data Retention">
-        <P>We retain your account data for as long as your account is active. If you delete your account, we will delete your personal information within 30 days, except where we are required to retain it for legal or operational reasons (such as resolving disputes or complying with applicable law).</P>
-        <P>Anonymous analytics data (page views, aggregate events) has no retention limit as it contains no personal information.</P>
-      </Section>
-
-      <Section title="7. Security">
-        <P>We use industry-standard practices to protect your information: HTTPS for all data in transit, and access controls on our data stores. Authentication is handled by Clerk, which provides secure session management, hashed passwords, and multi-factor authentication support.</P>
-        <P>No system is perfectly secure. If you believe your account has been compromised, please contact us immediately through the support page.</P>
-      </Section>
-
-      <Section title="8. Your Rights and Choices">
-        <P><strong>Access and correction.</strong> You can view and update your profile information (username, name, profile photo) at any time in your account settings.</P>
-        <P><strong>Deletion.</strong> You can delete your account from the account settings. This removes your personal data, visit records, journal entries, posts, and uploaded photos.</P>
-        <P><strong>Data export.</strong> If you want a copy of your data, contact us through the support page and we will provide it within a reasonable time.</P>
-        <P><strong>Email communications.</strong> Transactional emails (verification codes, password resets) are necessary for the service to function and cannot be opted out of while you hold an account.</P>
-      </Section>
-
-      <Section title="9. Children's Privacy">
-        <P>ParkQuest is not directed to children under 13. We do not knowingly collect personal information from children under 13. If you believe a child under 13 has provided us with personal information, please contact us and we will delete it promptly.</P>
-      </Section>
-
-      <Section title="10. Changes to This Policy">
-        <P>We may update this Privacy Policy from time to time. When we do, we will revise the effective date at the top. If changes are material, we will provide notice within the app. Continued use of ParkQuest after changes take effect constitutes acceptance of the updated policy.</P>
-      </Section>
-
-      <Section title="11. Contact">
+      <Section title="5. Privacy">
         <P>
-          Questions or concerns about this policy? Reach us through the{" "}
+          Our{" "}
+          <Link href="/privacy" style={{ color: "var(--primary)", fontWeight: 600, textDecoration: "none" }}>
+            Privacy Policy
+          </Link>
+          {" "}describes how we collect, use, and protect your information. By using ParkQuest you agree to our data practices as described there.
+        </P>
+      </Section>
+
+      <Section title="6. Intellectual Property">
+        <P>ParkQuest and its original content — including the name, logo, design, code, and all features not constituting User Content — are the exclusive property of Dan Glorioso. Nothing in these Terms grants you a right to use the ParkQuest name, logo, or any other brand elements.</P>
+        <P>The U.S. National Park names, logos, and imagery are the property of the National Park Service and the U.S. government. ParkQuest is an independent project and is not affiliated with, endorsed by, or sponsored by the National Park Service.</P>
+      </Section>
+
+      <Section title="7. Third-Party Services">
+        <P>ParkQuest integrates third-party services including Clerk (authentication), Apple and Google (sign-in), Vercel (hosting), and Cloudflare (file storage). Your use of those services is subject to their respective terms and privacy policies. We are not responsible for the practices of any third-party service.</P>
+      </Section>
+
+      <Section title="8. Disclaimers">
+        <P>ParkQuest is provided &ldquo;as is&rdquo; and &ldquo;as available&rdquo; without warranties of any kind, express or implied. We do not warrant that the Service will be uninterrupted, error-free, or free of harmful components. We do not guarantee the accuracy of any park information, weather data, or other third-party data displayed in the app.</P>
+        <P>Park visit planning, trail conditions, and travel safety are entirely your responsibility. Always consult official National Park Service resources and follow posted regulations before visiting a park.</P>
+      </Section>
+
+      <Section title="9. Limitation of Liability">
+        <P>To the fullest extent permitted by applicable law, ParkQuest and its creator shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of or inability to use the Service — including loss of data, loss of profits, or any other intangible losses — even if we have been advised of the possibility of such damages.</P>
+        <P>Our total liability to you for any claims arising from these Terms or the Service shall not exceed the greater of $10 USD or the amount you have paid to us in the past twelve months (which is currently $0 as the Service is free).</P>
+      </Section>
+
+      <Section title="10. Indemnification">
+        <P>You agree to indemnify and hold harmless ParkQuest and its creator from any claims, losses, damages, liabilities, and expenses (including reasonable legal fees) arising from your use of the Service, your User Content, or your violation of these Terms.</P>
+      </Section>
+
+      <Section title="11. Termination">
+        <P>You may stop using ParkQuest and delete your account at any time through the account settings.</P>
+        <P>We may suspend or terminate your access to the Service at any time, with or without cause, and with or without notice. Upon termination, your right to use the Service ceases immediately. Provisions of these Terms that by their nature should survive termination will do so, including Sections 4, 6, 8, 9, and 10.</P>
+      </Section>
+
+      <Section title="12. Changes to These Terms">
+        <P>We may update these Terms from time to time. When we do, we will update the effective date at the top of this page. If changes are material, we will provide notice within the app. Continued use of ParkQuest after updated Terms take effect constitutes your acceptance of the new Terms.</P>
+      </Section>
+
+      <Section title="13. Governing Law">
+        <P>These Terms are governed by the laws of the State of New York, without regard to its conflict-of-law principles. Any disputes arising from these Terms or the Service shall be resolved in the courts located in New York.</P>
+      </Section>
+
+      <Section title="14. Contact">
+        <P>
+          Questions about these Terms? Reach us through the{" "}
           <Link href="/support" style={{ color: "var(--primary)", fontWeight: 600, textDecoration: "none" }}>
             support page
           </Link>
-          . We will respond within a few business days.
+          .
         </P>
       </Section>
     </>

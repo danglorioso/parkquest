@@ -520,7 +520,7 @@ export default function SupportPage() {
 
       {/* Right — form panel (wider, fills remaining space) ───────────────────── */}
       <div
-        className="flex-1 px-6 py-10 md:px-[60px] md:py-[52px] overflow-y-auto"
+        className="flex-1 px-6 pt-10 md:px-[60px] md:pt-[52px] overflow-y-auto"
         style={{
           background: "var(--bg)",
           borderLeft: "0.5px solid var(--hairline)",
@@ -660,6 +660,7 @@ export default function SupportPage() {
                 <div
                   style={{
                     marginTop: 20,
+                    marginBottom: 20,
                     fontSize: 11.5,
                     color: "var(--ink-mute)",
                     textAlign: "center",
@@ -675,6 +676,29 @@ export default function SupportPage() {
               </form>
             </>
           )}
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            borderTop: "0.5px solid var(--hairline)",
+            padding: "16px 0",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 20,
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 11, color: "var(--ink-mute)", fontFamily: "var(--font-mono)", letterSpacing: "0.8px" }}>
+            © PARKQUEST {new Date().getFullYear()}
+          </span>
+          <Link href="/privacy" style={{ fontSize: 11, color: "var(--ink-mute)", textDecoration: "none", fontFamily: "var(--font-mono)", letterSpacing: "0.8px" }}>
+            PRIVACY
+          </Link>
+          <Link href="/terms" style={{ fontSize: 11, color: "var(--ink-mute)", textDecoration: "none", fontFamily: "var(--font-mono)", letterSpacing: "0.8px" }}>
+            TERMS
+          </Link>
         </div>
       </div>
     </div>

@@ -2,8 +2,7 @@ export default function Footer() {
   return (
     <footer className="bg-green-900 border-t border-white/10 mt-auto">
       <div className="max-w-6xl mx-auto px-6 py-4">
-        <div className="flex flex-col items-center space-y-4">
-          {/* Main content */}
+        <div className="flex flex-col items-center space-y-3">
           <div className="text-center">
             <p className="text-white text-sm md:text-base mb-1">
               Created by{" "}
@@ -20,6 +19,17 @@ export default function Footer() {
             <p className="text-white/80 text-xs">
               © {new Date().getFullYear()} All rights reserved
             </p>
+          </div>
+          <div className="flex items-center gap-5">
+            <a href="/privacy" className="text-white/50 hover:text-white/80 text-xs font-mono tracking-wider transition-colors duration-200">
+              PRIVACY
+            </a>
+            <a href="/terms" className="text-white/50 hover:text-white/80 text-xs font-mono tracking-wider transition-colors duration-200">
+              TERMS
+            </a>
+            <a href="/support" className="text-white/50 hover:text-white/80 text-xs font-mono tracking-wider transition-colors duration-200">
+              CONTACT
+            </a>
           </div>
         </div>
       </div>

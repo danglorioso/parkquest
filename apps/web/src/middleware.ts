@@ -45,7 +45,7 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   // Public legal pages
-  if (req.nextUrl.pathname === '/privacy') {
+  if (req.nextUrl.pathname === '/privacy' || req.nextUrl.pathname === '/terms') {
     return NextResponse.next();
   }
   

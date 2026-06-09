@@ -1819,7 +1819,7 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
             ABOUT
           </button>
           {(["PRIVACY", "TERMS", "CONTACT", "CHANGELOG"] as const).map((l) => {
-            const href = l === "CONTACT" ? "/support" : l === "PRIVACY" ? "/privacy" : null;
+            const href = l === "CONTACT" ? "/support" : l === "PRIVACY" ? "/privacy" : l === "TERMS" ? "/terms" : l === "CHANGELOG" ? "https://github.com/danglorioso/parkquest" :null;
             return href ? (
               <a
                 key={l}
@@ -2090,7 +2090,7 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
             }}
           >
             By continuing you agree to the{" "}
-            <a href="#" style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 600 }}>
+            <a href="/terms" style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 600 }}>
               Terms
             </a>{" "}
             and{" "}
