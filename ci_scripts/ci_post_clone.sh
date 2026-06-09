@@ -10,4 +10,4 @@ pnpm install --frozen-lockfile
 
 # Install CocoaPods dependencies
 cd "$CI_PRIMARY_REPOSITORY_PATH/apps/mobile/ios"
-pod install
+pod install --repo-update
