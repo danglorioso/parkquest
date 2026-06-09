@@ -43,6 +43,11 @@ export default clerkMiddleware(async (auth, req) => {
   if (req.nextUrl.pathname === '/support') {
     return NextResponse.next();
   }
+
+  // Public legal pages
+  if (req.nextUrl.pathname === '/privacy') {
+    return NextResponse.next();
+  }
   
   // For ALL other routes (including /map), require auth
   if (!userId) {

@@ -1818,11 +1818,12 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
           >
             ABOUT
           </button>
-          {["PRIVACY", "TERMS", "CONTACT", "CHANGELOG"].map((l) =>
-            l === "CONTACT" ? (
+          {(["PRIVACY", "TERMS", "CONTACT", "CHANGELOG"] as const).map((l) => {
+            const href = l === "CONTACT" ? "/support" : l === "PRIVACY" ? "/privacy" : null;
+            return href ? (
               <a
                 key={l}
-                href="/support"
+                href={href}
                 style={{ cursor: "pointer", transition: "color 120ms", color: "inherit", textDecoration: "none" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(255,251,241,0.85)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "inherit"; }}
@@ -1838,8 +1839,8 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
               >
                 {l}
               </span>
-            )
-          )}
+            );
+          })}
         </div>
 
         {/* Credit block */}
@@ -2093,7 +2094,7 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
               Terms
             </a>{" "}
             and{" "}
-            <a href="#" style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 600 }}>
+            <a href="/privacy" style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 600 }}>
               Privacy Policy
             </a>
             .
