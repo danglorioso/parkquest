@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+
 # Install pnpm
 npm install -g pnpm
 
