@@ -38,6 +38,11 @@ export default clerkMiddleware(async (auth, req) => {
   if (req.nextUrl.pathname.startsWith('/onboarding')) {
     return NextResponse.next();
   }
+
+  // Public support / contact page
+  if (req.nextUrl.pathname === '/support') {
+    return NextResponse.next();
+  }
   
   // For ALL other routes (including /map), require auth
   if (!userId) {

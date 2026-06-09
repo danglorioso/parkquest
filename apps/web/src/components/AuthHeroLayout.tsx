@@ -1822,9 +1822,7 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
             l === "CONTACT" ? (
               <a
                 key={l}
-                href="https://danglorioso.com/contact"
-                target="_blank"
-                rel="noreferrer"
+                href="/support"
                 style={{ cursor: "pointer", transition: "color 120ms", color: "inherit", textDecoration: "none" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(255,251,241,0.85)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "inherit"; }}

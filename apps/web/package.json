@@ -16,6 +16,7 @@
     "@aws-sdk/client-s3": "^3.1059.0",
     "@aws-sdk/s3-request-presigner": "^3.1059.0",
     "@clerk/nextjs": "^6.36.5",
+    "@formspree/react": "^3.0.0",
     "@hookform/resolvers": "^5.2.2",
     "@neondatabase/serverless": "^1.0.2",
     "@parkquest/types": "workspace:*",
