@@ -1,10 +1,14 @@
 #!/bin/sh
 set -e
 
-echo "Checking Node"
+echo "=== PRE-XCODEBUILD ==="
+echo "PATH=$PATH"
 
 which node || true
-node --version || true
+which npm || true
+which pnpm || true
 
-cd "$CI_PRIMARY_REPOSITORY_PATH/apps/mobile/ios"
-pod install --repo-update
+node --version || true
+npm --version || true
+
+exit 0
