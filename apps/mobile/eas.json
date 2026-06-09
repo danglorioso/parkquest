@@ -15,10 +15,7 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "ios": {
-        "prebuildCommand": "cd ios && pod install"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {
