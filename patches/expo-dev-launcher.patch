@@ -1,0 +1,26 @@
+diff --git a/ios/ReactDelegateHandler/ExpoDevLauncherAppDelegateSubscriber.swift b/ios/ReactDelegateHandler/ExpoDevLauncherAppDelegateSubscriber.swift
+index e7c1d244b27fb5db5c7fdd05963bf082ab8e2785..7588fb72849c94b9d92f13dfb986990b617af993 100644
+--- a/ios/ReactDelegateHandler/ExpoDevLauncherAppDelegateSubscriber.swift
++++ b/ios/ReactDelegateHandler/ExpoDevLauncherAppDelegateSubscriber.swift
+@@ -4,10 +4,18 @@ import ExpoModulesCore
+ 
+ public class ExpoDevLauncherAppDelegateSubscriber: ExpoAppDelegateSubscriber {
+   public func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+-    guard let window = UIApplication.shared.delegate?.window ?? UIApplication.shared.windows.filter { $0.isKeyWindow }.first else {
+-      fatalError("Cannot find the keyWindow. Make sure to call `window.makeKeyAndVisible()`.")
++    DispatchQueue.main.async {
++      let window = UIApplication.shared.connectedScenes
++        .compactMap { $0 as? UIWindowScene }
++        .flatMap { $0.windows }
++        .first { $0.isKeyWindow } ?? UIApplication.shared.connectedScenes
++        .compactMap { $0 as? UIWindowScene }
++        .flatMap { $0.windows }
++        .first
++      if let w = window {
++        EXDevLauncherController.sharedInstance().autoSetupStart(w)
++      }
+     }
+-    EXDevLauncherController.sharedInstance().autoSetupStart(window)
+     return false
+   }
+ 

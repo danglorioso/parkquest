@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner'],
   images: {
     remotePatterns: [
       {
@@ -14,6 +15,10 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'www.nps.gov',
+      },
+      {
+        protocol: 'https',
+        hostname: 'pub-ec7e74c5227e4ac5a31a7d7127604889.r2.dev',
       },
     ],
   },

@@ -1,0 +1,13 @@
+diff --git a/src/messageSocket.native.ts b/src/messageSocket.native.ts
+index 1234567..abcdefg 100644
+--- a/src/messageSocket.native.ts
++++ b/src/messageSocket.native.ts
+@@ -1,7 +1,7 @@
+ /* eslint-env browser */
+
+ function createWebSocketConnection(path: string = '/message') {
+-  const getDevServer = require('react-native/Libraries/Core/Devtools/getDevServer');
++  const getDevServer = require('react-native/Libraries/Core/Devtools/getDevServer').default;
+   const devServer = getDevServer();
+   if (!devServer.bundleLoadedFromServer) {
+     throw new Error('Cannot create devtools websocket connections in embedded environments.');
