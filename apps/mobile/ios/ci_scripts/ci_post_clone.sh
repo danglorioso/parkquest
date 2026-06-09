@@ -1,8 +1,11 @@
 #!/bin/sh
 set -e
 
-echo "Running Xcode Cloud post-clone"
+echo "PATH=$PATH"
 
-cd "$CI_PRIMARY_REPOSITORY_PATH/apps/mobile/ios"
+which node || true
+which npm || true
 
-pod install --repo-update
+find /usr -name node 2>/dev/null | head -20 || true
+
+exit 1
