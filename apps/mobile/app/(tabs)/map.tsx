@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Animated, Dimensions, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet,
@@ -627,7 +627,7 @@ function ParkBottomSheet({
 // ── MapScreen ─────────────────────────────────────────────────────────────────
 
 export default function MapScreen() {
-  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [token, setToken]               = useState<string | null>(null);
@@ -651,11 +651,10 @@ export default function MapScreen() {
     parks.filter(p => p.status === filterStatus);
 
   const loadData = useCallback(async () => {
-    if (!isLoaded || !isSignedIn) return;
     const tok = await getToken();
     if (!tok) return;
     setToken(tok);
-    setLoading(true);
+    setParks(prev => { if (prev.length === 0) setLoading(true); return prev; });
     try {
       const [parksData, visitsData] = await Promise.all([
         apiFetch<Array<{
@@ -716,10 +715,11 @@ export default function MapScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken, isLoaded, isSignedIn]);
+  }, [getToken]);
 
-  useEffect(() => { loadData(); }, [loadData]);
-  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+  const loadDataRef = useRef(loadData);
+  loadDataRef.current = loadData;
+  useFocusEffect(useCallback(() => { loadDataRef.current(); }, []));
 
   const handleStatusChange = useCallback((code: string, status: ParkStatus) => {
     setParks(prev =>

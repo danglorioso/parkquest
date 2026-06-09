@@ -1,6 +1,6 @@
 import '../global.css';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -27,12 +27,14 @@ function AuthSync() {
   const { isSignedIn, isLoaded } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const wasSignedIn = useRef(false);
 
   useEffect(() => {
     if (!isLoaded || segments.length === 0) return;
+    if (isSignedIn) wasSignedIn.current = true;
     const inAuth = segments[0] === '(auth)';
     if (isSignedIn && inAuth) router.replace('/(tabs)/feed');
-    if (!isSignedIn && !inAuth) router.replace('/(auth)/sign-in');
+    if (!isSignedIn && !inAuth && !wasSignedIn.current) router.replace('/(auth)/sign-in');
   }, [isLoaded, isSignedIn, segments]);
 
   return null;

@@ -2,7 +2,7 @@ import {
   Dimensions, FlatList, Image, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -272,7 +272,7 @@ export default function ParksScreen() {
   const loadData = useCallback(async () => {
     const tok = await getToken();
     if (!tok) return;
-    setLoading(true);
+    setParks(prev => { if (prev.length === 0) setLoading(true); return prev; });
     setError(false);
     try {
       const [parksData, visitsData] = await Promise.all([
@@ -289,8 +289,9 @@ export default function ParksScreen() {
     }
   }, [getToken]);
 
-  useEffect(() => { loadData(); }, [loadData]);
-  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+  const loadDataRef = useRef(loadData);
+  loadDataRef.current = loadData;
+  useFocusEffect(useCallback(() => { loadDataRef.current(); }, []));
 
   const visitedCount = useMemo(
     () => parks.filter(p => parkStatus(p.park_code, visits) === 'visited').length,
