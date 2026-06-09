@@ -19,7 +19,8 @@
       "buildNumber": "1",
       "developmentTeam": "U8AK9PG243",
       "infoPlist": {
-        "NSCameraUsageDescription": "ParkQuest uses your camera to capture and share photos from your park visits."
+        "NSCameraUsageDescription": "ParkQuest uses your camera to capture and share photos from your park visits.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

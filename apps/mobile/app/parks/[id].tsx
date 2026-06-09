@@ -276,7 +276,7 @@ export default function ParkDetailScreen() {
   const loadData = useCallback(async () => {
     const tok = await getToken();
     if (!tok || !id) return;
-    setLoading(true);
+    setPark(prev => { if (!prev) setLoading(true); return prev; });
     try {
       const [parkData, npsData, visitsData] = await Promise.allSettled([
         apiFetch<Park>(`/api/parks/${id}`, tok),
@@ -295,7 +295,6 @@ export default function ParkDetailScreen() {
     }
   }, [getToken, id]);
 
-  // Weather fetched separately (may be slow / fail without breaking the page)
   const loadWeather = useCallback(async () => {
     const tok = await getToken();
     if (!tok || !id) return;
@@ -305,10 +304,15 @@ export default function ParkDetailScreen() {
     } catch { /* weather is optional */ }
   }, [getToken, id]);
 
+  const loadDataRef = useRef(loadData);
+  const loadWeatherRef = useRef(loadWeather);
+  loadDataRef.current = loadData;
+  loadWeatherRef.current = loadWeather;
+
   useEffect(() => {
-    loadData();
-    loadWeather();
-  }, [loadData, loadWeather]);
+    loadDataRef.current();
+    loadWeatherRef.current();
+  }, []);
 
   const parkStatus = (() => {
     if (visits.some(v => !v.is_bucket_list && v.visited_date)) return 'visited';
