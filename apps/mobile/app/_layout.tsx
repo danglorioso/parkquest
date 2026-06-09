@@ -1,13 +1,15 @@
 import '../global.css';
 
 import { useEffect } from 'react';
-import { View, Text } from 'react-native';
-import { ClerkProvider, ClerkLoaded, ClerkLoading, useAuth } from '@clerk/clerk-expo';
+import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as WebBrowser from 'expo-web-browser';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const tokenCache = {
   getToken: (key: string) => SecureStore.getItemAsync(key),
@@ -20,7 +22,6 @@ const queryClient = new QueryClient({
 });
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
-console.log('[layout] publishableKey:', publishableKey ? 'set' : 'MISSING');
 
 function AuthSync() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -40,12 +41,6 @@ function AuthSync() {
 export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <ClerkLoading>
-        <View style={{ flex: 1, backgroundColor: 'red', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: 'white', fontSize: 32, fontWeight: 'bold' }}>CLERK LOADING</Text>
-          <Text style={{ color: 'white', fontSize: 16, marginTop: 8 }}>key: {publishableKey ? 'set' : 'MISSING'}</Text>
-        </View>
-      </ClerkLoading>
       <ClerkLoaded>
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={{ flex: 1 }}>

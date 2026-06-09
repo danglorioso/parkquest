@@ -5,13 +5,9 @@ import {
 import { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSignIn, useSignUp, useOAuth, useUser } from '@clerk/clerk-expo';
+import { useSignIn, useSignUp, useOAuth, useUser, useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-
-WebBrowser.maybeCompleteAuthSession();
-
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
 const C = {
@@ -170,6 +166,7 @@ export default function AuthScreen() {
   const { signIn, setActive: setSIActive, isLoaded: siLoaded } = useSignIn();
   const { signUp, setActive: setSUActive, isLoaded: suLoaded } = useSignUp();
   const { user } = useUser();
+  const { isSignedIn } = useAuth();
   const { startOAuthFlow: googleFlow } = useOAuth({ strategy: 'oauth_google' });
   const { startOAuthFlow: appleFlow  } = useOAuth({ strategy: 'oauth_apple' });
   const router = useRouter();
@@ -237,6 +234,10 @@ export default function AuthScreen() {
 
   const handleSignIn = async () => {
     if (!siLoaded) return;
+    if (isSignedIn) {
+      router.replace('/(tabs)/feed' as never);
+      return;
+    }
     clearError();
     setBusy(true);
     try {

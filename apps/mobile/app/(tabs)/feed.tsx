@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   ActivityIndicator, StyleSheet,
@@ -64,7 +64,7 @@ function SkeletonCard() {
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
-  const { getToken, signOut } = useAuth();
+  const { getToken } = useAuth();
   const { user } = useUser();
   const router = useRouter();
 
@@ -80,7 +80,7 @@ export default function FeedScreen() {
     if (!tok) { setLoading(false); return; }
     setToken(tok);
     if (isRefresh) setRefreshing(true);
-    else if (!isRefresh) setLoading(true);
+    else setPosts(prev => { if (prev.length === 0) setLoading(true); return prev; });
     setError(false);
     try {
       const res = await fetch(`${BASE}/api/feed`, {
@@ -100,8 +100,10 @@ export default function FeedScreen() {
     }
   }, [getToken]);
 
-  // useFocusEffect fires on mount AND on tab focus — don't need separate useEffect
-  useFocusEffect(useCallback(() => { loadFeed(); }, [loadFeed]));
+  const loadFeedRef = useRef(loadFeed);
+  loadFeedRef.current = loadFeed;
+
+  useFocusEffect(useCallback(() => { loadFeedRef.current(); }, []));
 
   const handleDelete = useCallback((id: number) => {
     setPosts(prev => prev.filter(p => p.id !== id));
@@ -125,13 +127,6 @@ export default function FeedScreen() {
           <Text style={styles.subtitle}>Latest posts from your friends and the community</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 20 }}>
-          <TouchableOpacity
-            onPress={async () => { await signOut(); router.replace('/(auth)/sign-in' as never); }}
-            style={{ padding: 8 }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="log-out-outline" size={22} color={C.inkMute} />
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.logBtn}
             activeOpacity={0.8}
