@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSignUp, useUser } from '@clerk/clerk-expo';
+import { useSignIn } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -16,11 +16,12 @@ const C = {
   inkMute:  '#7A746A',
   hairline: 'rgba(27,26,22,0.10)',
   primary:  '#1F3D2E',
+  accent:   '#C56B3D',
 };
 
 const MONO = 'JetBrainsMono_600SemiBold';
 
-type Step = 'email' | 'password' | 'verify' | 'username';
+type Step = 'form' | 'mfa' | 'forgot_email' | 'forgot_verify';
 
 // ── Atoms ─────────────────────────────────────────────────────────────────────
 
@@ -86,90 +87,110 @@ function ErrorBox({ msg }: { msg: string }) {
   );
 }
 
+function InfoText({ children }: { children: React.ReactNode }) {
+  return <Text style={st.infoText}>{children}</Text>;
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-export default function SignUpScreen() {
+export default function LoginScreen() {
   const router = useRouter();
-  const { signUp, setActive, isLoaded } = useSignUp();
-  const { user } = useUser();
+  const { signIn, setActive, isLoaded } = useSignIn();
 
-  const [step,     setStep]     = useState<Step>('email');
-  const [email,    setEmail]    = useState('');
-  const [password, setPassword] = useState('');
-  const [showPw,   setShowPw]   = useState(false);
-  const [code,     setCode]     = useState('');
-  const [username, setUsername] = useState('');
-  const [busy,     setBusy]     = useState(false);
-  const [error,    setError]    = useState('');
+  const [step,      setStep]      = useState<Step>('form');
+  const [email,     setEmail]     = useState('');
+  const [password,  setPassword]  = useState('');
+  const [showPw,    setShowPw]    = useState(false);
+  const [mfaCode,   setMfaCode]   = useState('');
+  const [fgEmail,   setFgEmail]   = useState('');
+  const [fgCode,    setFgCode]    = useState('');
+  const [fgPw,      setFgPw]      = useState('');
+  const [fgShowPw,  setFgShowPw]  = useState(false);
+  const [busy,      setBusy]      = useState(false);
+  const [error,     setError]     = useState('');
 
   const clerkMsg = (e: unknown) => {
-    const ce = e as { errors?: { message?: string; longMessage?: string; code?: string }[] };
+    const ce = e as { errors?: { message?: string; longMessage?: string }[] };
     return ce?.errors?.[0]?.longMessage ?? ce?.errors?.[0]?.message ?? 'Something went wrong.';
   };
 
-  const handleEmailContinue = () => {
-    if (!email.trim()) return;
-    setError('');
-    setStep('password');
-  };
-
-  const handleCreateAccount = async () => {
+  const handleSignIn = async () => {
     if (!isLoaded) return;
     setError('');
     setBusy(true);
     try {
-      await signUp!.create({ emailAddress: email, password });
-      await signUp!.prepareEmailAddressVerification({ strategy: 'email_code' });
-      setStep('verify');
-    } catch (e) {
-      const ce = e as { errors?: { code?: string; message?: string; longMessage?: string }[] };
-      const first = ce?.errors?.[0];
-      if (first?.code === 'form_identifier_exists') {
-        setError('Account already exists. Please sign in instead.');
-      } else {
-        setError(first?.longMessage ?? first?.message ?? 'Something went wrong.');
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleVerify = async () => {
-    if (!isLoaded) return;
-    setError('');
-    setBusy(true);
-    try {
-      const result = await signUp!.attemptEmailAddressVerification({ code });
+      const result = await signIn!.create({ identifier: email, password });
       if (result.status === 'complete') {
         await setActive!({ session: result.createdSessionId });
-        setStep('username');
+        router.replace('/(tabs)/feed' as never);
+      } else if (result.status === 'needs_second_factor') {
+        const supported = result.supportedSecondFactors ?? [];
+        const emailF = supported.find((f: any) => f.strategy === 'email_code') as any;
+        const phoneF = supported.find((f: any) => f.strategy === 'phone_code') as any;
+        if (emailF) {
+          await signIn!.prepareSecondFactor({ strategy: 'email_code', emailAddressId: emailF.emailAddressId });
+        } else if (phoneF) {
+          await signIn!.prepareSecondFactor({ strategy: 'phone_code', phoneNumberId: phoneF.phoneNumberId });
+        }
+        setStep('mfa');
       }
     } catch (e) { setError(clerkMsg(e)); }
     finally { setBusy(false); }
   };
 
-  const handleUsername = async () => {
-    if (!user || username.length < 3) return;
+  const handleMfa = async () => {
+    if (!isLoaded) return;
     setError('');
     setBusy(true);
     try {
-      await user.update({ username: username.toLowerCase().replace(/[^a-z0-9_]/g, '') });
-      router.replace('/(tabs)/feed' as never);
+      const result = await signIn!.attemptSecondFactor({ strategy: 'email_code', code: mfaCode });
+      if (result.status === 'complete') {
+        await setActive!({ session: result.createdSessionId });
+        router.replace('/(tabs)/feed' as never);
+      }
+    } catch (e) { setError(clerkMsg(e)); }
+    finally { setBusy(false); }
+  };
+
+  const handleForgotSend = async () => {
+    if (!isLoaded) return;
+    setError('');
+    setBusy(true);
+    try {
+      await signIn!.create({ strategy: 'reset_password_email_code', identifier: fgEmail });
+      setStep('forgot_verify');
+    } catch (e) { setError(clerkMsg(e)); }
+    finally { setBusy(false); }
+  };
+
+  const handleForgotReset = async () => {
+    if (!isLoaded) return;
+    setError('');
+    setBusy(true);
+    try {
+      const result = await signIn!.attemptFirstFactor({
+        strategy: 'reset_password_email_code',
+        code: fgCode, password: fgPw,
+      });
+      if (result.status === 'complete') {
+        await setActive!({ session: result.createdSessionId });
+        router.replace('/(tabs)/feed' as never);
+      }
     } catch (e) { setError(clerkMsg(e)); }
     finally { setBusy(false); }
   };
 
   const headline =
-    step === 'email'    ? 'Start your quest.'  :
-    step === 'password' ? 'Create a password.' :
-    step === 'verify'   ? 'Check your email.'  :
-                          'One last thing.';
+    step === 'mfa'           ? 'Verify your identity.' :
+    step === 'forgot_email'  ? 'Reset password.'       :
+    step === 'forgot_verify' ? 'Check your email.'     :
+                               'Welcome back.';
 
   const sub =
-    step === 'email'    ? 'Free, ad-free, your data stays yours.'  :
-    step === 'password' ? `Creating account for ${email}`           :
-    step === 'verify'   ? `We sent a code to ${email}`             :
-                          'Choose a username for your profile.';
+    step === 'mfa'           ? "Enter the code sent to your email."    :
+    step === 'forgot_email'  ? "We'll send a reset code to your email." :
+    step === 'forgot_verify' ? "Enter the code and your new password." :
+                               'Pick up where you left off.';
 
   return (
     <SafeAreaView style={st.screen} edges={['bottom']}>
@@ -180,52 +201,64 @@ export default function SignUpScreen() {
       >
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
 
-          <Text style={st.kicker}>CREATE ACCOUNT</Text>
+          <Text style={st.kicker}>SIGN IN</Text>
           <Text style={st.headline}>{headline}</Text>
           <Text style={st.sub}>{sub}</Text>
 
           <View style={{ marginTop: 28 }}>
-            {step === 'email' && <>
-              <FField label="EMAIL" value={email} onChange={setEmail} keyboard="email-address" autoFocus />
+            {step === 'mfa' && <>
+              <FField label="VERIFICATION CODE" value={mfaCode} onChange={setMfaCode} keyboard="number-pad" autoFocus />
               {error ? <ErrorBox msg={error} /> : null}
-              <PrimaryBtn label="Continue" onPress={handleEmailContinue} disabled={!email.trim()} />
+              <PrimaryBtn label="Verify" onPress={handleMfa} loading={busy} />
+              <SecondaryBtn label="Back" onPress={() => { setStep('form'); setMfaCode(''); setError(''); }} />
             </>}
 
-            {step === 'password' && <>
+            {step === 'form' && <>
+              <FField label="EMAIL OR USERNAME" value={email} onChange={setEmail} keyboard="email-address" />
               <FField
                 label="PASSWORD" value={password} onChange={setPassword}
                 secureText={!showPw} trailing={showPw ? 'Hide' : 'Show'}
-                onTrailing={() => setShowPw(v => !v)} autoFocus
+                onTrailing={() => setShowPw(v => !v)}
               />
+              <TouchableOpacity
+                onPress={() => { setFgEmail(email); setStep('forgot_email'); setError(''); }}
+                style={{ alignSelf: 'flex-end', marginBottom: 14 }}
+              >
+                <Text style={st.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
               {error ? <ErrorBox msg={error} /> : null}
-              <PrimaryBtn label="Create Account" onPress={handleCreateAccount} loading={busy} disabled={!password} />
-              <SecondaryBtn label="Back" onPress={() => { setStep('email'); setError(''); setPassword(''); }} />
+              <PrimaryBtn label="Sign In" onPress={handleSignIn} loading={busy} />
             </>}
 
-            {step === 'verify' && <>
-              <FField label="VERIFICATION CODE" value={code} onChange={setCode} keyboard="number-pad" autoFocus />
+            {step === 'forgot_email' && <>
+              <FField label="EMAIL" value={fgEmail} onChange={setFgEmail} keyboard="email-address" autoFocus />
               {error ? <ErrorBox msg={error} /> : null}
-              <PrimaryBtn label="Verify Email" onPress={handleVerify} loading={busy} disabled={!code} />
-              <SecondaryBtn label="Back" onPress={() => { setStep('password'); setError(''); setCode(''); }} />
+              <PrimaryBtn label="Send Reset Code" onPress={handleForgotSend} loading={busy} disabled={!fgEmail} />
+              <SecondaryBtn label="Back to Sign In" onPress={() => { setStep('form'); setError(''); }} />
             </>}
 
-            {step === 'username' && <>
+            {step === 'forgot_verify' && <>
+              <InfoText>
+                We sent a reset code to <Text style={{ color: C.ink, fontWeight: '700' }}>{fgEmail}</Text>.
+                {' '}Enter it with your new password.
+              </InfoText>
+              <FField label="RESET CODE" value={fgCode} onChange={setFgCode} autoFocus />
               <FField
-                label="USERNAME" value={username}
-                onChange={v => setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                autoFocus
+                label="NEW PASSWORD" value={fgPw} onChange={setFgPw}
+                secureText={!fgShowPw} trailing={fgShowPw ? 'Hide' : 'Show'}
+                onTrailing={() => setFgShowPw(v => !v)}
               />
-              <Text style={st.helperText}>Lowercase letters, numbers, underscores · min 3 chars</Text>
               {error ? <ErrorBox msg={error} /> : null}
-              <PrimaryBtn label="Enter ParkQuest" onPress={handleUsername} loading={busy} disabled={username.length < 3} />
+              <PrimaryBtn label="Reset Password" onPress={handleForgotReset} loading={busy} disabled={!fgCode || !fgPw} />
+              <SecondaryBtn label="Back" onPress={() => { setStep('forgot_email'); setFgCode(''); setError(''); }} />
             </>}
           </View>
 
-          {step === 'email' && (
+          {(step === 'form') && (
             <View style={st.switchRow}>
-              <Text style={st.switchText}>Already have an account?</Text>
-              <TouchableOpacity onPress={() => router.replace('/(auth)/login' as never)}>
-                <Text style={st.switchLink}> Sign in</Text>
+              <Text style={st.switchText}>Don't have an account?</Text>
+              <TouchableOpacity onPress={() => router.replace('/(auth)/sign-up' as never)}>
+                <Text style={st.switchLink}> Create one</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -254,14 +287,15 @@ const st = StyleSheet.create({
   fFieldInput:  { fontSize: 15, color: C.ink, paddingTop: 4 },
   trailingText: { fontSize: 12, fontWeight: '600', color: C.primary },
 
-  primaryBtn:       { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 10 },
-  primaryBtnText:   { fontSize: 15, fontWeight: '700', color: '#FFFBF1' },
-  secondaryBtn:     { paddingVertical: 12, alignItems: 'center' },
+  primaryBtn:     { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 10 },
+  primaryBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFBF1' },
+  secondaryBtn:   { paddingVertical: 12, alignItems: 'center' },
   secondaryBtnText: { fontSize: 13, fontWeight: '600', color: C.inkMute },
 
   errorBox:     { backgroundColor: 'rgba(192,64,64,0.08)', borderRadius: 10, borderWidth: 0.5, borderColor: 'rgba(192,64,64,0.25)', padding: 12, marginBottom: 12 },
   errorBoxText: { fontSize: 13, color: '#C04040' },
-  helperText:   { fontSize: 11.5, color: C.inkMute, marginBottom: 14 },
+  infoText:     { fontSize: 13.5, color: C.inkMute, lineHeight: 20, marginBottom: 14 },
+  forgotText:   { fontSize: 12, fontWeight: '600', color: C.primary },
 
   switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
   switchText: { fontSize: 13, color: C.inkMute },

@@ -1,6 +1,12 @@
 import '../global.css';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useFonts } from 'expo-font';
+import {
+  JetBrainsMono_400Regular,
+  JetBrainsMono_600SemiBold,
+  JetBrainsMono_700Bold,
+} from '@expo-google-fonts/jetbrains-mono';
 import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -8,6 +14,10 @@ import * as SecureStore from 'expo-secure-store';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as WebBrowser from 'expo-web-browser';
+import * as SplashScreen from 'expo-splash-screen';
+import LoadingScreen from '../components/LoadingScreen';
+
+SplashScreen.preventAutoHideAsync();
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -40,13 +50,34 @@ function AuthSync() {
   return null;
 }
 
+function SplashController({ onReady }: { onReady: () => void }) {
+  const { isLoaded: clerkLoaded } = useAuth();
+  const [fontsLoaded] = useFonts({
+    JetBrainsMono_400Regular,
+    JetBrainsMono_600SemiBold,
+    JetBrainsMono_700Bold,
+  });
+
+  useEffect(() => {
+    if (clerkLoaded && fontsLoaded) {
+      SplashScreen.hideAsync();
+      onReady();
+    }
+  }, [clerkLoaded, fontsLoaded]);
+
+  return null;
+}
+
 export default function RootLayout() {
+  const [appReady, setAppReady] = useState(false);
+
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <ClerkLoaded>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <SafeAreaProvider>
+            <SplashController onReady={() => setAppReady(true)} />
+            <ClerkLoaded>
               <AuthSync />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -64,19 +95,24 @@ export default function RootLayout() {
                 />
                 <Stack.Screen
                   name="parks/[id]"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="user/[id]"
                   options={{
                     headerShown: true,
                     headerStyle: { backgroundColor: '#F2EBDB' },
                     headerTintColor: '#1F3D2E',
                     headerShadowVisible: false,
-                    headerBackTitle: 'Parks',
+                    headerBackTitle: 'Back',
                   }}
                 />
               </Stack>
-            </SafeAreaProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
-      </ClerkLoaded>
+            </ClerkLoaded>
+            <LoadingScreen visible={!appReady} />
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
+      </QueryClientProvider>
     </ClerkProvider>
   );
 }

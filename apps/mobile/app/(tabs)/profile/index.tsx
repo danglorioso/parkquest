@@ -391,6 +391,7 @@ export default function ProfileScreen() {
 
         {/* Attribution */}
         <Text style={styles.attribution}>ParkQuest · Track your national park adventures</Text>
+        <Text style={styles.attribution}>© {new Date().getFullYear()} ParkQuest. All rights reserved.</Text>
 
       </ScrollView>
     </SafeAreaView>
@@ -434,7 +435,7 @@ const styles = StyleSheet.create({
     fontSize: 12, fontWeight: '600', color: C.inkMute, letterSpacing: 0.8, marginTop: 2,
   },
   heroMeta: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap', justifyContent: 'center',
+    flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 6,
   },
   heroMetaText: {
     fontSize: 11, color: C.inkMute,

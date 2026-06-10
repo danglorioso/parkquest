@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -148,19 +148,21 @@ interface ActionState {
 }
 
 function FriendRow({
-  avatarUrl, name, username, subtext, busy, onUnfriend,
+  avatarUrl, name, username, subtext, busy, onUnfriend, onPressUser,
 }: {
   avatarUrl: string | null; name: string; username: string; subtext?: string;
-  busy: boolean; onUnfriend: () => void;
+  busy: boolean; onUnfriend: () => void; onPressUser: () => void;
 }) {
   return (
     <View style={st.row}>
-      <Avatar url={avatarUrl} name={name} />
-      <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
-        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
-        <Text style={st.rowHandle}>@{username}</Text>
-        {subtext ? <Text style={st.rowSub}>{subtext}</Text> : null}
-      </View>
+      <TouchableOpacity onPress={onPressUser} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+        <Avatar url={avatarUrl} name={name} />
+        <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+          <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+          <Text style={st.rowHandle}>@{username}</Text>
+          {subtext ? <Text style={st.rowSub}>{subtext}</Text> : null}
+        </View>
+      </TouchableOpacity>
       <TouchableOpacity
         onPress={onUnfriend} disabled={busy}
         style={[st.btn, st.btnSecondary, busy && { opacity: 0.5 }]}
@@ -173,18 +175,20 @@ function FriendRow({
 }
 
 function IncomingRow({
-  avatarUrl, name, username, busy, onAccept, onDecline,
+  avatarUrl, name, username, busy, onAccept, onDecline, onPressUser,
 }: {
   avatarUrl: string | null; name: string; username: string;
-  busy: boolean; onAccept: () => void; onDecline: () => void;
+  busy: boolean; onAccept: () => void; onDecline: () => void; onPressUser: () => void;
 }) {
   return (
     <View style={st.row}>
-      <Avatar url={avatarUrl} name={name} />
-      <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
-        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
-        <Text style={st.rowHandle}>@{username}</Text>
-      </View>
+      <TouchableOpacity onPress={onPressUser} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+        <Avatar url={avatarUrl} name={name} />
+        <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+          <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+          <Text style={st.rowHandle}>@{username}</Text>
+        </View>
+      </TouchableOpacity>
       <View style={{ flexDirection: 'row', gap: 7, flexShrink: 0 }}>
         <TouchableOpacity onPress={onDecline} disabled={busy} style={[st.btn, st.btnSecondary, busy && { opacity: 0.5 }]}>
           <Text style={st.btnSecondaryText}>Decline</Text>
@@ -200,18 +204,20 @@ function IncomingRow({
 }
 
 function OutgoingRow({
-  avatarUrl, name, username, busy, onCancel,
+  avatarUrl, name, username, busy, onCancel, onPressUser,
 }: {
   avatarUrl: string | null; name: string; username: string;
-  busy: boolean; onCancel: () => void;
+  busy: boolean; onCancel: () => void; onPressUser: () => void;
 }) {
   return (
     <View style={st.row}>
-      <Avatar url={avatarUrl} name={name} />
-      <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
-        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
-        <Text style={st.rowHandle}>@{username}</Text>
-      </View>
+      <TouchableOpacity onPress={onPressUser} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+        <Avatar url={avatarUrl} name={name} />
+        <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+          <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+          <Text style={st.rowHandle}>@{username}</Text>
+        </View>
+      </TouchableOpacity>
       <TouchableOpacity onPress={onCancel} disabled={busy} style={[st.btn, st.btnSecondary, busy && { opacity: 0.5 }]}>
         <Ionicons name="time-outline" size={12} color={C.inkMute} style={{ marginRight: 3 }} />
         <Text style={st.btnSecondaryText}>Cancel</Text>
@@ -221,20 +227,22 @@ function OutgoingRow({
 }
 
 function SuggestedRow({
-  avatarUrl, name, username, subtext, state, onAdd,
+  avatarUrl, name, username, subtext, state, onAdd, onPressUser,
 }: {
   avatarUrl: string | null; name: string; username: string | null; subtext: string;
-  state: ActionState; onAdd: () => void;
+  state: ActionState; onAdd: () => void; onPressUser: () => void;
 }) {
   return (
     <View style={st.row}>
-      <Avatar url={avatarUrl} name={name} />
-      <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
-        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
-        <Text style={st.rowHandle} numberOfLines={1}>
-          {username ? `@${username} · ` : ''}{subtext}
-        </Text>
-      </View>
+      <TouchableOpacity onPress={onPressUser} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+        <Avatar url={avatarUrl} name={name} />
+        <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+          <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+          <Text style={st.rowHandle} numberOfLines={1}>
+            {username ? `@${username} · ` : ''}{subtext}
+          </Text>
+        </View>
+      </TouchableOpacity>
       <TouchableOpacity
         onPress={onAdd}
         disabled={state.sent || state.busy}
@@ -265,20 +273,22 @@ function SuggestedRow({
 // ── Search result row ─────────────────────────────────────────────────────────
 
 function SearchResultRow({
-  user, isFriend, isIncoming, isSent, busy, onAdd,
+  user, isFriend, isIncoming, isSent, busy, onAdd, onPressUser,
 }: {
   user: SearchUser;
   isFriend: boolean; isIncoming: boolean; isSent: boolean;
-  busy: boolean; onAdd: () => void;
+  busy: boolean; onAdd: () => void; onPressUser: () => void;
 }) {
   const name = displayName(user);
   return (
     <View style={[st.row, { borderBottomWidth: 0.5, borderBottomColor: C.hairline }]}>
-      <Avatar url={user.avatar_url} name={name} size={36} />
-      <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
-        <Text style={st.rowName} numberOfLines={1}>{name}</Text>
-        <Text style={st.rowHandle}>@{user.username}</Text>
-      </View>
+      <TouchableOpacity onPress={onPressUser} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+        <Avatar url={user.avatar_url} name={name} size={36} />
+        <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+          <Text style={st.rowName} numberOfLines={1}>{name}</Text>
+          <Text style={st.rowHandle}>@{user.username}</Text>
+        </View>
+      </TouchableOpacity>
       {isFriend ? (
         <View style={st.statusChip}>
           <Ionicons name="people-outline" size={11} color={C.primary} style={{ marginRight: 3 }} />
@@ -308,6 +318,7 @@ function SearchResultRow({
 
 export default function FriendsScreen() {
   const { getToken } = useAuth();
+  const router = useRouter();
 
   const [friends,    setFriends]    = useState<FriendUser[]  | null>(null);
   const [incoming,   setIncoming]   = useState<PendingUser[] | null>(null);
@@ -327,13 +338,15 @@ export default function FriendsScreen() {
   const [sentSuggestion,  setSentSuggestion]  = useState<Set<string>>(new Set());
   const [busySuggestion,  setBusySuggestion]  = useState<Set<string>>(new Set());
 
-  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounce    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const loading  = friends === null;
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
   const loadAll = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     const h = { Authorization: `Bearer ${tok}` };
 
@@ -353,7 +366,7 @@ export default function FriendsScreen() {
       .then(setSuggested)
       .catch(() => {})
       .finally(() => setSugLoading(false));
-  }, [getToken]);
+  }, []);
 
   useFocusEffect(useCallback(() => { loadAll(); }, [loadAll]));
 
@@ -365,7 +378,7 @@ export default function FriendsScreen() {
     setSearching(true);
     debounce.current = setTimeout(async () => {
       try {
-        const tok = await getToken();
+        const tok = await getTokenRef.current();
         if (!tok) return;
         const r = await fetch(
           `${BASE}/api/users?search=${encodeURIComponent(searchQ.trim())}&limit=12`,
@@ -376,7 +389,7 @@ export default function FriendsScreen() {
       finally { setSearching(false); }
     }, 280);
     return () => { if (debounce.current) clearTimeout(debounce.current); };
-  }, [searchQ, getToken]);
+  }, [searchQ]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
@@ -566,6 +579,7 @@ export default function FriendsScreen() {
                     isSent={sentSearch.has(u.clerk_user_id) || outgoingSet.has(u.clerk_user_id)}
                     busy={busySearch.has(u.clerk_user_id)}
                     onAdd={() => handleAddFromSearch(u)}
+                    onPressUser={() => router.push(`/user/${u.clerk_user_id}` as never)}
                   />
                 ))}
               </View>
@@ -611,6 +625,7 @@ export default function FriendsScreen() {
                 subtext={f.friends_since ? `Friends since ${new Date(f.friends_since).getFullYear()}` : undefined}
                 busy={busyFriend.has(f.clerk_user_id)}
                 onUnfriend={() => confirmUnfriend(f)}
+                onPressUser={() => router.push(`/user/${f.clerk_user_id}` as never)}
               />
             </View>
           </View>
@@ -628,6 +643,7 @@ export default function FriendsScreen() {
                 busy={busyPending.has(r.friendship_id)}
                 onAccept={() => handleRespond(r, 'accept')}
                 onDecline={() => handleRespond(r, 'reject')}
+                onPressUser={() => router.push(`/user/${r.clerk_user_id}` as never)}
               />
             </View>
           </View>
@@ -644,6 +660,7 @@ export default function FriendsScreen() {
                 avatarUrl={r.avatar_url} name={name} username={r.username}
                 busy={false}
                 onCancel={() => handleCancelRequest(r)}
+                onPressUser={() => router.push(`/user/${r.clerk_user_id}` as never)}
               />
             </View>
           </View>
@@ -668,6 +685,7 @@ export default function FriendsScreen() {
                 subtext={subtext}
                 state={{ sent: sentSuggestion.has(u.clerk_user_id), busy: busySuggestion.has(u.clerk_user_id) }}
                 onAdd={() => handleAddSuggested(u)}
+                onPressUser={() => router.push(`/user/${u.clerk_user_id}` as never)}
               />
             </View>
           </View>

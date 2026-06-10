@@ -3,7 +3,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
@@ -202,8 +202,11 @@ export default function JournalScreen() {
   const [sortBy,     setSortBy]     = useState<'newest' | 'oldest' | 'rating'>('newest');
   const [sortOpen,   setSortOpen]   = useState(false);
 
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+
   const load = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     setLoading(true);
     try {
@@ -214,9 +217,8 @@ export default function JournalScreen() {
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [getToken]);
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const years = useMemo(() => {

@@ -2,7 +2,7 @@ import {
   Dimensions, FlatList, Image, Platform, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -428,8 +428,11 @@ export default function PassportScreen() {
   const [error,       setError]       = useState(false);
   const [open,        setOpen]        = useState(false);
 
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+
   const load = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     setLoading(true);
     setError(false);
@@ -457,38 +460,29 @@ export default function PassportScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Build stamp items: visited first (most recent), then unvisited (alphabetical)
+  // Only visited parks, sorted chronologically oldest → newest (order you earned them)
   const stampItems = useMemo((): StampItem[] => {
     const visitedMap = new Map<string, string>();
     visits.forEach(v => {
       if (!v.is_bucket_list && v.visited_date) visitedMap.set(v.park_code, v.visited_date);
     });
 
+    const parkMap = new Map(allParks.map(p => [p.park_code, p]));
     const visited: StampItem[] = [];
-    const unvisited: StampItem[] = [];
 
-    allParks.forEach(p => {
-      const vDate = visitedMap.get(p.park_code) ?? null;
-      const item: Omit<StampItem, 'colorIdx'> = {
-        park_code:    p.park_code,
-        name:         p.name,
-        states:       p.states,
-        visited:      vDate !== null,
-        visited_date: vDate,
-      };
-      if (vDate) visited.push({ ...item, colorIdx: 0 });
-      else       unvisited.push({ ...item, colorIdx: 0 });
+    visitedMap.forEach((vDate, park_code) => {
+      const p = parkMap.get(park_code);
+      if (!p) return;
+      visited.push({ park_code, name: p.name, states: p.states, visited: true, visited_date: vDate, colorIdx: 0 });
     });
 
-    visited.sort((a, b) => (b.visited_date ?? '').localeCompare(a.visited_date ?? ''));
-    unvisited.sort((a, b) => a.name.localeCompare(b.name));
+    visited.sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
 
-    return [...visited, ...unvisited].map((item, idx) => ({ ...item, colorIdx: idx }));
+    return visited.map((item, idx) => ({ ...item, colorIdx: idx }));
   }, [allParks, visits]);
 
   const visitedCount = useMemo(() => stampItems.filter(s => s.visited).length, [stampItems]);
@@ -557,9 +551,9 @@ export default function PassportScreen() {
       <View style={[st.stampsHeader, { marginHorizontal: 16 }]}>
         <View>
           <Text style={st.kicker}>
-            {loading ? 'LOADING…' : `${visitedCount} STAMPS · MOST RECENT FIRST`}
+            {loading ? 'LOADING…' : `${visitedCount} STAMPS · CHRONOLOGICAL ORDER`}
           </Text>
-          <Text style={st.stampsSectionTitle}>Every stamp in your book</Text>
+          <Text style={st.stampsSectionTitle}>Your stamp collection</Text>
         </View>
         <View style={st.progressPill}>
           <Text style={st.progressText}>{visitedCount}<Text style={{ opacity: 0.6 }}>/63</Text></Text>
@@ -606,15 +600,22 @@ export default function PassportScreen() {
           numColumns={3}
           ListHeaderComponent={ListHeader}
           columnWrapperStyle={st.colWrapper}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', paddingTop: 32, paddingHorizontal: 32, gap: 10 }}>
+              <Text style={{ fontSize: 32 }}>🏕</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink, textAlign: 'center' }}>No stamps yet</Text>
+              <Text style={{ fontSize: 13, color: C.inkMute, textAlign: 'center', lineHeight: 19 }}>
+                Log your first park visit to earn your first stamp.
+              </Text>
+            </View>
+          }
           renderItem={({ item }) => (
-            item.visited
-              ? <StampCell   item={item} onPress={() => router.push(`/parks/${item.park_code}` as never)} />
-              : <StampPlaceholder item={item} />
+            <StampCell item={item} onPress={() => router.push(`/parks/${item.park_code}` as never)} />
           )}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 40 }}
           getItemLayout={(_, index) => ({
-            length: STAMP_D + 36,       // stamp + name text height
+            length: STAMP_D + 36,
             offset: (STAMP_D + 36) * Math.floor(index / 3),
             index,
           })}

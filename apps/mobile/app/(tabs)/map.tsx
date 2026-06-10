@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Dimensions, PanResponder, Platform,
+  Animated, Dimensions, Linking, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
@@ -8,7 +8,8 @@ import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
 
@@ -24,7 +25,6 @@ const C = {
   hairlineSoft:'rgba(27,26,22,0.06)',
   primary:     '#1F3D2E',
   accent:      '#C56B3D',
-  // Exact marker colors from USAMapGL.tsx
   visited:     '#2F7A4A',
   bucket:      '#D89A3A',
   unvisited:   '#A8A29A',
@@ -33,8 +33,8 @@ const C = {
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get('window');
 
-const SHEET_HALF = SCREEN_H * 0.48;
-const SHEET_FULL = SCREEN_H * 0.87;
+const SHEET_PEEK = SCREEN_H * 0.48;
+const SHEET_FULL = SCREEN_H * 0.92;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +47,30 @@ interface VisitEntry {
   end_date?: string | null;
   title?: string | null;
   notes?: string | null;
+}
+
+interface FullVisit {
+  id: number;
+  visited_date: string;
+  end_date?: string | null;
+  title?: string | null;
+  notes?: string | null;
+  rating?: number | null;
+  photos?: string[] | null;
+}
+
+interface OperatingHours {
+  name: string;
+  description: string;
+  standardHours: Record<string, string>;
+}
+
+interface WeatherPeriod {
+  name: string;
+  temperature: number;
+  temperatureUnit: string;
+  shortForecast: string;
+  isDaytime: boolean;
 }
 
 interface ParkForMap {
@@ -83,6 +107,18 @@ function parkBgColor(code: string): string {
   return PARK_PALETTES[idx];
 }
 
+const GRADIENTS: [string, string, string][] = [
+  ['#1F3D2E', '#2F7A4A', '#C56B3D'],
+  ['#2D4F66', '#1F3D2E', '#D89A3A'],
+  ['#7B3A1F', '#C56B3D', '#1F3D2E'],
+  ['#3A2E5C', '#6E97A3', '#D89A3A'],
+  ['#2F7A4A', '#1F3D2E', '#2D4F66'],
+];
+function gradientColors(code: string): [string, string, string] {
+  const idx = code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length;
+  return GRADIENTS[idx];
+}
+
 function markerConfig(status: ParkStatus, selected: boolean) {
   const color =
     status === 'visited'    ? C.visited :
@@ -102,6 +138,25 @@ function formatDateRange(start: string, end?: string | null): string {
   return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}–${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ${days}d`;
 }
 
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function weatherEmoji(shortForecast: string): string {
+  const f = shortForecast.toLowerCase();
+  if (f.includes('thunder') || f.includes('storm'))    return '⛈️';
+  if (f.includes('snow') && f.includes('rain'))         return '🌨️';
+  if (f.includes('heavy snow'))                         return '❄️';
+  if (f.includes('snow'))                               return '❄️';
+  if (f.includes('heavy rain') || f.includes('showers')) return '🌧️';
+  if (f.includes('rain') || f.includes('drizzle'))     return '🌦️';
+  if (f.includes('fog') || f.includes('haze'))         return '🌫️';
+  if (f.includes('windy') || f.includes('breezy'))     return '🌬️';
+  if (f.includes('partly cloudy') || f.includes('partly sunny')) return '⛅';
+  if (f.includes('mostly cloudy'))                      return '🌥️';
+  if (f.includes('cloud') || f.includes('overcast'))   return '☁️';
+  if (f.includes('sunny') || f.includes('clear'))      return '☀️';
+  return '🌤️';
+}
+
 // ── ParkMarker ────────────────────────────────────────────────────────────────
 
 function ParkMarker({ park, selected }: { park: ParkForMap; selected: boolean }) {
@@ -109,13 +164,11 @@ function ParkMarker({ park, selected }: { park: ParkForMap; selected: boolean })
   const sz = haloR * 2;
   return (
     <View style={{ width: sz, height: sz, alignItems: 'center', justifyContent: 'center' }}>
-      {/* Halo */}
       <View style={{
         position: 'absolute',
         width: sz, height: sz, borderRadius: haloR,
         backgroundColor: color, opacity: haloOpacity,
       }} />
-      {/* Dot */}
       <View style={{
         width: dotR * 2, height: dotR * 2, borderRadius: dotR,
         backgroundColor: color,
@@ -181,6 +234,29 @@ function StatusChip({ status }: { status: ParkStatus }) {
   );
 }
 
+// ── Section header (for full-profile sections) ────────────────────────────────
+
+function SheetSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.profileSection}>
+      <Text style={styles.profileSectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+// ── Stars ─────────────────────────────────────────────────────────────────────
+
+function Stars({ value }: { value: number }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 1 }}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Ionicons key={i} name={i < Math.round(value) ? 'star' : 'star-outline'} size={11} color={C.accent} />
+      ))}
+    </View>
+  );
+}
+
 // ── ParkBottomSheet ───────────────────────────────────────────────────────────
 
 function ParkBottomSheet({
@@ -196,35 +272,67 @@ function ParkBottomSheet({
 }) {
   const router = useRouter();
   const sheetH   = useRef(new Animated.Value(0)).current;
-  const baseH    = useRef(SHEET_HALF);
+  const baseH    = useRef(SHEET_PEEK);
+
+  // Image carousel
   const [npsImages, setNpsImages] = useState<string[]>(
     park.image_url ? [park.image_url] : []
   );
   const [imgIdx, setImgIdx] = useState(0);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [npsActivities,   setNpsActivities]   = useState<string[]>([]);
-  const [npsEntranceFees, setNpsEntranceFees] = useState<Array<{ title: string; cost: string }>>([]);
-  const [npsFeesFree,     setNpsFeesFree]     = useState<boolean | null>(null);
-  const [expandedVisits,  setExpandedVisits]  = useState<Set<number>>(new Set());
 
-  // Animate in
+  // NPS summary data
+  const [npsDesignation,   setNpsDesignation]   = useState<string | null>(null);
+  const [npsActivities,    setNpsActivities]    = useState<string[]>([]);
+  const [npsTopics,        setNpsTopics]        = useState<string[]>([]);
+  const [npsEntranceFees,  setNpsEntranceFees]  = useState<Array<{ title: string; cost: string; description?: string }>>([]);
+  const [npsFeesFree,      setNpsFeesFree]      = useState<boolean | null>(null);
+  const [npsHours,         setNpsHours]         = useState<OperatingHours[]>([]);
+  const [npsDirectionsInfo,setNpsDirectionsInfo]= useState<string | null>(null);
+  const [npsDirectionsUrl, setNpsDirectionsUrl] = useState<string | null>(null);
+  const [npsPhone,         setNpsPhone]         = useState<string | null>(null);
+  const [npsEmail,         setNpsEmail]         = useState<string | null>(null);
+  const [npsWebUrl,        setNpsWebUrl]        = useState<string | null>(null);
+  const [npsWeatherInfo,   setNpsWeatherInfo]   = useState<string | null>(null);
+
+  // Weather
+  const [weather, setWeather] = useState<WeatherPeriod[] | null>(null);
+
+  // Full visits (with rating + photos)
+  const [fullVisits,       setFullVisits]       = useState<FullVisit[]>([]);
+  const [expandedVisits,   setExpandedVisits]   = useState<Set<number>>(new Set());
+
+  // Action state
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // ── Animate in ───────────────────────────────────────────────────────────────
+
   useEffect(() => {
-    baseH.current = SHEET_HALF;
+    baseH.current = SHEET_PEEK;
     sheetH.setValue(0);
     Animated.spring(sheetH, {
-      toValue: SHEET_HALF, useNativeDriver: false,
+      toValue: SHEET_PEEK, useNativeDriver: false,
       damping: 30, mass: 0.9, stiffness: 200,
     }).start();
   }, [park.park_code]);
 
-  // Lazy-load NPS images + data
+  // ── Load NPS data ─────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (park.image_url) setNpsImages([park.image_url]);
     else setNpsImages([]);
     setImgIdx(0);
+    setNpsDesignation(null);
     setNpsActivities([]);
+    setNpsTopics([]);
     setNpsEntranceFees([]);
     setNpsFeesFree(null);
+    setNpsHours([]);
+    setNpsDirectionsInfo(null);
+    setNpsDirectionsUrl(null);
+    setNpsPhone(null);
+    setNpsEmail(null);
+    setNpsWebUrl(null);
+    setNpsWeatherInfo(null);
     setExpandedVisits(new Set());
 
     fetch(`${BASE}/api/parks/${park.park_code}/images`, {
@@ -243,14 +351,63 @@ function ParkBottomSheet({
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.ok ? r.json() : null)
-      .then((data: { activities?: string[]; entranceFees?: Array<{ title: string; cost: string }> } | null) => {
+      .then((data: {
+        designation?: string;
+        activities?: string[];
+        topics?: string[];
+        entranceFees?: Array<{ title: string; cost: string; description?: string }>;
+        operatingHours?: OperatingHours[];
+        directionsInfo?: string;
+        directionsUrl?: string;
+        phone?: string;
+        email?: string;
+        url?: string;
+        weatherInfo?: string;
+      } | null) => {
         if (!data) return;
-        setNpsActivities((data.activities ?? []).slice(0, 8));
+        setNpsDesignation(data.designation ?? null);
+        setNpsActivities((data.activities ?? []).slice(0, 12));
+        setNpsTopics((data.topics ?? []).slice(0, 10));
         setNpsEntranceFees(data.entranceFees ?? []);
         setNpsFeesFree((data.entranceFees ?? []).length === 0);
+        setNpsHours(data.operatingHours ?? []);
+        setNpsDirectionsInfo(data.directionsInfo ?? null);
+        setNpsDirectionsUrl(data.directionsUrl ?? null);
+        setNpsPhone(data.phone ?? null);
+        setNpsEmail(data.email ?? null);
+        setNpsWebUrl(data.url ?? null);
+        setNpsWeatherInfo(data.weatherInfo ?? null);
       })
       .catch(() => {});
   }, [park.park_code, token, park.image_url]);
+
+  // ── Load weather + full visits ────────────────────────────────────────────────
+
+  useEffect(() => {
+    setWeather(null);
+    setFullVisits([]);
+
+    fetch(`${BASE}/api/parks/${park.park_code}/weather`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.periods) setWeather(data.periods);
+      })
+      .catch(() => {});
+
+    fetch(`${BASE}/api/visits`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then((visits: Array<FullVisit & { park_code: string; is_bucket_list: boolean }>) => {
+        const mine = visits
+          .filter(v => v.park_code === park.park_code && !v.is_bucket_list && v.visited_date)
+          .sort((a, b) => new Date(b.visited_date).getTime() - new Date(a.visited_date).getTime());
+        setFullVisits(mine);
+      })
+      .catch(() => {});
+  }, [park.park_code, token]);
+
+  // ── Sheet snap / dismiss ──────────────────────────────────────────────────────
 
   function snapTo(target: number) {
     Animated.spring(sheetH, {
@@ -277,25 +434,24 @@ function ParkBottomSheet({
         sheetH.setValue(next);
       },
       onPanResponderRelease: (_, g) => {
+        if (Math.abs(g.dy) < 6 && Math.abs(g.dx) < 6) {
+          if (baseH.current <= SHEET_PEEK + 10) snapTo(SHEET_FULL);
+          return;
+        }
         const projected = baseH.current - g.dy;
-        const mid = (SHEET_HALF + SHEET_FULL) / 2;
-        if (g.vy > 0.9 || projected < SHEET_HALF * 0.45) {
+        const mid = (SHEET_PEEK + SHEET_FULL) / 2;
+        if (g.vy > 0.9 || projected < SHEET_PEEK * 0.45) {
           dismiss();
         } else if (g.vy < -0.5 || projected > mid) {
           snapTo(SHEET_FULL);
         } else {
-          snapTo(SHEET_HALF);
+          snapTo(SHEET_PEEK);
         }
       },
     })
   ).current;
 
-  const heroUrl = npsImages[imgIdx] ?? null;
-  const sortedVisits = park.visits
-    ? [...park.visits].sort(
-        (a, b) => new Date(b.visited_date).getTime() - new Date(a.visited_date).getTime()
-      )
-    : [];
+  // ── Actions ───────────────────────────────────────────────────────────────────
 
   const handleMarkVisited = async () => {
     setActionLoading('visit');
@@ -311,35 +467,37 @@ function ParkBottomSheet({
   };
 
   const handleBucketList = async () => {
-    if (park.status === 'bucketList') {
-      setActionLoading('bucket');
-      try {
+    setActionLoading('bucket');
+    try {
+      if (park.status === 'bucketList') {
         await fetch(`${BASE}/api/visits?park_code=${park.park_code}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
+          method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
         });
         onStatusChange(park.park_code, 'notVisited');
-      } catch { /* ignore */ }
-      setActionLoading(null);
-    } else {
-      setActionLoading('bucket');
-      try {
+      } else {
         await fetch(`${BASE}/api/visits`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ park_code: park.park_code, is_bucket_list: true }),
         });
         onStatusChange(park.park_code, 'bucketList');
-      } catch { /* ignore */ }
-      setActionLoading(null);
-    }
+      }
+    } catch { /* ignore */ }
+    setActionLoading(null);
   };
 
-  const stateLabel = fullStateName(park.states.split(',')[0].trim());
+  // ── Derived ───────────────────────────────────────────────────────────────────
+
+  const heroUrl      = npsImages[imgIdx] ?? null;
+  const stateLabel   = fullStateName(park.states.split(',')[0].trim());
+  const forecastDays = (weather ?? []).filter(p => p.isDaytime).slice(0, 7);
+  const forecastNights = (weather ?? []).filter(p => !p.isDaytime);
+  const hasContact   = npsPhone || npsEmail || npsWebUrl;
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <>
-      {/* Backdrop — tap to dismiss */}
       <Pressable style={styles.backdrop} onPress={dismiss} />
 
       <Animated.View style={[styles.sheet, { height: sheetH }]}>
@@ -349,7 +507,10 @@ function ParkBottomSheet({
         </View>
 
         {/* Hero image */}
-        <View style={[styles.hero, { backgroundColor: parkBgColor(park.park_code) }]}>
+        <Pressable
+          style={[styles.hero, { backgroundColor: parkBgColor(park.park_code) }]}
+          onPress={() => { if (baseH.current <= SHEET_PEEK + 10) snapTo(SHEET_FULL); }}
+        >
           {heroUrl ? (
             <Image
               source={{ uri: heroUrl }}
@@ -359,77 +520,57 @@ function ParkBottomSheet({
             />
           ) : null}
 
-          {/* Image counter + prev/next */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.38)', 'transparent']}
+            locations={[0, 0.4, 0.75]}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 0, y: 0 }}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+
           {npsImages.length > 1 && (
             <>
               <View style={styles.imgCounter}>
                 <Text style={styles.imgCounterText}>{imgIdx + 1} / {npsImages.length}</Text>
               </View>
-              {imgIdx > 0 && (
-                <TouchableOpacity
-                  style={[styles.imgNav, { left: 10 }]}
-                  onPress={() => setImgIdx(i => i - 1)}
-                >
-                  <Ionicons name="chevron-back" size={15} color="#FFFBF1" />
-                </TouchableOpacity>
-              )}
-              {imgIdx < npsImages.length - 1 && (
-                <TouchableOpacity
-                  style={[styles.imgNav, { right: 10 }]}
-                  onPress={() => setImgIdx(i => i + 1)}
-                >
-                  <Ionicons name="chevron-forward" size={15} color="#FFFBF1" />
-                </TouchableOpacity>
-              )}
-              <View style={styles.imgDots}>
-                {npsImages.map((_, k) => (
-                  <View
-                    key={k}
-                    style={[
-                      styles.imgDot,
-                      { backgroundColor: k === imgIdx ? '#FFFBF1' : 'rgba(255,251,241,0.40)' },
-                    ]}
-                  />
-                ))}
-              </View>
+              <TouchableOpacity
+                style={[styles.imgNav, { left: 10 }]}
+                onPress={() => setImgIdx(i => (i - 1 + npsImages.length) % npsImages.length)}
+              >
+                <Ionicons name="chevron-back" size={15} color="#FFFBF1" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.imgNav, { right: 10 }]}
+                onPress={() => setImgIdx(i => (i + 1) % npsImages.length)}
+              >
+                <Ionicons name="chevron-forward" size={15} color="#FFFBF1" />
+              </TouchableOpacity>
             </>
           )}
 
-          {/* Close button */}
           <TouchableOpacity style={styles.heroClose} onPress={dismiss} hitSlop={8}>
             <Ionicons name="close" size={14} color="#FFFBF1" />
           </TouchableOpacity>
 
-          {/* Status chip */}
-          <View style={styles.heroStatus}>
-            <StatusChip status={park.status} />
+          <View style={styles.heroContent}>
+            <Text style={styles.heroState}>{stateLabel.toUpperCase()}</Text>
+            <Text style={styles.heroName}>{park.name}</Text>
+            <View style={{ marginTop: 8 }}>
+              <StatusChip status={park.status} />
+            </View>
           </View>
-        </View>
+        </Pressable>
 
-        {/* Scrollable body */}
+        {/* Scrollable body — full profile below hero */}
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={styles.sheetBody}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Name + state + full-profile link */}
-          <View style={styles.nameRow}>
-            <View style={{ flex: 1 }}>
-              <TouchableOpacity onPress={() => router.push(`/parks/${park.park_code}` as never)}>
-                <Text style={styles.parkName}>{park.name}</Text>
-              </TouchableOpacity>
-              <Text style={styles.parkState}>{stateLabel}</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => router.push(`/parks/${park.park_code}` as never)}
-              style={styles.profileLink}
-            >
-              <Text style={styles.profileLinkText}>Full profile</Text>
-              <Ionicons name="arrow-forward" size={10} color={C.primary} />
-            </TouchableOpacity>
-          </View>
 
-          {/* Description */}
+          {/* ── Description ── */}
           {park.description ? (
             <View style={styles.section}>
               <Text style={styles.sectionKicker}>ABOUT THIS PARK</Text>
@@ -437,13 +578,9 @@ function ParkBottomSheet({
             </View>
           ) : null}
 
-          {/* Activities */}
+          {/* ── Activities ── */}
           {npsActivities.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.kickerRow}>
-                <Ionicons name="walk-outline" size={9} color={C.inkMute} />
-                <Text style={styles.sectionKicker}>ACTIVITIES</Text>
-              </View>
+            <SheetSection title="Activities">
               <View style={styles.chipWrap}>
                 {npsActivities.map(a => (
                   <View key={a} style={styles.activityChip}>
@@ -451,99 +588,235 @@ function ParkBottomSheet({
                   </View>
                 ))}
               </View>
-            </View>
+            </SheetSection>
           )}
 
-          {/* Entrance fees */}
-          {npsFeesFree !== null && (
-            <View style={styles.section}>
-              <View style={styles.kickerRow}>
-                <Ionicons name="cash-outline" size={9} color={C.inkMute} />
-                <Text style={styles.sectionKicker}>ENTRANCE</Text>
+          {/* ── Topics ── */}
+          {npsTopics.length > 0 && (
+            <SheetSection title="Topics">
+              <View style={styles.chipWrap}>
+                {npsTopics.map(t => (
+                  <View key={t} style={[styles.activityChip, { backgroundColor: 'transparent' }]}>
+                    <Text style={[styles.activityChipText, { color: C.inkMute }]}>{t}</Text>
+                  </View>
+                ))}
               </View>
+            </SheetSection>
+          )}
+
+          {/* ── Operating hours ── */}
+          {npsHours.length > 0 && (
+            <SheetSection title="Hours">
+              {npsHours.map((h, hi) => (
+                <View key={hi} style={{ marginBottom: hi < npsHours.length - 1 ? 14 : 0 }}>
+                  {npsHours.length > 1 && (
+                    <Text style={styles.hoursName}>{h.name}</Text>
+                  )}
+                  {DAYS.map(day => {
+                    const val = h.standardHours?.[day.toLowerCase()] ?? '—';
+                    return (
+                      <View key={day} style={styles.hoursRow}>
+                        <Text style={styles.hoursDay}>{day}</Text>
+                        <Text style={styles.hoursVal}>{val}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </SheetSection>
+          )}
+
+          {/* ── Entrance fees ── */}
+          {npsFeesFree !== null && (
+            <SheetSection title="Entrance">
               {npsFeesFree ? (
                 <Text style={[styles.sectionBody, { fontWeight: '500' }]}>Free to visit</Text>
               ) : (
-                npsEntranceFees.slice(0, 2).map((fee, i) => (
-                  <View key={i} style={styles.feeRow}>
-                    <Text style={styles.feeTitle}>{fee.title}</Text>
-                    <Text style={styles.feeCost}>${parseFloat(fee.cost).toFixed(0)}</Text>
-                  </View>
-                ))
+                <View style={{ gap: 8 }}>
+                  {npsEntranceFees.map((fee, i) => (
+                    <View key={i} style={styles.feeCard}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: fee.description ? 4 : 0 }}>
+                        <Text style={styles.feeName}>{fee.title || 'Entrance'}</Text>
+                        <Text style={styles.feeCost}>
+                          {fee.cost === '0.00' || fee.cost === '0' ? 'Free' : `$${parseFloat(fee.cost).toFixed(0)}`}
+                        </Text>
+                      </View>
+                      {fee.description ? (
+                        <Text style={styles.feeDesc} numberOfLines={2}>{fee.description}</Text>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
               )}
-            </View>
+            </SheetSection>
           )}
 
-          {/* Visits */}
-          {park.status === 'visited' && sortedVisits.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionKicker}>VISITS · {sortedVisits.length}</Text>
-              <View style={{ gap: 5 }}>
-                {sortedVisits.slice(0, 3).map(v => {
+          {/* ── Directions ── */}
+          {npsDirectionsInfo ? (
+            <SheetSection title="Directions">
+              <Text style={styles.sectionBody}>{npsDirectionsInfo}</Text>
+              {npsDirectionsUrl ? (
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(npsDirectionsUrl!)}
+                  style={styles.linkBtn}
+                >
+                  <Ionicons name="navigate-outline" size={13} color={C.primary} />
+                  <Text style={styles.linkBtnText}>Open directions</Text>
+                </TouchableOpacity>
+              ) : null}
+            </SheetSection>
+          ) : null}
+
+          {/* ── Contact ── */}
+          {hasContact ? (
+            <SheetSection title="Contact">
+              <View style={{ gap: 10 }}>
+                {npsPhone ? (
+                  <TouchableOpacity
+                    style={styles.contactRow}
+                    onPress={() => Linking.openURL(`tel:${npsPhone!.replace(/\D/g, '')}`)}
+                  >
+                    <Ionicons name="call-outline" size={14} color={C.inkMute} />
+                    <Text style={styles.contactText}>{npsPhone}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {npsEmail ? (
+                  <TouchableOpacity
+                    style={styles.contactRow}
+                    onPress={() => Linking.openURL(`mailto:${npsEmail}`)}
+                  >
+                    <Ionicons name="mail-outline" size={14} color={C.inkMute} />
+                    <Text style={styles.contactText}>{npsEmail}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {npsWebUrl ? (
+                  <TouchableOpacity
+                    style={styles.contactRow}
+                    onPress={() => Linking.openURL(npsWebUrl!)}
+                  >
+                    <Ionicons name="globe-outline" size={14} color={C.inkMute} />
+                    <Text style={styles.contactText}>NPS Website</Text>
+                    <Ionicons name="arrow-forward" size={10} color={C.inkMute} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </SheetSection>
+          ) : null}
+
+          {/* ── Weather ── */}
+          {forecastDays.length > 0 ? (
+            <SheetSection title="Weather Forecast">
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -18 }}>
+                <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingBottom: 4 }}>
+                  {forecastDays.map((p, i) => {
+                    const night = forecastNights[i];
+                    return (
+                      <View key={i} style={styles.weatherCard}>
+                        <Text style={styles.weatherDay}>{p.name.replace('This ', '')}</Text>
+                        <Text style={styles.weatherEmoji}>{weatherEmoji(p.shortForecast)}</Text>
+                        <Text style={styles.weatherTemp}>{p.temperature}°{p.temperatureUnit}</Text>
+                        {night && <Text style={styles.weatherLow}>{night.temperature}° low</Text>}
+                        <Text style={styles.weatherDesc} numberOfLines={2}>{p.shortForecast}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+              {npsWeatherInfo ? (
+                <Text style={[styles.sectionBody, { marginTop: 12 }]}>{npsWeatherInfo}</Text>
+              ) : null}
+            </SheetSection>
+          ) : npsWeatherInfo ? (
+            <SheetSection title="Weather">
+              <Text style={styles.sectionBody}>{npsWeatherInfo}</Text>
+            </SheetSection>
+          ) : null}
+
+          {/* ── Journal ── */}
+          {fullVisits.length > 0 && (
+            <SheetSection title={`Your Journal · ${fullVisits.length}`}>
+              <View style={{ gap: 8 }}>
+                {fullVisits.map(v => {
                   const isExpanded = expandedVisits.has(v.id);
                   return (
-                    <View key={v.id} style={styles.visitRow}>
+                    <View key={v.id} style={styles.visitCard}>
                       <TouchableOpacity
                         onPress={() => setExpandedVisits(prev => {
                           const s = new Set(prev);
                           s.has(v.id) ? s.delete(v.id) : s.add(v.id);
                           return s;
                         })}
-                        style={styles.visitRowHeader}
+                        style={styles.visitCardHeader}
                         activeOpacity={0.7}
                       >
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={styles.visitDate}>{formatDateRange(v.visited_date, v.end_date)}</Text>
-                          {v.title ? (
-                            <Text style={styles.visitTitle} numberOfLines={1}>{v.title}</Text>
-                          ) : null}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                            <Text style={styles.visitDate}>{formatDateRange(v.visited_date, v.end_date)}</Text>
+                            {v.rating ? <Stars value={v.rating} /> : null}
+                          </View>
+                          {v.title ? <Text style={styles.visitTitle} numberOfLines={1}>{v.title}</Text> : null}
                         </View>
                         <Ionicons
                           name="chevron-down"
                           size={13}
                           color={C.inkMute}
-                          style={{ transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }}
+                          style={{ marginLeft: 8, transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }}
                         />
                       </TouchableOpacity>
+
                       {isExpanded && (
-                        <View style={styles.visitExpanded}>
+                        <View style={styles.visitCardBody}>
                           {v.notes ? (
                             <Text style={styles.visitNotes}>{v.notes}</Text>
                           ) : (
-                            <Text style={[styles.visitNotes, { fontStyle: 'italic', color: C.inkMute }]}>
-                              No notes
-                            </Text>
+                            <Text style={[styles.visitNotes, { fontStyle: 'italic', color: C.inkMute }]}>No notes</Text>
                           )}
-                          {sortedVisits[0]?.id === v.id && park.photos && park.photos.length > 0 && (
-                            <View style={styles.visitPhotos}>
-                              {park.photos.map(url => (
-                                <Image
-                                  key={url}
-                                  source={{ uri: url }}
-                                  style={styles.visitPhoto}
-                                  contentFit="cover"
-                                  cachePolicy="memory-disk"
-                                />
-                              ))}
-                            </View>
+                          {v.photos && v.photos.length > 0 && (
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                              <View style={{ flexDirection: 'row', gap: 6 }}>
+                                {v.photos.map((uri, i) => (
+                                  <Image
+                                    key={i}
+                                    source={{ uri }}
+                                    style={styles.visitPhoto}
+                                    contentFit="cover"
+                                    cachePolicy="memory-disk"
+                                  />
+                                ))}
+                              </View>
+                            </ScrollView>
                           )}
+                          <TouchableOpacity
+                            onPress={() => router.push(`/profile/journal/${v.id}` as never)}
+                            style={styles.visitEditBtn}
+                          >
+                            <Ionicons name="pencil-outline" size={11} color={C.primary} />
+                            <Text style={styles.visitEditBtnText}>Edit entry</Text>
+                          </TouchableOpacity>
                         </View>
                       )}
                     </View>
                   );
                 })}
               </View>
-            </View>
+            </SheetSection>
           )}
+
+          {/* Attribution */}
+          <View style={styles.attribution}>
+            <Text style={styles.attributionText}>
+              Park information sourced from the National Park Service (NPS). Always verify details before your visit.
+            </Text>
+          </View>
         </ScrollView>
 
-        {/* Action row */}
+        {/* Action row — pinned at bottom */}
         <View style={styles.actionRow}>
           {park.status === 'visited' ? (
             <>
               <TouchableOpacity
                 onPress={() => {
-                  if (sortedVisits[0]) router.push(`/profile/journal/${sortedVisits[0].id}` as never);
+                  if (fullVisits[0]) router.push(`/profile/journal/${fullVisits[0].id}` as never);
                 }}
                 style={[styles.actionBtn, { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline, flex: 1 }]}
               >
@@ -557,12 +830,6 @@ function ParkBottomSheet({
               >
                 <Ionicons name="checkmark" size={14} color="#FFFBF1" />
                 <Text style={[styles.actionBtnText, { color: '#FFFBF1' }]}>Log a visit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => router.push(`/parks/${park.park_code}` as never)}
-                style={[styles.actionBtn, { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline }]}
-              >
-                <Ionicons name="arrow-forward" size={14} color={C.ink} />
               </TouchableOpacity>
             </>
           ) : (
@@ -610,12 +877,6 @@ function ParkBottomSheet({
                     </>
                 }
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => router.push(`/parks/${park.park_code}` as never)}
-                style={[styles.actionBtn, { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline }]}
-              >
-                <Ionicons name="arrow-forward" size={14} color={C.ink} />
-              </TouchableOpacity>
             </>
           )}
         </View>
@@ -629,6 +890,7 @@ function ParkBottomSheet({
 export default function MapScreen() {
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
+  const { parkCode: focusParkCode } = useLocalSearchParams<{ parkCode?: string }>();
 
   const [token, setToken]               = useState<string | null>(null);
   const [parks, setParks]               = useState<ParkForMap[]>([]);
@@ -636,8 +898,8 @@ export default function MapScreen() {
   const [selectedPark, setSelectedPark] = useState<ParkForMap | null>(null);
   const [loading, setLoading]           = useState(true);
   const mapRef = useRef<MapView>(null);
+  const currentRegionRef = useRef({ latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 });
 
-  // Counts for filter pill
   const counts: Record<FilterStatus, number> = {
     all:        parks.length,
     visited:    parks.filter(p => p.status === 'visited').length,
@@ -694,7 +956,7 @@ export default function MapScreen() {
         .filter(p => p.latitude && p.longitude)
         .map(p => {
           let status: ParkStatus = 'notVisited';
-          if (visitedSet.has(p.park_code))    status = 'visited';
+          if (visitedSet.has(p.park_code))     status = 'visited';
           else if (bucketSet.has(p.park_code)) status = 'bucketList';
           return {
             park_code:   p.park_code,
@@ -732,20 +994,51 @@ export default function MapScreen() {
 
   const handleSelectPark = useCallback((park: ParkForMap) => {
     setSelectedPark(park);
+    const LAT_DELTA = 1.5;
+    // Offset center southward so pin appears at vertical center of visible area (above sheet)
+    const latOffset = (SHEET_PEEK * LAT_DELTA) / (2 * SCREEN_H);
     mapRef.current?.animateToRegion(
       {
-        latitude:       park.latitude,
+        latitude:       park.latitude - latOffset,
         longitude:      park.longitude,
-        latitudeDelta:  1.5,
+        latitudeDelta:  LAT_DELTA,
         longitudeDelta: 1.5,
       },
       500
     );
   }, []);
 
+  useEffect(() => {
+    if (!focusParkCode || parks.length === 0) return;
+    const park = parks.find(p => p.park_code === focusParkCode);
+    if (park) handleSelectPark(park);
+  }, [focusParkCode, parks, handleSelectPark]);
+
+  const zoomIn = useCallback(() => {
+    const r = currentRegionRef.current;
+    mapRef.current?.animateToRegion(
+      { ...r, latitudeDelta: Math.max(r.latitudeDelta / 2, 0.005), longitudeDelta: Math.max(r.longitudeDelta / 2, 0.005) },
+      300
+    );
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    const r = currentRegionRef.current;
+    mapRef.current?.animateToRegion(
+      { ...r, latitudeDelta: Math.min(r.latitudeDelta * 2, 120), longitudeDelta: Math.min(r.longitudeDelta * 2, 120) },
+      300
+    );
+  }, []);
+
+  const goHome = useCallback(() => {
+    mapRef.current?.animateToRegion(
+      { latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 },
+      500
+    );
+  }, []);
+
   return (
     <View style={styles.screen}>
-      {/* Full-bleed map */}
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -760,6 +1053,7 @@ export default function MapScreen() {
         showsUserLocation
         showsMyLocationButton={false}
         showsCompass={false}
+        onRegionChangeComplete={region => { currentRegionRef.current = region; }}
         onPress={() => setSelectedPark(null)}
       >
         {filteredParks.map(park => {
@@ -778,7 +1072,6 @@ export default function MapScreen() {
         })}
       </MapView>
 
-      {/* Filter pill — top-left, below notch/status bar */}
       {!loading && (
         <View style={[styles.filterPillWrap, { top: insets.top + 12 }]}>
           <FilterPill
@@ -789,7 +1082,6 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* Loading indicator */}
       {loading && (
         <View style={[styles.loadingWrap, { top: insets.top + 12 }]}>
           <View style={styles.pill}>
@@ -798,7 +1090,6 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* Park bottom sheet */}
       {selectedPark && token && (
         <ParkBottomSheet
           key={selectedPark.park_code}
@@ -808,6 +1099,21 @@ export default function MapScreen() {
           onStatusChange={handleStatusChange}
         />
       )}
+
+      {/* Map controls */}
+      <View style={[styles.mapControls, {
+        bottom: selectedPark ? SHEET_PEEK + 14 : insets.bottom + 68,
+      }]}>
+        <TouchableOpacity style={styles.mapControlBtn} onPress={zoomIn} activeOpacity={0.75}>
+          <Ionicons name="add" size={18} color="#4A4535" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.mapControlBtn} onPress={zoomOut} activeOpacity={0.75}>
+          <Ionicons name="remove" size={18} color="#4A4535" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.mapControlBtn} onPress={goHome} activeOpacity={0.75}>
+          <Ionicons name="home-outline" size={14} color="#4A4535" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -825,6 +1131,23 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 14,
     zIndex: 20,
+  },
+  mapControls: {
+    position: 'absolute',
+    right: 14,
+    zIndex: 20,
+    flexDirection: 'column',
+    gap: 4,
+  },
+  mapControlBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255,251,241,0.93)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(27,26,22,0.13)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingWrap: {
     position: 'absolute',
@@ -940,14 +1263,14 @@ const styles = StyleSheet.create({
 
   // Hero
   hero: {
-    height: 140,
+    height: 190,
     flexShrink: 0,
     overflow: 'hidden',
   },
   imgCounter: {
     position: 'absolute',
     top: 10,
-    right: 10,
+    left: 10,
     backgroundColor: 'rgba(20,17,12,0.55)',
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -965,28 +1288,14 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(20,17,12,0.55)',
+    backgroundColor: 'rgba(20,17,12,0.40)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  imgDots: {
-    position: 'absolute',
-    bottom: 12,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  imgDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
   },
   heroClose: {
     position: 'absolute',
     top: 10,
-    right: 44,
+    right: 10,
     width: 28,
     height: 28,
     borderRadius: 14,
@@ -994,50 +1303,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroStatus: {
+  heroContent: {
     position: 'absolute',
-    bottom: 10,
-    left: 14,
+    bottom: 14,
+    left: 16,
+    right: 48,
   },
-
-  // Body
-  sheetBody: {
-    paddingBottom: 16,
+  heroState: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,251,241,0.75)',
+    letterSpacing: 1.4,
+    marginBottom: 3,
   },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 12,
-    gap: 8,
-  },
-  parkName: {
+  heroName: {
     fontSize: 22,
-    fontWeight: '800',
-    color: C.ink,
-    letterSpacing: -0.3,
+    fontWeight: '900',
+    color: '#FFFBF1',
+    letterSpacing: -0.4,
     lineHeight: 26,
   },
-  parkState: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: C.inkMute,
-    letterSpacing: 0.8,
-    marginTop: 10,
+
+  // Scrollable body
+  sheetBody: {
+    paddingBottom: 8,
   },
-  profileLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingTop: 3,
-  },
-  profileLinkText: {
-    fontSize: 9.5,
-    fontWeight: '700',
-    color: C.primary,
-    letterSpacing: 0.4,
-  },
+
+
+  // Brief description section
   section: {
     paddingHorizontal: 18,
     paddingVertical: 12,
@@ -1056,12 +1349,23 @@ const styles = StyleSheet.create({
     color: C.inkSoft,
     lineHeight: 19,
   },
-  kickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginBottom: 8,
+
+  // Full profile sections
+  profileSection: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderTopWidth: 0.5,
+    borderTopColor: C.hairlineSoft,
   },
+  profileSectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: C.ink,
+    letterSpacing: -0.1,
+    marginBottom: 10,
+  },
+
+  // Chips
   chipWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1080,74 +1384,189 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: C.inkSoft,
   },
-  feeRow: {
+
+  // Hours
+  hoursName: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.inkMute,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  hoursRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginBottom: 3,
+    paddingVertical: 4,
+    borderBottomWidth: 0.5,
+    borderBottomColor: C.hairlineSoft,
   },
-  feeTitle: {
+  hoursDay: {
     fontSize: 12,
+    fontWeight: '500',
     color: C.inkSoft,
-    lineHeight: 16,
+  },
+  hoursVal: {
+    fontSize: 12,
+    color: C.inkMute,
+  },
+
+  // Fees
+  feeCard: {
+    backgroundColor: C.surface,
+    borderRadius: 10,
+    padding: 11,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+  },
+  feeName: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: C.ink,
     flex: 1,
     marginRight: 8,
   },
   feeCost: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
-    color: C.ink,
-    flexShrink: 0,
+    color: C.primary,
   },
-  visitRow: {
+  feeDesc: {
+    fontSize: 11,
+    color: C.inkMute,
+    lineHeight: 15,
+  },
+
+  // Links / contact
+  linkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 10,
+  },
+  linkBtnText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: C.primary,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  contactText: {
+    fontSize: 12.5,
+    color: C.ink,
+    flex: 1,
+  },
+
+  // Weather
+  weatherCard: {
+    backgroundColor: C.surface,
+    borderRadius: 11,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    padding: 11,
+    width: 88,
+    alignItems: 'center',
+  },
+  weatherDay: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: C.inkMute,
+    letterSpacing: 0.2,
+    marginBottom: 5,
+    textAlign: 'center',
+  },
+  weatherEmoji: {
+    fontSize: 22,
+    marginBottom: 3,
+  },
+  weatherTemp: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.ink,
+  },
+  weatherLow: {
+    fontSize: 9,
+    color: C.inkMute,
+    marginTop: 1,
+    marginBottom: 4,
+  },
+  weatherDesc: {
+    fontSize: 9,
+    color: C.inkMute,
+    textAlign: 'center',
+    lineHeight: 12,
+    marginTop: 3,
+  },
+
+  // Journal / visit cards
+  visitCard: {
     backgroundColor: C.surface,
     borderWidth: 0.5,
     borderColor: C.hairline,
-    borderRadius: 9,
+    borderRadius: 10,
     overflow: 'hidden',
   },
-  visitRowHeader: {
+  visitCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 10,
-    paddingHorizontal: 11,
-    gap: 8,
+    padding: 11,
+    gap: 6,
   },
-  visitExpanded: {
-    padding: 10,
-    paddingHorizontal: 11,
+  visitCardBody: {
+    padding: 11,
     paddingTop: 8,
     borderTopWidth: 0.5,
     borderTopColor: C.hairlineSoft,
     backgroundColor: C.surfaceAlt,
   },
-  visitPhotos: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 5,
-    marginTop: 10,
-  },
-  visitPhoto: {
-    width: 56,
-    height: 56,
-    borderRadius: 7,
-  },
   visitDate: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: C.ink,
-    lineHeight: 16,
   },
   visitTitle: {
     fontSize: 11,
     color: C.inkSoft,
-    marginTop: 2,
+    marginTop: 1,
   },
   visitNotes: {
-    fontSize: 12.5,
+    fontSize: 12,
     color: C.inkSoft,
-    lineHeight: 19,
+    lineHeight: 18,
+  },
+  visitPhoto: {
+    width: 70,
+    height: 56,
+    borderRadius: 7,
+  },
+  visitEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 10,
+  },
+  visitEditBtnText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: C.primary,
+  },
+
+  // Attribution
+  attribution: {
+    marginHorizontal: 18,
+    paddingVertical: 16,
+    borderTopWidth: 0.5,
+    borderTopColor: C.hairlineSoft,
+    marginTop: 4,
+  },
+  attributionText: {
+    fontSize: 10,
+    color: C.inkMute,
+    lineHeight: 14,
+    textAlign: 'center',
   },
 
   // Action row

@@ -16,6 +16,7 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="journal/[id]" options={{ headerBackTitle: 'Journal' }} />
       <Stack.Screen name="passport" options={{ title: 'Passport' }} />
       <Stack.Screen name="friends"  options={{ title: 'Friends' }} />
+      <Stack.Screen name="edit"     options={{ title: 'Edit Profile' }} />
     </Stack>
   );
 }

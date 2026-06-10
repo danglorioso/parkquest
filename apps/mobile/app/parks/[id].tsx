@@ -1,12 +1,15 @@
 import {
-  ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal,
+  ActivityIndicator, Dimensions, Image, Linking, Modal,
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Image as ExpoImage } from 'expo-image';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import MapView, { Marker } from 'react-native-maps';
 import { fullStateName } from '@/lib/stateNames';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -102,17 +105,24 @@ interface WeatherForecast {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const GRADIENTS = [
-  ['#1F3D2E', '#2F7A4A'],
-  ['#2D4F66', '#1F3D2E'],
-  ['#7B3A1F', '#C56B3D'],
-  ['#3A2E5C', '#6E97A3'],
-  ['#2F7A4A', '#2D4F66'],
+const GRADIENTS: [string, string, string][] = [
+  ['#1F3D2E', '#2F7A4A', '#C56B3D'],
+  ['#2D4F66', '#1F3D2E', '#D89A3A'],
+  ['#7B3A1F', '#C56B3D', '#1F3D2E'],
+  ['#3A2E5C', '#6E97A3', '#D89A3A'],
+  ['#2F7A4A', '#1F3D2E', '#2D4F66'],
 ];
 
+function gradientIndex(code: string): number {
+  return code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length;
+}
+
 function gradientColor(code: string): string {
-  const idx = code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length;
-  return GRADIENTS[idx][0];
+  return GRADIENTS[gradientIndex(code)][0];
+}
+
+function gradientColors(code: string): [string, string, string] {
+  return GRADIENTS[gradientIndex(code)];
 }
 
 function weatherEmoji(shortForecast: string): string {
@@ -158,23 +168,25 @@ function ChipGrid({
 }: { items: string[]; muted?: boolean; limit?: number }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? items : items.slice(0, limit);
+  const hidden = items.length - limit;
   return (
-    <>
-      <View style={styles.chipWrap}>
-        {shown.map(item => (
-          <View key={item} style={[styles.chip, muted && styles.chipMuted]}>
-            <Text style={[styles.chipText, muted && styles.chipTextMuted]}>{item}</Text>
-          </View>
-        ))}
-      </View>
-      {items.length > limit && (
-        <TouchableOpacity onPress={() => setExpanded(e => !e)} style={styles.expandBtn}>
-          <Text style={styles.expandText}>
-            {expanded ? '↑ Show less' : `+${items.length - limit} more`}
-          </Text>
+    <View style={styles.chipWrap}>
+      {shown.map(item => (
+        <View key={item} style={[styles.chip, muted && styles.chipMuted]}>
+          <Text style={[styles.chipText, muted && styles.chipTextMuted]}>{item}</Text>
+        </View>
+      ))}
+      {items.length > limit && !expanded && (
+        <TouchableOpacity onPress={() => setExpanded(true)} style={[styles.chip, styles.chipExpand]}>
+          <Text style={styles.chipExpandText}>+{hidden} more</Text>
         </TouchableOpacity>
       )}
-    </>
+      {expanded && items.length > limit && (
+        <TouchableOpacity onPress={() => setExpanded(false)} style={[styles.chip, styles.chipExpand]}>
+          <Text style={styles.chipExpandText}>Show less</Text>
+        </TouchableOpacity>
+      )}
+    </View>
   );
 }
 
@@ -199,9 +211,8 @@ function Lightbox({ images, initialIndex, onClose }: {
         {images.length > 1 && (
           <View style={styles.lightboxNav}>
             <TouchableOpacity
-              disabled={idx === 0}
-              onPress={() => setIdx(i => i - 1)}
-              style={[styles.lightboxNavBtn, idx === 0 && { opacity: 0.3 }]}
+              onPress={() => setIdx(i => (i - 1 + images.length) % images.length)}
+              style={styles.lightboxNavBtn}
             >
               <Ionicons name="chevron-back" size={22} color="#FFFBF1" />
             </TouchableOpacity>
@@ -209,9 +220,8 @@ function Lightbox({ images, initialIndex, onClose }: {
               {idx + 1} / {images.length}
             </Text>
             <TouchableOpacity
-              disabled={idx === images.length - 1}
-              onPress={() => setIdx(i => i + 1)}
-              style={[styles.lightboxNavBtn, idx === images.length - 1 && { opacity: 0.3 }]}
+              onPress={() => setIdx(i => (i + 1) % images.length)}
+              style={styles.lightboxNavBtn}
             >
               <Ionicons name="chevron-forward" size={22} color="#FFFBF1" />
             </TouchableOpacity>
@@ -264,6 +274,7 @@ export default function ParkDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { getToken } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [park,     setPark]     = useState<Park | null>(null);
   const [nps,      setNps]      = useState<NpsData | null>(null);
@@ -356,8 +367,6 @@ export default function ParkDetailScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: park.name }} />
-
       {lightbox && (
         <Lightbox
           images={lightbox.images}
@@ -372,7 +381,7 @@ export default function ParkDetailScreen() {
         contentContainerStyle={{ paddingBottom: 60 }}
       >
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
-        <View style={[styles.hero, { backgroundColor: gradientColor(park.park_code) }]}>
+        <View style={[styles.hero, { height: 260 + insets.top, backgroundColor: gradientColor(park.park_code) }]}>
           {heroImage && !heroErr && (
             <Image
               source={{ uri: heroImage }}
@@ -381,13 +390,23 @@ export default function ParkDetailScreen() {
               onError={() => setHeroErr(true)}
             />
           )}
-          <View style={styles.heroOverlay} />
+          <LinearGradient
+            colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.42)', 'transparent']}
+            locations={[0, 0.35, 0.65]}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 0, y: 0 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <TouchableOpacity
+            style={[styles.backBtn, { top: insets.top + 8 }]}
+            onPress={() => router.back()}
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
+          </TouchableOpacity>
           <View style={styles.heroContent}>
-            {nps?.designation ? (
-              <Text style={styles.heroDesignation}>{nps.designation.toUpperCase()}</Text>
-            ) : null}
+            <Text style={styles.heroDesignation}>{stateName.toUpperCase()}</Text>
             <Text style={styles.heroName}>{park.name}</Text>
-            <Text style={styles.heroState}>{stateName}</Text>
           </View>
         </View>
 
@@ -397,15 +416,31 @@ export default function ParkDetailScreen() {
             horizontal showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.photoStrip}
           >
-            {extraImages.map((img, i) => (
-              <TouchableOpacity
-                key={i}
-                onPress={() => setLightbox({ images: nps!.images, idx: i + 1 })}
-                activeOpacity={0.85}
-              >
-                <Image source={{ uri: img.url }} style={styles.photoStripImg} />
-              </TouchableOpacity>
-            ))}
+            {extraImages.map((img, i) => {
+              const gc = gradientColors(park.park_code);
+              return (
+                <TouchableOpacity
+                  key={i}
+                  onPress={() => setLightbox({ images: nps!.images, idx: i + 1 })}
+                  activeOpacity={0.85}
+                  style={styles.photoStripItem}
+                >
+                  <LinearGradient
+                    colors={gc}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <ExpoImage
+                    source={{ uri: img.url }}
+                    style={StyleSheet.absoluteFill}
+                    contentFit="cover"
+                    transition={300}
+                    cachePolicy="memory-disk"
+                  />
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         )}
 
@@ -471,7 +506,7 @@ export default function ParkDetailScreen() {
         {nps?.operatingHours && nps.operatingHours.length > 0 ? (
           <Section title="Operating Hours">
             {nps.operatingHours.map((h, hi) => (
-              <View key={hi} style={{ marginBottom: hi < nps.operatingHours.length - 1 ? 16 : 0 }}>
+              <View key={hi} style={[styles.hoursCard, hi < nps.operatingHours.length - 1 && { marginBottom: 10 }]}>
                 {nps.operatingHours.length > 1 && (
                   <Text style={styles.hoursName}>{h.name}</Text>
                 )}
@@ -485,12 +520,56 @@ export default function ParkDetailScreen() {
                   );
                 })}
                 {h.description ? (
-                  <Text style={[styles.bodyText, { marginTop: 8 }]} numberOfLines={4}>
+                  <Text style={[styles.bodyText, { marginTop: 10 }]} numberOfLines={4}>
                     {h.description}
                   </Text>
                 ) : null}
               </View>
             ))}
+          </Section>
+        ) : null}
+
+        {/* ── Location ──────────────────────────────────────────────────────── */}
+        {park.latitude && park.longitude ? (
+          <Section title="Location">
+            <View style={styles.miniMapContainer}>
+              <MapView
+                style={styles.miniMap}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+                initialRegion={{
+                  latitude: parseFloat(park.latitude),
+                  longitude: parseFloat(park.longitude),
+                  latitudeDelta: 1.2,
+                  longitudeDelta: 1.2,
+                }}
+                showsUserLocation={false}
+                showsMyLocationButton={false}
+                showsCompass={false}
+                toolbarEnabled={false}
+                moveOnMarkerPress={false}
+                pointerEvents="none"
+              >
+                <Marker
+                  coordinate={{
+                    latitude: parseFloat(park.latitude),
+                    longitude: parseFloat(park.longitude),
+                  }}
+                  pinColor={C.primary}
+                />
+              </MapView>
+            </View>
+            <TouchableOpacity
+              style={styles.viewOnMapBtn}
+              onPress={() => router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code } } as never)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="map-outline" size={14} color={C.primary} />
+              <Text style={styles.viewOnMapBtnText}>View on full map</Text>
+              <Ionicons name="arrow-forward" size={13} color={C.primary} />
+            </TouchableOpacity>
           </Section>
         ) : null}
 
@@ -638,7 +717,15 @@ export default function ParkDetailScreen() {
         {/* ── Attribution ───────────────────────────────────────────────────── */}
         <View style={styles.attribution}>
           <Text style={styles.attributionText}>
-            Park information sourced from the National Park Service (NPS). Always verify details before your visit.
+            Park information is sourced directly from the{" "}
+            <Text style={styles.attributionLink} onPress={() => Linking.openURL("https://www.nps.gov")}>
+              National Park Service (NPS)
+            </Text>
+            . Weather forecasts are provided by the{" "}
+            <Text style={styles.attributionLink} onPress={() => Linking.openURL("https://www.weather.gov")}>
+              National Weather Service (NWS)
+            </Text>
+            . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details with official sources before your visit.
           </Text>
         </View>
       </ScrollView>
@@ -673,12 +760,18 @@ const styles = StyleSheet.create({
 
   // Hero
   hero: {
-    height: 260,
     justifyContent: 'flex-end',
+    overflow: 'hidden',
   },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.32)',
+  backBtn: {
+    position: 'absolute',
+    left: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heroContent: {
     padding: 20,
@@ -698,12 +791,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     lineHeight: 32,
   },
-  heroState: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.72)',
-    marginTop: 4,
-  },
 
   // Photo strip
   photoStrip: {
@@ -712,10 +799,11 @@ const styles = StyleSheet.create({
     gap: 8,
     flexDirection: 'row',
   },
-  photoStripImg: {
+  photoStripItem: {
     width: 110,
     height: 72,
     borderRadius: 10,
+    overflow: 'hidden',
   },
 
   // Stats
@@ -845,30 +933,37 @@ const styles = StyleSheet.create({
     color: C.inkMute,
     fontWeight: '500',
   },
-  expandBtn: {
-    marginTop: 8,
+  chipExpand: {
+    backgroundColor: 'transparent',
+    borderColor: C.primary,
   },
-  expandText: {
+  chipExpandText: {
     fontSize: 12,
     fontWeight: '600',
     color: C.primary,
   },
 
   // Hours
+  hoursCard: {
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
   hoursName: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: C.inkMute,
-    marginBottom: 8,
+    marginBottom: 10,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
   },
   hoursRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 5,
-    borderBottomWidth: 0.5,
-    borderBottomColor: C.hairline,
   },
   hoursDay: {
     fontSize: 13,
@@ -1058,5 +1153,37 @@ const styles = StyleSheet.create({
     color: C.inkMute,
     lineHeight: 16,
     textAlign: 'center',
+  },
+  attributionLink: {
+    textDecorationLine: 'underline',
+  },
+
+  // Location mini-map
+  miniMapContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: 'rgba(27,26,22,0.10)',
+    height: 200,
+  },
+  miniMap: {
+    flex: 1,
+  },
+  viewOnMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 11,
+    backgroundColor: '#FFFBF1',
+    borderRadius: 10,
+    borderWidth: 0.5,
+    borderColor: 'rgba(27,26,22,0.10)',
+  },
+  viewOnMapBtnText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#1F3D2E',
   },
 });
