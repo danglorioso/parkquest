@@ -66,6 +66,13 @@ interface CommentRow {
   avatar_url: string | null;
 }
 
+interface Liker {
+  user_id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 export function relTime(iso: string): string {
@@ -194,6 +201,64 @@ function Lightbox({
               </TouchableOpacity>
             ))}
           </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+// ── LikersSheet ───────────────────────────────────────────────────────────────
+
+function LikersSheet({
+  postId, token, onClose,
+}: { postId: number; token: string; onClose: () => void }) {
+  const router = useRouter();
+  const [rows, setRows] = useState<Liker[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiReq(`/api/likes?postId=${postId}`, token)
+      .then(setRows)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [postId, token]);
+
+  const openProfile = (userId: string) => {
+    onClose();
+    router.push(`/user/${userId}` as never);
+  };
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+      <View style={styles.sheet}>
+        <View style={styles.sheetHandle} />
+        <Text style={styles.sheetTitle}>LIKED BY</Text>
+        {loading ? (
+          <ActivityIndicator size="small" color={C.inkMute} style={{ margin: 24 }} />
+        ) : rows.length === 0 ? (
+          <Text style={styles.sheetEmpty}>No likes yet</Text>
+        ) : (
+          <ScrollView style={{ maxHeight: 380 }} bounces={false}>
+            {rows.map(l => {
+              const lname = l.display_name ?? l.username ?? 'Explorer';
+              return (
+                <TouchableOpacity
+                  key={l.user_id}
+                  style={styles.likerRow}
+                  activeOpacity={0.7}
+                  onPress={() => openProfile(l.user_id)}
+                >
+                  <Avatar url={l.avatar_url} name={lname} size={36} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.likerName}>{lname}</Text>
+                    {l.username ? <Text style={styles.likerSub}>@{l.username}</Text> : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={C.inkMute} />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         )}
       </View>
     </Modal>

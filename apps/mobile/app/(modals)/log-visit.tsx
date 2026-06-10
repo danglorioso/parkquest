@@ -1485,6 +1485,8 @@ export default function LogVisitModal() {
         });
       }
 
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      deleteDraft(draftId.current);
       router.back();
     } catch (e) {
       Alert.alert('Something went wrong', 'Please try again.');
@@ -1538,6 +1540,24 @@ export default function LogVisitModal() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {step === 0 && restoreBanner && restoreBanner.id !== draftId.current && (
+          <View style={styles.draftBanner}>
+            <Ionicons name="document-text-outline" size={16} color={C.accent} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.draftBannerTitle} numberOfLines={1}>
+                {restoreBanner.parkName ?? 'No park selected'}
+                {restoreBanner.draft.title ? ` — ${restoreBanner.draft.title}` : ''}
+              </Text>
+              <Text style={styles.draftBannerSub}>Draft saved {draftAge(restoreBanner.savedAt)}</Text>
+            </View>
+            <TouchableOpacity onPress={discardSavedDraft} hitSlop={6} style={{ padding: 4 }}>
+              <Ionicons name="trash-outline" size={15} color={C.inkMute} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={resumeDraft} style={styles.draftResumeBtn} activeOpacity={0.8}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFBF1' }}>Resume</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {step === 0 && <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} />}
         {step === 1 && <StepVisit draft={draft} set={set} />}
         {step === 2 && token && <StepJournal draft={draft} set={set} token={token} npsActivityNames={npsActivityNames} />}
@@ -1596,6 +1616,27 @@ export default function LogVisitModal() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  // Draft restore banner
+  draftBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(197,107,61,0.08)',
+    borderWidth: 0.5, borderColor: 'rgba(197,107,61,0.35)',
+    borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 11,
+    marginBottom: 20,
+  },
+  draftBannerTitle: {
+    fontSize: 13, fontWeight: '700', color: C.ink,
+  },
+  draftBannerSub: {
+    fontSize: 11, color: C.inkMute, marginTop: 1,
+  },
+  draftResumeBtn: {
+    backgroundColor: C.primary,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 100,
+  },
+
   // Modal chrome
   grabber: {
     width: 36, height: 4.5, borderRadius: 3,
