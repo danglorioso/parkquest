@@ -192,7 +192,7 @@ function HeroSection() {
           position: 'absolute', right: SCREEN_W * rightFrac, top: insets.top + topPx,
           width: w, height: 2,
           opacity: _shootOp[i],
-          transform: [{ translateX: _shootTx[i] }, { translateY: _shootTy[i] }],
+          transform: [{ rotate: '-42deg' }, { translateX: _shootTx[i] }, { translateY: _shootTy[i] }],
         }}>
           <Svg width={w} height={2} viewBox={`0 0 ${w} 2`}>
             <Defs>

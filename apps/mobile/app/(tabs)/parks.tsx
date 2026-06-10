@@ -1,5 +1,5 @@
 import {
-  Dimensions, FlatList, Image, ScrollView, StyleSheet,
+  Dimensions, FlatList, Image, Linking, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -184,75 +184,175 @@ function ParkCard({ park, status }: { park: Park; status: ParkStatus }) {
   );
 }
 
-// ── Filter pills ──────────────────────────────────────────────────────────────
+// ── Filter panel ──────────────────────────────────────────────────────────────
 
-function FilterRow({
+type FilterSection = 'status' | 'location' | 'activities' | 'topics';
+
+function Chip({
+  label, active, dot, onPress,
+}: { label: string; active: boolean; dot?: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress} activeOpacity={0.7}
+      style={[styles.pill, active && styles.pillActive]}
+    >
+      {dot ? <View style={[styles.pillDot, { backgroundColor: dot }]} /> : null}
+      <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function FilterPanel({
   statusFilter, onStatusFilter,
   regionFilter, onRegionFilter,
+  activityFilters, onActivityToggle, onClearActivities,
+  topicFilters, onTopicToggle, onClearTopics,
+  allActivities, allTopics, filtersLoading,
   hasFilter, onReset,
-  visitedCount, parks,
 }: {
   statusFilter: StatusFilter; onStatusFilter: (s: StatusFilter) => void;
   regionFilter: string; onRegionFilter: (r: string) => void;
+  activityFilters: string[]; onActivityToggle: (a: string) => void; onClearActivities: () => void;
+  topicFilters: string[]; onTopicToggle: (t: string) => void; onClearTopics: () => void;
+  allActivities: string[]; allTopics: string[]; filtersLoading: boolean;
   hasFilter: boolean; onReset: () => void;
-  visitedCount: number; parks: Park[];
 }) {
+  const [open, setOpen] = useState(false);
+  const [section, setSection] = useState<FilterSection | null>(null);
+
+  const activeCount =
+    (statusFilter !== 'all' ? 1 : 0) +
+    (regionFilter !== 'all' ? 1 : 0) +
+    activityFilters.length +
+    topicFilters.length;
+
+  const toggleSection = (s: FilterSection) =>
+    setSection(prev => (prev === s ? null : s));
+
+  const statusLabel = STATUS_FILTERS.find(f => f.key === statusFilter)?.label ?? 'All';
+
+  const sections: Array<{
+    key: FilterSection;
+    title: string;
+    summary: string;
+    hasSelection: boolean;
+  }> = [
+    { key: 'status',     title: 'Status',     summary: statusLabel, hasSelection: statusFilter !== 'all' },
+    { key: 'location',   title: 'Location',   summary: regionFilter === 'all' ? 'All regions' : regionFilter, hasSelection: regionFilter !== 'all' },
+    { key: 'activities', title: 'Activities', summary: activityFilters.length > 0 ? `${activityFilters.length} selected` : 'Any', hasSelection: activityFilters.length > 0 },
+    { key: 'topics',     title: 'Topics',     summary: topicFilters.length > 0 ? `${topicFilters.length} selected` : 'Any', hasSelection: topicFilters.length > 0 },
+  ];
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.filterRow}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Status pills */}
-      {STATUS_FILTERS.map(f => {
-        const on = statusFilter === f.key;
-        return (
-          <TouchableOpacity
-            key={f.key} onPress={() => onStatusFilter(f.key)} activeOpacity={0.7}
-            style={[styles.pill, on && styles.pillActive]}
-          >
-            {f.key !== 'all' && (
-              <View style={[styles.pillDot, { backgroundColor: f.color }]} />
-            )}
-            <Text style={[styles.pillText, on && styles.pillTextActive]}>{f.label}</Text>
-          </TouchableOpacity>
-        );
-      })}
+    <View style={styles.filterWrap}>
+      {/* Toggle row */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <TouchableOpacity
+          style={[styles.filterToggle, (open || activeCount > 0) && styles.filterToggleActive]}
+          onPress={() => { setOpen(o => !o); if (open) setSection(null); }}
+          activeOpacity={0.75}
+        >
+          <Ionicons
+            name="options-outline" size={15}
+            color={open || activeCount > 0 ? '#FFFBF1' : C.inkSoft}
+          />
+          <Text style={[styles.filterToggleText, (open || activeCount > 0) && { color: '#FFFBF1' }]}>
+            Filters
+          </Text>
+          {activeCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeCount}</Text>
+            </View>
+          )}
+          <Ionicons
+            name={open ? 'chevron-up' : 'chevron-down'} size={13}
+            color={open || activeCount > 0 ? '#FFFBF1' : C.inkMute}
+          />
+        </TouchableOpacity>
 
-      {/* Divider */}
-      <View style={styles.pillDivider} />
-
-      {/* Region pills */}
-      <TouchableOpacity
-        onPress={() => onRegionFilter('all')} activeOpacity={0.7}
-        style={[styles.pill, regionFilter === 'all' && styles.pillActive]}
-      >
-        <Text style={[styles.pillText, regionFilter === 'all' && styles.pillTextActive]}>All regions</Text>
-      </TouchableOpacity>
-      {REGIONS.map(r => {
-        const on = regionFilter === r.label;
-        return (
-          <TouchableOpacity
-            key={r.label} onPress={() => onRegionFilter(r.label)} activeOpacity={0.7}
-            style={[styles.pill, on && styles.pillActive]}
-          >
-            <Text style={[styles.pillText, on && styles.pillTextActive]}>{r.label}</Text>
-          </TouchableOpacity>
-        );
-      })}
-
-      {/* Reset */}
-      {hasFilter && (
-        <>
-          <View style={styles.pillDivider} />
+        {hasFilter && (
           <TouchableOpacity onPress={onReset} activeOpacity={0.7} style={styles.pillReset}>
             <Ionicons name="close-circle" size={14} color={C.accent} />
             <Text style={styles.pillResetText}>Reset</Text>
           </TouchableOpacity>
-        </>
+        )}
+      </View>
+
+      {/* Expanded panel — one accordion per filter category */}
+      {open && (
+        <View style={styles.filterPanel}>
+          {sections.map((s, i) => (
+            <View key={s.key} style={i > 0 ? { borderTopWidth: 0.5, borderTopColor: C.hairlineSoft } : null}>
+              <TouchableOpacity
+                style={styles.filterSectionHeader}
+                onPress={() => toggleSection(s.key)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.filterSectionTitle}>{s.title.toUpperCase()}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.filterSectionSummary, s.hasSelection && { color: C.primary, fontWeight: '700' }]}>
+                    {s.summary}
+                  </Text>
+                  <Ionicons
+                    name={section === s.key ? 'chevron-up' : 'chevron-down'}
+                    size={13} color={C.inkMute}
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {section === s.key && (
+                <View style={styles.filterChipsWrap}>
+                  {s.key === 'status' && STATUS_FILTERS.map(f => (
+                    <Chip
+                      key={f.key}
+                      label={f.label}
+                      dot={f.key !== 'all' ? f.color : undefined}
+                      active={statusFilter === f.key}
+                      onPress={() => onStatusFilter(f.key)}
+                    />
+                  ))}
+
+                  {s.key === 'location' && (
+                    <>
+                      <Chip label="All regions" active={regionFilter === 'all'} onPress={() => onRegionFilter('all')} />
+                      {REGIONS.map(r => (
+                        <Chip key={r.label} label={r.label} active={regionFilter === r.label} onPress={() => onRegionFilter(r.label)} />
+                      ))}
+                    </>
+                  )}
+
+                  {(s.key === 'activities' || s.key === 'topics') && (
+                    filtersLoading ? (
+                      <Text style={styles.filterLoadingText}>Loading…</Text>
+                    ) : (
+                      <>
+                        {(s.key === 'activities' ? allActivities : allTopics).map(item => (
+                          <Chip
+                            key={item}
+                            label={item}
+                            active={(s.key === 'activities' ? activityFilters : topicFilters).includes(item)}
+                            onPress={() => (s.key === 'activities' ? onActivityToggle : onTopicToggle)(item)}
+                          />
+                        ))}
+                        {(s.key === 'activities' ? activityFilters : topicFilters).length > 0 && (
+                          <TouchableOpacity
+                            onPress={s.key === 'activities' ? onClearActivities : onClearTopics}
+                            activeOpacity={0.7}
+                            style={styles.pillReset}
+                          >
+                            <Text style={styles.pillResetText}>Clear</Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )
+                  )}
+                </View>
+              )}
+            </View>
+          ))}
+        </View>
       )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -268,6 +368,11 @@ export default function ParksScreen() {
   const [query,   setQuery]   = useState('');
   const [statusFilter,  setStatusFilter]  = useState<StatusFilter>('all');
   const [regionFilter,  setRegionFilter]  = useState('all');
+  const [activityFilters, setActivityFilters] = useState<string[]>([]);
+  const [topicFilters,    setTopicFilters]    = useState<string[]>([]);
+  const [activitiesMap, setActivitiesMap] = useState<Record<string, string[]>>({});
+  const [topicsMap,     setTopicsMap]     = useState<Record<string, string[]>>({});
+  const [filtersLoading, setFiltersLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -293,6 +398,21 @@ export default function ParksScreen() {
   loadDataRef.current = loadData;
   useFocusEffect(useCallback(() => { loadDataRef.current(); }, []));
 
+  // Activities and topics are slow (NPS API) — load lazily in background, once
+  const filtersFetched = useRef(false);
+  useFocusEffect(useCallback(() => {
+    if (filtersFetched.current) return;
+    filtersFetched.current = true;
+    Promise.all([
+      fetch(`${BASE}/api/parks/activities`).then(r => r.ok ? r.json() : {}),
+      fetch(`${BASE}/api/parks/topics`).then(r => r.ok ? r.json() : {}),
+    ]).then(([a, t]) => {
+      setActivitiesMap(a);
+      setTopicsMap(t);
+      setFiltersLoading(false);
+    }).catch(() => setFiltersLoading(false));
+  }, []));
+
   const visitedCount = useMemo(
     () => parks.filter(p => parkStatus(p.park_code, visits) === 'visited').length,
     [parks, visits]
@@ -307,6 +427,14 @@ export default function ParksScreen() {
         const parkStates = p.states.split(',').map(s => s.trim());
         if (!region || !parkStates.some(s => region.states.includes(s))) return false;
       }
+      if (activityFilters.length > 0) {
+        const parkActivities = activitiesMap[p.park_code] ?? [];
+        if (!activityFilters.every(a => parkActivities.includes(a))) return false;
+      }
+      if (topicFilters.length > 0) {
+        const parkTopics = topicsMap[p.park_code] ?? [];
+        if (!topicFilters.every(t => parkTopics.includes(t))) return false;
+      }
       if (query) {
         const q = query.toLowerCase();
         return p.name.toLowerCase().includes(q)
@@ -315,15 +443,45 @@ export default function ParksScreen() {
       }
       return true;
     }).sort((a, b) => a.name.localeCompare(b.name));
-  }, [parks, visits, query, statusFilter, regionFilter]);
+  }, [parks, visits, query, statusFilter, regionFilter, activityFilters, topicFilters, activitiesMap, topicsMap]);
 
-  const hasFilter = !!query || statusFilter !== 'all' || regionFilter !== 'all';
+  const hasFilter = !!query || statusFilter !== 'all' || regionFilter !== 'all'
+    || activityFilters.length > 0 || topicFilters.length > 0;
 
   const handleReset = useCallback(() => {
     setQuery('');
     setStatusFilter('all');
     setRegionFilter('all');
+    setActivityFilters([]);
+    setTopicFilters([]);
   }, []);
+
+  // Most common activities / topics across all parks (same ranking as web)
+  const allActivities = useMemo(() => {
+    const freq: Record<string, number> = {};
+    parks.forEach(p => {
+      (activitiesMap[p.park_code] ?? []).forEach(a => { freq[a] = (freq[a] ?? 0) + 1; });
+    });
+    const top = Object.entries(freq)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([name]) => name)
+      .slice(0, 24);
+    const extras = activityFilters.filter(a => !top.includes(a));
+    return [...extras, ...top];
+  }, [parks, activitiesMap, activityFilters]);
+
+  const allTopics = useMemo(() => {
+    const freq: Record<string, number> = {};
+    parks.forEach(p => {
+      (topicsMap[p.park_code] ?? []).forEach(t => { freq[t] = (freq[t] ?? 0) + 1; });
+    });
+    const top = Object.entries(freq)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([name]) => name)
+      .slice(0, 30);
+    const extras = topicFilters.filter(t => !top.includes(t));
+    return [...extras, ...top];
+  }, [parks, topicsMap, topicFilters]);
 
   type ParkRow =
     | { id: string; type: 'skeleton' }
@@ -368,12 +526,19 @@ export default function ParksScreen() {
         )}
       </View>
 
-      {/* Filter pills */}
-      <FilterRow
+      {/* Filters */}
+      <FilterPanel
         statusFilter={statusFilter} onStatusFilter={setStatusFilter}
         regionFilter={regionFilter} onRegionFilter={setRegionFilter}
+        activityFilters={activityFilters}
+        onActivityToggle={a => setActivityFilters(prev => prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a])}
+        onClearActivities={() => setActivityFilters([])}
+        topicFilters={topicFilters}
+        onTopicToggle={t => setTopicFilters(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+        onClearTopics={() => setTopicFilters([])}
+        allActivities={allActivities} allTopics={allTopics}
+        filtersLoading={filtersLoading}
         hasFilter={hasFilter} onReset={handleReset}
-        visitedCount={visitedCount} parks={parks}
       />
 
       {/* Results count */}
@@ -394,7 +559,15 @@ export default function ParksScreen() {
   const ListFooter = !loading && filtered.length > 0 ? (
     <View style={{ paddingHorizontal: H_PAD, paddingTop: 24, paddingBottom: 40, borderTopWidth: 0.5, borderTopColor: C.hairline, marginHorizontal: H_PAD, marginTop: 16 }}>
       <Text style={{ fontSize: 11, color: C.inkMute, lineHeight: 17 }}>
-        Park information sourced from the National Park Service (NPS). Always verify details before your visit.
+        Park information is sourced directly from the{" "}
+        <Text style={{ textDecorationLine: 'underline' }} onPress={() => Linking.openURL('https://www.nps.gov')}>
+          National Park Service (NPS)
+        </Text>
+        . Weather forecasts are provided by the{" "}
+        <Text style={{ textDecorationLine: 'underline' }} onPress={() => Linking.openURL('https://www.weather.gov')}>
+          National Weather Service (NWS)
+        </Text>
+        . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details before your visit.
       </Text>
     </View>
   ) : null;
@@ -509,12 +682,81 @@ const styles = StyleSheet.create({
   },
 
   // Filter pills
-  filterRow: {
+  filterWrap: {
     paddingHorizontal: H_PAD,
     paddingBottom: 12,
-    gap: 6,
+  },
+  filterToggle: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 100,
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+  },
+  filterToggleActive: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
+  },
+  filterToggleText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: C.inkSoft,
+  },
+  filterBadge: {
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: '#FFFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: C.primary,
+  },
+  filterPanel: {
+    marginTop: 8,
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  filterSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  filterSectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.inkMute,
+    letterSpacing: 1,
+  },
+  filterSectionSummary: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: C.inkMute,
+  },
+  filterChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    alignItems: 'center',
+  },
+  filterLoadingText: {
+    fontSize: 12,
+    color: C.inkMute,
   },
   pill: {
     flexDirection: 'row',
@@ -544,12 +786,6 @@ const styles = StyleSheet.create({
   pillTextActive: {
     color: '#FFFBF1',
     fontWeight: '600',
-  },
-  pillDivider: {
-    width: 1,
-    height: 18,
-    backgroundColor: C.hairline,
-    marginHorizontal: 2,
   },
   pillReset: {
     flexDirection: 'row',

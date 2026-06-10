@@ -86,11 +86,7 @@ export default function RootLayout() {
                   name="(modals)/log-visit"
                   options={{
                     presentation: 'modal',
-                    headerShown: true,
-                    title: 'Log Visit',
-                    headerStyle: { backgroundColor: '#FFFBF1' },
-                    headerTintColor: '#1F3D2E',
-                    headerShadowVisible: false,
+                    headerShown: false,
                   }}
                 />
                 <Stack.Screen

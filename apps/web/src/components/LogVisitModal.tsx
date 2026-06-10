@@ -308,15 +308,32 @@ function Kicker({ children }: { children: React.ReactNode }) {
   return <div style={{ ...mono, fontSize: 9.5, letterSpacing: 1.4, color: "var(--ink-mute)", textTransform: "uppercase", fontWeight: 600 }}>{children}</div>;
 }
 
-function Section({ kicker, title, hint, children, mb = 20 }: {
-  kicker?: string; title?: string; hint?: string; children: React.ReactNode; mb?: number;
+function RequirementTag({ kind }: { kind: "required" | "optional" }) {
+  return (
+    <span style={{
+      ...mono, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", fontWeight: 600,
+      color: kind === "required" ? "var(--primary)" : "var(--ink-mute)",
+      marginLeft: 8, verticalAlign: "2px",
+    }}>
+      {kind}
+    </span>
+  );
+}
+
+function Section({ kicker, title, hint, tag, children, mb = 20 }: {
+  kicker?: string; title?: string; hint?: string; tag?: "required" | "optional"; children: React.ReactNode; mb?: number;
 }) {
   return (
     <div style={{ marginBottom: mb }}>
       {(kicker || title || hint) && (
         <div style={{ marginBottom: 10 }}>
           {kicker && <Kicker>{kicker}</Kicker>}
-          {title  && <div style={{ fontWeight: 800, fontSize: 19, color: "var(--ink)", letterSpacing: -0.3, marginTop: kicker ? 2 : 0 }}>{title}</div>}
+          {title  && (
+            <div style={{ fontWeight: 800, fontSize: 19, color: "var(--ink)", letterSpacing: -0.3, marginTop: kicker ? 2 : 0 }}>
+              {title}
+              {tag && <RequirementTag kind={tag} />}
+            </div>
+          )}
           {hint   && <div style={{ fontSize: 12.5, color: "var(--ink-mute)", marginTop: 3, lineHeight: 1.4 }}>{hint}</div>}
         </div>
       )}
@@ -708,12 +725,12 @@ function ScaleControl({ value, onChange, mode = "stars", labels, accent = "var(-
 
 // ── Rating row wrapper ─────────────────────────────────────────────────────
 
-function RatingRow({ iconName, label, children, last = false }: { iconName: IconName; label: string; children: React.ReactNode; last?: boolean }) {
+function RatingRow({ iconName, label, tag, children, last = false }: { iconName: IconName; label: string; tag?: "required" | "optional"; children: React.ReactNode; last?: boolean }) {
   return (
     <div style={{ marginBottom: last ? 0 : 16, paddingBottom: last ? 0 : 16, borderBottom: last ? "none" : "0.5px solid var(--hairline-soft)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 9 }}>
         <Ic n={iconName} size={15} sw={2} stroke="var(--ink-mute)" />
-        <span style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)" }}>{label}</span>
+        <span style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)" }}>{label}{tag && <RequirementTag kind={tag} />}</span>
       </div>
       {children}
     </div>
@@ -1285,11 +1302,11 @@ function StepWhere({ draft, set, onOpenPark, park }: { draft: VisitDraft; set: S
         <ParkHeroRow park={park} onChangePark={onOpenPark} />
       </Section>
       <div style={{ display: "flex", flexDirection: "column", gap: 18, ...(hasPark ? unlockedStyle : lockedStyle) }}>
-        <Section title="Trip title" mb={0}>
+        <Section title="Trip title" tag="optional" mb={0}>
           <input value={draft.title} onChange={e => set("title", e.target.value.slice(0, 80))} placeholder="Give this trip a name"
             style={{ width: "100%", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 14, padding: "13px 14px", fontSize: 15, color: "var(--ink)", outline: "none", fontWeight: 600, boxSizing: "border-box", fontFamily: "inherit" }} />
         </Section>
-        <Section title="Dates" mb={0}>
+        <Section title="Dates" tag="required" mb={0}>
           <Card pad={14}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingBottom: 12, borderBottom: "0.5px solid var(--hairline-soft)" }}>
               <div>
@@ -1313,25 +1330,25 @@ function StepWhere({ draft, set, onOpenPark, park }: { draft: VisitDraft; set: S
 function StepRate({ draft, set }: { draft: VisitDraft; set: SetFn }) {
   return (
     <>
-      <Section title="How was it?" mb={18}>
+      <Section title="How was it?" tag="optional" mb={18}>
         <Card>
           <ScaleControl value={draft.rating} onChange={v => set("rating", v)} mode="stars" accent="var(--accent)" />
         </Card>
       </Section>
       <Section mb={18}>
         <Card>
-          <RatingRow iconName="crowd" label="Crowd level">
+          <RatingRow iconName="crowd" label="Crowd level" tag="optional">
             <ScaleControl value={draft.crowd} onChange={v => set("crowd", v)} mode="segmented" labels={CROWD_LABELS} accent="var(--primary)" />
           </RatingRow>
-          <RatingRow iconName="trail" label="Trail difficulty" last>
+          <RatingRow iconName="trail" label="Trail difficulty" tag="optional" last>
             <ScaleControl value={draft.difficulty} onChange={v => set("difficulty", v)} mode="segmented" labels={DIFF_LABELS} accent="var(--primary)" />
           </RatingRow>
         </Card>
       </Section>
-      <Section title="Weather" mb={18}>
+      <Section title="Weather" tag="optional" mb={18}>
         <Card><WeatherPicker value={draft.weather} onChange={v => set("weather", v)} /></Card>
       </Section>
-      <Section title="Would you go back?">
+      <Section title="Would you go back?" tag="optional">
         <ReturnChoice value={draft.wouldReturn} onChange={v => set("wouldReturn", v)} />
       </Section>
     </>
@@ -1342,14 +1359,14 @@ function StepJournal({ draft, set, activities, npsActivityNames }: { draft: Visi
   return (
     <>
       <div style={{ display: "flex", flexDirection: "column", gap: 18, marginBottom: 18 }}>
-        <Section title="Highlight" mb={0}>
+        <Section title="Highlight" tag="optional" mb={0}>
           <div style={{ position: "relative" }}>
             <input value={draft.highlight} onChange={e => set("highlight", e.target.value.slice(0, 90))} placeholder="The one moment you'll remember"
               style={{ width: "100%", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 14, padding: "13px 52px 13px 14px", fontSize: 15, color: "var(--ink)", outline: "none", fontWeight: 600, boxSizing: "border-box", fontFamily: "inherit" }} />
             <div style={{ ...mono, position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 9.5, color: "var(--ink-mute)", letterSpacing: 0.6, pointerEvents: "none" }}>{draft.highlight.length}/90</div>
           </div>
         </Section>
-        <Section title="Notes" mb={0}>
+        <Section title="Notes" tag="optional" mb={0}>
           <div style={{ position: "relative" }}>
             <textarea value={draft.notes} onChange={e => set("notes", e.target.value.slice(0, 2000))} placeholder="What did you see, hear, feel?"
               style={{ width: "100%", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 14, padding: "13px 14px 28px", fontSize: 15, color: "var(--ink)", outline: "none", lineHeight: 1.5, minHeight: 130, resize: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
@@ -1357,13 +1374,13 @@ function StepJournal({ draft, set, activities, npsActivityNames }: { draft: Visi
           </div>
         </Section>
       </div>
-      <Section title="Activities" mb={18}>
+      <Section title="Activities" tag="optional" mb={18}>
         <ActivityPicker value={draft.activities} onChange={v => set("activities", v)} options={activities} npsActivityNames={npsActivityNames} />
       </Section>
-      <Section title="Who came along?" mb={18}>
+      <Section title="Who came along?" tag="optional" mb={18}>
         <CompanionPicker value={draft.companions} onChange={v => set("companions", v)} />
       </Section>
-      <Section title="Photos">
+      <Section title="Photos" tag="optional">
         <PhotoUploader photos={draft.photos} cover={draft.cover}
           onAddPhotos={urls => {
             const next = [...draft.photos, ...urls].slice(0, 10);
@@ -1385,7 +1402,7 @@ function StepJournal({ draft, set, activities, npsActivityNames }: { draft: Visi
 function StepShare({ draft, set }: { draft: VisitDraft; set: SetFn }) {
   return (
     <>
-      <Section title="Add a caption" mb={18}>
+      <Section title="Add a caption" tag="optional" mb={18}>
         <textarea
           value={draft.caption}
           onChange={e => set("caption", e.target.value.slice(0, 500))}

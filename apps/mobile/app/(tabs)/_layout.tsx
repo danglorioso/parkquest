@@ -1,6 +1,7 @@
 import { Tabs, useRouter } from 'expo-router';
 import { TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Design tokens — mirrors globals.css
 const C = {
@@ -41,8 +42,21 @@ function LogVisitButton() {
       accessibilityRole="button"
       style={styles.fabWrapper}
     >
-      <View style={styles.fab}>
-        <Ionicons name="add" size={30} color="#FFFBF1" />
+      <View style={styles.fabShadow}>
+        <LinearGradient
+          colors={['#DC8552', C.accent, '#9E5128']}
+          start={{ x: 0.15, y: 0 }}
+          end={{ x: 0.85, y: 1 }}
+          style={styles.fab}
+        >
+          {/* Glossy sheen — light catching the top of the dome */}
+          <LinearGradient
+            colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.08)', 'transparent']}
+            style={styles.fabGloss}
+            pointerEvents="none"
+          />
+          <Ionicons name="add" size={30} color="#FFFBF1" />
+        </LinearGradient>
       </View>
     </TouchableOpacity>
   );
@@ -62,6 +76,8 @@ export default function TabsLayout() {
           height: Platform.OS === 'ios' ? 84 : 64,
           paddingBottom: Platform.OS === 'ios' ? 28 : 8,
           paddingTop: 8,
+          // Inset outer tabs away from the screen's rounded corners
+          paddingHorizontal: Platform.OS === 'ios' ? 14 : 6,
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -95,6 +111,7 @@ export default function TabsLayout() {
             height: Platform.OS === 'ios' ? 84 : 64,
             paddingBottom: Platform.OS === 'ios' ? 28 : 8,
             paddingTop: 8,
+            paddingHorizontal: Platform.OS === 'ios' ? 14 : 6,
           },
         }}
       />
@@ -136,18 +153,32 @@ const styles = StyleSheet.create({
     // Lift the button so it floats above the tab bar baseline
     marginBottom: Platform.OS === 'ios' ? 14 : 4,
   },
-  fab: {
-    width: 58,
-    height: 58,
+  // Shadow lives on an outer view so the gradient can clip to the circle
+  // without iOS clipping the shadow along with it
+  fabShadow: {
     borderRadius: 29,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Warm shadow that matches the accent color
     shadowColor: C.accent,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.40,
     shadowRadius: 10,
     elevation: 8,
+  },
+  fab: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Hairline rim light on the upper edge sells the 3D dome
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.45)',
+  },
+  fabGloss: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 30,
   },
 });

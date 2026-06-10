@@ -173,7 +173,9 @@ export default function UserProfileScreen() {
   const isFriend = profile?.friendship_status === 'accepted';
   const displayName = profile?.display_name ?? profile?.username ?? 'Explorer';
   const initials = displayName[0]?.toUpperCase() ?? '?';
-  const joinYear = profile?.created_at ? new Date(profile.created_at).getFullYear() : null;
+  const joinedDate = profile?.created_at
+    ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : null;
 
   return (
     <>
@@ -210,8 +212,8 @@ export default function UserProfileScreen() {
               ) : null}
 
               <View style={styles.rankRow}>
-                {joinYear ? (
-                  <Text style={styles.joinText}>Joined {joinYear}</Text>
+                {joinedDate ? (
+                  <Text style={styles.joinText}>Joined {joinedDate}</Text>
                 ) : null}
                 <View style={styles.rankBadge}>
                   <Text style={styles.rankText}>{explorerRank(profile.parks_visited)}</Text>

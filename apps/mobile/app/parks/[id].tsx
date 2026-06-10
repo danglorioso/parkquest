@@ -283,6 +283,8 @@ export default function ParkDetailScreen() {
   const [loading,  setLoading]  = useState(true);
   const [heroErr,  setHeroErr]  = useState(false);
   const [lightbox, setLightbox] = useState<{ images: NpsImage[]; idx: number } | null>(null);
+  const [onBucket, setOnBucket] = useState(false);
+  const [bucketBusy, setBucketBusy] = useState(false);
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -298,6 +300,7 @@ export default function ParkDetailScreen() {
       if (npsData.status === 'fulfilled')  setNps(npsData.value);
       if (visitsData.status === 'fulfilled') {
         setVisits(visitsData.value.filter((v: Visit) => v.park_code === id && !v.is_bucket_list && v.visited_date));
+        setOnBucket(visitsData.value.some((v: Visit) => v.park_code === id && v.is_bucket_list));
       }
     } catch (e) {
       console.error('Park detail load failed:', e);
@@ -314,6 +317,28 @@ export default function ParkDetailScreen() {
       setWeather(data);
     } catch { /* weather is optional */ }
   }, [getToken, id]);
+
+  const toggleBucketList = useCallback(async () => {
+    const tok = await getToken();
+    if (!tok || !id) return;
+    setBucketBusy(true);
+    try {
+      if (onBucket) {
+        await fetch(`${BASE}/api/visits?park_code=${id}`, {
+          method: 'DELETE', headers: { Authorization: `Bearer ${tok}` },
+        });
+        setOnBucket(false);
+      } else {
+        await fetch(`${BASE}/api/visits`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+          body: JSON.stringify({ park_code: id, is_bucket_list: true }),
+        });
+        setOnBucket(true);
+      }
+    } catch { /* ignore */ }
+    setBucketBusy(false);
+  }, [getToken, id, onBucket]);
 
   const loadDataRef = useRef(loadData);
   const loadWeatherRef = useRef(loadWeather);
@@ -383,12 +408,19 @@ export default function ParkDetailScreen() {
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
         <View style={[styles.hero, { height: 260 + insets.top, backgroundColor: gradientColor(park.park_code) }]}>
           {heroImage && !heroErr && (
-            <Image
-              source={{ uri: heroImage }}
-              style={StyleSheet.absoluteFill as any}
-              resizeMode="cover"
-              onError={() => setHeroErr(true)}
-            />
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={0.95}
+              disabled={!nps?.images?.length}
+              onPress={() => nps?.images?.length && setLightbox({ images: nps.images, idx: 0 })}
+            >
+              <Image
+                source={{ uri: heroImage }}
+                style={StyleSheet.absoluteFill as any}
+                resizeMode="cover"
+                onError={() => setHeroErr(true)}
+              />
+            </TouchableOpacity>
           )}
           <LinearGradient
             colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.42)', 'transparent']}
@@ -396,6 +428,7 @@ export default function ParkDetailScreen() {
             start={{ x: 0, y: 1 }}
             end={{ x: 0, y: 0 }}
             style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
           />
           <TouchableOpacity
             style={[styles.backBtn, { top: insets.top + 8 }]}
@@ -404,7 +437,7 @@ export default function ParkDetailScreen() {
           >
             <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
           </TouchableOpacity>
-          <View style={styles.heroContent}>
+          <View style={styles.heroContent} pointerEvents="none">
             <Text style={styles.heroDesignation}>{stateName.toUpperCase()}</Text>
             <Text style={styles.heroName}>{park.name}</Text>
           </View>
@@ -446,12 +479,12 @@ export default function ParkDetailScreen() {
 
         {/* ── Quick stats ───────────────────────────────────────────────────── */}
         <View style={styles.statsRow}>
-          <StatCell label="State" value={park.states.split(',').join(', ')} />
+          <StatCell label="State" value={fullStateName(park.states)} />
           <View style={styles.statDivider} />
           <StatCell
             label="Status"
-            value={parkStatus === 'visited' ? 'Visited' : 'Not yet'}
-            valueColor={parkStatus === 'visited' ? C.visited : C.inkMute}
+            value={parkStatus === 'visited' ? 'Visited' : onBucket ? 'Bucket list' : 'Not yet'}
+            valueColor={parkStatus === 'visited' ? C.visited : onBucket ? C.bucket : C.inkMute}
           />
           <View style={styles.statDivider} />
           <StatCell label="Visits" value={String(visits.length)} />
@@ -478,6 +511,30 @@ export default function ParkDetailScreen() {
             <Text style={styles.actionBtnOutlineText}>View on map</Text>
           </TouchableOpacity>
         </View>
+
+        {parkStatus !== 'visited' && (
+          <TouchableOpacity
+            style={[styles.bucketBtn, onBucket && styles.bucketBtnActive]}
+            onPress={toggleBucketList}
+            activeOpacity={0.8}
+            disabled={bucketBusy}
+          >
+            {bucketBusy ? (
+              <ActivityIndicator size="small" color={onBucket ? '#FFFBF1' : C.bucket} />
+            ) : (
+              <>
+                <Ionicons
+                  name={onBucket ? 'bookmark' : 'bookmark-outline'}
+                  size={16}
+                  color={onBucket ? '#FFFBF1' : C.bucket}
+                />
+                <Text style={[styles.bucketBtnText, onBucket && { color: '#FFFBF1' }]}>
+                  {onBucket ? 'On bucket list' : 'Add to bucket list'}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
 
         <View style={styles.divider} />
 
@@ -880,6 +937,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: C.primary,
+  },
+  bucketBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: C.bucket,
+    marginHorizontal: 16,
+    marginTop: -10,
+    marginBottom: 20,
+  },
+  bucketBtnActive: {
+    backgroundColor: C.bucket,
+  },
+  bucketBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.bucket,
   },
 
   divider: {

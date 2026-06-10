@@ -805,6 +805,21 @@ function ParksPageContent() {
             </div>
 
             {parkGrid}
+
+            {/* Data attribution */}
+            <div style={{ padding: "20px 0 8px", borderTop: "0.5px solid var(--hairline)", marginTop: 28 }}>
+              <p style={{ fontSize: 11, color: "var(--ink-mute)", lineHeight: 1.6, margin: 0 }}>
+                Park information is sourced directly from the{" "}
+                <a href="https://www.nps.gov" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>
+                  National Park Service (NPS)
+                </a>
+                . Weather forecasts are provided by the{" "}
+                <a href="https://www.weather.gov" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>
+                  National Weather Service (NWS)
+                </a>
+                . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details before your visit.
+              </p>
+            </div>
           </div>
         </div>
       </div>

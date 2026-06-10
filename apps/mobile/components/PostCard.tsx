@@ -210,12 +210,20 @@ const PHOTO_H  = 380;
 function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: string | null }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
   const n = photos.length;
   const fallbackColor = parkColor(parkCode ?? 'xx');
+
+  const goTo = (k: number) => {
+    const next = Math.max(0, Math.min(n - 1, k));
+    scrollRef.current?.scrollTo({ x: next * CARD_W, animated: true });
+    setActiveIdx(next);
+  };
 
   return (
     <View>
       <ScrollView
+        ref={scrollRef}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -250,6 +258,28 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         <View style={styles.carouselCounter}>
           <Text style={styles.carouselCounterText}>{activeIdx + 1} / {n}</Text>
         </View>
+      )}
+
+      {/* Prev arrow */}
+      {n > 1 && activeIdx > 0 && (
+        <TouchableOpacity
+          style={[styles.carouselNav, { left: 10 }]}
+          onPress={() => goTo(activeIdx - 1)}
+          hitSlop={8}
+        >
+          <Ionicons name="chevron-back" size={18} color="#FFFBF1" />
+        </TouchableOpacity>
+      )}
+
+      {/* Next arrow */}
+      {n > 1 && activeIdx < n - 1 && (
+        <TouchableOpacity
+          style={[styles.carouselNav, { right: 10 }]}
+          onPress={() => goTo(activeIdx + 1)}
+          hitSlop={8}
+        >
+          <Ionicons name="chevron-forward" size={18} color="#FFFBF1" />
+        </TouchableOpacity>
       )}
 
       {/* Dot strip */}
@@ -813,6 +843,12 @@ const styles = StyleSheet.create({
   carouselDot: { height: 6, borderRadius: 4 },
   carouselDotActive: { width: 22, backgroundColor: '#FFFBF1' },
   carouselDotInactive: { width: 6, backgroundColor: 'rgba(255,251,241,0.50)' },
+  carouselNav: {
+    position: 'absolute', top: PHOTO_H / 2 - 18,
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(20,17,12,0.45)',
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   // Badge post body
   badgeBody: {

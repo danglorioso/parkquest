@@ -8,6 +8,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { PostCard, type FeedPost } from '@/components/PostCard';
+import { Wordmark } from '@/components/Wordmark';
+import { SearchOverlay } from '@/components/SearchOverlay';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -74,6 +76,7 @@ export default function FeedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter]       = useState<Filter>('all');
   const [error, setError]         = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const loadFeed = useCallback(async (isRefresh = false) => {
     const tok = await getToken();
@@ -119,22 +122,12 @@ export default function FeedScreen() {
 
   const ListHeader = (
     <View style={styles.header}>
-      {/* Page kicker + title row */}
+      {/* Page kicker + title */}
       <View style={styles.headerTop}>
         <View style={{ flex: 1 }}>
           <Text style={styles.kicker}>THE FEED</Text>
           <Text style={styles.title}>Out there</Text>
           <Text style={styles.subtitle}>Latest posts from your friends and the community</Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 20 }}>
-          <TouchableOpacity
-            style={styles.logBtn}
-            activeOpacity={0.8}
-            onPress={() => router.push('/(modals)/log-visit' as never)}
-          >
-            <Ionicons name="add" size={14} color="#FFFBF1" />
-            <Text style={styles.logBtnText}>Log visit</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -192,6 +185,30 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
+      {/* Top bar — wordmark + actions */}
+      <View style={styles.topBar}>
+        <Wordmark />
+        <View style={styles.topBarActions}>
+          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
+            <Ionicons name="notifications-outline" size={18} color={C.inkSoft} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            activeOpacity={0.7}
+            onPress={() => setSearchOpen(true)}
+          >
+            <Ionicons name="search" size={17} color={C.inkSoft} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.iconBtn, styles.plusBtn]}
+            activeOpacity={0.8}
+            onPress={() => router.push('/(modals)/log-visit' as never)}
+          >
+            <Ionicons name="add" size={20} color="#FFFBF1" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <FlatList<FeedPost>
         data={loading ? [] : filtered}
         keyExtractor={item => String(item.id)}
@@ -219,6 +236,8 @@ export default function FeedScreen() {
         windowSize={5}
         maxToRenderPerBatch={3}
       />
+
+      <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
     </SafeAreaView>
   );
 }
@@ -235,9 +254,39 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
 
+  // Top bar
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: C.hairline,
+  },
+  topBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plusBtn: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
+  },
+
   // Header
   header: {
-    paddingTop: 20,
+    paddingTop: 16,
     paddingBottom: 16,
   },
   headerTop: {
@@ -245,16 +294,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 12,
     marginBottom: 0,
-  },
-  logBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: C.primary, borderRadius: 100,
-    paddingHorizontal: 12, paddingVertical: 8,
-    marginTop: 20,
-    flexShrink: 0,
-  },
-  logBtnText: {
-    fontSize: 12, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.2,
   },
   kicker: {
     fontSize: 10, fontWeight: '700', letterSpacing: 1.4,

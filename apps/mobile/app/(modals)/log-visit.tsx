@@ -1,15 +1,16 @@
 import {
-  Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform,
+  Alert, Animated, FlatList, Image, KeyboardAvoidingView, Modal, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -91,6 +92,67 @@ function makeBlank(): Draft {
   };
 }
 
+// ── Draft persistence ─────────────────────────────────────────────────────────
+
+const DRAFT_KEY = 'pq-visit-drafts';
+const MAX_DRAFTS = 5;
+
+interface SavedDraft {
+  id: string;
+  savedAt: string; // ISO
+  parkName?: string;
+  draft: Draft;
+}
+
+function draftHasContent(d: Draft): boolean {
+  return !!(d.parkCode || d.title || d.notes || d.highlight ||
+    d.activities.length || d.photos.length || d.rating || d.startDate);
+}
+
+async function loadDrafts(): Promise<SavedDraft[]> {
+  try {
+    const raw = await AsyncStorage.getItem(DRAFT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as SavedDraft[];
+    // Rehydrate date objects
+    return parsed.map(sd => ({
+      ...sd,
+      draft: {
+        ...sd.draft,
+        startDate: sd.draft.startDate ? new Date(sd.draft.startDate as unknown as string) : null,
+        endDate:   sd.draft.endDate   ? new Date(sd.draft.endDate   as unknown as string) : null,
+      },
+    }));
+  } catch { return []; }
+}
+
+async function upsertDraft(d: Draft, parkName: string | undefined, id: string): Promise<void> {
+  try {
+    const saved: SavedDraft = { id, savedAt: new Date().toISOString(), parkName, draft: d };
+    const rest = (await loadDrafts()).filter(s => s.id !== id);
+    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify([saved, ...rest].slice(0, MAX_DRAFTS)));
+  } catch { /* ignore */ }
+}
+
+async function deleteDraft(id: string): Promise<void> {
+  try {
+    const rest = (await loadDrafts()).filter(s => s.id !== id);
+    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(rest));
+  } catch { /* ignore */ }
+}
+
+function draftAge(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(ms / 60000);
+  const h = Math.floor(ms / 3600000);
+  const d = Math.floor(ms / 86400000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  if (h < 24) return `${h}h ago`;
+  if (d === 1) return 'yesterday';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -123,27 +185,25 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
     <View>
       <View style={{ flexDirection: 'row', gap: 4, marginBottom: 8 }}>
         {Array.from({ length: 5 }).map((_, i) => (
-          <View key={i} style={{ width: STAR_SIZE, height: STAR_SIZE, flexDirection: 'row' }}>
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              onPress={() => onChange(value === i + 0.5 ? 0 : i + 0.5)}
-              activeOpacity={0.6}
-            >
-              <View style={[styles.starHalf, {
-                borderTopLeftRadius: 4, borderBottomLeftRadius: 4,
-                backgroundColor: value >= i + 0.5 ? C.accent : C.surfaceAlt,
-              }]} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              onPress={() => onChange(value === i + 1 ? 0 : i + 1)}
-              activeOpacity={0.6}
-            >
-              <View style={[styles.starHalf, {
-                borderTopRightRadius: 4, borderBottomRightRadius: 4,
-                backgroundColor: value >= i + 1 ? C.accent : C.surfaceAlt,
-              }]} />
-            </TouchableOpacity>
+          <View key={i} style={{ width: STAR_SIZE, height: STAR_SIZE }}>
+            <Ionicons
+              name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
+              size={STAR_SIZE}
+              color={value >= i + 0.5 ? C.accent : 'rgba(27,26,22,0.28)'}
+            />
+            {/* Invisible half-star tap targets */}
+            <View style={[StyleSheet.absoluteFillObject as object, { flexDirection: 'row' }]}>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                onPress={() => onChange(value === i + 0.5 ? 0 : i + 0.5)}
+                activeOpacity={0.6}
+              />
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                onPress={() => onChange(value === i + 1 ? 0 : i + 1)}
+                activeOpacity={0.6}
+              />
+            </View>
           </View>
         ))}
       </View>
@@ -166,19 +226,29 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
 
 function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: number) => void; labels: string[] }) {
   return (
-    <View style={{ flexDirection: 'row', gap: 5 }}>
-      {labels.map((l, i) => {
-        const on = value === i + 1;
-        return (
-          <TouchableOpacity
-            key={l} onPress={() => onChange(on ? 0 : i + 1)}
-            style={[styles.scaleBtn, { backgroundColor: on ? C.primary : C.surfaceAlt, borderColor: on ? C.primary : C.hairline }]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.scaleBtnText, { color: on ? '#FFFBF1' : C.inkSoft }]}>{l}</Text>
-          </TouchableOpacity>
-        );
-      })}
+    <View>
+      {/* Segmented track — fills up to the selected level */}
+      <View style={{ flexDirection: 'row', gap: 5 }}>
+        {labels.map((l, i) => {
+          const filled = value >= i + 1;
+          const isSel  = value === i + 1;
+          return (
+            <TouchableOpacity
+              key={l}
+              onPress={() => onChange(isSel ? 0 : i + 1)}
+              style={[styles.scaleSeg, {
+                backgroundColor: filled ? C.primary : C.surfaceAlt,
+                borderColor: filled ? C.primary : C.hairline,
+                opacity: filled && !isSel ? 0.55 : 1,
+              }]}
+              activeOpacity={0.7}
+            />
+          );
+        })}
+      </View>
+      <Text style={{ marginTop: 7, fontSize: 12, fontWeight: '600', color: value > 0 ? C.primary : C.inkMute }}>
+        {value > 0 ? labels[value - 1] : 'Tap to set'}
+      </Text>
     </View>
   );
 }
@@ -208,7 +278,11 @@ function WeatherGrid({ value, onChange }: { value: string[]; onChange: (v: strin
 
 // ── ActivityChips ─────────────────────────────────────────────────────────────
 
-function ActivityChips({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+function ActivityChips({ value, onChange, npsActivityNames = [] }: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  npsActivityNames?: string[];
+}) {
   const [customQ, setCustomQ] = useState('');
 
   const toggle = (a: string) =>
@@ -216,14 +290,29 @@ function ActivityChips({ value, onChange }: { value: string[]; onChange: (v: str
 
   const removeCustom = (a: string) => onChange(value.filter(x => x !== a));
 
-  const addCustom = () => {
-    const trimmed = customQ.trim();
+  const addActivity = (name: string) => {
+    const trimmed = name.trim();
     if (!trimmed || value.length >= 8) return;
     const std = ALL_ACTIVITIES.find(a => a.toLowerCase() === trimmed.toLowerCase());
     const key = std ?? trimmed;
     if (!value.some(v => v.toLowerCase() === key.toLowerCase())) onChange([...value, key]);
     setCustomQ('');
   };
+
+  // Suggestions from NPS activity names as you type (like web)
+  const suggestions = customQ.trim().length > 0
+    ? npsActivityNames
+        .filter(n =>
+          n.toLowerCase().includes(customQ.trim().toLowerCase()) &&
+          !value.some(v => v.toLowerCase() === n.toLowerCase())
+        )
+        .slice(0, 6)
+    : [];
+
+  const qLower = customQ.trim().toLowerCase();
+  const exactMatch = suggestions.some(s => s.toLowerCase() === qLower);
+  const alreadyAdded = value.some(v => v.toLowerCase() === qLower);
+  const showAddNew = customQ.trim().length > 1 && !exactMatch && !alreadyAdded;
 
   const customActivities = value.filter(a => !ALL_ACTIVITIES.includes(a));
 
@@ -252,19 +341,56 @@ function ActivityChips({ value, onChange }: { value: string[]; onChange: (v: str
         ))}
       </View>
       {value.length < 8 && (
-        <View style={[styles.searchRow, { marginTop: 10 }]}>
-          <Ionicons name="add" size={14} color={C.inkMute} />
-          <TextInput
-            value={customQ} onChangeText={setCustomQ}
-            placeholder="Add another activity…" placeholderTextColor={C.inkMute}
-            style={styles.searchInput}
-            autoCorrect={false} autoCapitalize="none"
-            onSubmitEditing={addCustom} returnKeyType="done"
-          />
-          {customQ.length > 0 && (
-            <TouchableOpacity onPress={addCustom}>
-              <Ionicons name="checkmark-circle" size={16} color={C.primary} />
-            </TouchableOpacity>
+        <View style={{ marginTop: 10 }}>
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={14} color={C.inkMute} />
+            <TextInput
+              value={customQ} onChangeText={setCustomQ}
+              placeholder="Add another activity…" placeholderTextColor={C.inkMute}
+              style={styles.searchInput}
+              autoCorrect={false} autoCapitalize="none"
+              onSubmitEditing={() => {
+                if (suggestions.length > 0) addActivity(suggestions[0]);
+                else if (customQ.trim()) addActivity(customQ);
+              }}
+              returnKeyType="done"
+            />
+            {customQ.length > 0 && (
+              <TouchableOpacity onPress={() => setCustomQ('')} hitSlop={6}>
+                <Ionicons name="close-circle" size={15} color={C.inkMute} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {(suggestions.length > 0 || showAddNew) && (
+            <View style={styles.activitySuggestBox}>
+              {suggestions.map((name, i) => (
+                <TouchableOpacity
+                  key={name}
+                  onPress={() => addActivity(name)}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.activitySuggestRow,
+                    (i < suggestions.length - 1 || showAddNew) && { borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft },
+                  ]}
+                >
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.primary }} />
+                  <Text style={{ fontSize: 13, color: C.ink, fontWeight: '500' }} numberOfLines={1}>{name}</Text>
+                </TouchableOpacity>
+              ))}
+              {showAddNew && (
+                <TouchableOpacity
+                  onPress={() => addActivity(customQ)}
+                  activeOpacity={0.7}
+                  style={styles.activitySuggestRow}
+                >
+                  <Ionicons name="add-circle-outline" size={14} color={C.accent} />
+                  <Text style={{ fontSize: 13, color: C.accent, fontWeight: '600' }} numberOfLines={1}>
+                    Add “{customQ.trim()}”
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           )}
         </View>
       )}
@@ -339,7 +465,9 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
 }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<CompanionUser[]>([]);
+  const [searching, setSearching] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seq = useRef(0);
 
   const toggle = (u: CompanionUser) => {
     if (companions.includes(u.clerk_user_id)) {
@@ -352,14 +480,22 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
-    if (!q.trim()) { setResults([]); return; }
+    if (!q.trim()) { setResults([]); setSearching(false); return; }
+    // Stay in "searching" through the debounce + fetch so the empty state
+    // doesn't flash while typing
+    setSearching(true);
+    const mySeq = ++seq.current;
     timer.current = setTimeout(() => {
       fetch(`${BASE}/api/users?search=${encodeURIComponent(q)}&limit=10`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
         .then(r => r.ok ? r.json() : [])
-        .then(setResults)
-        .catch(() => {});
+        .then((data: CompanionUser[]) => {
+          if (mySeq !== seq.current) return;
+          setResults(data);
+          setSearching(false);
+        })
+        .catch(() => { if (mySeq === seq.current) setSearching(false); });
     }, 250);
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [q, token]);
@@ -427,7 +563,7 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
           })}
         </View>
       )}
-      {q.trim().length > 0 && results.length === 0 && (
+      {q.trim().length > 0 && results.length === 0 && !searching && (
         <Text style={{ fontSize: 13, color: C.inkMute, paddingHorizontal: 4, paddingTop: 6 }}>No users found</Text>
       )}
     </View>
@@ -592,61 +728,230 @@ function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
   );
 }
 
-// ── DateRow + DatePickerSheet ─────────────────────────────────────────────────
+// ── Calendar date-range sheet ─────────────────────────────────────────────────
 
-function DatePickerSheet({ visible, label, value, maxDate, onDone, onClear, onClose }: {
-  visible: boolean; label: string; value: Date | null; maxDate: Date;
-  onDone: (d: Date) => void; onClear: () => void; onClose: () => void;
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DOW = ['S','M','T','W','T','F','S'];
+
+function stripTime(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+function sameDay(a: Date | null, b: Date | null): boolean {
+  return !!a && !!b && stripTime(a) === stripTime(b);
+}
+
+function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
+  visible: boolean;
+  start: Date | null;
+  end: Date | null;
+  maxDate: Date;
+  onApply: (start: Date | null, end: Date | null) => void;
+  onClose: () => void;
 }) {
-  const [current, setCurrent] = useState(value ?? new Date());
-  useEffect(() => { if (visible) setCurrent(value ?? new Date()); }, [visible, value]);
+  const [selStart, setSelStart] = useState<Date | null>(start);
+  const [selEnd,   setSelEnd]   = useState<Date | null>(end);
+  const [view, setView] = useState(() => {
+    const d = start ?? new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  // Slide only the sheet; the modal itself fades so the backdrop doesn't ride up
+  const slide = useRef(new Animated.Value(400)).current;
 
-  if (Platform.OS === 'android') {
-    if (!visible) return null;
-    return (
-      <DateTimePicker
-        value={current} mode="date" display="default" maximumDate={maxDate}
-        onChange={(e, d) => { if (e.type === 'set' && d) onDone(d); else onClose(); }}
-      />
-    );
-  }
+  useEffect(() => {
+    if (visible) {
+      setSelStart(start);
+      setSelEnd(end);
+      const d = start ?? new Date();
+      setView(new Date(d.getFullYear(), d.getMonth(), 1));
+      setMonthPickerOpen(false);
+      slide.setValue(400);
+      Animated.spring(slide, {
+        toValue: 0, useNativeDriver: true,
+        damping: 26, mass: 0.8, stiffness: 220,
+      }).start();
+    }
+  }, [visible, start, end, slide]);
+
+  // Same range logic as web: 1st tap = start, 2nd tap (>= start) = end
+  const pick = (d: Date) => {
+    if (!selStart || (selStart && selEnd)) { setSelStart(d); setSelEnd(null); return; }
+    if (stripTime(d) < stripTime(selStart)) { setSelStart(d); setSelEnd(null); return; }
+    setSelEnd(d);
+  };
+
+  const today = new Date();
+  const rangeBg = 'rgba(31,61,46,0.13)';
+
+  const firstDow = new Date(view.getFullYear(), view.getMonth(), 1).getDay();
+  const daysInMonth = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(view.getFullYear(), view.getMonth(), d));
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (Date | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <Pressable style={styles.dateBackdrop} onPress={onClose} />
-      <View style={styles.dateSheet}>
+      <Animated.View style={[styles.dateSheet, { transform: [{ translateY: slide }] }]}>
         <View style={styles.dateSheetHeader}>
-          <TouchableOpacity onPress={() => { onClear(); onClose(); }}>
+          <TouchableOpacity onPress={() => { setSelStart(null); setSelEnd(null); }}>
             <Text style={{ fontSize: 16, color: C.inkMute }}>Clear</Text>
           </TouchableOpacity>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>{label}</Text>
-          <TouchableOpacity onPress={() => { onDone(current); onClose(); }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>Dates</Text>
+          <TouchableOpacity onPress={() => { onApply(selStart, selEnd); onClose(); }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: C.primary }}>Done</Text>
           </TouchableOpacity>
         </View>
-        <DateTimePicker
-          value={current} mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          maximumDate={maxDate}
-          onChange={(_, d) => { if (d) setCurrent(d); }}
-          style={{ width: '100%' }}
-        />
-      </View>
+
+        <View style={{ padding: 16 }}>
+          {/* Month / year navigation */}
+          <View style={styles.calNavRow}>
+            <TouchableOpacity
+              style={styles.calNavBtn}
+              onPress={() => setView(v => new Date(v.getFullYear(), v.getMonth() - 1, 1))}
+            >
+              <Ionicons name="chevron-back" size={15} color={C.inkSoft} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.calMonthLabel}
+              onPress={() => setMonthPickerOpen(o => !o)}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontWeight: '700', fontSize: 15, color: C.ink }}>
+                {MONTHS[view.getMonth()]} {view.getFullYear()}
+              </Text>
+              <Ionicons name={monthPickerOpen ? 'chevron-up' : 'chevron-down'} size={13} color={C.inkMute} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.calNavBtn}
+              onPress={() => setView(v => new Date(v.getFullYear(), v.getMonth() + 1, 1))}
+            >
+              <Ionicons name="chevron-forward" size={15} color={C.inkSoft} />
+            </TouchableOpacity>
+          </View>
+
+          {monthPickerOpen ? (
+            /* Month + year picker */
+            <View>
+              <View style={[styles.calNavRow, { marginTop: 12 }]}>
+                <TouchableOpacity
+                  style={styles.calNavBtn}
+                  onPress={() => setView(v => new Date(v.getFullYear() - 1, v.getMonth(), 1))}
+                >
+                  <Ionicons name="chevron-back" size={15} color={C.inkSoft} />
+                </TouchableOpacity>
+                <Text style={{ fontWeight: '700', fontSize: 15, color: C.ink }}>{view.getFullYear()}</Text>
+                <TouchableOpacity
+                  style={[styles.calNavBtn, view.getFullYear() >= today.getFullYear() && { opacity: 0.3 }]}
+                  disabled={view.getFullYear() >= today.getFullYear()}
+                  onPress={() => setView(v => new Date(v.getFullYear() + 1, v.getMonth(), 1))}
+                >
+                  <Ionicons name="chevron-forward" size={15} color={C.inkSoft} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.calMonthGrid}>
+                {MONTHS_ABBR.map((m, i) => {
+                  const isFuture = view.getFullYear() === today.getFullYear() && i > today.getMonth();
+                  const isViewMonth = i === view.getMonth();
+                  return (
+                    <TouchableOpacity
+                      key={m}
+                      disabled={isFuture}
+                      onPress={() => { setView(new Date(view.getFullYear(), i, 1)); setMonthPickerOpen(false); }}
+                      style={[styles.calMonthCell, isViewMonth && { backgroundColor: C.primary }]}
+                    >
+                      <Text style={{
+                        fontSize: 13,
+                        fontWeight: isViewMonth ? '700' : '500',
+                        color: isViewMonth ? '#FFFBF1' : isFuture ? 'rgba(122,116,106,0.4)' : C.inkSoft,
+                      }}>{m}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            /* Day grid */
+            <View style={{ marginTop: 10 }}>
+              <View style={{ flexDirection: 'row' }}>
+                {DOW.map((d, i) => (
+                  <Text key={i} style={styles.calDow}>{d}</Text>
+                ))}
+              </View>
+              {weeks.map((week, wi) => (
+                <View key={wi} style={{ flexDirection: 'row' }}>
+                  {week.map((d, di) => {
+                    if (!d) return <View key={di} style={styles.calCell} />;
+                    const isStart  = sameDay(d, selStart);
+                    const isEnd    = selEnd ? sameDay(d, selEnd) : false;
+                    const endpoint = isStart || isEnd;
+                    const mid = !!(selStart && selEnd && stripTime(d) > stripTime(selStart) && stripTime(d) < stripTime(selEnd));
+                    const isToday  = sameDay(d, today);
+                    const disabled = stripTime(d) > stripTime(maxDate);
+                    return (
+                      <View key={di} style={styles.calCell}>
+                        {/* Range background — half-fill at endpoints */}
+                        {mid && <View style={[StyleSheet.absoluteFillObject as object, { backgroundColor: rangeBg }]} />}
+                        {isStart && selEnd && !isEnd && (
+                          <View style={{ position: 'absolute', top: 0, bottom: 0, right: 0, left: '50%', backgroundColor: rangeBg }} />
+                        )}
+                        {isEnd && !isStart && (
+                          <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: '50%', backgroundColor: rangeBg }} />
+                        )}
+                        <TouchableOpacity
+                          disabled={disabled}
+                          onPress={() => pick(d)}
+                          style={[
+                            styles.calDayBtn,
+                            endpoint && { backgroundColor: C.primary },
+                            isToday && !endpoint && { borderWidth: 1.5, borderColor: 'rgba(31,61,46,0.4)' },
+                          ]}
+                        >
+                          <Text style={{
+                            fontSize: 13,
+                            fontWeight: endpoint ? '800' : mid ? '700' : '400',
+                            color: endpoint ? '#FFFBF1' : disabled ? 'rgba(122,116,106,0.35)' : mid ? C.primary : C.ink,
+                          }}>{d.getDate()}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </Animated.View>
     </Modal>
   );
 }
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
 
-function Section({ kicker, title, hint, children }: {
-  kicker?: string; title?: string; hint?: string; children: React.ReactNode;
+function RequirementTag({ kind }: { kind: 'required' | 'optional' }) {
+  return (
+    <Text style={{
+      fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase',
+      color: kind === 'required' ? C.primary : C.inkMute,
+    }}>
+      {'  '}{kind}
+    </Text>
+  );
+}
+
+function Section({ kicker, title, hint, tag, children }: {
+  kicker?: string; title?: string; hint?: string; tag?: 'required' | 'optional'; children: React.ReactNode;
 }) {
   return (
     <View style={{ marginBottom: 24 }}>
       {(kicker || title || hint) && (
         <View style={{ marginBottom: 10 }}>
           {kicker && <Text style={styles.kicker}>{kicker}</Text>}
-          {title  && <Text style={styles.sectionTitle}>{title}</Text>}
+          {title  && <Text style={styles.sectionTitle}>{title}{tag && <RequirementTag kind={tag} />}</Text>}
           {hint   && <Text style={{ fontSize: 12.5, color: C.inkMute, marginTop: 3, lineHeight: 17 }}>{hint}</Text>}
         </View>
       )}
@@ -662,24 +967,20 @@ function StepWhere({ draft, set, parks, onPickPark }: {
   parks: ParkInfo[]; onPickPark: () => void;
 }) {
   const park = parks.find(p => p.park_code === draft.parkCode);
-  const [showStart, setShowStart] = useState(false);
-  const [showEnd,   setShowEnd]   = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const today = new Date();
 
   const days = dayCount(draft.startDate, draft.endDate);
 
   return (
     <View>
-      <DatePickerSheet
-        visible={showStart} label="Start date" value={draft.startDate} maxDate={today}
-        onDone={d => { set('startDate', d); if (draft.endDate && d > draft.endDate) set('endDate', null); }}
-        onClear={() => { set('startDate', null); set('endDate', null); }}
-        onClose={() => setShowStart(false)}
-      />
-      <DatePickerSheet
-        visible={showEnd} label="End date" value={draft.endDate} maxDate={today}
-        onDone={d => set('endDate', d)} onClear={() => set('endDate', null)}
-        onClose={() => setShowEnd(false)}
+      <CalendarSheet
+        visible={showCalendar}
+        start={draft.startDate}
+        end={draft.endDate}
+        maxDate={today}
+        onApply={(s, e) => { set('startDate', s); set('endDate', e); }}
+        onClose={() => setShowCalendar(false)}
       />
 
       <Section kicker="01" title="Where & when">
@@ -689,17 +990,33 @@ function StepWhere({ draft, set, parks, onPickPark }: {
           { backgroundColor: park ? C.primary : C.surfaceAlt, borderStyle: park ? 'solid' : 'dashed' },
         ]}>
           {park ? (
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View>
-                <Text style={{ fontSize: 9, fontWeight: '600', color: 'rgba(255,251,241,0.8)', letterSpacing: 1.2 }}>NATIONAL PARK</Text>
-                <Text style={{ fontSize: 19, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.3, marginTop: 2 }}>{park.name}</Text>
-                <Text style={{ fontSize: 12, color: 'rgba(255,251,241,0.8)', marginTop: 1 }}>{fullStateName(park.states.split(',')[0].trim())}</Text>
+            <>
+              {/* Faint cover photo behind the banner content, like web */}
+              {park.image_url ? (
+                <Image
+                  source={{ uri: park.image_url }}
+                  style={StyleSheet.absoluteFill as any}
+                  resizeMode="cover"
+                />
+              ) : null}
+              <LinearGradient
+                colors={['rgba(0,0,0,0.58)', 'rgba(0,0,0,0.16)']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '600', color: 'rgba(255,251,241,0.8)', letterSpacing: 1.2 }}>NATIONAL PARK</Text>
+                  <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.3, marginTop: 2 }}>{park.name}</Text>
+                  <Text style={{ fontSize: 12, color: 'rgba(255,251,241,0.8)', marginTop: 1 }}>{fullStateName(park.states.split(',')[0].trim())}</Text>
+                </View>
+                <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,251,241,0.92)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
+                  <Ionicons name="pencil" size={11} color={C.ink} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: C.ink }}>Change</Text>
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,251,241,0.92)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
-                <Ionicons name="pencil" size={11} color={C.ink} />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: C.ink }}>Change</Text>
-              </View>
-            </View>
+            </>
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
               <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
@@ -716,7 +1033,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
 
       {/* Rest locked until park selected */}
       <View style={{ opacity: park ? 1 : 0.35, pointerEvents: park ? 'auto' : 'none' } as any}>
-        <Section title="Trip title">
+        <Section title="Trip title" tag="optional">
           <TextInput
             value={draft.title} onChangeText={v => set('title', v.slice(0, 80))}
             placeholder="Give this trip a name" placeholderTextColor={C.inkMute}
@@ -724,10 +1041,10 @@ function StepWhere({ draft, set, parks, onPickPark }: {
           />
         </Section>
 
-        <Section title="Dates">
+        <Section title="Dates" tag="required">
           <View style={styles.card}>
             <TouchableOpacity
-              onPress={() => setShowStart(true)} activeOpacity={0.7}
+              onPress={() => setShowCalendar(true)} activeOpacity={0.7}
               style={[styles.dateRow, { borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft }]}
             >
               <View style={styles.dateIcon}>
@@ -743,7 +1060,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => setShowEnd(true)} activeOpacity={0.7}
+              onPress={() => setShowCalendar(true)} activeOpacity={0.7}
               disabled={!draft.startDate}
               style={[styles.dateRow, { opacity: draft.startDate ? 1 : 0.4 }]}
             >
@@ -774,13 +1091,13 @@ function StepWhere({ draft, set, parks, onPickPark }: {
 function StepVisit({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void }) {
   return (
     <View>
-      <Section kicker="02" title="How was it?">
+      <Section kicker="02" title="How was it?" tag="optional">
         <View style={styles.card}>
           <StarRating value={draft.rating} onChange={v => set('rating', v)} />
         </View>
       </Section>
 
-      <Section title="Conditions">
+      <Section title="Conditions" tag="optional">
         <View style={styles.card}>
           <View style={{ marginBottom: 14, paddingBottom: 14, borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
@@ -799,51 +1116,53 @@ function StepVisit({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(
         </View>
       </Section>
 
-      <Section title="Weather">
+      <Section title="Weather" tag="optional">
         <View style={styles.card}>
           <WeatherGrid value={draft.weather} onChange={v => set('weather', v)} />
         </View>
       </Section>
 
-      <Section title="Would you go back?">
+      <Section title="Would you go back?" tag="optional">
         <ReturnRow value={draft.wouldReturn} onChange={v => set('wouldReturn', v)} />
       </Section>
     </View>
   );
 }
 
-function StepJournal({ draft, set, token }: {
+function StepJournal({ draft, set, token, npsActivityNames }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void; token: string;
+  npsActivityNames: string[];
 }) {
   return (
     <View>
-      <Section kicker="03" title="Journal & photos">
-        <View style={[styles.textFieldWrap, { marginBottom: 0 }]}>
-          <TextInput
-            value={draft.highlight} onChangeText={v => set('highlight', v.slice(0, 90))}
-            placeholder="Highlight — the one moment you'll remember" placeholderTextColor={C.inkMute}
-            style={[styles.textField, { marginBottom: 0 }]}
-          />
-          <Text style={styles.charCount}>{draft.highlight.length}/90</Text>
-        </View>
+      <View style={{ marginBottom: 24 }}>
+        <Text style={styles.kicker}>03</Text>
+        <Text style={styles.sectionTitle}>Journal & photos</Text>
+      </View>
+
+      <Section title="Highlight" tag="optional">
+        <TextInput
+          value={draft.highlight} onChangeText={v => set('highlight', v.slice(0, 90))}
+          placeholder="The one moment you'll remember" placeholderTextColor={C.inkMute}
+          style={[styles.textField, { marginBottom: 0 }]}
+        />
+        <Text style={styles.charCountOutside}>{draft.highlight.length}/90</Text>
       </Section>
 
-      <Section title="Notes">
-        <View style={styles.textFieldWrap}>
-          <TextInput
-            value={draft.notes} onChangeText={v => set('notes', v.slice(0, 2000))}
-            placeholder="What did you see, hear, feel?" placeholderTextColor={C.inkMute}
-            multiline style={[styles.textField, styles.textArea]}
-          />
-          <Text style={[styles.charCount, { bottom: 8 }]}>{draft.notes.length}/2000</Text>
-        </View>
+      <Section title="Notes" tag="optional">
+        <TextInput
+          value={draft.notes} onChangeText={v => set('notes', v.slice(0, 2000))}
+          placeholder="What did you see, hear, feel?" placeholderTextColor={C.inkMute}
+          multiline style={[styles.textField, styles.textArea]}
+        />
+        <Text style={styles.charCountOutside}>{draft.notes.length}/2000</Text>
       </Section>
 
-      <Section title="Activities">
-        <ActivityChips value={draft.activities} onChange={v => set('activities', v)} />
+      <Section title="Activities" tag="optional">
+        <ActivityChips value={draft.activities} onChange={v => set('activities', v)} npsActivityNames={npsActivityNames} />
       </Section>
 
-      <Section title="Who came along?">
+      <Section title="Who came along?" tag="optional">
         <CompanionSearch
           companions={draft.companions} companionObjs={draft.companionObjs}
           onChange={(ids, objs) => { set('companions', ids); set('companionObjs', objs); }}
@@ -851,7 +1170,7 @@ function StepJournal({ draft, set, token }: {
         />
       </Section>
 
-      <Section title="Photos">
+      <Section title="Photos" tag="optional">
         <PhotoStrip
           token={token} photos={draft.photos} cover={draft.cover}
           onAdd={urls => {
@@ -871,22 +1190,140 @@ function StepJournal({ draft, set, token }: {
   );
 }
 
-function StepShare({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void }) {
+function PreviewChip({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+  return (
+    <View style={styles.previewChip}>
+      <Ionicons name={icon} size={11} color={C.inkSoft} />
+      <Text style={styles.previewChipText}>{label}</Text>
+    </View>
+  );
+}
+
+function VisitPreview({ draft, park, userName, avatarUrl }: {
+  draft: Draft; park: ParkInfo | undefined; userName: string; avatarUrl?: string | null;
+}) {
+  const visIcon: keyof typeof Ionicons.glyphMap =
+    draft.visibility === 'Private' ? 'lock-closed' :
+    draft.visibility === 'Public'  ? 'globe-outline' : 'people';
+  const selectedWeather = WEATHER_OPTS.filter(w => draft.weather.includes(w.id));
+  const days = dayCount(draft.startDate, draft.endDate);
+  const coverUrl = draft.photos.length > 0 ? (draft.cover ?? draft.photos[0]) : null;
+
+  return (
+    <View style={styles.previewCard}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 9 }}>
+        {avatarUrl ? (
+          <Image source={{ uri: avatarUrl }} style={{ width: 32, height: 32, borderRadius: 16 }} />
+        ) : (
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#FFFBF1', fontWeight: '800', fontSize: 13 }}>{userName[0]?.toUpperCase()}</Text>
+          </View>
+        )}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontWeight: '700', fontSize: 13, color: C.ink }} numberOfLines={1}>
+            {userName} <Text style={{ color: C.inkMute, fontWeight: '500' }}>· now</Text>
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Ionicons name="location" size={10} color={C.primary} />
+            <Text style={{ fontSize: 9.5, color: C.primary, letterSpacing: 0.4, fontWeight: '700' }} numberOfLines={1}>
+              {park ? `${park.name.toUpperCase()} · ${park.states.split(',')[0].trim()}` : 'NO PARK'}
+            </Text>
+          </View>
+        </View>
+        <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: C.surfaceAlt, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100 }}>
+          <Ionicons name={visIcon} size={11} color={C.inkMute} />
+          <Text style={{ fontSize: 10.5, fontWeight: '600', color: C.inkMute }}>{draft.visibility}</Text>
+        </View>
+      </View>
+
+      {/* Cover — photo or faint gradient placeholder */}
+      {(coverUrl || draft.rating > 0) && (
+        <View>
+          {coverUrl ? (
+            <Image source={{ uri: coverUrl }} style={{ width: '100%', height: 170 }} resizeMode="cover" />
+          ) : (
+            <LinearGradient
+              colors={[C.primary, C.accent]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={{ height: 170, opacity: 0.25 }}
+            />
+          )}
+          {draft.rating > 0 && (
+            <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 3, backgroundColor: 'rgba(20,17,12,0.55)', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 100 }}>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Ionicons
+                  key={i}
+                  name={draft.rating >= i + 1 ? 'star' : draft.rating >= i + 0.5 ? 'star-half' : 'star-outline'}
+                  size={12}
+                  color={draft.rating >= i + 0.5 ? '#FFD580' : 'rgba(255,255,255,0.4)'}
+                />
+              ))}
+            </View>
+          )}
+          {draft.photos.length > 1 && (
+            <View style={{ position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(20,17,12,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 100 }}>
+              <Ionicons name="images-outline" size={11} color="#FFFBF1" />
+              <Text style={{ color: '#FFFBF1', fontSize: 10, fontWeight: '600' }}>{draft.photos.length}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Body */}
+      <View style={{ paddingHorizontal: 13, paddingTop: 11, paddingBottom: 13 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+          <Ionicons name="calendar-outline" size={13} color={C.inkMute} />
+          <Text style={{ fontWeight: '600', fontSize: 11.5, color: C.inkSoft }}>
+            {draft.startDate ? fmtDate(draft.startDate) : 'No date'}
+            {draft.endDate ? ` – ${fmtDate(draft.endDate)}` : ''}
+          </Text>
+          {days > 1 && (
+            <View style={{ backgroundColor: 'rgba(197,107,61,0.1)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 100 }}>
+              <Text style={{ fontSize: 9, letterSpacing: 0.6, color: C.accent, fontWeight: '700' }}>{days} DAYS</Text>
+            </View>
+          )}
+        </View>
+        {draft.title ? (
+          <Text style={{ fontWeight: '800', fontSize: 17, color: C.ink, letterSpacing: -0.3, marginBottom: 5 }}>{draft.title}</Text>
+        ) : null}
+        {draft.caption ? (
+          <Text style={{ fontSize: 13, color: C.inkSoft, lineHeight: 19 }}>
+            {draft.caption.length > 160 ? `${draft.caption.slice(0, 160)}…` : draft.caption}
+          </Text>
+        ) : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 10 }}>
+          {selectedWeather.map(w => <PreviewChip key={w.id} icon="partly-sunny-outline" label={w.label} />)}
+          {draft.crowd > 0 && <PreviewChip icon="people-outline" label={CROWD_LABELS[draft.crowd - 1]} />}
+          {draft.difficulty > 0 && <PreviewChip icon="walk-outline" label={DIFF_LABELS[draft.difficulty - 1]} />}
+          {draft.activities.slice(0, 3).map(a => <PreviewChip key={a} icon="location-outline" label={a} />)}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function StepShare({ draft, set, park, userName, avatarUrl }: {
+  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
+  park: ParkInfo | undefined; userName: string; avatarUrl?: string | null;
+}) {
   return (
     <View>
-      <Section title="Add a caption">
-        <View style={styles.textFieldWrap}>
-          <TextInput
-            value={draft.caption} onChangeText={v => set('caption', v.slice(0, 500))}
-            placeholder="Share what made this trip special…" placeholderTextColor={C.inkMute}
-            multiline style={[styles.textField, styles.textArea]}
-          />
-          <Text style={[styles.charCount, { bottom: 8 }]}>{draft.caption.length}/500</Text>
-        </View>
+      <Section title="Add a caption" tag="optional">
+        <TextInput
+          value={draft.caption} onChangeText={v => set('caption', v.slice(0, 500))}
+          placeholder="Share what made this trip special…" placeholderTextColor={C.inkMute}
+          multiline style={[styles.textField, styles.textArea]}
+        />
+        <Text style={styles.charCountOutside}>{draft.caption.length}/500</Text>
       </Section>
 
       <Section title="Who can see this?">
         <VisibilityPicker value={draft.visibility} onChange={v => set('visibility', v)} />
+      </Section>
+
+      <Section title="Preview">
+        <VisitPreview draft={draft} park={park} userName={userName} avatarUrl={avatarUrl} />
       </Section>
     </View>
   );
@@ -912,6 +1349,39 @@ export default function LogVisitModal() {
     setDraftState(prev => ({ ...prev, [k]: v }));
   }, []);
 
+  // ── Drafts ──────────────────────────────────────────────────────────────────
+  const draftId = useRef(`draft-${Date.now()}`);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [restoreBanner, setRestoreBanner] = useState<SavedDraft | null>(null);
+
+  useEffect(() => {
+    loadDrafts().then(d => { if (d.length > 0) setRestoreBanner(d[0]); });
+  }, []);
+
+  // Autosave while editing (debounced)
+  useEffect(() => {
+    if (!draftHasContent(draft)) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
+      upsertDraft(draft, parkName, draftId.current);
+    }, 600);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [draft, parks]);
+
+  const resumeDraft = () => {
+    if (!restoreBanner) return;
+    setDraftState(restoreBanner.draft);
+    draftId.current = restoreBanner.id;
+    setRestoreBanner(null);
+  };
+
+  const discardSavedDraft = () => {
+    if (!restoreBanner) return;
+    deleteDraft(restoreBanner.id);
+    setRestoreBanner(null);
+  };
+
   useEffect(() => {
     getToken().then(tok => {
       setToken(tok);
@@ -920,6 +1390,19 @@ export default function LogVisitModal() {
       }
     });
   }, [getToken]);
+
+  // Union of NPS activity names across all parks — feeds activity autocomplete
+  const [npsActivityNames, setNpsActivityNames] = useState<string[]>([]);
+  useEffect(() => {
+    fetch(`${BASE}/api/parks/activities`)
+      .then(r => r.ok ? r.json() : {})
+      .then((map: Record<string, string[]>) => {
+        const names = new Set<string>();
+        Object.values(map).forEach(list => list.forEach(n => names.add(n)));
+        setNpsActivityNames([...names].sort());
+      })
+      .catch(() => {});
+  }, []);
 
   const canContinue = step === 0 ? !!draft.parkCode && !!draft.startDate : true;
   const isLast = step === STEPS.length - 1;
@@ -937,11 +1420,27 @@ export default function LogVisitModal() {
   };
 
   const handleCancel = () => {
-    const dirty = !!draft.parkCode || !!draft.startDate || !!draft.title || draft.photos.length > 0;
-    if (dirty) {
-      Alert.alert('Discard changes?', 'Your entry hasn\'t been saved.', [
+    if (draftHasContent(draft)) {
+      Alert.alert('Save as draft?', 'Pick up where you left off next time.', [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            if (saveTimer.current) clearTimeout(saveTimer.current);
+            deleteDraft(draftId.current);
+            router.back();
+          },
+        },
+        {
+          text: 'Save draft',
+          onPress: () => {
+            if (saveTimer.current) clearTimeout(saveTimer.current);
+            const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
+            upsertDraft(draft, parkName, draftId.current);
+            router.back();
+          },
+        },
       ]);
     } else {
       router.back();
@@ -1000,27 +1499,18 @@ export default function LogVisitModal() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
-      <Stack.Screen
-        options={{
-          title: STEPS[step],
-          headerLeft: () => (
-            <TouchableOpacity onPress={handleCancel} hitSlop={8}>
-              <Text style={{ fontSize: 17, color: C.inkMute }}>Cancel</Text>
-            </TouchableOpacity>
-          ),
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={isLast ? handleSubmit : goNext}
-              disabled={!canContinue || submitting}
-              hitSlop={8}
-            >
-              <Text style={{ fontSize: 17, fontWeight: '600', color: canContinue && !submitting ? C.primary : C.inkMute }}>
-                {isLast ? (submitting ? 'Saving…' : 'Save') : 'Next'}
-              </Text>
-            </TouchableOpacity>
-          ),
-        }}
-      />
+      {/* Grabber — modal is natively swipe-down dismissible */}
+      <View style={{ alignItems: 'center', paddingTop: 9 }}>
+        <View style={styles.grabber} />
+      </View>
+
+      {/* Title row */}
+      <View style={styles.modalTopRow}>
+        <Text style={styles.modalTitle}>Log a visit</Text>
+        <TouchableOpacity onPress={handleCancel} style={styles.modalClose} hitSlop={8}>
+          <Ionicons name="close" size={16} color={C.inkSoft} />
+        </TouchableOpacity>
+      </View>
 
       {/* Step indicator */}
       <View style={styles.stepBar}>
@@ -1050,8 +1540,16 @@ export default function LogVisitModal() {
       >
         {step === 0 && <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} />}
         {step === 1 && <StepVisit draft={draft} set={set} />}
-        {step === 2 && token && <StepJournal draft={draft} set={set} token={token} />}
-        {step === 3 && <StepShare draft={draft} set={set} />}
+        {step === 2 && token && <StepJournal draft={draft} set={set} token={token} npsActivityNames={npsActivityNames} />}
+        {step === 3 && (
+          <StepShare
+            draft={draft}
+            set={set}
+            park={parks.find(p => p.park_code === draft.parkCode)}
+            userName={user?.fullName ?? user?.username ?? 'You'}
+            avatarUrl={user?.imageUrl}
+          />
+        )}
       </ScrollView>
 
       {/* Footer nav */}
@@ -1098,6 +1596,25 @@ export default function LogVisitModal() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  // Modal chrome
+  grabber: {
+    width: 36, height: 4.5, borderRadius: 3,
+    backgroundColor: 'rgba(27,26,22,0.18)',
+  },
+  modalTopRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 2,
+  },
+  modalTitle: {
+    fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.3,
+  },
+  modalClose: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: C.surfaceAlt,
+    borderWidth: 0.5, borderColor: C.hairline,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
   // Step bar
   stepBar: {
     flexDirection: 'row', gap: 4, paddingHorizontal: 20, paddingTop: 8,
@@ -1119,19 +1636,10 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface, borderRadius: 18, borderWidth: 0.5, borderColor: C.hairline, padding: 14,
   },
 
-  // Star rating
-  starHalf: {
-    flex: 1, height: STAR_SIZE,
-  },
-
   // Scale buttons
-  scaleBtn: {
-    flex: 1, paddingVertical: 9, paddingHorizontal: 2,
-    borderRadius: 10, borderWidth: 0.5,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  scaleBtnText: {
-    fontSize: 11, fontWeight: '600',
+  scaleSeg: {
+    flex: 1, height: 26,
+    borderRadius: 8, borderWidth: 0.5,
   },
 
   // Weather
@@ -1269,10 +1777,45 @@ const styles = StyleSheet.create({
     padding: 16, borderBottomWidth: 0.5, borderBottomColor: C.hairline,
   },
 
+  // Calendar
+  calNavRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  calNavBtn: {
+    width: 30, height: 30, borderRadius: 8,
+    backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  calMonthLabel: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  calMonthGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', marginTop: 12,
+  },
+  calMonthCell: {
+    width: '25%', paddingVertical: 11, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  calDow: {
+    flex: 1, textAlign: 'center',
+    fontSize: 10, fontWeight: '600', color: C.inkMute,
+    paddingVertical: 4,
+  },
+  calCell: {
+    flex: 1, height: 40,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  calDayBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
   // Park banner
   parkBanner: {
     borderRadius: 16, borderWidth: 1.5, borderColor: C.hairline,
     padding: 16, marginBottom: 0,
+    overflow: 'hidden',
   },
 
   // Text fields
@@ -1284,12 +1827,40 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 120, textAlignVertical: 'top', fontWeight: '400',
   },
-  textFieldWrap: {
-    position: 'relative',
-  },
-  charCount: {
-    position: 'absolute', right: 10, top: 8,
+  charCountOutside: {
+    alignSelf: 'flex-end', marginTop: 5,
     fontSize: 9.5, color: C.inkMute, fontWeight: '600', letterSpacing: 0.5,
+  },
+
+  // Post preview
+  previewCard: {
+    backgroundColor: C.surface,
+    borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  previewChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: C.surfaceAlt,
+    borderRadius: 100,
+    paddingHorizontal: 9, paddingVertical: 4,
+  },
+  previewChipText: {
+    fontWeight: '600', fontSize: 11, color: C.inkSoft,
+    textTransform: 'capitalize',
+  },
+
+  // Activity autocomplete
+  activitySuggestBox: {
+    marginTop: 4,
+    backgroundColor: C.surface,
+    borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  activitySuggestRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
   },
 
   // Date rows

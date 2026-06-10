@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Dimensions, Linking, PanResponder, Platform,
+  Animated, Dimensions, Keyboard, Linking, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Image } from 'expo-image';
@@ -12,6 +12,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
+import { ImageLightbox } from '@/components/ImageLightbox';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -34,7 +35,8 @@ const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get('window');
 
 const SHEET_PEEK = SCREEN_H * 0.48;
-const SHEET_FULL = SCREEN_H * 0.92;
+const SHEET_FULL = SCREEN_H;
+const TAB_BAR_H = Platform.OS === 'ios' ? 84 : 64;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,15 +98,6 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
-}
-
-const PARK_PALETTES = [
-  '#3F5949', '#5C6B4B', '#B86A3E', '#8B5A3C',
-  '#3F5C6B', '#2D4F66', '#4A3F5C', '#5C4A3F',
-];
-function parkBgColor(code: string): string {
-  const idx = code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % PARK_PALETTES.length;
-  return PARK_PALETTES[idx];
 }
 
 const GRADIENTS: [string, string, string][] = [
@@ -219,17 +212,151 @@ function FilterPill({
   );
 }
 
-// ── StatusChip ────────────────────────────────────────────────────────────────
+// ── Search bar ────────────────────────────────────────────────────────────────
 
-function StatusChip({ status }: { status: ParkStatus }) {
-  const cfg = {
-    visited:    { label: '✓ Visited',     bg: 'rgba(47,122,74,0.85)' },
-    bucketList: { label: '⊙ Bucket list', bg: 'rgba(216,154,58,0.85)' },
-    notVisited: { label: '○ Not visited', bg: 'rgba(168,162,154,0.80)' },
-  }[status];
+interface UserSearchResult {
+  clerk_user_id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+function MapSearchBar({
+  token, parks, closeSignal, onSelectPark, onSelectUser,
+}: {
+  token: string | null;
+  parks: ParkForMap[];
+  closeSignal: number;
+  onSelectPark: (p: ParkForMap) => void;
+  onSelectUser: (clerkUserId: string) => void;
+}) {
+  const [query, setQuery]             = useState('');
+  const [userResults, setUserResults] = useState<UserSearchResult[]>([]);
+  const [parkResults, setParkResults] = useState<ParkForMap[]>([]);
+  const [open, setOpen]               = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seq = useRef(0);
+
+  // Close dropdown when the map is tapped
+  useEffect(() => {
+    if (closeSignal > 0) { setOpen(false); Keyboard.dismiss(); }
+  }, [closeSignal]);
+
+  const runSearch = useCallback(async (q: string) => {
+    const trimmed = q.trim();
+    if (!trimmed) { setUserResults([]); setParkResults([]); setOpen(false); return; }
+    const mySeq = ++seq.current;
+    const lower = trimmed.toLowerCase();
+    const matchedParks = parks.filter(p =>
+      p.name.toLowerCase().includes(lower) ||
+      p.states.toLowerCase().includes(lower) ||
+      fullStateName(p.states.split(',')[0].trim()).toLowerCase().includes(lower)
+    ).slice(0, 5);
+    let matchedUsers: UserSearchResult[] = [];
+    if (token) {
+      try {
+        matchedUsers = await apiFetch<UserSearchResult[]>(
+          `/api/users?q=${encodeURIComponent(trimmed)}&limit=5`, token
+        );
+      } catch { /* ignore */ }
+    }
+    if (mySeq !== seq.current) return;
+    setParkResults(matchedParks);
+    setUserResults(matchedUsers.slice(0, 5));
+    setOpen(matchedParks.length > 0 || matchedUsers.length > 0);
+  }, [parks, token]);
+
+  const handleChange = (q: string) => {
+    setQuery(q);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => runSearch(q), 250);
+  };
+
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current);
+    setQuery('');
+    setUserResults([]);
+    setParkResults([]);
+    setOpen(false);
+    Keyboard.dismiss();
+  };
+
   return (
-    <View style={[styles.statusChip, { backgroundColor: cfg.bg }]}>
-      <Text style={styles.statusChipText}>{cfg.label}</Text>
+    <View>
+      <View style={styles.searchBar}>
+        <Ionicons name="search" size={16} color={C.inkMute} />
+        <TextInput
+          style={styles.searchInput}
+          value={query}
+          onChangeText={handleChange}
+          onFocus={() => { if (userResults.length > 0 || parkResults.length > 0) setOpen(true); }}
+          placeholder="Search parks or users…"
+          placeholderTextColor={C.inkMute}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+        />
+        {query.length > 0 && (
+          <TouchableOpacity onPress={clear} hitSlop={8}>
+            <Ionicons name="close-circle" size={16} color={C.inkMute} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {open && (
+        <View style={styles.searchResults}>
+          {parkResults.length > 0 && (
+            <>
+              <Text style={styles.searchSectionTitle}>PARKS</Text>
+              {parkResults.map(p => (
+                <TouchableOpacity
+                  key={p.park_code}
+                  style={styles.searchRow}
+                  onPress={() => { clear(); onSelectPark(p); }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.searchRowIcon}>
+                    <Ionicons name="location" size={15} color={C.visited} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.searchRowTitle} numberOfLines={1}>{p.name}</Text>
+                    <Text style={styles.searchRowSub} numberOfLines={1}>{p.states}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+          {userResults.length > 0 && (
+            <>
+              <Text style={styles.searchSectionTitle}>USERS</Text>
+              {userResults.map(u => (
+                <TouchableOpacity
+                  key={u.clerk_user_id}
+                  style={styles.searchRow}
+                  onPress={() => { clear(); onSelectUser(u.clerk_user_id); }}
+                  activeOpacity={0.7}
+                >
+                  {u.avatar_url ? (
+                    <Image source={{ uri: u.avatar_url }} style={styles.searchRowAvatar} />
+                  ) : (
+                    <View style={styles.searchRowIcon}>
+                      <Ionicons name="person" size={14} color={C.inkMute} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.searchRowTitle} numberOfLines={1}>
+                      {u.display_name ?? (u.username ? `@${u.username}` : 'User')}
+                    </Text>
+                    {u.display_name && u.username ? (
+                      <Text style={styles.searchRowSub} numberOfLines={1}>@{u.username}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -257,6 +384,46 @@ function Stars({ value }: { value: number }) {
   );
 }
 
+// ── StatCell ──────────────────────────────────────────────────────────────────
+
+function StatCell({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+  return (
+    <View style={styles.statCell}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
+    </View>
+  );
+}
+
+// ── ChipGrid ──────────────────────────────────────────────────────────────────
+
+function ChipGrid({
+  items, muted = false, limit = 8,
+}: { items: string[]; muted?: boolean; limit?: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? items : items.slice(0, limit);
+  const hidden = items.length - limit;
+  return (
+    <View style={styles.chipWrap}>
+      {shown.map(item => (
+        <View key={item} style={[styles.activityChip, muted && { backgroundColor: 'transparent' }]}>
+          <Text style={[styles.activityChipText, muted && { color: C.inkMute }]}>{item}</Text>
+        </View>
+      ))}
+      {items.length > limit && !expanded && (
+        <TouchableOpacity onPress={() => setExpanded(true)} style={[styles.activityChip, styles.chipExpand]}>
+          <Text style={styles.chipExpandText}>+{hidden} more</Text>
+        </TouchableOpacity>
+      )}
+      {expanded && items.length > limit && (
+        <TouchableOpacity onPress={() => setExpanded(false)} style={[styles.activityChip, styles.chipExpand]}>
+          <Text style={styles.chipExpandText}>Show less</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 // ── ParkBottomSheet ───────────────────────────────────────────────────────────
 
 function ParkBottomSheet({
@@ -271,8 +438,27 @@ function ParkBottomSheet({
   onStatusChange: (code: string, status: ParkStatus) => void;
 }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const sheetH   = useRef(new Animated.Value(0)).current;
   const baseH    = useRef(SHEET_PEEK);
+
+  // Hero grows and sheet corners square off as the sheet approaches full screen,
+  // so the cover image extends to the top of the screen like the park detail page.
+  const heroH = sheetH.interpolate({
+    inputRange: [SHEET_PEEK, SHEET_FULL],
+    outputRange: [190, 260 + insets.top],
+    extrapolate: 'clamp',
+  });
+  const sheetRadius = sheetH.interpolate({
+    inputRange: [SHEET_FULL - 60, SHEET_FULL],
+    outputRange: [16, 0],
+    extrapolate: 'clamp',
+  });
+  const topPad = sheetH.interpolate({
+    inputRange: [SHEET_FULL - 60, SHEET_FULL],
+    outputRange: [0, insets.top],
+    extrapolate: 'clamp',
+  });
 
   // Image carousel
   const [npsImages, setNpsImages] = useState<string[]>(
@@ -281,7 +467,6 @@ function ParkBottomSheet({
   const [imgIdx, setImgIdx] = useState(0);
 
   // NPS summary data
-  const [npsDesignation,   setNpsDesignation]   = useState<string | null>(null);
   const [npsActivities,    setNpsActivities]    = useState<string[]>([]);
   const [npsTopics,        setNpsTopics]        = useState<string[]>([]);
   const [npsEntranceFees,  setNpsEntranceFees]  = useState<Array<{ title: string; cost: string; description?: string }>>([]);
@@ -303,6 +488,7 @@ function ParkBottomSheet({
 
   // Action state
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [lightboxIdx, setLightboxIdx]     = useState<number | null>(null);
 
   // ── Animate in ───────────────────────────────────────────────────────────────
 
@@ -321,7 +507,6 @@ function ParkBottomSheet({
     if (park.image_url) setNpsImages([park.image_url]);
     else setNpsImages([]);
     setImgIdx(0);
-    setNpsDesignation(null);
     setNpsActivities([]);
     setNpsTopics([]);
     setNpsEntranceFees([]);
@@ -365,9 +550,8 @@ function ParkBottomSheet({
         weatherInfo?: string;
       } | null) => {
         if (!data) return;
-        setNpsDesignation(data.designation ?? null);
-        setNpsActivities((data.activities ?? []).slice(0, 12));
-        setNpsTopics((data.topics ?? []).slice(0, 10));
+        setNpsActivities(data.activities ?? []);
+        setNpsTopics(data.topics ?? []);
         setNpsEntranceFees(data.entranceFees ?? []);
         setNpsFeesFree((data.entranceFees ?? []).length === 0);
         setNpsHours(data.operatingHours ?? []);
@@ -451,6 +635,31 @@ function ParkBottomSheet({
     })
   ).current;
 
+  // ── Hero image swipe ──────────────────────────────────────────────────────────
+
+  const imagesLenRef = useRef(0);
+  imagesLenRef.current = npsImages.length;
+
+  const heroPan = useRef(
+    PanResponder.create({
+      // Claim only clearly horizontal gestures so taps (expand) and the
+      // vertical drag handle keep working
+      onMoveShouldSetPanResponderCapture: (_, g) =>
+        imagesLenRef.current > 1 &&
+        Math.abs(g.dx) > 14 &&
+        Math.abs(g.dx) > Math.abs(g.dy) * 1.4,
+      onPanResponderRelease: (_, g) => {
+        const len = imagesLenRef.current;
+        if (len < 2) return;
+        if (g.dx <= -40 || g.vx <= -0.3) {
+          setImgIdx(i => (i + 1) % len);
+        } else if (g.dx >= 40 || g.vx >= 0.3) {
+          setImgIdx(i => (i - 1 + len) % len);
+        }
+      },
+    })
+  ).current;
+
   // ── Actions ───────────────────────────────────────────────────────────────────
 
   const handleMarkVisited = async () => {
@@ -500,67 +709,58 @@ function ParkBottomSheet({
     <>
       <Pressable style={styles.backdrop} onPress={dismiss} />
 
-      <Animated.View style={[styles.sheet, { height: sheetH }]}>
-        {/* Drag handle */}
-        <View {...panResponder.panHandlers} style={styles.handleArea}>
-          <View style={styles.handleBar} />
-        </View>
-
-        {/* Hero image */}
-        <Pressable
-          style={[styles.hero, { backgroundColor: parkBgColor(park.park_code) }]}
-          onPress={() => { if (baseH.current <= SHEET_PEEK + 10) snapTo(SHEET_FULL); }}
-        >
-          {heroUrl ? (
-            <Image
-              source={{ uri: heroUrl }}
+      <Animated.View style={[styles.sheet, { height: sheetH, borderTopLeftRadius: sheetRadius, borderTopRightRadius: sheetRadius }]}>
+        {/* Hero image — extends to top of screen when sheet is full */}
+        <Animated.View style={[styles.hero, { height: heroH }]} {...heroPan.panHandlers}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              if (npsImages.length > 0) setLightboxIdx(imgIdx);
+              else if (baseH.current <= SHEET_PEEK + 10) snapTo(SHEET_FULL);
+            }}
+          >
+            <LinearGradient
+              colors={gradientColors(park.park_code)}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
               style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              cachePolicy="memory-disk"
             />
-          ) : null}
+            {heroUrl ? (
+              <Image
+                source={{ uri: heroUrl }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                transition={300}
+                cachePolicy="memory-disk"
+              />
+            ) : null}
 
-          <LinearGradient
-            colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.38)', 'transparent']}
-            locations={[0, 0.4, 0.75]}
-            start={{ x: 0, y: 1 }}
-            end={{ x: 0, y: 0 }}
-            style={StyleSheet.absoluteFillObject}
-            pointerEvents="none"
-          />
+            <LinearGradient
+              colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.42)', 'transparent']}
+              locations={[0, 0.35, 0.65]}
+              start={{ x: 0, y: 1 }}
+              end={{ x: 0, y: 0 }}
+              style={StyleSheet.absoluteFillObject}
+              pointerEvents="none"
+            />
 
-          {npsImages.length > 1 && (
-            <>
-              <View style={styles.imgCounter}>
-                <Text style={styles.imgCounterText}>{imgIdx + 1} / {npsImages.length}</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.imgNav, { left: 10 }]}
-                onPress={() => setImgIdx(i => (i - 1 + npsImages.length) % npsImages.length)}
-              >
-                <Ionicons name="chevron-back" size={15} color="#FFFBF1" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.imgNav, { right: 10 }]}
-                onPress={() => setImgIdx(i => (i + 1) % npsImages.length)}
-              >
-                <Ionicons name="chevron-forward" size={15} color="#FFFBF1" />
-              </TouchableOpacity>
-            </>
-          )}
-
-          <TouchableOpacity style={styles.heroClose} onPress={dismiss} hitSlop={8}>
-            <Ionicons name="close" size={14} color="#FFFBF1" />
-          </TouchableOpacity>
-
-          <View style={styles.heroContent}>
-            <Text style={styles.heroState}>{stateLabel.toUpperCase()}</Text>
-            <Text style={styles.heroName}>{park.name}</Text>
-            <View style={{ marginTop: 8 }}>
-              <StatusChip status={park.status} />
+            <View style={styles.heroContent}>
+              <Text style={styles.heroState}>{stateLabel.toUpperCase()}</Text>
+              <Text style={styles.heroName}>{park.name}</Text>
             </View>
-          </View>
-        </Pressable>
+          </Pressable>
+
+          {/* Top strip — drag handle, image counter, close. Shifts below the
+              status bar as the sheet reaches full screen. */}
+          <Animated.View pointerEvents="box-none" style={[styles.heroTopStrip, { top: topPad }]}>
+            <View {...panResponder.panHandlers} style={styles.handleArea}>
+              <View style={styles.handleBar} />
+            </View>
+            <TouchableOpacity style={styles.heroClose} onPress={dismiss} hitSlop={8}>
+              <Ionicons name="close" size={14} color="#FFFBF1" />
+            </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
 
         {/* Scrollable body — full profile below hero */}
         <ScrollView
@@ -570,45 +770,76 @@ function ParkBottomSheet({
           keyboardShouldPersistTaps="handled"
         >
 
-          {/* ── Description ── */}
+          {/* ── Quick stats ── */}
+          <View style={styles.statsRow}>
+            <StatCell label="State" value={fullStateName(park.states)} />
+            <View style={styles.statDivider} />
+            <StatCell
+              label="Status"
+              value={park.status === 'visited' ? 'Visited' : park.status === 'bucketList' ? 'Bucket list' : 'Not yet'}
+              valueColor={park.status === 'visited' ? C.visited : park.status === 'bucketList' ? C.bucket : C.inkMute}
+            />
+            <View style={styles.statDivider} />
+            <StatCell label="Visits" value={String(fullVisits.length)} />
+          </View>
+
+          {/* ── Photo strip ── */}
+          {npsImages.length > 1 && (
+            <ScrollView
+              horizontal showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.photoStrip}
+            >
+              {npsImages.slice(1, 5).map((url, i) => (
+                <TouchableOpacity
+                  key={i}
+                  onPress={() => setLightboxIdx(i + 1)}
+                  activeOpacity={0.85}
+                  style={styles.photoStripItem}
+                >
+                  <LinearGradient
+                    colors={gradientColors(park.park_code)}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <Image
+                    source={{ uri: url }}
+                    style={StyleSheet.absoluteFill}
+                    contentFit="cover"
+                    transition={300}
+                    cachePolicy="memory-disk"
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* ── About ── */}
           {park.description ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionKicker}>ABOUT THIS PARK</Text>
+            <SheetSection title="About">
               <Text style={styles.sectionBody}>{park.description}</Text>
-            </View>
+            </SheetSection>
           ) : null}
 
           {/* ── Activities ── */}
           {npsActivities.length > 0 && (
             <SheetSection title="Activities">
-              <View style={styles.chipWrap}>
-                {npsActivities.map(a => (
-                  <View key={a} style={styles.activityChip}>
-                    <Text style={styles.activityChipText}>{a}</Text>
-                  </View>
-                ))}
-              </View>
+              <ChipGrid items={npsActivities} />
             </SheetSection>
           )}
 
           {/* ── Topics ── */}
           {npsTopics.length > 0 && (
             <SheetSection title="Topics">
-              <View style={styles.chipWrap}>
-                {npsTopics.map(t => (
-                  <View key={t} style={[styles.activityChip, { backgroundColor: 'transparent' }]}>
-                    <Text style={[styles.activityChipText, { color: C.inkMute }]}>{t}</Text>
-                  </View>
-                ))}
-              </View>
+              <ChipGrid items={npsTopics} muted />
             </SheetSection>
           )}
 
           {/* ── Operating hours ── */}
           {npsHours.length > 0 && (
-            <SheetSection title="Hours">
+            <SheetSection title="Operating Hours">
               {npsHours.map((h, hi) => (
-                <View key={hi} style={{ marginBottom: hi < npsHours.length - 1 ? 14 : 0 }}>
+                <View key={hi} style={[styles.hoursCard, hi < npsHours.length - 1 && { marginBottom: 10 }]}>
                   {npsHours.length > 1 && (
                     <Text style={styles.hoursName}>{h.name}</Text>
                   )}
@@ -621,6 +852,11 @@ function ParkBottomSheet({
                       </View>
                     );
                   })}
+                  {h.description ? (
+                    <Text style={[styles.sectionBody, { marginTop: 10 }]} numberOfLines={4}>
+                      {h.description}
+                    </Text>
+                  ) : null}
                 </View>
               ))}
             </SheetSection>
@@ -805,7 +1041,15 @@ function ParkBottomSheet({
           {/* Attribution */}
           <View style={styles.attribution}>
             <Text style={styles.attributionText}>
-              Park information sourced from the National Park Service (NPS). Always verify details before your visit.
+              Park information is sourced directly from the{" "}
+              <Text style={styles.attributionLink} onPress={() => Linking.openURL("https://www.nps.gov")}>
+                National Park Service (NPS)
+              </Text>
+              . Weather forecasts are provided by the{" "}
+              <Text style={styles.attributionLink} onPress={() => Linking.openURL("https://www.weather.gov")}>
+                National Weather Service (NWS)
+              </Text>
+              . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details with official sources before your visit.
             </Text>
           </View>
         </ScrollView>
@@ -881,6 +1125,14 @@ function ParkBottomSheet({
           )}
         </View>
       </Animated.View>
+
+      {lightboxIdx != null && (
+        <ImageLightbox
+          images={npsImages.map(url => ({ url }))}
+          initialIndex={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+        />
+      )}
     </>
   );
 }
@@ -890,6 +1142,7 @@ function ParkBottomSheet({
 export default function MapScreen() {
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { parkCode: focusParkCode } = useLocalSearchParams<{ parkCode?: string }>();
 
   const [token, setToken]               = useState<string | null>(null);
@@ -897,6 +1150,7 @@ export default function MapScreen() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [selectedPark, setSelectedPark] = useState<ParkForMap | null>(null);
   const [loading, setLoading]           = useState(true);
+  const [mapPressKey, setMapPressKey]   = useState(0);
   const mapRef = useRef<MapView>(null);
   const currentRegionRef = useRef({ latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 });
 
@@ -1054,7 +1308,7 @@ export default function MapScreen() {
         showsMyLocationButton={false}
         showsCompass={false}
         onRegionChangeComplete={region => { currentRegionRef.current = region; }}
-        onPress={() => setSelectedPark(null)}
+        onPress={() => { setSelectedPark(null); setMapPressKey(k => k + 1); }}
       >
         {filteredParks.map(park => {
           const selected = selectedPark?.park_code === park.park_code;
@@ -1073,7 +1327,7 @@ export default function MapScreen() {
       </MapView>
 
       {!loading && (
-        <View style={[styles.filterPillWrap, { top: insets.top + 12 }]}>
+        <View style={[styles.filterPillWrap, { top: insets.top + 60 }]}>
           <FilterPill
             active={filterStatus}
             counts={counts}
@@ -1114,6 +1368,24 @@ export default function MapScreen() {
           <Ionicons name="home-outline" size={14} color="#4A4535" />
         </TouchableOpacity>
       </View>
+
+      {/* Search — rendered last so results overlay everything (like the park sheet),
+          but drops behind the sheet while a park profile is open */}
+      {!loading && (
+        <View style={[
+          styles.searchBarWrap,
+          { top: insets.top + 12 },
+          selectedPark ? { zIndex: 10, elevation: 0 } : null,
+        ]}>
+          <MapSearchBar
+            token={token}
+            parks={parks}
+            closeSignal={mapPressKey}
+            onSelectPark={handleSelectPark}
+            onSelectUser={id => router.push(`/user/${id}` as never)}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -1124,6 +1396,90 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#CECDBC',
+  },
+
+  // Search bar
+  searchBarWrap: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    zIndex: 40,
+    elevation: 10,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,251,241,0.95)',
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: C.ink,
+    padding: 0,
+  },
+  searchResults: {
+    marginTop: 6,
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 14,
+    paddingBottom: 6,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  searchSectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.inkMute,
+    letterSpacing: 0.8,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  searchRowIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: C.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchRowAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+  },
+  searchRowTitle: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: C.ink,
+  },
+  searchRowSub: {
+    fontSize: 11.5,
+    color: C.inkMute,
+    marginTop: 1,
   },
 
   // Filter pill
@@ -1212,20 +1568,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 1,
   },
 
-  // Status chip
-  statusChip: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 100,
-    alignSelf: 'flex-start',
-  },
-  statusChipText: {
-    fontSize: 10.5,
-    fontWeight: '700',
-    color: '#FFFBF1',
-    letterSpacing: 0.4,
-  },
-
   // Bottom sheet
   backdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -1249,52 +1591,34 @@ const styles = StyleSheet.create({
     elevation: 16,
     overflow: 'hidden',
   },
+  heroTopStrip: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 5,
+  },
   handleArea: {
+    alignSelf: 'center',
     alignItems: 'center',
     paddingTop: 10,
     paddingBottom: 6,
+    paddingHorizontal: 40,
   },
   handleBar: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: C.hairline,
+    backgroundColor: 'rgba(255,251,241,0.65)',
   },
 
   // Hero
   hero: {
-    height: 190,
     flexShrink: 0,
     overflow: 'hidden',
   },
-  imgCounter: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    backgroundColor: 'rgba(20,17,12,0.55)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 100,
-  },
-  imgCounterText: {
-    color: '#FFFBF1',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  imgNav: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: -14,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(20,17,12,0.40)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   heroClose: {
     position: 'absolute',
-    top: 10,
+    top: 8,
     right: 10,
     width: 28,
     height: 28,
@@ -1329,21 +1653,57 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
 
-
-  // Brief description section
-  section: {
-    paddingHorizontal: 18,
+  // Photo strip
+  photoStrip: {
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderTopWidth: 0.5,
-    borderTopColor: C.hairlineSoft,
+    gap: 8,
+    flexDirection: 'row',
   },
-  sectionKicker: {
+  photoStripItem: {
+    width: 110,
+    height: 72,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+
+  // Quick stats
+  statsRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    overflow: 'hidden',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  statLabel: {
     fontSize: 9.5,
     fontWeight: '600',
     color: C.inkMute,
-    letterSpacing: 1.4,
-    marginBottom: 6,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 3,
   },
+  statValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  statDivider: {
+    width: 0.5,
+    backgroundColor: C.hairline,
+    marginVertical: 10,
+  },
+
+
   sectionBody: {
     fontSize: 12.5,
     color: C.inkSoft,
@@ -1358,11 +1718,11 @@ const styles = StyleSheet.create({
     borderTopColor: C.hairlineSoft,
   },
   profileSectionTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '800',
     color: C.ink,
-    letterSpacing: -0.1,
-    marginBottom: 10,
+    letterSpacing: -0.2,
+    marginBottom: 12,
   },
 
   // Chips
@@ -1384,22 +1744,37 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: C.inkSoft,
   },
+  chipExpand: {
+    backgroundColor: 'transparent',
+    borderColor: C.primary,
+  },
+  chipExpandText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: C.primary,
+  },
 
   // Hours
+  hoursCard: {
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
   hoursName: {
     fontSize: 11,
     fontWeight: '700',
     color: C.inkMute,
-    marginBottom: 6,
+    marginBottom: 10,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   hoursRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 4,
-    borderBottomWidth: 0.5,
-    borderBottomColor: C.hairlineSoft,
   },
   hoursDay: {
     fontSize: 12,
@@ -1568,12 +1943,16 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     textAlign: 'center',
   },
+  attributionLink: {
+    textDecorationLine: 'underline',
+  },
 
-  // Action row
+  // Action row — bottom padding clears the floating tab bar
   actionRow: {
     flexDirection: 'row',
     gap: 8,
     padding: 14,
+    paddingBottom: TAB_BAR_H + 10,
     borderTopWidth: 0.5,
     borderTopColor: C.hairlineSoft,
     flexShrink: 0,

@@ -1114,7 +1114,7 @@ function ParkInfoContent({
           <a href="https://www.weather.gov" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>
             National Weather Service (NWS)
           </a>
-          . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details with official sources before your visit.
+          . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details before your visit.
         </p>
       </div>
     </div>
