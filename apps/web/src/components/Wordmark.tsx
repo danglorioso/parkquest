@@ -11,7 +11,7 @@ export function Wordmark({ size = "default" }: { size?: "default" | "large" } = 
         strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        style={{ marginTop: isLarge ? -1 : -2, flexShrink: 0 }}
+        style={{ cursor: "pointer", marginTop: isLarge ? -1 : -2, flexShrink: 0 }}
       >
         <path d="M3 20L9 9l3 5 3-7 6 13H3z" />
         <circle cx="20" cy="4" r="3.5" fill="var(--accent-2)" stroke="none" />

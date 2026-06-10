@@ -23,7 +23,7 @@ export default function TermsPage() {
           position: "relative",
           overflow: "hidden",
           height: "clamp(280px, 38vh, 460px)",
-          background: "linear-gradient(180deg, var(--primary-deep) 0%, var(--primary) 60%, #2F6A4A 100%)",
+          background: "linear-gradient(180deg, var(--primary-deep) 0%, #3d8c61 60%)",
           display: "flex",
           flexDirection: "column",
           justifyContent: "flex-end",
