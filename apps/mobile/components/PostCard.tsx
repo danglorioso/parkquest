@@ -714,22 +714,29 @@ export function PostCard({
     setShowMenu(false);
   };
 
-  // Visit posts inherit the visit's visibility — change it via "Edit visit"
-  const canEditVisibility = post.visit_id == null;
-
   const handleSaveCaption = async () => {
+    // Visit posts inherit the visit's visibility, so route the change there;
+    // all other posts carry their own
     const res = await apiReq(`/api/posts/${post.id}`, token, {
       method: 'PATCH',
       body: JSON.stringify({
         caption: captionDraft,
-        ...(canEditVisibility ? { visibility: visDraft } : {}),
+        ...(post.visit_id == null ? { visibility: visDraft } : {}),
       }),
     }).catch(() => null);
-    if (res !== null) {
-      setCurrentCaption(captionDraft || null);
-      if (canEditVisibility) setVisibility(visDraft);
-      setEditingCaption(false);
+    if (res === null) return;
+
+    if (post.visit_id != null && visDraft !== visibility) {
+      const visRes = await apiReq(`/api/visits/${post.visit_id}`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({ visibility: visDraft }),
+      }).catch(() => null);
+      if (visRes !== null) setVisibility(visDraft);
+    } else {
+      setVisibility(visDraft);
     }
+    setCurrentCaption(captionDraft || null);
+    setEditingCaption(false);
   };
 
   return (
@@ -751,7 +758,7 @@ export function PostCard({
           <TouchableOpacity onPress={() => router.push(`/user/${post.clerk_user_id}` as never)}>
             <Text style={styles.authorName}>{name}</Text>
           </TouchableOpacity>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 1 }}>
             <Text style={[styles.authorSub, { marginTop: 0 }]}>
               {post.username ? `@${post.username} · ` : ''}
               {relTime(post.created_at)}
@@ -838,23 +845,21 @@ export function PostCard({
             >
               <Text style={{ fontSize: 13, color: C.ink }}>Cancel</Text>
             </TouchableOpacity>
-            {canEditVisibility && (
-              <View style={styles.visPicker}>
-                {VIS_ORDER.map(v => {
-                  const active = visDraft === v;
-                  return (
-                    <TouchableOpacity
-                      key={v}
-                      onPress={() => setVisDraft(v)}
-                      hitSlop={4}
-                      style={[styles.visPickerBtn, active && styles.visPickerBtnActive]}
-                    >
-                      <Ionicons name={VIS_ICONS[v]} size={13} color={active ? C.primary : C.inkMute} />
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
+            <View style={styles.visPicker}>
+              {VIS_ORDER.map(v => {
+                const active = visDraft === v;
+                return (
+                  <TouchableOpacity
+                    key={v}
+                    onPress={() => setVisDraft(v)}
+                    hitSlop={4}
+                    style={[styles.visPickerBtn, active && styles.visPickerBtnActive]}
+                  >
+                    <Ionicons name={VIS_ICONS[v]} size={13} color={active ? C.primary : C.inkMute} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         </View>
       ) : currentCaption ? (
@@ -1208,8 +1213,10 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: 11, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.5,
   },
+  // Left padding lines the date up with the heart icon inside the like
+  // button (18 row padding + 12 chip padding)
   footerDate: {
-    paddingHorizontal: 18, paddingBottom: 14, paddingTop: 4,
+    paddingHorizontal: 30, paddingBottom: 14, paddingTop: 4,
     fontSize: 11, color: C.inkMute, letterSpacing: 0.3,
   },
 });

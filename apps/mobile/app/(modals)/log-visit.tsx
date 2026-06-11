@@ -1628,12 +1628,14 @@ export default function LogVisitModal() {
         <View style={styles.grabber} />
       </View>
 
+      {/* Close — pinned to the top corner so it sits in the sheet's rounding */}
+      <TouchableOpacity onPress={handleCancel} style={styles.modalClose} hitSlop={8}>
+        <Ionicons name="close" size={16} color={C.inkSoft} />
+      </TouchableOpacity>
+
       {/* Title row */}
       <View style={styles.modalTopRow}>
         <Text style={styles.modalTitle}>{isEdit ? 'Edit visit' : 'Log a visit'}</Text>
-        <TouchableOpacity onPress={handleCancel} style={styles.modalClose} hitSlop={8}>
-          <Ionicons name="close" size={16} color={C.inkSoft} />
-        </TouchableOpacity>
       </View>
 
       {/* Step indicator */}
@@ -1779,6 +1781,7 @@ const styles = StyleSheet.create({
     fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.3,
   },
   modalClose: {
+    position: 'absolute', top: 10, right: 16, zIndex: 10,
     width: 30, height: 30, borderRadius: 15,
     backgroundColor: C.surfaceAlt,
     borderWidth: 0.5, borderColor: C.hairline,
