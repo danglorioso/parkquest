@@ -63,7 +63,15 @@ export async function GET(request: Request) {
       .leftJoin(parks, eq(posts.park_code, parks.park_code))
       .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
       .leftJoin(visits, eq(posts.visit_id, visits.id))
-      .where(inArray(posts.clerk_user_id, allowedIds))
+      .where(and(
+        inArray(posts.clerk_user_id, allowedIds),
+        // Friends-only audience, so 'friends' and 'public' both pass; hide
+        // others' private posts (visit posts defer to the visit's visibility)
+        or(
+          eq(posts.clerk_user_id, userId),
+          sql`COALESCE(${visits.visibility}, ${posts.visibility}, 'public') != 'private'`
+        )
+      ))
       .orderBy(desc(posts.created_at))
       .limit(limit)
       .offset(offset);

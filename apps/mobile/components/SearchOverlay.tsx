@@ -14,9 +14,13 @@ const C = {
   surface:  '#FFFBF1',
   surfaceAlt: '#F7F0DE',
   ink:      '#1B1A16',
+  inkSoft:  '#3C3A33',
   inkMute:  '#7A746A',
   hairline: 'rgba(27,26,22,0.10)',
+  hairlineSoft: 'rgba(27,26,22,0.06)',
   visited:  '#2F7A4A',
+  bucket:   '#D89A3A',
+  unvisited:'#A8A29A',
 };
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -27,6 +31,12 @@ interface ParkLite {
   states: string;
 }
 
+interface Visit {
+  park_code: string;
+  is_bucket_list: boolean;
+  visited_date: string | null;
+}
+
 interface UserResult {
   clerk_user_id: string;
   username: string | null;
@@ -34,31 +44,83 @@ interface UserResult {
   avatar_url: string | null;
 }
 
+type ParkStatus = 'visited' | 'bucketList' | 'notVisited';
+type TabFilter = 'all' | 'visited' | 'bucketList' | 'notVisited';
+
+interface ParkWithStatus extends ParkLite {
+  status: ParkStatus;
+}
+
+const STATUS_DOT: Record<ParkStatus, string> = {
+  visited: C.visited,
+  bucketList: C.bucket,
+  notVisited: C.unvisited,
+};
+
+const TAB_DEFS: { id: TabFilter; label: string; color: string }[] = [
+  { id: 'all',        label: 'All',     color: C.ink },
+  { id: 'visited',    label: 'Visited', color: C.visited },
+  { id: 'bucketList', label: 'Bucket',  color: C.bucket },
+  { id: 'notVisited', label: 'Not yet', color: C.unvisited },
+];
+
+const MAX_LIST = 50;
+
+function resolveParkStatus(code: string, visits: Visit[]): ParkStatus {
+  const pv = visits.filter(v => v.park_code === code);
+  if (pv.some(v => !v.is_bucket_list && v.visited_date)) return 'visited';
+  if (pv.some(v => v.is_bucket_list)) return 'bucketList';
+  return 'notVisited';
+}
+
+function ParkRow({ park, onPress }: { park: ParkWithStatus; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
+      <View style={[styles.statusDot, { backgroundColor: STATUS_DOT[park.status] }]} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.rowTitle} numberOfLines={1}>{park.name}</Text>
+        <Text style={styles.rowSub} numberOfLines={1}>
+          {fullStateName(park.states.split(',')[0].trim())}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={14} color={C.inkMute} />
+    </TouchableOpacity>
+  );
+}
+
 export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { getToken } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [query, setQuery]             = useState('');
-  const [parkResults, setParkResults] = useState<ParkLite[]>([]);
+  const [query, setQuery]           = useState('');
+  const [tab, setTab]               = useState<TabFilter>('all');
+  const [parks, setParks]           = useState<ParkLite[]>([]);
+  const [visits, setVisits]         = useState<Visit[]>([]);
   const [userResults, setUserResults] = useState<UserResult[]>([]);
-  const parksRef = useRef<ParkLite[]>([]);
+  const parksLoaded = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seq = useRef(0);
   const inputRef = useRef<TextInput>(null);
 
-  // Load the parks list once, the first time the overlay opens
+  // Parks load once; visits refresh on each open so statuses stay current
   useEffect(() => {
-    if (!visible || parksRef.current.length > 0) return;
+    if (!visible) return;
     (async () => {
       const tok = await getToken();
       if (!tok) return;
+      const headers = { Authorization: `Bearer ${tok}` };
       try {
-        const res = await fetch(`${BASE}/api/parks`, { headers: { Authorization: `Bearer ${tok}` } });
-        if (res.ok) {
-          const data: ParkLite[] = await res.json();
-          parksRef.current = data.map(p => ({ park_code: p.park_code, name: p.name, states: p.states }));
+        const [parksRes, visitsRes] = await Promise.all([
+          parksLoaded.current ? null : fetch(`${BASE}/api/parks`, { headers }),
+          fetch(`${BASE}/api/visits`, { headers }),
+        ]);
+        if (parksRes?.ok) {
+          const data: ParkLite[] = await parksRes.json();
+          setParks(data.map(p => ({ park_code: p.park_code, name: p.name, states: p.states })));
+          parksLoaded.current = true;
         }
+        if (visitsRes.ok) setVisits(await visitsRes.json());
       } catch { /* ignore */ }
     })();
   }, [visible, getToken]);
@@ -67,42 +129,35 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
     if (visible) setTimeout(() => inputRef.current?.focus(), 100);
   }, [visible]);
 
-  const runSearch = useCallback(async (q: string) => {
+  const searchUsers = useCallback(async (q: string) => {
     const trimmed = q.trim();
-    if (!trimmed) { setParkResults([]); setUserResults([]); return; }
+    if (!trimmed) { setUserResults([]); return; }
     const mySeq = ++seq.current;
-    const lower = trimmed.toLowerCase();
-    const matchedParks = parksRef.current.filter(p =>
-      p.name.toLowerCase().includes(lower) ||
-      p.states.toLowerCase().includes(lower) ||
-      fullStateName(p.states.split(',')[0].trim()).toLowerCase().includes(lower)
-    ).slice(0, 5);
-    let matchedUsers: UserResult[] = [];
     const tok = await getToken();
-    if (tok) {
-      try {
-        const res = await fetch(
-          `${BASE}/api/users?q=${encodeURIComponent(trimmed)}&limit=5`,
-          { headers: { Authorization: `Bearer ${tok}` } }
-        );
-        if (res.ok) matchedUsers = await res.json();
-      } catch { /* ignore */ }
-    }
-    if (mySeq !== seq.current) return;
-    setParkResults(matchedParks);
-    setUserResults(matchedUsers.slice(0, 5));
+    if (!tok) return;
+    try {
+      const res = await fetch(
+        `${BASE}/api/users?q=${encodeURIComponent(trimmed)}&limit=5`,
+        { headers: { Authorization: `Bearer ${tok}` } }
+      );
+      if (res.ok) {
+        const data: UserResult[] = await res.json();
+        if (mySeq === seq.current) setUserResults(data.slice(0, 5));
+      }
+    } catch { /* ignore */ }
   }, [getToken]);
 
   const handleChange = (q: string) => {
     setQuery(q);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => runSearch(q), 250);
+    if (!q.trim()) { setUserResults([]); return; }
+    timer.current = setTimeout(() => searchUsers(q), 250);
   };
 
   const close = () => {
     if (timer.current) clearTimeout(timer.current);
     setQuery('');
-    setParkResults([]);
+    setTab('all');
     setUserResults([]);
     Keyboard.dismiss();
     onClose();
@@ -118,7 +173,41 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
     router.push(`/user/${id}` as never);
   };
 
-  const hasResults = parkResults.length > 0 || userResults.length > 0;
+  const trimmedQuery = query.trim().toLowerCase();
+
+  const parksWithStatus: ParkWithStatus[] = parks.map(p => ({
+    ...p,
+    status: resolveParkStatus(p.park_code, visits),
+  }));
+
+  const filteredParks = parksWithStatus.filter(p => {
+    if (tab !== 'all' && p.status !== tab) return false;
+    if (!trimmedQuery) return true;
+    const stateStr = p.states.split(',').map(s => fullStateName(s.trim())).join(' ');
+    return `${p.name} ${p.states} ${stateStr}`.toLowerCase().includes(trimmedQuery);
+  });
+
+  const latestVisitDate = (code: string) =>
+    visits
+      .filter(v => v.park_code === code && !v.is_bucket_list && v.visited_date)
+      .map(v => v.visited_date!)
+      .sort()
+      .reverse()[0] ?? '';
+
+  const suggestions =
+    !trimmedQuery && tab === 'all'
+      ? {
+          recent: parksWithStatus
+            .filter(p => p.status === 'visited')
+            .sort((a, b) => latestVisitDate(b.park_code).localeCompare(latestVisitDate(a.park_code)))
+            .slice(0, 5),
+          bucket: parksWithStatus.filter(p => p.status === 'bucketList').slice(0, 5),
+          discover: parksWithStatus.filter(p => p.status === 'notVisited').slice(0, 5),
+        }
+      : null;
+
+  const showUsers = trimmedQuery.length > 0 && userResults.length > 0;
+  const noResults = trimmedQuery.length > 0 && filteredParks.length === 0 && userResults.length === 0;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
@@ -143,30 +232,26 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
           </TouchableOpacity>
         </View>
 
-        {hasResults && (
-          <ScrollView style={styles.results} keyboardShouldPersistTaps="handled">
-            {parkResults.length > 0 && (
-              <>
-                <Text style={styles.sectionTitle}>PARKS</Text>
-                {parkResults.map(p => (
-                  <TouchableOpacity
-                    key={p.park_code}
-                    style={styles.row}
-                    onPress={() => openPark(p.park_code)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.rowIcon}>
-                      <Ionicons name="location" size={15} color={C.visited} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.rowTitle} numberOfLines={1}>{p.name}</Text>
-                      <Text style={styles.rowSub} numberOfLines={1}>{p.states}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </>
-            )}
-            {userResults.length > 0 && (
+        <View style={styles.results}>
+          <View style={styles.tabRow}>
+            {TAB_DEFS.map(f => {
+              const active = tab === f.id;
+              return (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[styles.tabChip, active && styles.tabChipActive]}
+                  onPress={() => setTab(f.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.tabDot, { backgroundColor: f.color }]} />
+                  <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{f.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <ScrollView style={styles.resultsScroll} keyboardShouldPersistTaps="handled">
+            {showUsers && (
               <>
                 <Text style={styles.sectionTitle}>USERS</Text>
                 {userResults.map(u => (
@@ -195,9 +280,49 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
                 ))}
               </>
             )}
+
+            {suggestions ? (
+              <>
+                {suggestions.recent.length > 0 && (
+                  <>
+                    <Text style={styles.sectionTitle}>RECENTLY VISITED</Text>
+                    {suggestions.recent.map(p => (
+                      <ParkRow key={p.park_code} park={p} onPress={() => openPark(p.park_code)} />
+                    ))}
+                  </>
+                )}
+                {suggestions.bucket.length > 0 && (
+                  <>
+                    <Text style={styles.sectionTitle}>ON YOUR BUCKET LIST</Text>
+                    {suggestions.bucket.map(p => (
+                      <ParkRow key={p.park_code} park={p} onPress={() => openPark(p.park_code)} />
+                    ))}
+                  </>
+                )}
+                {suggestions.discover.length > 0 && (
+                  <>
+                    <Text style={styles.sectionTitle}>DISCOVER</Text>
+                    {suggestions.discover.map(p => (
+                      <ParkRow key={p.park_code} park={p} onPress={() => openPark(p.park_code)} />
+                    ))}
+                  </>
+                )}
+              </>
+            ) : filteredParks.length > 0 ? (
+              <>
+                <Text style={styles.sectionTitle}>
+                  {filteredParks.length} PARK{filteredParks.length !== 1 ? 'S' : ''}
+                </Text>
+                {filteredParks.slice(0, MAX_LIST).map(p => (
+                  <ParkRow key={p.park_code} park={p} onPress={() => openPark(p.park_code)} />
+                ))}
+              </>
+            ) : noResults ? (
+              <Text style={styles.emptyText}>No results for &ldquo;{query.trim()}&rdquo;.</Text>
+            ) : null}
             <View style={{ height: 6 }} />
           </ScrollView>
-        )}
+        </View>
       </View>
     </Modal>
   );
@@ -237,7 +362,6 @@ const styles = StyleSheet.create({
   },
   results: {
     marginTop: 6,
-    maxHeight: 420,
     backgroundColor: C.surface,
     borderWidth: 0.5,
     borderColor: C.hairline,
@@ -248,6 +372,47 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 6,
+  },
+  resultsScroll: {
+    maxHeight: 420,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 0.5,
+    borderBottomColor: C.hairlineSoft,
+  },
+  tabChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  tabChipActive: {
+    backgroundColor: 'rgba(31,61,46,0.06)',
+  },
+  tabDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  tabLabel: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: C.inkSoft,
+  },
+  tabLabelActive: {
+    fontWeight: '700',
+    color: C.ink,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   sectionTitle: {
     fontSize: 10,
@@ -287,5 +452,11 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: C.inkMute,
     marginTop: 1,
+  },
+  emptyText: {
+    paddingVertical: 36,
+    textAlign: 'center',
+    fontSize: 13,
+    color: C.inkMute,
   },
 });

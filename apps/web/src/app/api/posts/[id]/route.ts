@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, or, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { posts, parks, userProfiles } from '@/lib/db/schema';
+import { posts, parks, userProfiles, visits, friendships } from '@/lib/db/schema';
 
 export async function PATCH(
   req: Request,
@@ -17,11 +17,20 @@ export async function PATCH(
     if (isNaN(postId)) return NextResponse.json({ error: 'Invalid post ID' }, { status: 400 });
 
     const body = await req.json();
-    const caption: string | null = typeof body.caption === 'string' ? body.caption || null : null;
+    const set: Partial<typeof posts.$inferInsert> = { updated_at: new Date() };
+    if ('caption' in body) {
+      set.caption = typeof body.caption === 'string' ? body.caption || null : null;
+    }
+    if ('photos' in body) {
+      set.photos = Array.isArray(body.photos) && body.photos.length > 0 ? body.photos : null;
+    }
+    if ('park_code' in body) {
+      set.park_code = typeof body.park_code === 'string' && body.park_code ? body.park_code : null;
+    }
 
     const updated = await db
       .update(posts)
-      .set({ caption, updated_at: new Date() })
+      .set(set)
       .where(and(eq(posts.id, postId), eq(posts.clerk_user_id, userId)))
       .returning();
 
@@ -61,14 +70,38 @@ export async function GET(
         liked_by_me: viewerId
           ? sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${viewerId})`
           : sql<boolean>`false`,
+        visibility: sql<string>`COALESCE(${visits.visibility}, ${posts.visibility}, 'public')`,
       })
       .from(posts)
       .leftJoin(parks, eq(posts.park_code, parks.park_code))
       .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
+      .leftJoin(visits, eq(posts.visit_id, visits.id))
       .where(eq(posts.id, postId))
       .limit(1);
 
     if (!post) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+
+    // Visibility gate — 404 (not 403) so post existence isn't leaked
+    const isOwner = viewerId != null && viewerId === post.clerk_user_id;
+    if (!isOwner && post.visibility === 'private') {
+      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+    if (!isOwner && post.visibility === 'friends') {
+      if (!viewerId) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+      const [friendship] = await db
+        .select({ id: friendships.id })
+        .from(friendships)
+        .where(and(
+          eq(friendships.status, 'accepted'),
+          or(
+            and(eq(friendships.requester_id, viewerId), eq(friendships.recipient_id, post.clerk_user_id)),
+            and(eq(friendships.requester_id, post.clerk_user_id), eq(friendships.recipient_id, viewerId)),
+          )
+        ))
+        .limit(1);
+      if (!friendship) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+
     return NextResponse.json(post);
   } catch (error) {
     console.error('Error fetching post:', error);

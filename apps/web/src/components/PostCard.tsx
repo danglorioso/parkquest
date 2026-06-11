@@ -320,7 +320,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
             style={{
               position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
               width: 38, height: 38, borderRadius: "50%",
-              background: "rgba(20,17,12,0.55)", backdropFilter: "blur(8px)",
+              background: "none",
               border: "none", cursor: "pointer", color: "#FFFBF1",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
@@ -334,7 +334,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
             style={{
               position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
               width: 38, height: 38, borderRadius: "50%",
-              background: "rgba(20,17,12,0.55)", backdropFilter: "blur(8px)",
+              background: "none",
               border: "none", cursor: "pointer", color: "#FFFBF1",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
@@ -539,26 +539,36 @@ function CommentsPanel({ postId, onCountChange }: { postId: number; onCountChang
           {rows.map(c => {
             const cname = c.display_name ?? c.username ?? "Explorer";
             const initials = cname.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+            const avatarEl = (
+              <div style={{
+                width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                overflow: "hidden", background: "var(--surface-alt)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 9, fontWeight: 700, color: "var(--ink-mute)", fontFamily: "var(--font-mono)",
+              }}>
+                {c.avatar_url
+                  ? <img src={c.avatar_url} alt={cname} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : initials}
+              </div>
+            );
+            const nameEl = (
+              <span style={{ fontWeight: 700, fontSize: 12, color: "var(--ink)", marginRight: 6 }}>{cname}</span>
+            );
             return (
               <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <div style={{ display: "flex", gap: 9, alignItems: "center" }}>
-                  <div style={{
-                    width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-                    overflow: "hidden", background: "var(--surface-alt)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 9, fontWeight: 700, color: "var(--ink-mute)", fontFamily: "var(--font-mono)",
-                  }}>
-                    {c.avatar_url
-                      ? <img src={c.avatar_url} alt={cname} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      : initials}
-                  </div>
+                  {c.username
+                    ? <Link href={`/profile/${c.username}`} style={{ textDecoration: "none", flexShrink: 0 }}>{avatarEl}</Link>
+                    : avatarEl}
                   <div style={{
                     flex: 1, minWidth: 0,
                     background: "var(--surface-alt)", borderRadius: "4px 12px 12px 12px",
                     padding: "7px 11px", border: "0.5px solid var(--hairline)",
                     display: "flex", alignItems: "center",
                   }}>
-                    <span style={{ fontWeight: 700, fontSize: 12, color: "var(--ink)", marginRight: 6 }}>{cname}</span>
+                    {c.username
+                      ? <Link href={`/profile/${c.username}`} className="hover:underline" style={{ textDecoration: "none" }}>{nameEl}</Link>
+                      : nameEl}
                     <span style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1 }}>{c.content}</span>
                   </div>
                 </div>

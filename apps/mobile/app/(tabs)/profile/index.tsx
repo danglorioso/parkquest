@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Image, ScrollView, StyleSheet,
+  ActivityIndicator, Image, Modal, ScrollView, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { BADGE_MAP } from '@/lib/badges';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -67,18 +68,72 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   return res.json();
 }
 
+// ── Badge detail modal — emoji, tier, how-to-earn, earned date ─────────────────
+
+function BadgeInfoModal({ badge, onClose }: { badge: BadgeSummary; onClose: () => void }) {
+  const def = BADGE_MAP.get(badge.id);
+  const tint = TIER_COLOR[badge.tier] ?? '#B27339';
+  const earnedDate = badge.earned_at
+    ? new Date(badge.earned_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.badgeOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.badgeModal}>
+          <TouchableOpacity onPress={onClose} style={styles.badgeModalClose}>
+            <Ionicons name="close" size={16} color={C.inkMute} />
+          </TouchableOpacity>
+
+          <View style={[styles.badgeModalEmoji, { backgroundColor: tint + '14', borderColor: tint + '44' }]}>
+            <Text style={{ fontSize: 36 }}>{badge.emoji}</Text>
+          </View>
+          <Text style={styles.badgeModalName}>{badge.name}</Text>
+          <Text style={[styles.badgeModalTier, { color: tint }]}>{badge.tier}</Text>
+
+          {def ? (
+            <View style={styles.badgeModalHow}>
+              <Text style={styles.badgeModalHowKicker}>HOW TO EARN</Text>
+              <Text style={styles.badgeModalHowText}>{def.description}</Text>
+            </View>
+          ) : null}
+
+          {earnedDate ? (
+            <Text style={styles.badgeModalEarned}>
+              Earned on <Text style={{ fontWeight: '700', color: C.inkSoft }}>{earnedDate}</Text>
+            </Text>
+          ) : (
+            <Text style={[styles.badgeModalEarned, { fontStyle: 'italic' }]}>Not yet earned</Text>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 
-function StatCell({ value, sub, label }: { value: number; sub?: string; label: string }) {
-  return (
-    <View style={styles.statCell}>
+function StatCell({ value, sub, label, onPress }: {
+  value: number; sub?: string; label: string; onPress?: () => void;
+}) {
+  const inner = (
+    <>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 1 }}>
         <Text style={styles.statValue}>{value}</Text>
         {sub ? <Text style={styles.statSub}>{sub}</Text> : null}
       </View>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </>
   );
+  if (onPress) {
+    return (
+      <TouchableOpacity style={styles.statCell} onPress={onPress} activeOpacity={0.6}>
+        {inner}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={styles.statCell}>{inner}</View>;
 }
 
 // ── Nav row ───────────────────────────────────────────────────────────────────
@@ -123,6 +178,7 @@ export default function ProfileScreen() {
   const [totalBadges,  setTotalBadges]  = useState(0);
   const [friendCount,  setFriendCount]  = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<BadgeSummary[]>([]);
+  const [selectedBadge, setSelectedBadge] = useState<BadgeSummary | null>(null);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
 
@@ -264,7 +320,7 @@ export default function ProfileScreen() {
           <View style={styles.statDivider} />
           <StatCell value={badgesEarned} sub={`/${totalBadges}`} label="BADGES" />
           <View style={styles.statDivider} />
-          <StatCell value={friendCount}  label="FRIENDS" />
+          <StatCell value={friendCount}  label="FRIENDS" onPress={() => router.push('/profile/friends' as never)} />
         </View>
 
         {/* ── Mini passport card ───────────────────────────────────────────── */}
@@ -307,12 +363,17 @@ export default function ProfileScreen() {
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
               {earnedBadges.map(b => (
-                <View key={b.id} style={styles.badgePreviewItem}>
+                <TouchableOpacity
+                  key={b.id}
+                  onPress={() => setSelectedBadge(b)}
+                  activeOpacity={0.7}
+                  style={styles.badgePreviewItem}
+                >
                   <View style={[styles.badgeCircle, { backgroundColor: (TIER_COLOR[b.tier] ?? '#B27339') + '22', borderColor: (TIER_COLOR[b.tier] ?? '#B27339') + '55' }]}>
                     <Text style={{ fontSize: 22 }}>{b.emoji}</Text>
                   </View>
                   <Text style={styles.badgePreviewName} numberOfLines={2}>{b.name}</Text>
-                </View>
+                </TouchableOpacity>
               ))}
               <TouchableOpacity
                 onPress={() => router.push('/profile/badges' as never)}
@@ -394,6 +455,10 @@ export default function ProfileScreen() {
         <Text style={styles.attribution}>© {new Date().getFullYear()} ParkQuest. All rights reserved.</Text>
 
       </ScrollView>
+
+      {selectedBadge ? (
+        <BadgeInfoModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -597,5 +662,47 @@ const styles = StyleSheet.create({
   attribution: {
     textAlign: 'center', fontSize: 11, color: C.inkMute,
     marginTop: 24, marginHorizontal: 16,
+  },
+
+  // Badge detail modal — light theme, matches web profile BadgeModal
+  badgeOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+  badgeModal: {
+    backgroundColor: C.bg, borderRadius: 18,
+    borderWidth: 0.5, borderColor: C.hairline,
+    paddingVertical: 32, paddingHorizontal: 28,
+    width: '100%', maxWidth: 360, alignItems: 'center',
+  },
+  badgeModalClose: {
+    position: 'absolute', top: 14, right: 14, zIndex: 10, padding: 4,
+  },
+  badgeModalEmoji: {
+    width: 72, height: 72, borderRadius: 20, borderWidth: 2,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+  },
+  badgeModalName: {
+    fontSize: 20, fontWeight: '800', color: C.ink,
+    letterSpacing: -0.3, textAlign: 'center',
+  },
+  badgeModalTier: {
+    fontSize: 9, fontWeight: '700', letterSpacing: 1.6,
+    textTransform: 'uppercase', marginTop: 5, marginBottom: 20,
+  },
+  badgeModalHow: {
+    backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 10, paddingVertical: 14, paddingHorizontal: 16,
+    marginBottom: 16, alignSelf: 'stretch',
+  },
+  badgeModalHowKicker: {
+    fontSize: 8.5, fontWeight: '600', letterSpacing: 1.2,
+    color: C.inkMute, marginBottom: 6,
+  },
+  badgeModalHowText: {
+    fontSize: 13.5, color: C.inkSoft, lineHeight: 21,
+  },
+  badgeModalEarned: {
+    fontSize: 12, color: C.inkMute, textAlign: 'center',
   },
 });

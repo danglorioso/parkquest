@@ -100,7 +100,11 @@ export async function GET() {
         .from(posts)
         .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
         .leftJoin(parks, eq(posts.park_code, parks.park_code))
-        .where(inArray(posts.clerk_user_id, friendIds))
+        .leftJoin(visits, eq(posts.visit_id, visits.id))
+        .where(and(
+          inArray(posts.clerk_user_id, friendIds),
+          sql`COALESCE(${visits.visibility}, ${posts.visibility}, 'public') != 'private'`
+        ))
         .orderBy(desc(posts.created_at))
         .limit(10),
     ]);

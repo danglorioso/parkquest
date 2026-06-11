@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, count, and, or, sql } from 'drizzle-orm';
+import { eq, count, and, or, isNotNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { userProfiles, visits, friendships } from '@/lib/db/schema';
+import { userProfiles, visits, friendships, parks, userBadges } from '@/lib/db/schema';
+import { ALL_BADGES } from '@/lib/badges';
+
+const BADGE_MAP = new Map(ALL_BADGES.map((b) => [b.id, { name: b.name, emoji: b.emoji, tier: b.tier }]));
 
 export async function GET(
   _req: Request,
@@ -20,7 +23,7 @@ export async function GET(
 
     if (!profile) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-    const [[visitStats], [friendCount]] = await Promise.all([
+    const [[visitStats], [friendCount], earnedBadges, visitedParks] = await Promise.all([
       db
         .select({ count: count() })
         .from(visits)
@@ -31,6 +34,28 @@ export async function GET(
           eq(friendships.status, 'accepted')
         )
       ),
+      db
+        .select({ badge_id: userBadges.badge_id, earned_at: userBadges.earned_at })
+        .from(userBadges)
+        .where(eq(userBadges.clerk_user_id, userId))
+        .orderBy(userBadges.earned_at),
+      db
+        .select({
+          park_code:    parks.park_code,
+          name:         parks.name,
+          states:       parks.states,
+          latitude:     parks.latitude,
+          longitude:    parks.longitude,
+          visited_date: visits.visited_date,
+        })
+        .from(visits)
+        .innerJoin(parks, eq(visits.park_code, parks.park_code))
+        .where(and(
+          eq(visits.clerk_user_id, userId),
+          eq(visits.is_bucket_list, false),
+          isNotNull(visits.visited_date),
+        ))
+        .orderBy(sql`${visits.visited_date} desc nulls last`),
     ]);
 
     let friendship_status: 'none' | 'pending_sent' | 'pending_received' | 'accepted' = 'none';
@@ -55,11 +80,22 @@ export async function GET(
       }
     }
 
+    // Badges with display metadata, most recent first
+    const badges = earnedBadges.map((b) => ({
+      badge_id:  b.badge_id,
+      earned_at: b.earned_at,
+      name:      BADGE_MAP.get(b.badge_id)?.name ?? b.badge_id,
+      emoji:     BADGE_MAP.get(b.badge_id)?.emoji ?? '🏅',
+      tier:      BADGE_MAP.get(b.badge_id)?.tier ?? 'bronze',
+    })).reverse();
+
     return NextResponse.json({
       ...profile,
       parks_visited: visitStats.count,
       friend_count: friendCount.count,
       friendship_status,
+      badges,
+      visited_parks: visitedParks,
     });
   } catch (error) {
     console.error('Error fetching user profile:', error);

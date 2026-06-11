@@ -2,7 +2,29 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, desc, and, or, inArray, sql, isNotNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { posts, parks, userProfiles, friendships, notifications } from '@/lib/db/schema';
+import { posts, parks, userProfiles, friendships, notifications, visits } from '@/lib/db/schema';
+
+const VISIBILITIES = ['public', 'friends', 'private'] as const;
+
+// Visit posts inherit the linked visit's visibility; everything else uses the post's own
+const effectiveVisibility = sql`COALESCE(${visits.visibility}, ${posts.visibility}, 'public')`;
+
+function visibilityFilter(viewerId: string | null) {
+  if (!viewerId) return sql`${effectiveVisibility} = 'public'`;
+  return or(
+    eq(posts.clerk_user_id, viewerId),
+    sql`${effectiveVisibility} = 'public'`,
+    and(
+      sql`${effectiveVisibility} = 'friends'`,
+      sql`EXISTS(
+        SELECT 1 FROM friendships f
+        WHERE f.status = 'accepted'
+          AND ((f.requester_id = ${viewerId} AND f.recipient_id = ${posts.clerk_user_id})
+            OR (f.recipient_id = ${viewerId} AND f.requester_id = ${posts.clerk_user_id}))
+      )`
+    )
+  );
+}
 
 export async function GET(request: Request) {
   try {
@@ -13,7 +35,7 @@ export async function GET(request: Request) {
     const limit = Math.min(Number(searchParams.get('limit') ?? '20'), 50);
     const offset = Number(searchParams.get('offset') ?? '0');
 
-    let query = db
+    const query = db
       .select({
         id: posts.id,
         caption: posts.caption,
@@ -37,14 +59,20 @@ export async function GET(request: Request) {
       .from(posts)
       .leftJoin(parks, eq(posts.park_code, parks.park_code))
       .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
-      .$dynamic();
+      .leftJoin(visits, eq(posts.visit_id, visits.id));
 
+    // Collected into a single where() — drizzle overwrites on repeated calls
     const badgeId = searchParams.get('badgeId');
-    if (userId) query = query.where(eq(posts.clerk_user_id, userId));
-    if (parkCode) query = query.where(eq(posts.park_code, parkCode));
-    if (badgeId) query = query.where(eq(posts.badge_id, badgeId));
+    const conditions = [visibilityFilter(viewerId)];
+    if (userId) conditions.push(eq(posts.clerk_user_id, userId));
+    if (parkCode) conditions.push(eq(posts.park_code, parkCode));
+    if (badgeId) conditions.push(eq(posts.badge_id, badgeId));
 
-    const results = await query.orderBy(desc(posts.created_at)).limit(limit).offset(offset);
+    const results = await query
+      .where(and(...conditions))
+      .orderBy(desc(posts.created_at))
+      .limit(limit)
+      .offset(offset);
     return NextResponse.json(results);
   } catch (error) {
     console.error('Error fetching posts:', error);
@@ -57,7 +85,8 @@ export async function POST(request: Request) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { caption, photos, park_code, visit_id, quoted_post_id, badge_id } = await request.json();
+    const { caption, photos, park_code, visit_id, quoted_post_id, badge_id, visibility } = await request.json();
+    const postVisibility = VISIBILITIES.includes(visibility) ? visibility : 'public';
 
     const isBadgePost = !!badge_id;
     const isQuotePost = !!quoted_post_id;
@@ -88,33 +117,36 @@ export async function POST(request: Request) {
         visit_id: visit_id ?? null,
         quoted_post_id: quoted_post_id ?? null,
         badge_id: badge_id ?? null,
+        visibility: postVisibility,
       })
       .returning();
 
-    // Notify friends (fire and forget)
-    db.select({
-        friend_id: sql<string>`CASE WHEN ${friendships.requester_id} = ${userId} THEN ${friendships.recipient_id} ELSE ${friendships.requester_id} END`,
-      })
-      .from(friendships)
-      .where(
-        and(
-          or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId)),
-          eq(friendships.status, 'accepted')
+    // Notify friends (fire and forget) — not for private posts
+    if (postVisibility !== 'private') {
+      db.select({
+          friend_id: sql<string>`CASE WHEN ${friendships.requester_id} = ${userId} THEN ${friendships.recipient_id} ELSE ${friendships.requester_id} END`,
+        })
+        .from(friendships)
+        .where(
+          and(
+            or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId)),
+            eq(friendships.status, 'accepted')
+          )
         )
-      )
-      .then((friends) => {
-        if (friends.length === 0) return;
-        return db.insert(notifications).values(
-          friends.map(({ friend_id }) => ({
-            recipient_id: friend_id,
-            actor_id: userId,
-            type: 'post' as const,
-            post_id: post.id,
-            park_code: park_code ?? null,
-          }))
-        );
-      })
-      .catch(() => {});
+        .then((friends) => {
+          if (friends.length === 0) return;
+          return db.insert(notifications).values(
+            friends.map(({ friend_id }) => ({
+              recipient_id: friend_id,
+              actor_id: userId,
+              type: 'post' as const,
+              post_id: post.id,
+              park_code: park_code ?? null,
+            }))
+          );
+        })
+        .catch(() => {});
+    }
 
     return NextResponse.json(post, { status: 201 });
   } catch (error) {

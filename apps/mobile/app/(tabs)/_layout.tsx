@@ -1,7 +1,6 @@
 import { Tabs, useRouter } from 'expo-router';
 import { TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 
 // Design tokens — mirrors globals.css
 const C = {
@@ -42,21 +41,10 @@ function LogVisitButton() {
       accessibilityRole="button"
       style={styles.fabWrapper}
     >
-      <View style={styles.fabShadow}>
-        <LinearGradient
-          colors={['#DC8552', C.accent, '#9E5128']}
-          start={{ x: 0.15, y: 0 }}
-          end={{ x: 0.85, y: 1 }}
-          style={styles.fab}
-        >
-          {/* Glossy sheen — light catching the top of the dome */}
-          <LinearGradient
-            colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.08)', 'transparent']}
-            style={styles.fabGloss}
-            pointerEvents="none"
-          />
+      <View style={styles.fabGlow}>
+        <View style={styles.fab}>
           <Ionicons name="add" size={30} color="#FFFBF1" />
-        </LinearGradient>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -150,35 +138,31 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    // Lift the button so it floats above the tab bar baseline
-    marginBottom: Platform.OS === 'ios' ? 14 : 4,
   },
-  // Shadow lives on an outer view so the gradient can clip to the circle
-  // without iOS clipping the shadow along with it
-  fabShadow: {
-    borderRadius: 29,
+  // Soft halo radiating evenly from the edge — outer layer is a wide diffuse
+  // glow, inner layer adds a tighter drop for depth (iOS stacks both;
+  // Android approximates with elevation)
+  fabGlow: {
+    borderRadius: 31,
     shadowColor: C.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.40,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 14,
+    elevation: 10,
   },
   fab: {
     width: 58,
     height: 58,
     borderRadius: 29,
-    overflow: 'hidden',
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    // Hairline rim light on the upper edge sells the 3D dome
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    // Rim light on the edge sells the 3D dome
     borderWidth: 0.5,
     borderColor: 'rgba(255,255,255,0.45)',
-  },
-  fabGloss: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 30,
   },
 });

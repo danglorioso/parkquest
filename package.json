@@ -17,10 +17,10 @@
   "pnpm": {
     "overrides": {
       "@types/react": "^19.2.15",
-      "expo-auth-session": "^5.4.0",
-      "expo-application": "^6.0.2",
-      "expo-crypto": "^14.0.2",
-      "expo-constants": "^17.0.0"
+      "expo-auth-session": "~7.0.11",
+      "expo-application": "~7.0.8",
+      "expo-constants": "~18.0.13",
+      "expo-crypto": "~15.0.9"
     },
     "patchedDependencies": {
       "@expo/metro-runtime@4.0.1": "patches/@expo__metro-runtime@4.0.1.patch"

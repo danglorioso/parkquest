@@ -5,6 +5,7 @@ export interface BadgeInfo {
   name: string;
   emoji: string;
   tier: BadgeTier;
+  description: string;
 }
 
 export const BADGE_TIER_COLORS: Record<BadgeTier, { fill: string; light: string }> = {
@@ -17,28 +18,28 @@ export const BADGE_TIER_COLORS: Record<BadgeTier, { fill: string; light: string 
 
 // Mirrors apps/web/src/lib/badges.ts — only the display fields needed by PostCard
 const ALL_BADGES: BadgeInfo[] = [
-  { id: 'first_steps',      name: 'First Steps',      emoji: '🌱',  tier: 'bronze' },
-  { id: 'trail_walker',     name: 'Trail Walker',      emoji: '🥾',  tier: 'bronze' },
-  { id: 'camp_wanderer',    name: 'Camp Wanderer',     emoji: '🏕️', tier: 'silver' },
-  { id: 'sharp_eye',        name: 'Sharp Eye',         emoji: '🦅',  tier: 'silver' },
-  { id: 'true_explorer',    name: 'True Explorer',     emoji: '🗺️', tier: 'gold' },
-  { id: 'peak_climber',     name: 'Peak Climber',      emoji: '🏔️', tier: 'gold' },
-  { id: 'century_club',     name: 'Century Club',      emoji: '⭐',  tier: 'gold' },
-  { id: 'star_ranger',      name: 'Star Ranger',       emoji: '🌟',  tier: 'platinum' },
-  { id: 'horizon_chaser',   name: 'Horizon Chaser',    emoji: '🌄',  tier: 'platinum' },
-  { id: 'wild_at_heart',    name: 'Wild At Heart',     emoji: '🦁',  tier: 'legendary' },
-  { id: 'park_legend',      name: 'Park Legend',       emoji: '👑',  tier: 'legendary' },
-  { id: 'state_hopper',     name: 'State Hopper',      emoji: '🧭',  tier: 'bronze' },
-  { id: 'cross_country',    name: 'Cross Country',     emoji: '🌎',  tier: 'silver' },
-  { id: 'all_american',     name: 'All-American',      emoji: '🗽',  tier: 'gold' },
-  { id: 'continental',      name: 'Continental',       emoji: '🌐',  tier: 'platinum' },
-  { id: 'united_legend',    name: 'United Legend',     emoji: '🏛️', tier: 'legendary' },
-  { id: 'wishful_thinker',  name: 'Wishful Thinker',   emoji: '📋',  tier: 'bronze' },
-  { id: 'big_dreamer',      name: 'Big Dreamer',       emoji: '✨',  tier: 'silver' },
-  { id: 'visionary',        name: 'Visionary',         emoji: '🌠',  tier: 'gold' },
-  { id: 'hot_streak',       name: 'Hot Streak',        emoji: '🔥',  tier: 'silver' },
-  { id: 'year_adventurer',  name: 'Year Adventurer',   emoji: '🚀',  tier: 'gold' },
-  { id: 'park_obsessed',    name: 'Park Obsessed',     emoji: '💫',  tier: 'platinum' },
+  { id: 'first_steps',      name: 'First Steps',      emoji: '🌱',  tier: 'bronze',    description: 'Visited your very first national park' },
+  { id: 'trail_walker',     name: 'Trail Walker',      emoji: '🥾',  tier: 'bronze',    description: 'Visited 5 national parks' },
+  { id: 'camp_wanderer',    name: 'Camp Wanderer',     emoji: '🏕️', tier: 'silver',    description: 'Visited 10 national parks' },
+  { id: 'sharp_eye',        name: 'Sharp Eye',         emoji: '🦅',  tier: 'silver',    description: 'Visited 25 national parks' },
+  { id: 'true_explorer',    name: 'True Explorer',     emoji: '🗺️', tier: 'gold',      description: 'Visited 50 national parks' },
+  { id: 'peak_climber',     name: 'Peak Climber',      emoji: '🏔️', tier: 'gold',      description: 'Visited 75 national parks' },
+  { id: 'century_club',     name: 'Century Club',      emoji: '⭐',  tier: 'gold',      description: 'Visited 100 national parks' },
+  { id: 'star_ranger',      name: 'Star Ranger',       emoji: '🌟',  tier: 'platinum',  description: 'Visited 150 national parks' },
+  { id: 'horizon_chaser',   name: 'Horizon Chaser',    emoji: '🌄',  tier: 'platinum',  description: 'Visited 200 national parks' },
+  { id: 'wild_at_heart',    name: 'Wild At Heart',     emoji: '🦁',  tier: 'legendary', description: 'Visited 300 national parks' },
+  { id: 'park_legend',      name: 'Park Legend',       emoji: '👑',  tier: 'legendary', description: 'Visited every single national park' },
+  { id: 'state_hopper',     name: 'State Hopper',      emoji: '🧭',  tier: 'bronze',    description: 'Visited parks in 3 different states' },
+  { id: 'cross_country',    name: 'Cross Country',     emoji: '🌎',  tier: 'silver',    description: 'Visited parks in 7 different states' },
+  { id: 'all_american',     name: 'All-American',      emoji: '🗽',  tier: 'gold',      description: 'Visited parks in 15 different states' },
+  { id: 'continental',      name: 'Continental',       emoji: '🌐',  tier: 'platinum',  description: 'Visited parks in 30 different states' },
+  { id: 'united_legend',    name: 'United Legend',     emoji: '🏛️', tier: 'legendary', description: 'Visited parks in all 50 states' },
+  { id: 'wishful_thinker',  name: 'Wishful Thinker',   emoji: '📋',  tier: 'bronze',    description: 'Added 5 parks to your bucket list' },
+  { id: 'big_dreamer',      name: 'Big Dreamer',       emoji: '✨',  tier: 'silver',    description: 'Added 15 parks to your bucket list' },
+  { id: 'visionary',        name: 'Visionary',         emoji: '🌠',  tier: 'gold',      description: 'Added 30 parks to your bucket list' },
+  { id: 'hot_streak',       name: 'Hot Streak',        emoji: '🔥',  tier: 'silver',    description: 'Visited 5 parks in a single calendar year' },
+  { id: 'year_adventurer',  name: 'Year Adventurer',   emoji: '🚀',  tier: 'gold',      description: 'Visited 10 parks in a single calendar year' },
+  { id: 'park_obsessed',    name: 'Park Obsessed',     emoji: '💫',  tier: 'platinum',  description: 'Visited 20 parks in a single calendar year' },
 ];
 
 export const BADGE_MAP = new Map<string, BadgeInfo>(ALL_BADGES.map(b => [b.id, b]));

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   Modal, Dimensions, Alert, ActivityIndicator,
-  StyleSheet, Pressable, KeyboardAvoidingView, Platform,
+  StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -228,10 +228,19 @@ function LikersSheet({
     router.push(`/user/${userId}` as never);
   };
 
+  const slide = useRef(new Animated.Value(480)).current;
+  useEffect(() => {
+    Animated.timing(slide, {
+      toValue: 0,
+      duration: 260,
+      useNativeDriver: true,
+    }).start();
+  }, [slide]);
+
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.sheetBackdrop} onPress={onClose} />
-      <View style={styles.sheet}>
+      <Animated.View style={[styles.sheet, { transform: [{ translateY: slide }] }]}>
         <View style={styles.sheetHandle} />
         <Text style={styles.sheetTitle}>LIKED BY</Text>
         {loading ? (
@@ -260,7 +269,7 @@ function LikersSheet({
             })}
           </ScrollView>
         )}
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
@@ -520,6 +529,7 @@ function CommentsPanel({
   myName?: string | null;
   onCountChange: (delta: number) => void;
 }) {
+  const router = useRouter();
   const [rows, setRows] = useState<CommentRow[]>([]);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -565,10 +575,17 @@ function CommentsPanel({
         const cname = c.display_name ?? c.username ?? 'Explorer';
         return (
           <View key={c.id} style={styles.commentRow}>
-            <Avatar url={c.avatar_url} name={cname} size={28} />
+            <TouchableOpacity onPress={() => router.push(`/user/${c.user_id}` as never)}>
+              <Avatar url={c.avatar_url} name={cname} size={28} />
+            </TouchableOpacity>
             <View style={{ flex: 1 }}>
               <View style={styles.commentBubble}>
-                <Text style={styles.commentAuthor}>{cname} </Text>
+                <Text
+                  style={styles.commentAuthor}
+                  onPress={() => router.push(`/user/${c.user_id}` as never)}
+                >
+                  {cname}{' '}
+                </Text>
                 <Text style={styles.commentContent}>{c.content}</Text>
               </View>
               <Text style={styles.commentTime}>{relTime(c.created_at)}</Text>
@@ -627,11 +644,18 @@ export function PostCard({
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likeCount, setLikeCount] = useState(post.like_count);
   const [showComments, setShowComments] = useState(false);
+  const [showLikers, setShowLikers] = useState(false);
   const [commentDelta, setCommentDelta] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionDraft, setCaptionDraft] = useState(post.caption ?? '');
   const [currentCaption, setCurrentCaption] = useState<string | null>(post.caption ?? null);
+
+  // Feed refetches on focus (e.g. after editing a visit) — keep the locally
+  // edited caption in sync with the fresh server value
+  useEffect(() => {
+    setCurrentCaption(post.caption ?? null);
+  }, [post.caption]);
 
   const isOwnPost  = myUserId === post.clerk_user_id;
   const isBadge    = !!post.badge_id;
@@ -688,18 +712,18 @@ export function PostCard({
       {/* Badge banner */}
       {isBadge && (
         <View style={styles.badgeBanner}>
-          <Ionicons name="ribbon" size={13} color={C.primary} />
+          <Ionicons name="ribbon" size={14} color={C.primary} />
           <Text style={styles.badgeBannerText}>BADGE EARNED</Text>
         </View>
       )}
 
       {/* Header */}
       <View style={styles.cardHeader}>
-        <TouchableOpacity onPress={() => router.push(`/profile/${post.username}` as never)}>
+        <TouchableOpacity onPress={() => router.push(`/user/${post.clerk_user_id}` as never)}>
           <Avatar url={post.avatar_url} name={name} size={40} />
         </TouchableOpacity>
         <View style={styles.cardHeaderMeta}>
-          <TouchableOpacity onPress={() => router.push(`/profile/${post.username}` as never)}>
+          <TouchableOpacity onPress={() => router.push(`/user/${post.clerk_user_id}` as never)}>
             <Text style={styles.authorName}>{name}</Text>
           </TouchableOpacity>
           <Text style={styles.authorSub}>
@@ -717,6 +741,20 @@ export function PostCard({
       {/* ... menu */}
       {showMenu && isOwnPost && (
         <View style={styles.menu}>
+          {post.visit_id != null && (
+            <>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  router.push(`/(modals)/log-visit?visitId=${post.visit_id}&postId=${post.id}` as never);
+                }}
+              >
+                <Text style={styles.menuItemText}>Edit visit</Text>
+              </TouchableOpacity>
+              <View style={styles.menuDivider} />
+            </>
+          )}
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => { setCaptionDraft(currentCaption ?? ''); setEditingCaption(true); setShowMenu(false); }}
@@ -788,6 +826,8 @@ export function PostCard({
       <View style={styles.actionRow}>
         <TouchableOpacity
           onPress={handleLike}
+          onLongPress={() => { if (likeCount > 0) setShowLikers(true); }}
+          delayLongPress={300}
           activeOpacity={0.7}
           style={[styles.actionBtn, liked && styles.actionBtnLiked]}
         >
@@ -822,6 +862,15 @@ export function PostCard({
           <Ionicons name="bookmark-outline" size={15} color={C.inkSoft} />
         </TouchableOpacity>
       </View>
+
+      {/* Likers sheet */}
+      {showLikers && (
+        <LikersSheet
+          postId={post.id}
+          token={token}
+          onClose={() => setShowLikers(false)}
+        />
+      )}
 
       {/* Comments panel */}
       {showComments && (
@@ -911,9 +960,36 @@ const styles = StyleSheet.create({
   carouselNav: {
     position: 'absolute', top: PHOTO_H / 2 - 18,
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(20,17,12,0.45)',
     alignItems: 'center', justifyContent: 'center',
   },
+
+  // Likers sheet
+  sheetBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  sheet: {
+    backgroundColor: C.surface,
+    borderTopLeftRadius: 18, borderTopRightRadius: 18,
+    paddingTop: 8, paddingBottom: 34,
+  },
+  sheetHandle: {
+    alignSelf: 'center', width: 36, height: 4, borderRadius: 2,
+    backgroundColor: C.hairline, marginBottom: 10,
+  },
+  sheetTitle: {
+    textAlign: 'center', fontSize: 11, fontWeight: '700',
+    color: C.inkMute, letterSpacing: 1.2,
+    paddingBottom: 10, borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
+  },
+  sheetEmpty: {
+    textAlign: 'center', fontSize: 13, color: C.inkMute, padding: 24,
+  },
+  likerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 18, paddingVertical: 10,
+  },
+  likerName: { fontSize: 14, fontWeight: '600', color: C.ink },
+  likerSub: { fontSize: 12, color: C.inkMute, marginTop: 1 },
 
   // Badge post body
   badgeBody: {
@@ -969,7 +1045,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 4, padding: 8, paddingHorizontal: 11,
     borderWidth: 0.5, borderColor: C.hairline,
   },
-  commentAuthor: { fontWeight: '700', fontSize: 12, color: C.ink },
+  commentAuthor: { fontWeight: '700', fontSize: 12, color: C.ink, lineHeight: 18 },
   commentContent: { fontSize: 12.5, color: C.ink, lineHeight: 18 },
   commentTime: {
     paddingLeft: 9, marginTop: 3,
@@ -999,7 +1075,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden', marginBottom: 16,
   },
   badgeBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 18, paddingVertical: 10,
     backgroundColor: C.surfaceAlt, borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
   },

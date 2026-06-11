@@ -1,11 +1,12 @@
 import {
-  ActivityIndicator, Dimensions, FlatList, Modal,
-  ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, KeyboardAvoidingView, Modal,
+  Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle, Defs, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -62,54 +63,76 @@ type Row =
   | { _type: 'badgeRow'; items: BadgeData[] }
   | { _type: 'empty' };
 
-// ── BadgePatch — approximates web's SVG radial gradient + rings ───────────────
+// ── BadgePatch — same SVG as web: radial gradient fill, rings, stars ──────────
 
 function BadgePatch({
   emoji, tier, size = 72, earned,
 }: { emoji: string; tier: string; size?: number; earned: boolean }) {
+  const id = useId().replace(/:/g, '');
   const t = TIERS[tier] ?? TIERS.bronze;
-  const r  = size / 2;
-  const i1 = size * 0.065; // outer ring inset
-  const i2 = size * 0.13;  // inner ring inset
-  const starSize = Math.max(7, size * 0.09);
 
   return (
     <View style={{ width: size, height: size, opacity: earned ? 1 : 0.5 }}>
-      {/* Base fill — tier color */}
-      <View style={{ position: 'absolute', inset: 0, borderRadius: r, backgroundColor: t.fill }} />
-      {/* Light highlight top — approximates radial gradient from t.light */}
-      <View style={{
-        position: 'absolute', top: 0, left: 0, right: 0, height: size * 0.62,
-        borderTopLeftRadius: r, borderTopRightRadius: r, borderBottomLeftRadius: r, borderBottomRightRadius: r,
-        backgroundColor: t.light, opacity: 0.4,
-      }} />
-      {/* Outer solid ring */}
-      <View style={{
-        position: 'absolute', inset: i1, borderRadius: r - i1,
-        borderWidth: 1.5, borderColor: 'rgba(255,251,241,0.55)',
-      }} />
-      {/* Inner dashed ring */}
-      <View style={{
-        position: 'absolute', inset: i2, borderRadius: r - i2,
-        borderWidth: 1, borderColor: 'rgba(255,251,241,0.32)',
-        borderStyle: 'dashed',
-      }} />
-      {/* Stars — top */}
-      <Text style={{
-        position: 'absolute', top: size * 0.08, left: 0, right: 0,
-        textAlign: 'center', fontSize: starSize, lineHeight: starSize + 2,
-        color: 'rgba(255,251,241,0.65)',
-      }}>★ ★ ★</Text>
-      {/* Emoji — centered */}
+      <Svg width={size} height={size} viewBox="0 0 100 100">
+        <Defs>
+          <RadialGradient id={`g${id}`} cx="38%" cy="32%" r="75%">
+            <Stop offset="0%" stopColor={t.light} />
+            <Stop offset="100%" stopColor={t.fill} />
+          </RadialGradient>
+        </Defs>
+        <Circle cx="50" cy="50" r="49" fill={`url(#g${id})`} />
+        <Circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,251,241,0.55)" strokeWidth={1.5} />
+        <Circle cx="50" cy="50" r="40.5" fill="none" stroke="rgba(255,251,241,0.32)" strokeWidth={1} strokeDasharray="4 3" />
+        <SvgText x="50" y="17" textAnchor="middle" fontSize="6" fill="rgba(255,251,241,0.65)">★ ★ ★</SvgText>
+        <SvgText x="50" y="91" textAnchor="middle" fontSize="6" fill="rgba(255,251,241,0.65)">★ ★ ★</SvgText>
+      </Svg>
+      {/* Emoji — RN Text overlay; SVG <Text> emoji rendering is unreliable on Android */}
       <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: size * 0.38, lineHeight: size * 0.48 }}>{emoji}</Text>
       </View>
-      {/* Stars — bottom */}
-      <Text style={{
-        position: 'absolute', bottom: size * 0.08, left: 0, right: 0,
-        textAlign: 'center', fontSize: starSize, lineHeight: starSize + 2,
-        color: 'rgba(255,251,241,0.65)',
-      }}>★ ★ ★</Text>
+    </View>
+  );
+}
+
+// ── TierGlow — soft radial fade, replicates web's CSS radial-gradient ─────────
+// cx/rx are fractions of measured width, cy/ry of height; fade = transparent stop.
+// Needs explicit userSpaceOnUse coords + numeric stopOpacity — react-native-svg
+// renders percentage gradients with hard edges and drops rgba() alpha in stops.
+
+function TierGlow({
+  glow, cx, cy, rx, ry, fade,
+}: { glow: string; cx: number; cy: number; rx: number; ry: number; fade: number }) {
+  const id = useId().replace(/:/g, '');
+  const [dims, setDims] = useState({ w: 0, h: 0 });
+  const rgb   = glow.match(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  const color = rgb ? `rgb(${rgb[1]},${rgb[2]},${rgb[3]})` : glow;
+  const alpha = Number(glow.match(/[\d.]+(?=\s*\)$)/)?.[0] ?? 0.3);
+
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={e => {
+        const { width, height } = e.nativeEvent.layout;
+        setDims({ w: width, h: height });
+      }}
+    >
+      {dims.w > 0 && dims.h > 0 && (
+        <Svg width={dims.w} height={dims.h}>
+          <Defs>
+            <RadialGradient
+              id={`tg${id}`}
+              gradientUnits="userSpaceOnUse"
+              cx={dims.w * cx} cy={dims.h * cy}
+              rx={dims.w * rx} ry={dims.h * ry}
+            >
+              <Stop offset="0"    stopColor={color} stopOpacity={alpha} />
+              <Stop offset={fade} stopColor={color} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Rect x={0} y={0} width={dims.w} height={dims.h} fill={`url(#tg${id})`} />
+        </Svg>
+      )}
     </View>
   );
 }
@@ -149,14 +172,10 @@ function BadgeCell({ badge, onPress }: { badge: BadgeData; onPress: () => void }
       activeOpacity={0.75}
       style={[styles.cell, { width: CELL_W }]}
     >
-      {/* Radial glow from top — earned cards only, matches web */}
+      {/* Radial glow from top — earned cards only, matches web:
+          radial-gradient(140% 100% at 50% -20%, glow 0%, transparent 60%) */}
       {badge.earned && (
-        <View style={{
-          position: 'absolute', top: -CELL_W * 0.3, left: -CELL_W * 0.3, right: -CELL_W * 0.3,
-          height: CELL_W * 1.2, borderRadius: CELL_W * 0.6,
-          backgroundColor: t.glow, opacity: 0.7,
-          pointerEvents: 'none',
-        }} />
+        <TierGlow glow={t.glow} cx={0.5} cy={-0.2} rx={1.4} ry={1.0} fade={0.6} />
       )}
 
       <BadgePatch emoji={badge.emoji} tier={badge.tier} size={72} earned={badge.earned} />
@@ -184,7 +203,7 @@ function BadgeCell({ badge, onPress }: { badge: BadgeData; onPress: () => void }
 
 // ── FeaturedCard ──────────────────────────────────────────────────────────────
 
-function FeaturedCard({ badge, onPress }: { badge: BadgeData; onPress: () => void }) {
+function FeaturedCard({ badge, onPress, onShare }: { badge: BadgeData; onPress: () => void; onShare: () => void }) {
   const t = TIERS[badge.tier] ?? TIERS.bronze;
   const dateStr = badge.earned_at
     ? new Date(badge.earned_at)
@@ -194,13 +213,9 @@ function FeaturedCard({ badge, onPress }: { badge: BadgeData; onPress: () => voi
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.featured}>
-      {/* Tier glow from top-left — matches web radial-gradient at 20% 0% */}
-      <View style={{
-        position: 'absolute', top: -60, left: -60,
-        width: 180, height: 180, borderRadius: 90,
-        backgroundColor: t.glow, opacity: 0.7,
-        pointerEvents: 'none',
-      }} />
+      {/* Tier glow from top-left — matches web:
+          radial-gradient(120% 80% at 20% 0%, glow 0%, transparent 55%) */}
+      <TierGlow glow={t.glow} cx={0.2} cy={0} rx={1.2} ry={0.8} fade={0.55} />
       <View style={{ position: 'relative' }}>
         <BadgePatch emoji={badge.emoji} tier={badge.tier} size={108} earned />
       </View>
@@ -210,6 +225,10 @@ function FeaturedCard({ badge, onPress }: { badge: BadgeData; onPress: () => voi
         </Text>
         <Text style={styles.featuredName}>{badge.name}</Text>
         <Text style={styles.featuredDesc} numberOfLines={2}>{badge.description}</Text>
+        <TouchableOpacity onPress={onShare} activeOpacity={0.7} style={styles.featuredShare}>
+          <Ionicons name="share-social-outline" size={13} color={C.ink} />
+          <Text style={styles.featuredShareText}>Share to feed</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -217,7 +236,7 @@ function FeaturedCard({ badge, onPress }: { badge: BadgeData; onPress: () => voi
 
 // ── BadgeDetailModal ──────────────────────────────────────────────────────────
 
-function BadgeDetailModal({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
+function BadgeDetailModal({ badge, onClose, onShare }: { badge: BadgeData; onClose: () => void; onShare: (badge: BadgeData) => void }) {
   const t = TIERS[badge.tier] ?? TIERS.bronze;
   const pct = badge.progress_target && badge.progress_target > 0
     ? Math.min(100, Math.round(((badge.progress_current ?? 0) / badge.progress_target) * 100))
@@ -226,17 +245,40 @@ function BadgeDetailModal({ badge, onClose }: { badge: BadgeData; onClose: () =>
     ? new Date(badge.earned_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : null;
 
+  // Entrance — matches web: card scales in, patch pops with overshoot
+  const cardAnim  = useRef(new Animated.Value(0)).current;
+  const patchAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(cardAnim, {
+        toValue: 1, duration: 240,
+        easing: Easing.bezier(0.2, 0.8, 0.3, 1), useNativeDriver: true,
+      }),
+      Animated.timing(patchAnim, {
+        toValue: 1, duration: 400, delay: 80,
+        easing: Easing.bezier(0.34, 1.4, 0.64, 1), useNativeDriver: true,
+      }),
+    ]).start();
+  }, [cardAnim, patchAnim]);
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.overlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.modal, { borderColor: t.fill + '55' }]}>
-          {/* Tier radial glow at top — matches web */}
-          <View style={{
-            position: 'absolute', top: -40, left: -40, right: -40, height: 200,
-            borderRadius: 100, backgroundColor: t.glow, opacity: 0.8,
-            pointerEvents: 'none',
-          }} />
+        <Animated.View style={[
+          styles.modal,
+          { borderColor: t.fill + '55' },
+          {
+            opacity: cardAnim,
+            transform: [
+              { scale:      cardAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) },
+              { translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
+            ],
+          },
+        ]}>
+          {/* Tier glow — matches web:
+              radial-gradient(120% 80% at 50% -10%, glow 0%, transparent 60%) */}
+          <TierGlow glow={t.glow} cx={0.5} cy={-0.1} rx={1.2} ry={0.8} fade={0.6} />
 
           {/* Close */}
           <TouchableOpacity onPress={onClose} style={styles.modalClose}>
@@ -244,12 +286,19 @@ function BadgeDetailModal({ badge, onClose }: { badge: BadgeData; onClose: () =>
           </TouchableOpacity>
 
           {/* Patch — 120px, matches web */}
-          <View style={{ position: 'relative', alignItems: 'center', paddingTop: 8 }}>
+          <Animated.View style={{
+            position: 'relative', alignItems: 'center', paddingTop: 8,
+            opacity: patchAnim,
+            transform: [
+              { scale:      patchAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) },
+              { translateY: patchAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
+            ],
+          }}>
             <BadgePatch emoji={badge.emoji} tier={badge.tier} size={120} earned={badge.earned} />
-          </View>
+          </Animated.View>
 
           {/* Tier pill */}
-          <View style={[styles.tierPill, { backgroundColor: t.fill + '22', borderColor: t.fill + '44' }]}>
+          <View style={[styles.tierPill, { backgroundColor: t.fill + '22' }]}>
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.fill }} />
             <Text style={[styles.tierPillText, { color: t.fill }]}>{t.name.toUpperCase()} TIER</Text>
           </View>
@@ -278,8 +327,169 @@ function BadgeDetailModal({ badge, onClose }: { badge: BadgeData; onClose: () =>
               </View>
             </View>
           ) : null}
-        </View>
+
+          {/* Share to feed — earned badges only, matches web */}
+          {badge.earned && (
+            <TouchableOpacity
+              onPress={() => onShare(badge)}
+              activeOpacity={0.8}
+              style={styles.shareCta}
+            >
+              <Ionicons name="share-social-outline" size={14} color="#1B1A16" />
+              <Text style={styles.shareCtaText}>Share to feed</Text>
+            </TouchableOpacity>
+          )}
+        </Animated.View>
       </View>
+    </Modal>
+  );
+}
+
+// ── BadgeShareSheet — share badge to feed, one time, matches web modal ────────
+
+const AUDIENCE_OPTS = [
+  { value: 'friends', label: 'Friends', icon: 'people-outline' },
+  { value: 'public',  label: 'Public',  icon: 'globe-outline'  },
+  { value: 'private', label: 'Only me', icon: 'lock-closed-outline' },
+] as const;
+type Audience = typeof AUDIENCE_OPTS[number]['value'];
+
+function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
+  const { getToken, userId } = useAuth();
+  const [caption, setCaption]             = useState('');
+  const [audience, setAudience]           = useState<Audience>('friends');
+  const [submitting, setSubmitting]       = useState(false);
+  const [alreadyShared, setAlreadyShared] = useState(false);
+  const t = TIERS[badge.tier] ?? TIERS.bronze;
+
+  // One-time share: check if this badge was already posted
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      try {
+        const tok = await getToken();
+        if (!tok) return;
+        const res = await fetch(
+          `${BASE}/api/posts?userId=${userId}&badgeId=${encodeURIComponent(badge.id)}&limit=1`,
+          { headers: { Authorization: `Bearer ${tok}` } }
+        );
+        if (res.ok) {
+          const rows = await res.json();
+          if (Array.isArray(rows) && rows.length > 0) setAlreadyShared(true);
+        }
+      } catch {}
+    })();
+  }, [userId, badge.id, getToken]);
+
+  const handleShare = async () => {
+    setSubmitting(true);
+    try {
+      const tok = await getToken();
+      if (!tok) return;
+      const res = await fetch(`${BASE}/api/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({
+          badge_id: badge.id,
+          caption: caption.trim() || null,
+          visibility: audience,
+          photos: [],
+        }),
+      });
+      if (res.status === 409) { setAlreadyShared(true); return; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onClose();
+      Alert.alert(`${badge.emoji} Badge shared to feed`);
+    } catch {
+      Alert.alert('Something went wrong', 'Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.shareOverlay}
+      >
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.shareModal}>
+          {/* Header */}
+          <View style={styles.shareHeader}>
+            <Text style={styles.shareTitle}>Share badge</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              <TouchableOpacity onPress={onClose} style={styles.shareCancelBtn} activeOpacity={0.7}>
+                <Text style={styles.shareCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleShare}
+                disabled={submitting || alreadyShared}
+                activeOpacity={0.8}
+                style={[
+                  styles.shareBtn,
+                  alreadyShared && styles.shareBtnDisabled,
+                  submitting && { opacity: 0.55 },
+                ]}
+              >
+                {!alreadyShared && <Ionicons name="checkmark" size={13} color="#FFFBF1" />}
+                <Text style={[styles.shareBtnText, alreadyShared && { color: C.inkMute }]}>
+                  {alreadyShared ? 'Already shared' : 'Share'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Badge preview */}
+          <View style={[styles.sharePreview, { borderColor: t.fill + '44', backgroundColor: t.fill + '18' }]}>
+            <View style={[styles.sharePreviewPatch, { backgroundColor: t.fill }]}>
+              <View style={{
+                position: 'absolute', top: 0, left: 0, right: 0, height: 32,
+                borderRadius: 26, backgroundColor: t.light, opacity: 0.4,
+              }} />
+              <Text style={{ fontSize: 24 }}>{badge.emoji}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sharePreviewKicker, { color: t.fill }]}>
+                BADGE EARNED · {t.name.toUpperCase()}
+              </Text>
+              <Text style={styles.sharePreviewName}>{badge.name}</Text>
+              <Text style={styles.sharePreviewDesc} numberOfLines={2}>{badge.description}</Text>
+            </View>
+          </View>
+
+          {/* Visibility picker */}
+          <View style={styles.audienceRow}>
+            {AUDIENCE_OPTS.map(opt => {
+              const active = audience === opt.value;
+              return (
+                <TouchableOpacity
+                  key={opt.value}
+                  onPress={() => setAudience(opt.value)}
+                  activeOpacity={0.7}
+                  style={[styles.audiencePill, active && styles.audiencePillActive]}
+                >
+                  <Ionicons name={opt.icon} size={13} color={active ? C.primary : C.inkMute} />
+                  <Text style={[styles.audienceLabel, active && { color: C.primary }]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Caption */}
+          <TextInput
+            value={caption}
+            onChangeText={txt => setCaption(txt.slice(0, 500))}
+            placeholder="Add a note… (optional)"
+            placeholderTextColor={C.inkMute}
+            multiline
+            style={styles.captionInput}
+          />
+          <Text style={styles.captionCount}>{caption.length} / 500</Text>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -293,6 +503,7 @@ export default function BadgesScreen() {
   const [error,         setError]         = useState(false);
   const [tierFilter,    setTierFilter]    = useState<TierFilter>('all');
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
+  const [sharingBadge,  setSharingBadge]  = useState<BadgeData | null>(null);
 
   const loadBadges = useCallback(async () => {
     const tok = await getToken();
@@ -421,7 +632,11 @@ export default function BadgesScreen() {
       case 'featured':
         return (
           <View style={{ paddingHorizontal: H_PAD, marginBottom: 20 }}>
-            <FeaturedCard badge={item.badge} onPress={() => setSelectedBadge(item.badge)} />
+            <FeaturedCard
+              badge={item.badge}
+              onPress={() => setSelectedBadge(item.badge)}
+              onShare={() => setSharingBadge(item.badge)}
+            />
           </View>
         );
 
@@ -508,7 +723,14 @@ export default function BadgesScreen() {
       />
 
       {selectedBadge && (
-        <BadgeDetailModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+        <BadgeDetailModal
+          badge={selectedBadge}
+          onClose={() => setSelectedBadge(null)}
+          onShare={b => { setSelectedBadge(null); setSharingBadge(b); }}
+        />
+      )}
+      {sharingBadge && (
+        <BadgeShareSheet badge={sharingBadge} onClose={() => setSharingBadge(null)} />
       )}
     </SafeAreaView>
   );
@@ -574,6 +796,17 @@ const styles = StyleSheet.create({
   featuredDesc: {
     fontSize: 14, color: C.inkSoft, lineHeight: 21,
   },
+  featuredShare: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: C.surface,
+    borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 100, paddingHorizontal: 14, paddingVertical: 7,
+    marginTop: 8,
+  },
+  featuredShareText: {
+    fontSize: 12, fontWeight: '700', color: C.ink,
+  },
 
   // Section headers
   sectionHead: {
@@ -627,6 +860,9 @@ const styles = StyleSheet.create({
     padding: 32, paddingTop: 36,
     width: '100%', maxWidth: 380,
     alignItems: 'center', overflow: 'hidden', position: 'relative',
+    // Matches web: 0 32px 80px rgba(0,0,0,0.5)
+    shadowColor: '#000', shadowOffset: { width: 0, height: 24 },
+    shadowOpacity: 0.5, shadowRadius: 40, elevation: 24,
   },
   modalClose: {
     position: 'absolute', top: 14, right: 14, zIndex: 10,
@@ -634,10 +870,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,251,241,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
+  // No border — matches web
   tierPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     borderRadius: 100, paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, marginTop: 14,
+    marginTop: 14,
   },
   tierPillText: {
     fontSize: 10, fontWeight: '600', letterSpacing: 1.6,
@@ -659,5 +896,103 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     alignItems: 'center', paddingTop: 60, paddingHorizontal: 32,
+  },
+
+  // Share CTA inside detail modal
+  shareCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: '#FFFBF1', borderRadius: 100,
+    paddingHorizontal: 24, paddingVertical: 10,
+    marginTop: 20,
+  },
+  shareCtaText: {
+    fontSize: 13, fontWeight: '700', color: '#1B1A16',
+  },
+
+  // Share sheet — matches web BadgeShareModal
+  shareOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center', justifyContent: 'center', padding: 20,
+  },
+  shareModal: {
+    width: '100%', maxWidth: 440,
+    backgroundColor: C.surface, borderRadius: 18,
+    borderWidth: 0.5, borderColor: C.hairline,
+    overflow: 'hidden', paddingBottom: 18,
+  },
+  shareHeader: {
+    paddingHorizontal: 18, paddingVertical: 14,
+    borderBottomWidth: 0.5, borderBottomColor: 'rgba(27,26,22,0.06)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  shareTitle: {
+    fontSize: 13, fontWeight: '700', color: C.ink,
+  },
+  shareCancelBtn: {
+    borderWidth: 0.5, borderColor: C.hairline, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 5,
+  },
+  shareCancelText: {
+    fontSize: 12.5, fontWeight: '700', color: C.ink,
+  },
+  shareBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: C.primary, borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 5,
+  },
+  shareBtnDisabled: {
+    backgroundColor: C.surfaceAlt,
+    borderWidth: 0.5, borderColor: C.hairline,
+  },
+  shareBtnText: {
+    fontSize: 12.5, fontWeight: '700', color: '#FFFBF1',
+  },
+  sharePreview: {
+    marginHorizontal: 18, marginTop: 16,
+    padding: 14, paddingHorizontal: 16,
+    borderRadius: 12, borderWidth: 0.5,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+  },
+  sharePreviewPatch: {
+    width: 52, height: 52, borderRadius: 26,
+    alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  sharePreviewKicker: {
+    fontSize: 9, fontWeight: '700', letterSpacing: 1.4, marginBottom: 2,
+  },
+  sharePreviewName: {
+    fontSize: 16, fontWeight: '800', color: C.ink, letterSpacing: -0.3,
+  },
+  sharePreviewDesc: {
+    fontSize: 12, color: C.inkMute, marginTop: 2,
+  },
+  audienceRow: {
+    flexDirection: 'row', gap: 6,
+    paddingHorizontal: 18, paddingTop: 14,
+  },
+  audiencePill: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 7, borderRadius: 8,
+    borderWidth: 0.5, borderColor: C.hairline,
+  },
+  audiencePillActive: {
+    borderWidth: 1.5, borderColor: C.primary,
+    backgroundColor: 'rgba(31,61,46,0.09)',
+  },
+  audienceLabel: {
+    fontSize: 12, fontWeight: '700', color: C.inkMute,
+  },
+  captionInput: {
+    marginHorizontal: 18, marginTop: 12,
+    minHeight: 80, maxHeight: 160,
+    backgroundColor: C.bg, borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+    fontSize: 14, color: C.ink, lineHeight: 21,
+    textAlignVertical: 'top',
+  },
+  captionCount: {
+    fontSize: 10, fontWeight: '600', color: C.inkMute, letterSpacing: 0.5,
+    textAlign: 'right', marginHorizontal: 18, marginTop: 6,
   },
 });

@@ -40,7 +40,7 @@ function AuthSync() {
   const wasSignedIn = useRef(false);
 
   useEffect(() => {
-    if (!isLoaded || segments.length === 0) return;
+    if (!isLoaded || (segments as string[]).length === 0) return;
     if (isSignedIn) wasSignedIn.current = true;
     const inAuth = segments[0] === '(auth)';
     if (isSignedIn && inAuth) router.replace('/(tabs)/feed');

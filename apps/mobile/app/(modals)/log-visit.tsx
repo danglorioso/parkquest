@@ -1,12 +1,12 @@
 import {
-  Alert, Animated, FlatList, Image, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator, Alert, Animated, FlatList, Image, KeyboardAvoidingView, Modal, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -57,6 +57,26 @@ interface Draft {
 
 interface ParkInfo { park_code: string; name: string; states: string; image_url: string | null; }
 interface CompanionUser { clerk_user_id: string; username: string; display_name: string | null; avatar_url: string | null; }
+
+interface VisitDetail {
+  id: number;
+  park_code: string;
+  visited_date: string | null;
+  end_date: string | null;
+  rating: number | null;
+  crowd: number | null;
+  difficulty: number | null;
+  weather_conditions: string[] | null;
+  activities: string[] | null;
+  companions: string[] | null;
+  would_return: 'yes' | 'maybe' | 'no' | null;
+  highlight: string | null;
+  title: string | null;
+  notes: string | null;
+  photos: string[] | null;
+  cover_photo: string | null;
+  visibility: string | null;
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -1337,12 +1357,20 @@ export default function LogVisitModal() {
   const { user } = useUser();
   const insets   = useSafeAreaInsets();
 
+  // Edit mode — opened from a feed post's "Edit visit" menu item
+  const { visitId: visitIdParam, postId: postIdParam } =
+    useLocalSearchParams<{ visitId?: string; postId?: string }>();
+  const editVisitId = visitIdParam ? Number(visitIdParam) : null;
+  const editPostId  = postIdParam && !isNaN(Number(postIdParam)) ? Number(postIdParam) : null;
+  const isEdit = editVisitId != null && !isNaN(editVisitId);
+
   const [token,      setToken]      = useState<string | null>(null);
   const [draft,      setDraftState] = useState<Draft>(makeBlank);
   const [step,       setStep]       = useState(0);
   const [parks,      setParks]      = useState<ParkInfo[]>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editLoading, setEditLoading] = useState(isEdit);
   const scrollRef = useRef<ScrollView>(null);
 
   const set = useCallback(<K extends keyof Draft>(k: K, v: Draft[K]) => {
@@ -1355,19 +1383,20 @@ export default function LogVisitModal() {
   const [restoreBanner, setRestoreBanner] = useState<SavedDraft | null>(null);
 
   useEffect(() => {
+    if (isEdit) return;
     loadDrafts().then(d => { if (d.length > 0) setRestoreBanner(d[0]); });
-  }, []);
+  }, [isEdit]);
 
-  // Autosave while editing (debounced)
+  // Autosave while editing (debounced) — not when editing an existing visit
   useEffect(() => {
-    if (!draftHasContent(draft)) return;
+    if (isEdit || !draftHasContent(draft)) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
       upsertDraft(draft, parkName, draftId.current);
     }, 600);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [draft, parks]);
+  }, [draft, parks, isEdit]);
 
   const resumeDraft = () => {
     if (!restoreBanner) return;
@@ -1390,6 +1419,52 @@ export default function LogVisitModal() {
       }
     });
   }, [getToken]);
+
+  // Prefill the form when editing an existing visit
+  useEffect(() => {
+    if (!isEdit || !token) return;
+    (async () => {
+      try {
+        const v = await apiFetch<VisitDetail>(`/api/visits/${editVisitId}`, token);
+        let caption = '';
+        if (editPostId != null) {
+          const post = await apiFetch<{ caption: string | null }>(`/api/posts/${editPostId}`, token).catch(() => null);
+          caption = post?.caption ?? '';
+        }
+        let companionObjs: CompanionUser[] = [];
+        if (v.companions?.length) {
+          companionObjs = await apiFetch<CompanionUser[]>(`/api/users?ids=${v.companions.join(',')}`, token).catch(() => []);
+        }
+        const vis = v.visibility ?? 'friends';
+        const visibility = (vis.charAt(0).toUpperCase() + vis.slice(1)) as Draft['visibility'];
+        setDraftState({
+          parkCode:   v.park_code,
+          startDate:  v.visited_date ? new Date(v.visited_date) : null,
+          endDate:    v.end_date ? new Date(v.end_date) : null,
+          title:      v.title ?? '',
+          rating:     v.rating ?? 0,
+          crowd:      v.crowd ?? 0,
+          difficulty: v.difficulty ?? 0,
+          weather:    v.weather_conditions ?? [],
+          wouldReturn: v.would_return ?? null,
+          highlight:  v.highlight ?? '',
+          notes:      v.notes ?? '',
+          activities: v.activities ?? [],
+          companions: v.companions ?? [],
+          companionObjs,
+          photos:     v.photos ?? [],
+          cover:      v.cover_photo ?? null,
+          visibility: ['Private', 'Friends', 'Public'].includes(visibility) ? visibility : 'Friends',
+          caption,
+        });
+      } catch {
+        Alert.alert('Could not load visit', 'Please try again.');
+        router.back();
+      } finally {
+        setEditLoading(false);
+      }
+    })();
+  }, [isEdit, token, editVisitId, editPostId, router]);
 
   // Union of NPS activity names across all parks — feeds activity autocomplete
   const [npsActivityNames, setNpsActivityNames] = useState<string[]>([]);
@@ -1420,6 +1495,13 @@ export default function LogVisitModal() {
   };
 
   const handleCancel = () => {
+    if (isEdit) {
+      Alert.alert('Discard changes?', "Your edits won't be saved.", [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+      ]);
+      return;
+    }
     if (draftHasContent(draft)) {
       Alert.alert('Save as draft?', 'Pick up where you left off next time.', [
         { text: 'Keep editing', style: 'cancel' },
@@ -1451,6 +1533,42 @@ export default function LogVisitModal() {
     if (!draft.parkCode || !draft.startDate || !token) return;
     setSubmitting(true);
     try {
+      if (isEdit) {
+        await apiFetch(`/api/visits/${editVisitId}`, token, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            park_code:          draft.parkCode,
+            visited_date:       draft.startDate.toISOString(),
+            end_date:           draft.endDate?.toISOString() ?? null,
+            rating:             draft.rating  > 0 ? draft.rating  : null,
+            crowd:              draft.crowd   > 0 ? draft.crowd   : null,
+            difficulty:         draft.difficulty > 0 ? draft.difficulty : null,
+            weather_conditions: draft.weather.length > 0 ? draft.weather : null,
+            activities:         draft.activities.length > 0 ? draft.activities : null,
+            companions:         draft.companions.length > 0 ? draft.companions : null,
+            would_return:       draft.wouldReturn ?? null,
+            highlight:          draft.highlight || null,
+            title:              draft.title || null,
+            notes:              draft.notes || null,
+            photos:             draft.photos.length > 0 ? draft.photos : null,
+            cover_photo:        draft.cover ?? null,
+            visibility:         draft.visibility.toLowerCase(),
+          }),
+        });
+        if (editPostId != null) {
+          await apiFetch(`/api/posts/${editPostId}`, token, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              caption:   draft.caption || null,
+              photos:    draft.photos.length > 0 ? draft.photos : null,
+              park_code: draft.parkCode,
+            }),
+          });
+        }
+        router.back();
+        return;
+      }
+
       const visitRes = await apiFetch<{ visit: { id: number } }>('/api/visits', token, {
         method: 'POST',
         body: JSON.stringify({
@@ -1489,7 +1607,11 @@ export default function LogVisitModal() {
       deleteDraft(draftId.current);
       router.back();
     } catch (e) {
-      Alert.alert('Something went wrong', 'Please try again.');
+      if (e instanceof Error && e.message.includes('409')) {
+        Alert.alert('Park already logged', 'You already have a visit for that park. Edit that visit instead.');
+      } else {
+        Alert.alert('Something went wrong', 'Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -1508,7 +1630,7 @@ export default function LogVisitModal() {
 
       {/* Title row */}
       <View style={styles.modalTopRow}>
-        <Text style={styles.modalTitle}>Log a visit</Text>
+        <Text style={styles.modalTitle}>{isEdit ? 'Edit visit' : 'Log a visit'}</Text>
         <TouchableOpacity onPress={handleCancel} style={styles.modalClose} hitSlop={8}>
           <Ionicons name="close" size={16} color={C.inkSoft} />
         </TouchableOpacity>
@@ -1558,7 +1680,14 @@ export default function LogVisitModal() {
             </TouchableOpacity>
           </View>
         )}
-        {step === 0 && <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} />}
+        {editLoading && (
+          <View style={{ paddingTop: 80, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={C.inkMute} />
+          </View>
+        )}
+        {!editLoading && step === 0 && (
+          <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} />
+        )}
         {step === 1 && <StepVisit draft={draft} set={set} />}
         {step === 2 && token && <StepJournal draft={draft} set={set} token={token} npsActivityNames={npsActivityNames} />}
         {step === 3 && (
@@ -1599,7 +1728,7 @@ export default function LogVisitModal() {
           activeOpacity={0.8}
         >
           <Text style={{ fontSize: 14, fontWeight: '800', color: canContinue ? '#FFFBF1' : C.inkMute }}>
-            {isLast ? (submitting ? 'Saving…' : 'Post entry') : 'Continue'}
+            {isLast ? (submitting ? 'Saving…' : isEdit ? 'Save' : 'Post entry') : 'Continue'}
           </Text>
           {!isLast && <Ionicons name="arrow-forward" size={14} color={canContinue ? '#FFFBF1' : C.inkMute} />}
         </TouchableOpacity>

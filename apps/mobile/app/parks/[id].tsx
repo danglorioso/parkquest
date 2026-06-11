@@ -892,6 +892,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: C.ink,
+    textAlign: 'center',
   },
   statDivider: {
     width: 0.5,

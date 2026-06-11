@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       .leftJoin(userProfiles, eq(likes.user_id, userProfiles.clerk_user_id))
       .where(eq(likes.post_id, Number(postId)))
       .orderBy(desc(likes.created_at))
-      .limit(10);
+      .limit(50);
 
     return NextResponse.json(rows);
   } catch (error) {

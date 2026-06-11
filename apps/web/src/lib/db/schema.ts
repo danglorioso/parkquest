@@ -57,6 +57,9 @@ export const posts = pgTable('posts', {
   photos: jsonb('photos').$type<{ url: string; key: string; name: string }[]>(),
   quoted_post_id: integer('quoted_post_id'),  // set for quote/repost posts
   badge_id: varchar('badge_id', { length: 100 }), // set for badge share posts
+  // 'public' | 'friends' | 'private' — for visit posts the linked visit's
+  // visibility takes precedence (the visit is the source of truth)
+  visibility: varchar('visibility', { length: 20 }).default('public'),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 });

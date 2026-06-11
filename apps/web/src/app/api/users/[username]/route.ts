@@ -81,6 +81,7 @@ export async function GET(
         quoted_post_id:       posts.quoted_post_id,
         visit_id:             posts.visit_id,
         visit_visibility:     visits.visibility,
+        post_visibility:      posts.visibility,
         created_at:           posts.created_at,
         clerk_user_id:        posts.clerk_user_id,
         username:             userProfiles.username,
@@ -218,10 +219,11 @@ export async function GET(
       tier:      BADGE_MAP.get(b.badge_id)?.tier ?? 'bronze',
     })).reverse();
 
-    // Filter posts by visibility of linked visit (badge/quote posts always visible)
+    // Filter posts by visibility: visit posts defer to the linked visit's
+    // visibility, all other posts (badge/quote/plain) use their own
     const visiblePosts = recentPosts
       .filter((p) => {
-        const vis = p.visit_visibility ?? 'public';
+        const vis = p.visit_visibility ?? p.post_visibility ?? 'public';
         if (canSeePrivate) return true;
         if (vis === 'private') return false;
         if (vis === 'friends') return canSeeFriends;

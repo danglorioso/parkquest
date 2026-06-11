@@ -1,12 +1,14 @@
 import {
-  ActivityIndicator, Image, ScrollView, StyleSheet,
+  ActivityIndicator, Image, Modal, ScrollView, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import { BADGE_MAP, BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -26,6 +28,23 @@ const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 type FriendshipStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted';
 
+interface ProfileBadge {
+  badge_id: string;
+  earned_at: string | null;
+  name: string;
+  emoji: string;
+  tier: string;
+}
+
+interface VisitedPark {
+  park_code: string;
+  name: string;
+  states: string;
+  latitude: string | null;
+  longitude: string | null;
+  visited_date: string | null;
+}
+
 interface UserProfile {
   clerk_user_id: string;
   username: string;
@@ -36,6 +55,8 @@ interface UserProfile {
   parks_visited: number;
   friend_count: number;
   friendship_status: FriendshipStatus;
+  badges: ProfileBadge[];
+  visited_parks: VisitedPark[];
 }
 
 function explorerRank(n: number): string {
@@ -48,6 +69,68 @@ function explorerRank(n: number): string {
   return 'TRAILHEAD';
 }
 
+function tierColors(tier: string) {
+  return BADGE_TIER_COLORS[tier as BadgeTier] ?? BADGE_TIER_COLORS.bronze;
+}
+
+// ── Section header — icon + mono kicker, matches web profile sections ─────────
+
+function SectionHeader({ icon, title }: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  title: string;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Ionicons name={icon} size={13} color={C.inkMute} />
+      <Text style={styles.sectionHeaderText}>{title}</Text>
+    </View>
+  );
+}
+
+// ── Badge detail modal — emoji, tier, how-to-earn, earned date ─────────────────
+
+function BadgeInfoModal({ badge, onClose }: { badge: ProfileBadge; onClose: () => void }) {
+  const def = BADGE_MAP.get(badge.badge_id);
+  const t = tierColors(badge.tier);
+  const earnedDate = badge.earned_at
+    ? new Date(badge.earned_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.badgeOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.badgeModal}>
+          <TouchableOpacity onPress={onClose} style={styles.badgeModalClose}>
+            <Ionicons name="close" size={16} color={C.inkMute} />
+          </TouchableOpacity>
+
+          <View style={[styles.badgeModalEmoji, { backgroundColor: t.fill + '14', borderColor: t.fill + '44' }]}>
+            <Text style={{ fontSize: 36 }}>{badge.emoji}</Text>
+          </View>
+          <Text style={styles.badgeModalName}>{badge.name}</Text>
+          <Text style={[styles.badgeModalTier, { color: t.fill }]}>{badge.tier}</Text>
+
+          {def ? (
+            <View style={styles.badgeModalHow}>
+              <Text style={styles.badgeModalHowKicker}>HOW TO EARN</Text>
+              <Text style={styles.badgeModalHowText}>{def.description}</Text>
+            </View>
+          ) : null}
+
+          {earnedDate ? (
+            <Text style={styles.badgeModalEarned}>
+              Earned on <Text style={{ fontWeight: '700', color: C.inkSoft }}>{earnedDate}</Text>
+            </Text>
+          ) : (
+            <Text style={[styles.badgeModalEarned, { fontStyle: 'italic' }]}>Not yet earned</Text>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getToken } = useAuth();
@@ -58,8 +141,41 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [friendBusy, setFriendBusy] = useState(false);
+  const [selectedBadge, setSelectedBadge] = useState<ProfileBadge | null>(null);
 
   const isOwnProfile = me?.id === id;
+
+  // Unique visited parks with coords, for the mini map
+  const mapParks = useMemo(() => {
+    const seen = new Set<string>();
+    return (profile?.visited_parks ?? [])
+      .filter(v => {
+        if (!v.latitude || !v.longitude || seen.has(v.park_code)) return false;
+        seen.add(v.park_code);
+        return true;
+      })
+      .map(v => ({
+        park_code: v.park_code,
+        name: v.name,
+        lat: parseFloat(v.latitude!),
+        lng: parseFloat(v.longitude!),
+      }))
+      .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  }, [profile]);
+
+  const mapRegion = useMemo(() => {
+    if (mapParks.length === 0) return undefined;
+    const lats = mapParks.map(p => p.lat);
+    const lngs = mapParks.map(p => p.lng);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.5, 4),
+      longitudeDelta: Math.max((maxLng - minLng) * 1.5, 4),
+    };
+  }, [mapParks]);
 
   const loadProfile = useCallback(async () => {
     const tok = await getToken();
@@ -273,8 +389,78 @@ export default function UserProfileScreen() {
               </View>
             ) : null}
 
+            {/* Visited parks map — only when the API returns the field, so a
+                stale deployment doesn't show a misleading empty state */}
+            {profile.visited_parks ? (
+            <View style={styles.section}>
+              <SectionHeader icon="map-outline" title="VISITED PARKS" />
+              <View style={styles.mapCard}>
+                {mapParks.length > 0 ? (
+                  <MapView
+                    style={{ width: '100%', height: 220 }}
+                    provider={PROVIDER_DEFAULT}
+                    initialRegion={mapRegion}
+                    rotateEnabled={false}
+                    pitchEnabled={false}
+                    toolbarEnabled={false}
+                  >
+                    {mapParks.map(p => (
+                      <Marker
+                        key={p.park_code}
+                        coordinate={{ latitude: p.lat, longitude: p.lng }}
+                        title={p.name}
+                        tracksViewChanges={false}
+                        onCalloutPress={() => router.push(`/parks/${p.park_code}` as never)}
+                      >
+                        <View style={styles.markerDot} />
+                      </Marker>
+                    ))}
+                  </MapView>
+                ) : (
+                  <View style={styles.mapEmpty}>
+                    <Ionicons name="map-outline" size={22} color={C.inkMute} />
+                    <Text style={styles.mapEmptyText}>No park visits yet</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            ) : null}
+
+            {/* Badges earned */}
+            {profile.badges?.length > 0 ? (
+              <View style={styles.section}>
+                <SectionHeader icon="ribbon-outline" title="BADGES EARNED" />
+                <View style={styles.badgeWrap}>
+                  {profile.badges.map(b => {
+                    const t = tierColors(b.tier);
+                    return (
+                      <TouchableOpacity
+                        key={b.badge_id}
+                        onPress={() => setSelectedBadge(b)}
+                        activeOpacity={0.7}
+                        style={[styles.badgeChip, {
+                          backgroundColor: t.fill + '14',
+                          borderColor: t.fill + '33',
+                        }]}
+                      >
+                        <Text style={{ fontSize: 15 }}>{b.emoji}</Text>
+                        <View>
+                          <Text style={styles.badgeChipName}>{b.name}</Text>
+                          <Text style={[styles.badgeChipTier, { color: t.fill }]}>{b.tier}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+
           </ScrollView>
         )}
+
+        {selectedBadge ? (
+          <BadgeInfoModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+        ) : null}
       </SafeAreaView>
     </>
   );
@@ -412,5 +598,153 @@ const styles = StyleSheet.create({
   },
   friendButtonTextSecondary: {
     color: C.inkSoft,
+  },
+
+  // Section header
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  sectionHeaderText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: C.inkMute,
+    letterSpacing: 1.4,
+  },
+
+  // Visited parks map
+  mapCard: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    backgroundColor: '#CECDBC',
+  },
+  mapEmpty: {
+    height: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: C.surface,
+  },
+  mapEmptyText: {
+    fontSize: 13,
+    color: C.inkMute,
+  },
+  markerDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#2F7A4A',
+    borderWidth: 2,
+    borderColor: '#FFFBF1',
+  },
+
+  // Badge chips
+  badgeWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  badgeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  badgeChipName: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: C.ink,
+    lineHeight: 14,
+  },
+  badgeChipTier: {
+    fontSize: 8.5,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
+  // Badge detail modal — light theme, matches web profile BadgeModal
+  badgeOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  badgeModal: {
+    backgroundColor: C.bg,
+    borderRadius: 18,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    paddingVertical: 32,
+    paddingHorizontal: 28,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+  },
+  badgeModalClose: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    zIndex: 10,
+    padding: 4,
+  },
+  badgeModalEmoji: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  badgeModalName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: C.ink,
+    letterSpacing: -0.3,
+    textAlign: 'center',
+  },
+  badgeModalTier: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    marginTop: 5,
+    marginBottom: 20,
+  },
+  badgeModalHow: {
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    alignSelf: 'stretch',
+  },
+  badgeModalHowKicker: {
+    fontSize: 8.5,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    color: C.inkMute,
+    marginBottom: 6,
+  },
+  badgeModalHowText: {
+    fontSize: 13.5,
+    color: C.inkSoft,
+    lineHeight: 21,
+  },
+  badgeModalEarned: {
+    fontSize: 12,
+    color: C.inkMute,
+    textAlign: 'center',
   },
 });
