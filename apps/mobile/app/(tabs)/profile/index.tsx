@@ -8,6 +8,8 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { BADGE_MAP } from '@/lib/badges';
+import { Wordmark } from '@/components/Wordmark';
+import { SearchOverlay } from '@/components/SearchOverlay';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -179,6 +181,7 @@ export default function ProfileScreen() {
   const [friendCount,  setFriendCount]  = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<BadgeSummary[]>([]);
   const [selectedBadge, setSelectedBadge] = useState<BadgeSummary | null>(null);
+  const [searchOpen,   setSearchOpen]   = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
 
@@ -248,9 +251,36 @@ export default function ProfileScreen() {
     ]);
   };
 
+  // Top bar — wordmark + actions, matches feed
+  const topBar = (
+    <View style={styles.topBar}>
+      <Wordmark />
+      <View style={styles.topBarActions}>
+        <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
+          <Ionicons name="notifications-outline" size={18} color={C.inkSoft} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.iconBtn}
+          activeOpacity={0.7}
+          onPress={() => setSearchOpen(true)}
+        >
+          <Ionicons name="search" size={17} color={C.inkSoft} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.iconBtn, styles.plusBtn]}
+          activeOpacity={0.8}
+          onPress={() => router.push('/(modals)/log-visit' as never)}
+        >
+          <Ionicons name="add" size={20} color="#FFFBF1" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   if (loading && !profile) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
+        {topBar}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={C.primary} />
         </View>
@@ -261,6 +291,7 @@ export default function ProfileScreen() {
   if (error && !profile) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
+        {topBar}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
@@ -277,6 +308,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
+      {topBar}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
         {/* ── Hero header ──────────────────────────────────────────────────── */}
@@ -437,7 +469,6 @@ export default function ProfileScreen() {
             <NavRow
               icon="create-outline"
               label="Edit Profile"
-              subtitle="Update your name, bio, and avatar"
               onPress={() => router.push('/profile/edit' as never)}
             />
             <View style={styles.rowDivider} />
@@ -451,14 +482,14 @@ export default function ProfileScreen() {
         </View>
 
         {/* Attribution */}
-        <Text style={styles.attribution}>ParkQuest · Track your national park adventures</Text>
-        <Text style={styles.attribution}>© {new Date().getFullYear()} ParkQuest. All rights reserved.</Text>
-
+        <Text style={styles.attribution}>© {new Date().getFullYear()} ParkQuest · Track your national park adventures</Text>
       </ScrollView>
 
       {selectedBadge ? (
         <BadgeInfoModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
       ) : null}
+
+      <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
     </SafeAreaView>
   );
 }
@@ -662,6 +693,36 @@ const styles = StyleSheet.create({
   attribution: {
     textAlign: 'center', fontSize: 11, color: C.inkMute,
     marginTop: 24, marginHorizontal: 16,
+  },
+
+  // Top bar — matches feed
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: C.hairline,
+  },
+  topBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plusBtn: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
   },
 
   // Badge detail modal — light theme, matches web profile BadgeModal

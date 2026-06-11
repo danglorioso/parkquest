@@ -49,6 +49,7 @@ export async function GET(request: Request) {
         like_count: sql<number>`(SELECT COUNT(*)::int FROM likes WHERE likes.post_id = ${posts.id})`,
         comment_count: sql<number>`(SELECT COUNT(*)::int FROM comments WHERE comments.post_id = ${posts.id})`,
         liked_by_me: sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${userId})`,
+        visibility: sql<string>`COALESCE(${visits.visibility}, ${posts.visibility}, 'public')`,
         visit_date:             visits.visited_date,
         visit_rating:           visits.rating,
         visit_activities:       visits.activities,

@@ -44,6 +44,8 @@ export interface FeedPost {
   comment_count: number;
   liked_by_me: boolean;
   is_friend_post: boolean;
+  // Effective visibility — visit posts inherit the visit's setting
+  visibility?: string | null;
   // visit metadata
   visit_date: string | null;
   visit_rating: number | null;
@@ -623,6 +625,15 @@ function CommentsPanel({
   );
 }
 
+// ── Visibility icons ──────────────────────────────────────────────────────────
+
+const VIS_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+  public:  'globe-outline',
+  friends: 'people-outline',
+  private: 'lock-closed-outline',
+};
+const VIS_ORDER = ['public', 'friends', 'private'] as const;
+
 // ── PostCard ──────────────────────────────────────────────────────────────────
 
 export function PostCard({
@@ -650,12 +661,19 @@ export function PostCard({
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionDraft, setCaptionDraft] = useState(post.caption ?? '');
   const [currentCaption, setCurrentCaption] = useState<string | null>(post.caption ?? null);
+  // null = API didn't return the field (stale deployment) — hide the icon
+  const [visibility, setVisibility] = useState<string | null>(post.visibility ?? null);
+  const [visDraft, setVisDraft] = useState(post.visibility ?? 'public');
 
   // Feed refetches on focus (e.g. after editing a visit) — keep the locally
   // edited caption in sync with the fresh server value
   useEffect(() => {
     setCurrentCaption(post.caption ?? null);
   }, [post.caption]);
+
+  useEffect(() => {
+    setVisibility(post.visibility ?? null);
+  }, [post.visibility]);
 
   const isOwnPost  = myUserId === post.clerk_user_id;
   const isBadge    = !!post.badge_id;
@@ -696,13 +714,20 @@ export function PostCard({
     setShowMenu(false);
   };
 
+  // Visit posts inherit the visit's visibility — change it via "Edit visit"
+  const canEditVisibility = post.visit_id == null;
+
   const handleSaveCaption = async () => {
     const res = await apiReq(`/api/posts/${post.id}`, token, {
       method: 'PATCH',
-      body: JSON.stringify({ caption: captionDraft }),
+      body: JSON.stringify({
+        caption: captionDraft,
+        ...(canEditVisibility ? { visibility: visDraft } : {}),
+      }),
     }).catch(() => null);
     if (res !== null) {
       setCurrentCaption(captionDraft || null);
+      if (canEditVisibility) setVisibility(visDraft);
       setEditingCaption(false);
     }
   };
@@ -726,10 +751,20 @@ export function PostCard({
           <TouchableOpacity onPress={() => router.push(`/user/${post.clerk_user_id}` as never)}>
             <Text style={styles.authorName}>{name}</Text>
           </TouchableOpacity>
-          <Text style={styles.authorSub}>
-            {post.username ? `@${post.username} · ` : ''}
-            {relTime(post.created_at)}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 }}>
+            <Text style={[styles.authorSub, { marginTop: 0 }]}>
+              {post.username ? `@${post.username} · ` : ''}
+              {relTime(post.created_at)}
+            </Text>
+            {isOwnPost && visibility != null && (
+              <Ionicons
+                name={VIS_ICONS[visibility] ?? VIS_ICONS.public}
+                size={10.5}
+                color={C.inkMute}
+                style={{ opacity: 0.75 }}
+              />
+            )}
+          </View>
         </View>
         {isOwnPost && (
           <TouchableOpacity onPress={() => setShowMenu(v => !v)} hitSlop={8} style={styles.menuBtn}>
@@ -757,7 +792,7 @@ export function PostCard({
           )}
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => { setCaptionDraft(currentCaption ?? ''); setEditingCaption(true); setShowMenu(false); }}
+            onPress={() => { setCaptionDraft(currentCaption ?? ''); setVisDraft(visibility ?? 'public'); setEditingCaption(true); setShowMenu(false); }}
           >
             <Text style={styles.menuItemText}>Edit caption</Text>
           </TouchableOpacity>
@@ -790,7 +825,7 @@ export function PostCard({
             placeholderTextColor={C.inkMute}
             style={styles.captionInput}
           />
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' }}>
             <TouchableOpacity
               onPress={handleSaveCaption}
               style={[styles.captionBtn, { backgroundColor: C.primary }]}
@@ -803,6 +838,23 @@ export function PostCard({
             >
               <Text style={{ fontSize: 13, color: C.ink }}>Cancel</Text>
             </TouchableOpacity>
+            {canEditVisibility && (
+              <View style={styles.visPicker}>
+                {VIS_ORDER.map(v => {
+                  const active = visDraft === v;
+                  return (
+                    <TouchableOpacity
+                      key={v}
+                      onPress={() => setVisDraft(v)}
+                      hitSlop={4}
+                      style={[styles.visPickerBtn, active && styles.visPickerBtnActive]}
+                    >
+                      <Ionicons name={VIS_ICONS[v]} size={13} color={active ? C.primary : C.inkMute} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
           </View>
         </View>
       ) : currentCaption ? (
@@ -1122,6 +1174,19 @@ const styles = StyleSheet.create({
   },
   captionBtn: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
+  },
+  visPicker: {
+    flexDirection: 'row', gap: 2, marginLeft: 'auto',
+    backgroundColor: C.surfaceAlt, borderRadius: 8,
+    borderWidth: 0.5, borderColor: C.hairline, padding: 2,
+  },
+  visPickerBtn: {
+    width: 26, height: 24, borderRadius: 6,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  visPickerBtnActive: {
+    backgroundColor: '#FFFBF1',
+    borderWidth: 0.5, borderColor: 'rgba(31,61,46,0.25)',
   },
   padH: { paddingHorizontal: 18 },
   actionRow: {

@@ -27,6 +27,12 @@ export async function PATCH(
     if ('park_code' in body) {
       set.park_code = typeof body.park_code === 'string' && body.park_code ? body.park_code : null;
     }
+    if ('visibility' in body) {
+      if (!['public', 'friends', 'private'].includes(body.visibility)) {
+        return NextResponse.json({ error: 'Invalid visibility' }, { status: 400 });
+      }
+      set.visibility = body.visibility;
+    }
 
     const updated = await db
       .update(posts)
