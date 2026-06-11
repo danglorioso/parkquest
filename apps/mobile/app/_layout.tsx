@@ -10,21 +10,25 @@ import {
 import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as WebBrowser from 'expo-web-browser';
 import * as SplashScreen from 'expo-splash-screen';
 import LoadingScreen from '../components/LoadingScreen';
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
-WebBrowser.maybeCompleteAuthSession();
+try {
+  WebBrowser.maybeCompleteAuthSession();
+} catch {
+  // Ignore startup auth-session cleanup failures and continue booting.
+}
 
 const tokenCache = {
-  getToken: (key: string) => SecureStore.getItemAsync(key),
-  saveToken: (key: string, token: string) => SecureStore.setItemAsync(key, token),
-  clearToken: (key: string) => SecureStore.deleteItemAsync(key),
+  getToken: (key: string) => AsyncStorage.getItem(key),
+  saveToken: (key: string, token: string) => AsyncStorage.setItem(key, token),
+  clearToken: (key: string) => AsyncStorage.removeItem(key),
 };
 
 const queryClient = new QueryClient({
