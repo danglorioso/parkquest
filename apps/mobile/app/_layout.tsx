@@ -10,26 +10,18 @@ import {
 import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import * as WebBrowser from 'expo-web-browser';
-import * as SplashScreen from 'expo-splash-screen';
 import LoadingScreen from '../components/LoadingScreen';
 
-void SplashScreen.preventAutoHideAsync().catch(() => {});
-
-try {
-  WebBrowser.maybeCompleteAuthSession();
-} catch {
-  // Ignore startup auth-session cleanup failures and continue booting.
-}
-
-const tokenCache = {
-  getToken: (key: string) => AsyncStorage.getItem(key),
-  saveToken: (key: string, token: string) => AsyncStorage.setItem(key, token),
-  clearToken: (key: string) => AsyncStorage.removeItem(key),
-};
+const tokenCache = (() => {
+  const cache = new Map<string, string>();
+  return {
+    getToken: async (key: string) => cache.get(key) ?? null,
+    saveToken: async (key: string, token: string) => { cache.set(key, token); },
+    clearToken: async (key: string) => { cache.delete(key); },
+  };
+})();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000 } },
@@ -64,7 +56,6 @@ function SplashController({ onReady }: { onReady: () => void }) {
 
   useEffect(() => {
     if (clerkLoaded && fontsLoaded) {
-      SplashScreen.hideAsync();
       onReady();
     }
   }, [clerkLoaded, fontsLoaded]);

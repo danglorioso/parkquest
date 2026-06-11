@@ -440,7 +440,7 @@ export default function LandingScreen() {
                 </TouchableOpacity>
 
                 <Text style={styles.terms}>
-                  By continuing you agree to the{' '}
+                  By continuing, you agree to the{' '}
                   <Text style={{ color: C.primary, fontWeight: '600' }} onPress={() => Linking.openURL(`${WEB}/terms`)}>Terms</Text>
                   {' '}and{' '}
                   <Text style={{ color: C.primary, fontWeight: '600' }} onPress={() => Linking.openURL(`${WEB}/privacy`)}>Privacy Policy</Text>.
