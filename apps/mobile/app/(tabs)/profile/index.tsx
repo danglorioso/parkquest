@@ -2,7 +2,7 @@ import {
   ActivityIndicator, Image, Modal, ScrollView, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
@@ -185,8 +185,13 @@ export default function ProfileScreen() {
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
 
+  // getToken from @clerk/clerk-expo is a new function every render — keeping it
+  // in dep arrays re-triggers effects on each render and loops fetches forever.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+
   const loadData = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) { setLoading(false); return; }
     setLoading(true);
     setError(false);
@@ -225,9 +230,8 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const displayName = profile?.display_name || user?.fullName || user?.username || 'Explorer';

@@ -379,7 +379,8 @@ function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => 
         }
       } catch {}
     })();
-  }, [userId, badge.id, getToken]);
+    // getToken intentionally omitted — unstable identity re-runs this every render
+  }, [userId, badge.id]);
 
   const handleShare = async () => {
     setSubmitting(true);
@@ -505,8 +506,12 @@ export default function BadgesScreen() {
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
   const [sharingBadge,  setSharingBadge]  = useState<BadgeData | null>(null);
 
+  // getToken is unstable across renders — dep arrays containing it loop forever
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+
   const loadBadges = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     setError(false);
     try {
@@ -528,7 +533,7 @@ export default function BadgesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, []);
 
   useEffect(() => { loadBadges(); }, [loadBadges]);
 

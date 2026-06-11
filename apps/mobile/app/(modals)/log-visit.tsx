@@ -1418,7 +1418,9 @@ export default function LogVisitModal() {
         apiFetch<ParkInfo[]>('/api/parks', tok).then(setParks).catch(() => {});
       }
     });
-  }, [getToken]);
+    // getToken intentionally omitted — unstable identity re-runs this every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Prefill the form when editing an existing visit
   useEffect(() => {

@@ -446,8 +446,12 @@ export default function JournalEntryScreen() {
     cover_photo: null, visibility: 'private', caption: '',
   });
 
+  // getToken is unstable across renders — dep arrays containing it loop forever
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+
   const load = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     setToken(tok);
     setLoading(true);
@@ -462,7 +466,7 @@ export default function JournalEntryScreen() {
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [id, getToken]);
+  }, [id]);
 
   useEffect(() => { load(); }, [load]);
 
