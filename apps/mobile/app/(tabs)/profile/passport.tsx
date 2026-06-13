@@ -2,6 +2,7 @@ import {
   Dimensions, FlatList, Image, Platform, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
+import Svg, { Circle, Defs, Path as SvgPath, Text as SvgText, TextPath } from 'react-native-svg';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -111,7 +112,7 @@ function stateCode(states: string): string {
 function stampDateStr(iso: string): string {
   const d = new Date(iso);
   const M = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  return `${M[d.getMonth()]} ${d.getFullYear()}`;
+  return `${M[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
 // ── Passport cover ────────────────────────────────────────────────────────────
@@ -276,13 +277,15 @@ function PassportDataPage({
 // ── Stamp cell (visited) ──────────────────────────────────────────────────────
 
 function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) {
-  const c    = stampColor(item.colorIdx);
-  const sc   = stateCode(item.states);
-  const date = item.visited_date ? stampDateStr(item.visited_date) : '';
-  const raw  = item.name.toUpperCase();
-  const short = raw.length > 14 ? raw.slice(0, 12) + '…' : raw;
-  const rotate = `${((item.colorIdx * 37) % 16) - 8}deg`;
-  const R = STAMP_D / 2;
+  const c         = stampColor(item.colorIdx);
+  const sc        = stateCode(item.states);
+  const date      = item.visited_date ? stampDateStr(item.visited_date) : '';
+  const raw       = item.name.toUpperCase();
+  const shortName = raw.length > 18 ? raw.slice(0, 16) + '…' : raw;
+  const nameFontSize = shortName.length > 16 ? 7 : shortName.length > 13 ? 7.5 : shortName.length > 10 ? 8 : 9;
+  const rotate    = `${((item.colorIdx * 37) % 16) - 8}deg`;
+  const topId     = `top-${item.park_code}`;
+  const botId     = `bot-${item.park_code}`;
 
   return (
     <TouchableOpacity
@@ -290,47 +293,42 @@ function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) 
       activeOpacity={0.75}
       style={{ width: CELL_W, alignItems: 'center', paddingVertical: 12 }}
     >
-      {/* Stamp ring + content — rotated */}
       <View style={{ transform: [{ rotate }] }}>
-        <View style={{
-          width:  STAMP_D, height: STAMP_D, borderRadius: R,
-          borderWidth: 2, borderColor: c + 'D9',        // outer ring 85% opacity
-          backgroundColor: c + '10',                     // subtle fill
-          alignItems: 'center', justifyContent: 'center',
-          overflow: 'visible',
-        }}>
-          {/* Inner dashed ring */}
-          <View style={{
-            position: 'absolute',
-            width: STAMP_D - 12, height: STAMP_D - 12,
-            borderRadius: (STAMP_D - 12) / 2,
-            borderWidth: 1, borderColor: c + 'B3',
-            borderStyle: 'dashed',
-          }} />
-
-          {/* Content stack */}
-          <View style={{ alignItems: 'center', gap: 1, paddingHorizontal: 6 }}>
-            <Text style={{ fontSize: 8.5, fontWeight: '700', color: c, letterSpacing: 1.4 }}>
+        <Svg width={STAMP_D} height={STAMP_D} viewBox="0 0 100 100" overflow="visible">
+          <Defs>
+            <SvgPath id={topId} d="M 14 50 A 36 36 0 0 1 86 50" />
+            <SvgPath id={botId} d="M 14 50 A 36 36 0 0 0 86 50" />
+          </Defs>
+          {/* Outer ring */}
+          <Circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="2.2" opacity="0.85" />
+          {/* Inner ring */}
+          <Circle cx="50" cy="50" r="38" fill="none" stroke={c} strokeWidth="0.8" opacity="0.7" />
+          {/* Park name on top arc */}
+          <SvgText fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.9">
+            <TextPath href={`#${topId}`} startOffset="50%" textAnchor="middle">
+              {shortName}
+            </TextPath>
+          </SvgText>
+          {/* State code on bottom arc */}
+          <SvgText fill={c} fontWeight="600" fontSize="6.5" letterSpacing="1.5" opacity="0.85">
+            <TextPath href={`#${botId}`} startOffset="50%" textAnchor="middle">
               ★ {sc} ★
-            </Text>
-            {/* Mountain silhouette — approximation using borders */}
-            <MountainSilhouette color={c} size={Math.floor(STAMP_D * 0.3)} />
-            <Text
-              numberOfLines={2}
-              style={{ fontSize: 7.5, fontWeight: '800', color: c, textAlign: 'center', lineHeight: 9.5, letterSpacing: 0.4 }}
-            >
-              {short}
-            </Text>
-            {date ? (
-              <Text style={{ fontSize: 6.5, fontWeight: '600', color: c, letterSpacing: 0.6, marginTop: 1 }}>
-                {date}
-              </Text>
-            ) : null}
-          </View>
-        </View>
+            </TextPath>
+          </SvgText>
+          {/* Mountain */}
+          <SvgPath d="M30 60 L 42 44 L 50 52 L 60 38 L 70 60 Z" fill={c} opacity="0.85" />
+          {/* Snow cap */}
+          <Circle cx="60" cy="34" r="2" fill={c} opacity="0.85" />
+          {/* Date */}
+          {date ? (
+            <SvgText x="50" y="76" fill={c} fontWeight="700" fontSize="6.5" textAnchor="middle" letterSpacing="0.8" opacity="0.9">
+              {date}
+            </SvgText>
+          ) : null}
+        </Svg>
       </View>
 
-      {/* Park name label (not rotated) */}
+      {/* Park name label below stamp (not rotated) */}
       <Text
         numberOfLines={2}
         style={{ fontSize: 9, fontWeight: '600', color: C.inkSoft, textAlign: 'center', marginTop: 6, lineHeight: 12, maxWidth: CELL_W - 8 }}
@@ -338,42 +336,6 @@ function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) 
         {item.name}
       </Text>
     </TouchableOpacity>
-  );
-}
-
-// ── Mountain silhouette (no SVG — pure View) ──────────────────────────────────
-
-function MountainSilhouette({ color, size }: { color: string; size: number }) {
-  const h = size;
-  const w = size * 1.4;
-  // Two triangles composited: left peak and right (taller) peak
-  return (
-    <View style={{ width: w, height: h, position: 'relative', overflow: 'hidden' }}>
-      {/* Left lower peak */}
-      <View style={{
-        position: 'absolute', bottom: 0,
-        left: 0, width: 0, height: 0,
-        borderLeftWidth: Math.floor(w * 0.38), borderRightWidth: Math.floor(w * 0.28),
-        borderBottomWidth: Math.floor(h * 0.72),
-        borderLeftColor: 'transparent', borderRightColor: 'transparent',
-        borderBottomColor: color + 'CC',
-      }} />
-      {/* Right taller peak */}
-      <View style={{
-        position: 'absolute', bottom: 0,
-        right: 0, width: 0, height: 0,
-        borderLeftWidth: Math.floor(w * 0.32), borderRightWidth: Math.floor(w * 0.34),
-        borderBottomWidth: h,
-        borderLeftColor: 'transparent', borderRightColor: 'transparent',
-        borderBottomColor: color + 'D9',
-      }} />
-      {/* Snow cap dot */}
-      <View style={{
-        position: 'absolute', top: 0, right: Math.floor(w * 0.22),
-        width: 3, height: 3, borderRadius: 1.5,
-        backgroundColor: color, opacity: 0.85,
-      }} />
-    </View>
   );
 }
 

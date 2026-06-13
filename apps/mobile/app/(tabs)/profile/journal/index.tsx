@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet,
+  FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -331,23 +331,26 @@ export default function JournalScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
-      {/* Sort dropdown rendered above FlatList so it overlaps cards */}
-      {sortOpen && (
-        <View style={styles.sortDropdown}>
-          {(['newest', 'oldest', 'rating'] as const).map((s, i) => (
+      {/* Sort sheet */}
+      <Modal visible={sortOpen} transparent animationType="fade" onRequestClose={() => setSortOpen(false)}>
+        <Pressable style={styles.sortBackdrop} onPress={() => setSortOpen(false)} />
+        <View style={styles.sortSheet}>
+          <View style={styles.sortSheetHandle} />
+          <Text style={styles.sortSheetTitle}>Sort by</Text>
+          {(['newest', 'oldest', 'rating'] as const).map((s, i, arr) => (
             <TouchableOpacity
               key={s}
               onPress={() => { setSortBy(s); setSortOpen(false); }}
-              style={[styles.sortOption, i < 2 && { borderBottomWidth: 0.5, borderBottomColor: C.hairline }]}
+              style={[styles.sortSheetRow, i < arr.length - 1 && { borderBottomWidth: 0.5, borderBottomColor: C.hairline }]}
             >
-              <Text style={[styles.sortOptionText, sortBy === s && { color: C.primary, fontWeight: '700' }]}>
+              <Text style={[styles.sortSheetRowText, sortBy === s && { color: C.primary, fontWeight: '700' }]}>
                 {SORT_LABELS[s]}
               </Text>
-              {sortBy === s && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.primary }} />}
+              {sortBy === s && <Ionicons name="checkmark" size={17} color={C.primary} />}
             </TouchableOpacity>
           ))}
         </View>
-      )}
+      </Modal>
 
       <FlatList
         data={loading ? [] : filtered}
@@ -362,7 +365,6 @@ export default function JournalScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        onScrollBeginDrag={() => sortOpen && setSortOpen(false)}
       />
     </SafeAreaView>
   );
@@ -394,21 +396,30 @@ const styles = StyleSheet.create({
   },
   sortBtnText: { fontSize: 12.5, fontWeight: '600', color: C.inkSoft },
 
-  sortDropdown: {
-    position: 'absolute', right: 16, zIndex: 100,
-    backgroundColor: C.surface, borderRadius: 10,
-    borderWidth: 0.5, borderColor: C.hairline,
-    overflow: 'hidden', minWidth: 160,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.14, shadowRadius: 20,
-    elevation: 10,
-    // approximate top — below the filter bar
-    top: Platform.OS === 'ios' ? 148 : 140,
+  sortBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  sortOption: {
+  sortSheet: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 16,
+    elevation: 20,
+  },
+  sortSheetHandle: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: C.hairline,
+    alignSelf: 'center', marginTop: 10, marginBottom: 4,
+  },
+  sortSheetTitle: {
+    fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8,
+    textTransform: 'uppercase', paddingHorizontal: 20, paddingVertical: 12,
+  },
+  sortSheetRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingVertical: 11,
+    paddingHorizontal: 20, paddingVertical: 16,
   },
-  sortOptionText: { fontSize: 13, fontWeight: '500', color: C.inkSoft },
+  sortSheetRowText: { fontSize: 16, fontWeight: '500', color: C.ink },
 
   yearRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 6 },
   yearPill: {

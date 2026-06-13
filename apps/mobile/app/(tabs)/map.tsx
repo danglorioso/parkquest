@@ -430,11 +430,13 @@ function ParkBottomSheet({
   park,
   token,
   onClose,
+  onDismissStart,
   onStatusChange,
 }: {
   park: ParkForMap;
   token: string;
   onClose: () => void;
+  onDismissStart: () => void;
   onStatusChange: (code: string, status: ParkStatus) => void;
 }) {
   const router = useRouter();
@@ -602,6 +604,7 @@ function ParkBottomSheet({
   }
 
   function dismiss() {
+    onDismissStart();
     Animated.timing(sheetH, {
       toValue: 0, duration: 220, useNativeDriver: false,
     }).start(onClose);
@@ -1147,6 +1150,7 @@ export default function MapScreen() {
   const [loading, setLoading]           = useState(true);
   const [mapPressKey, setMapPressKey]   = useState(0);
   const mapRef = useRef<MapView>(null);
+  const controlsBottomAnim = useRef(new Animated.Value(0)).current;
   const currentRegionRef = useRef({ latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 });
 
   const counts: Record<FilterStatus, number> = {
@@ -1232,6 +1236,23 @@ export default function MapScreen() {
   loadDataRef.current = loadData;
   useFocusEffect(useCallback(() => { loadDataRef.current(); }, []));
 
+  // Animate map controls away from sheet edge when sheet opens/closes
+  useEffect(() => {
+    Animated.timing(controlsBottomAnim, {
+      toValue: selectedPark ? SHEET_PEEK + 14 : insets.bottom + 68,
+      duration: 220,
+      useNativeDriver: false,
+    }).start();
+  }, [selectedPark, insets.bottom]);
+
+  const handleSheetDismissStart = useCallback(() => {
+    Animated.timing(controlsBottomAnim, {
+      toValue: insets.bottom + 68,
+      duration: 220,
+      useNativeDriver: false,
+    }).start();
+  }, [insets.bottom]);
+
   const handleStatusChange = useCallback((code: string, status: ParkStatus) => {
     setParks(prev =>
       prev.map(p => p.park_code === code ? { ...p, status } : p)
@@ -1309,7 +1330,7 @@ export default function MapScreen() {
           const selected = selectedPark?.park_code === park.park_code;
           return (
             <Marker
-              key={`${park.park_code}-${park.status}-${selected}`}
+              key={`${park.park_code}-${park.status}`}
               coordinate={{ latitude: park.latitude, longitude: park.longitude }}
               onPress={e => { e.stopPropagation(); handleSelectPark(park); }}
               tracksViewChanges={selected}
@@ -1345,14 +1366,13 @@ export default function MapScreen() {
           park={selectedPark}
           token={token}
           onClose={() => setSelectedPark(null)}
+          onDismissStart={handleSheetDismissStart}
           onStatusChange={handleStatusChange}
         />
       )}
 
       {/* Map controls */}
-      <View style={[styles.mapControls, {
-        bottom: selectedPark ? SHEET_PEEK + 14 : insets.bottom + 68,
-      }]}>
+      <Animated.View style={[styles.mapControls, { bottom: controlsBottomAnim }]}>
         <TouchableOpacity style={styles.mapControlBtn} onPress={zoomIn} activeOpacity={0.75}>
           <Ionicons name="add" size={18} color="#4A4535" />
         </TouchableOpacity>
@@ -1362,7 +1382,7 @@ export default function MapScreen() {
         <TouchableOpacity style={styles.mapControlBtn} onPress={goHome} activeOpacity={0.75}>
           <Ionicons name="home-outline" size={14} color="#4A4535" />
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
       {/* Search — rendered last so results overlay everything (like the park sheet),
           but drops behind the sheet while a park profile is open */}
@@ -1577,7 +1597,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,251,241,0.97)',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    borderWidth: 0.5,
+    borderTopWidth: 0.5,
     borderColor: C.hairline,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },

@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal,
-  ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -202,7 +202,7 @@ function Lightbox({ images, initialIndex, onClose }: {
 
   return (
     <Modal visible animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.lightboxBg}>
+      <Pressable style={styles.lightboxBg} onPress={onClose}>
         <TouchableOpacity style={styles.lightboxClose} onPress={onClose}>
           <Ionicons name="close" size={26} color="#FFFBF1" />
         </TouchableOpacity>
@@ -218,9 +218,9 @@ function Lightbox({ images, initialIndex, onClose }: {
             setIdx(Math.round(e.nativeEvent.contentOffset.x / SW));
           }}
           renderItem={({ item }) => (
-            <View style={{ width: SW, justifyContent: 'center', alignItems: 'center' }}>
+            <Pressable onPress={() => {}} style={{ width: SW, justifyContent: 'center', alignItems: 'center' }}>
               <Image source={{ uri: item.url }} style={styles.lightboxImg} resizeMode="contain" />
-            </View>
+            </Pressable>
           )}
           keyExtractor={(_, i) => String(i)}
           style={{ flexGrow: 0 }}
@@ -233,7 +233,7 @@ function Lightbox({ images, initialIndex, onClose }: {
             {idx + 1} / {images.length}
           </Text>
         )}
-      </View>
+      </Pressable>
     </Modal>
   );
 }
@@ -287,10 +287,13 @@ export default function ParkDetailScreen() {
   const [weather,  setWeather]  = useState<WeatherForecast | null>(null);
   const [visits,   setVisits]   = useState<Visit[]>([]);
   const [loading,  setLoading]  = useState(true);
-  const [heroErr,  setHeroErr]  = useState(false);
   const [lightbox, setLightbox] = useState<{ images: NpsImage[]; idx: number } | null>(null);
   const [onBucket, setOnBucket] = useState(false);
   const [bucketBusy, setBucketBusy] = useState(false);
+  const [heroIdx,    setHeroIdx]    = useState(0);
+  const [heroLoaded, setHeroLoaded] = useState(false);
+  const npsRef = useRef<NpsData | null>(null);
+  npsRef.current = nps;
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -356,6 +359,19 @@ export default function ParkDetailScreen() {
     loadWeatherRef.current();
   }, []);
 
+  useEffect(() => {
+    setHeroIdx(0);
+    setHeroLoaded(false);
+  }, [nps]);
+
+  useEffect(() => {
+    if (!heroLoaded || !nps || nps.images.length < 2) return;
+    const tid = setInterval(() => {
+      setHeroIdx(prev => (prev + 1) % npsRef.current!.images.length);
+    }, 5000);
+    return () => clearInterval(tid);
+  }, [heroLoaded, nps]);
+
   const parkStatus = (() => {
     if (visits.some(v => !v.is_bucket_list && v.visited_date)) return 'visited';
     return 'notVisited';
@@ -366,8 +382,16 @@ export default function ParkDetailScreen() {
   // Pair each daytime with the night low
   const forecastNights = weather?.periods.filter(p => !p.isDaytime) ?? [];
 
-  const heroImage = nps?.images?.[0]?.url ?? park?.image_url;
-  const extraImages: NpsImage[] = nps?.images?.slice(1, 5) ?? [];
+  const totalImgs = nps?.images?.length ?? 0;
+  const heroImage = totalImgs > 0 ? nps!.images[heroIdx]?.url : park?.image_url;
+  const stripImages: Array<{ img: NpsImage; actualIdx: number }> = [];
+  if (nps && totalImgs >= 2) {
+    const stripCount = Math.min(totalImgs - 1, 4);
+    for (let i = 0; i < stripCount; i++) {
+      const actualIdx = (heroIdx + 1 + i) % totalImgs;
+      stripImages.push({ img: nps.images[actualIdx], actualIdx });
+    }
+  }
 
   if (loading) {
     return (
@@ -413,18 +437,20 @@ export default function ParkDetailScreen() {
       >
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
         <View style={[styles.hero, { height: 260 + insets.top, backgroundColor: gradientColor(park.park_code) }]}>
-          {heroImage && !heroErr && (
+          {heroImage && (
             <TouchableOpacity
               style={StyleSheet.absoluteFill}
               activeOpacity={0.95}
               disabled={!nps?.images?.length}
-              onPress={() => nps?.images?.length && setLightbox({ images: nps.images, idx: 0 })}
+              onPress={() => nps?.images?.length && setLightbox({ images: nps.images, idx: heroIdx })}
             >
-              <Image
+              <ExpoImage
                 source={{ uri: heroImage }}
-                style={StyleSheet.absoluteFill as any}
-                resizeMode="cover"
-                onError={() => setHeroErr(true)}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                transition={1200}
+                cachePolicy="memory-disk"
+                onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
               />
             </TouchableOpacity>
           )}
@@ -450,17 +476,17 @@ export default function ParkDetailScreen() {
         </View>
 
         {/* ── Photo strip ──────────────────────────────────────────────────── */}
-        {extraImages.length > 0 && (
+        {stripImages.length > 0 && (
           <ScrollView
             horizontal showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.photoStrip}
           >
-            {extraImages.map((img, i) => {
+            {stripImages.map(({ img, actualIdx }) => {
               const gc = gradientColors(park.park_code);
               return (
                 <TouchableOpacity
-                  key={i}
-                  onPress={() => setLightbox({ images: nps!.images, idx: i + 1 })}
+                  key={actualIdx}
+                  onPress={() => setLightbox({ images: nps!.images, idx: actualIdx })}
                   activeOpacity={0.85}
                   style={styles.photoStripItem}
                 >
@@ -474,7 +500,7 @@ export default function ParkDetailScreen() {
                     source={{ uri: img.url }}
                     style={StyleSheet.absoluteFill}
                     contentFit="cover"
-                    transition={300}
+                    transition={800}
                     cachePolicy="memory-disk"
                   />
                 </TouchableOpacity>
@@ -510,7 +536,7 @@ export default function ParkDetailScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtnOutline}
-            onPress={() => router.push('/(tabs)/map' as never)}
+            onPress={() => router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code } } as never)}
             activeOpacity={0.8}
           >
             <Ionicons name="map-outline" size={16} color={C.primary} />

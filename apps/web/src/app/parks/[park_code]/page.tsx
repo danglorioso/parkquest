@@ -1,7 +1,7 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import React, { use, useEffect, useState } from "react";
+import React, { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -731,10 +731,6 @@ function ParkInfoContent({
   setActivitiesExpanded,
   topicsExpanded,
   setTopicsExpanded,
-  heroLoaded,
-  setHeroLoaded,
-  stripLoaded,
-  setStripLoaded,
   onLightbox,
   onLogVisit,
   status,
@@ -749,14 +745,50 @@ function ParkInfoContent({
   setActivitiesExpanded: (v: boolean) => void;
   topicsExpanded: boolean;
   setTopicsExpanded: (v: boolean) => void;
-  heroLoaded: boolean;
-  setHeroLoaded: (v: boolean) => void;
-  stripLoaded: boolean[];
-  setStripLoaded: (fn: (prev: boolean[]) => boolean[]) => void;
   onLightbox: (images: LightboxImage[], index: number) => void;
   onLogVisit: () => void;
   status: "visited" | "bucketList" | "notVisited";
 }) {
+  const [heroLoaded, setHeroLoaded] = useState(false);
+  const [heroIdx, setHeroIdx] = useState(0);
+  const npsRef = useRef(nps);
+  npsRef.current = nps;
+
+  // Reset when park changes
+  useEffect(() => {
+    setHeroIdx(0);
+    setHeroLoaded(false);
+  }, [nps]);
+
+  // Preload all images client-side
+  useEffect(() => {
+    if (!nps) return;
+    nps.images.forEach(img => {
+      const el = new window.Image();
+      el.src = img.url;
+    });
+  }, [nps]);
+
+  // Slideshow timer — starts after first hero image loads
+  useEffect(() => {
+    if (!heroLoaded || !nps || nps.images.length < 2) return;
+    const tid = setInterval(() => {
+      setHeroIdx(prev => (prev + 1) % npsRef.current!.images.length);
+    }, 5000);
+    return () => clearInterval(tid);
+  }, [heroLoaded, nps]);
+
+  // Hero image and strip computation
+  const totalImgs = nps?.images?.length ?? 0;
+  const heroImg = nps && totalImgs > 0 ? nps.images[heroIdx] : undefined;
+  const stripImages = Array.from({ length: 4 }, (_, i) => {
+    if (!nps || totalImgs <= 1) {
+      return { img: nps?.images?.[i + 1], actualIdx: i + 1 };
+    }
+    const actualIdx = (heroIdx + 1 + i) % totalImgs;
+    return { img: nps.images[actualIdx], actualIdx };
+  });
+
   const stateLabel = park.states.split(",")[0]?.trim() ?? park.states;
   const stateName = STATE_NAMES[stateLabel] ?? stateLabel;
   const gradient = parkGradient(park.park_code);
@@ -778,16 +810,18 @@ function ParkInfoContent({
       {/* Hero */}
       <div style={{ padding: "14px 32px 0" }}>
         <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", height: 360 }}>
-          <div style={{ position: "absolute", inset: 0, background: gradient, backgroundImage: topoPattern("#ffffff", 0.10), opacity: heroLoaded ? 0 : 1, transition: "opacity 0.5s ease", pointerEvents: "none" }} />
-          {nps?.images[0] && (
+          <style>{`@keyframes parkHeroFadeIn { from { opacity: 0; } to { opacity: 1; } }`}</style>
+          <div style={{ position: "absolute", inset: 0, background: gradient, backgroundImage: topoPattern("#ffffff", 0.10), pointerEvents: "none" }} />
+          {heroImg && (
             <Image
-              src={nps.images[0].url}
-              alt={nps.images[0].altText || park.name}
+              key={heroImg.url}
+              src={heroImg.url}
+              alt={heroImg.altText || park.name}
               fill
               sizes="(max-width: 1200px) 100vw, 900px"
-              onLoad={() => setHeroLoaded(true)}
-              onClick={() => onLightbox(nps.images.map((img) => ({ url: img.url, caption: img.title || undefined, credit: img.credit || undefined })), 0)}
-              style={{ objectFit: "cover", cursor: "pointer", opacity: heroLoaded ? 1 : 0, transition: "opacity 0.5s ease" }}
+              onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
+              onClick={() => onLightbox(nps!.images.map((img) => ({ url: img.url, caption: img.title || undefined, credit: img.credit || undefined })), heroIdx)}
+              style={{ objectFit: "cover", cursor: "pointer", animation: "parkHeroFadeIn 1.2s ease both" }}
             />
           )}
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 35%, rgba(0,0,0,0) 65%)", pointerEvents: "none" }} />
@@ -804,24 +838,21 @@ function ParkInfoContent({
 
       {/* Photo strip */}
       <div style={{ padding: "14px 32px 0", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-        {Array.from({ length: 4 }).map((_, i) => {
-          const img = nps?.images[i + 1];
-          return (
-            <div key={i} style={{ position: "relative", height: 120, borderRadius: 10, overflow: "hidden", background: gradient, backgroundImage: topoPattern("#ffffff", 0.10) }}>
-              {img && (
-                <Image
-                  src={img.url}
-                  alt={img.altText || ""}
-                  fill
-                  sizes="200px"
-                  onLoad={() => setStripLoaded((prev) => prev.map((v, j) => j === i ? true : v))}
-                  onClick={() => onLightbox(nps.images.map((im) => ({ url: im.url, caption: im.title || undefined, credit: im.credit || undefined })), i + 1)}
-                  style={{ objectFit: "cover", cursor: "pointer", opacity: stripLoaded[i] ? 1 : 0, transition: "opacity 0.5s ease" }}
-                />
-              )}
-            </div>
-          );
-        })}
+        {stripImages.map(({ img, actualIdx }, i) => (
+          <div key={i} style={{ position: "relative", height: 120, borderRadius: 10, overflow: "hidden", background: gradient, backgroundImage: topoPattern("#ffffff", 0.10) }}>
+            {img && (
+              <Image
+                key={img.url}
+                src={img.url}
+                alt={img.altText || ""}
+                fill
+                sizes="200px"
+                onClick={() => onLightbox(nps!.images.map((im) => ({ url: im.url, caption: im.title || undefined, credit: im.credit || undefined })), actualIdx)}
+                style={{ objectFit: "cover", cursor: "pointer", animation: "parkHeroFadeIn 0.8s ease both" }}
+              />
+            )}
+          </div>
+        ))}
       </div>
 
       {/* About */}
@@ -1144,9 +1175,6 @@ export default function ParkDetailPage({
   const [activitiesExpanded, setActivitiesExpanded] = useState(true);
   const [topicsExpanded, setTopicsExpanded] = useState(true);
   const [lightbox, setLightbox] = useState<{ images: LightboxImage[]; index: number } | null>(null);
-  const [heroLoaded, setHeroLoaded]   = useState(false);
-  const [stripLoaded, setStripLoaded] = useState([false, false, false, false]);
-
   // Fetch NPS and weather data for everyone (public)
   useEffect(() => {
     fetch(`/api/parks/${park_code}/nps`)
@@ -1248,10 +1276,6 @@ export default function ParkDetailPage({
     setActivitiesExpanded,
     topicsExpanded,
     setTopicsExpanded,
-    heroLoaded,
-    setHeroLoaded,
-    stripLoaded,
-    setStripLoaded,
     onLightbox: (images: LightboxImage[], index: number) => setLightbox({ images, index }),
     onLogVisit: openLogVisit,
     status,
