@@ -1,5 +1,5 @@
 import { Tabs, useRouter } from 'expo-router';
-import { TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
+import { DeviceEventEmitter, TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 // Design tokens — mirrors globals.css
@@ -18,15 +18,17 @@ function TabIcon({
   focused,
   name,
   activeName,
+  size = 24,
 }: {
   focused: boolean;
   name: IconName;
   activeName: IconName;
+  size?: number;
 }) {
   return (
     <Ionicons
       name={focused ? activeName : name}
-      size={24}
+      size={size}
       color={focused ? C.primary : C.inkMute}
     />
   );
@@ -43,7 +45,9 @@ function LogVisitButton() {
     >
       <View style={styles.fabGlow}>
         <View style={styles.fab}>
-          <Ionicons name="add" size={30} color="#FFFBF1" />
+          <Ionicons name="add" size={22} color="#FFFBF1" />
+          <View style={styles.fabHighlight} pointerEvents="none" />
+          <View style={styles.fabInnerShadow} pointerEvents="none" />
         </View>
       </View>
     </TouchableOpacity>
@@ -76,6 +80,13 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="feed"
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            if (navigation.isFocused()) {
+              DeviceEventEmitter.emit('feedTabPress');
+            }
+          },
+        })}
         options={{
           title: 'Feed',
           tabBarIcon: ({ focused }) => (
@@ -85,6 +96,13 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="map"
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            if (navigation.isFocused()) {
+              DeviceEventEmitter.emit('mapTabPress');
+            }
+          },
+        })}
         options={{
           title: 'Map',
           tabBarIcon: ({ focused }) => (
@@ -116,7 +134,7 @@ export default function TabsLayout() {
         options={{
           title: 'Parks',
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="compass-outline" activeName="compass" />
+            <TabIcon focused={focused} name="compass-outline" activeName="compass" size={26} />
           ),
         }}
       />
@@ -143,26 +161,42 @@ const styles = StyleSheet.create({
   // glow, inner layer adds a tighter drop for depth (iOS stacks both;
   // Android approximates with elevation)
   fabGlow: {
-    borderRadius: 31,
+    borderRadius: 18,
     shadowColor: C.accent,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55,
-    shadowRadius: 14,
-    elevation: 10,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
   },
   fab: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: C.accent,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 5,
-    // Rim light on the edge sells the 3D dome
+    overflow: 'hidden',
     borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  fabHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '45%',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  fabInnerShadow: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '45%',
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    backgroundColor: 'rgba(110,35,0,0.28)',
   },
 });

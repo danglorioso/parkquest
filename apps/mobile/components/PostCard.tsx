@@ -522,11 +522,14 @@ function VisitMeta({ post }: { post: FeedPost }) {
 
 // ── CommentsPanel ─────────────────────────────────────────────────────────────
 
+const COMMENT_LIMIT = 500;
+
 function CommentsPanel({
-  postId, token, myAvatarUrl, myName, onCountChange,
+  postId, token, myUserId, myAvatarUrl, myName, onCountChange,
 }: {
   postId: number;
   token: string;
+  myUserId?: string | null;
   myAvatarUrl?: string | null;
   myName?: string | null;
   onCountChange: (delta: number) => void;
@@ -568,6 +571,17 @@ function CommentsPanel({
     }
   }, [draft, submitting, postId, token, myName, myAvatarUrl, onCountChange]);
 
+  const deleteComment = useCallback(async (commentId: number) => {
+    setRows(prev => prev.filter(c => c.id !== commentId));
+    onCountChange(-1);
+    try {
+      await apiReq(`/api/comments/${commentId}`, token, { method: 'DELETE' });
+    } catch {
+      // re-fetch on failure to restore state
+      apiReq(`/api/comments?postId=${postId}`, token).then(setRows).catch(() => {});
+    }
+  }, [token, postId, onCountChange]);
+
   return (
     <View style={styles.commentsPanel}>
       {loading && (
@@ -575,6 +589,7 @@ function CommentsPanel({
       )}
       {rows.map(c => {
         const cname = c.display_name ?? c.username ?? 'Explorer';
+        const isOwn = myUserId && c.user_id === myUserId;
         return (
           <View key={c.id} style={styles.commentRow}>
             <TouchableOpacity onPress={() => router.push(`/user/${c.user_id}` as never)}>
@@ -592,6 +607,15 @@ function CommentsPanel({
               </View>
               <Text style={styles.commentTime}>{relTime(c.created_at)}</Text>
             </View>
+            {isOwn && (
+              <TouchableOpacity
+                onPress={() => deleteComment(c.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ paddingLeft: 6 }}
+              >
+                <Ionicons name="trash-outline" size={14} color={C.inkMute} />
+              </TouchableOpacity>
+            )}
           </View>
         );
       })}
@@ -602,13 +626,18 @@ function CommentsPanel({
           <View style={styles.commentInputInner}>
             <TextInput
               value={draft}
-              onChangeText={setDraft}
+              onChangeText={v => setDraft(v.slice(0, COMMENT_LIMIT))}
               onSubmitEditing={submit}
               placeholder="Add a comment…"
               placeholderTextColor={C.inkMute}
               returnKeyType="send"
               style={styles.commentTextInput}
             />
+            {draft.length >= COMMENT_LIMIT - 50 && (
+              <Text style={styles.commentCharCount}>
+                {COMMENT_LIMIT - draft.length}
+              </Text>
+            )}
             <TouchableOpacity
               onPress={submit}
               disabled={!draft.trim() || submitting}
@@ -908,9 +937,11 @@ export function PostCard({
             size={15}
             color={liked ? C.liked : C.inkSoft}
           />
-          <Text style={[styles.actionBtnText, liked && { color: C.liked }]}>
-            {likeCount > 0 ? likeCount.toLocaleString() : 'Like'}
-          </Text>
+          {likeCount > 0 && (
+            <Text style={[styles.actionBtnText, liked && { color: C.liked }]}>
+              {likeCount.toLocaleString()}
+            </Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -923,15 +954,11 @@ export function PostCard({
             size={15}
             color={showComments ? C.primary : C.inkSoft}
           />
-          <Text style={[styles.actionBtnText, showComments && { color: C.primary }]}>
-            {commentCount > 0 ? commentCount.toLocaleString() : 'Comment'}
-          </Text>
-        </TouchableOpacity>
-
-        <View style={{ flex: 1 }} />
-
-        <TouchableOpacity activeOpacity={0.7} style={styles.actionBtn}>
-          <Ionicons name="bookmark-outline" size={15} color={C.inkSoft} />
+          {commentCount > 0 && (
+            <Text style={[styles.actionBtnText, showComments && { color: C.primary }]}>
+              {commentCount.toLocaleString()}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -992,6 +1019,7 @@ export function PostCard({
         <CommentsPanel
           postId={post.id}
           token={token}
+          myUserId={myUserId}
           myAvatarUrl={myAvatarUrl}
           myName={myName}
           onCountChange={delta => setCommentDelta(prev => prev + delta)}
@@ -1186,11 +1214,15 @@ const styles = StyleSheet.create({
     borderRadius: 20, paddingLeft: 13, paddingRight: 5,
   },
   commentTextInput: {
-    flex: 1, fontSize: 13, color: C.ink, paddingVertical: 8,
+    flex: 1, fontSize: 13, color: C.ink,
+    paddingVertical: 8, textAlignVertical: 'center',
   },
   commentSend: {
     width: 28, height: 28, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
+  },
+  commentCharCount: {
+    fontSize: 10, color: C.inkMute, paddingHorizontal: 4,
   },
 
   // Card

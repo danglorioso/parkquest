@@ -3,6 +3,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useScrollToTop } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -127,7 +128,6 @@ function StatusBadge({ status }: { status: ParkStatus }) {
   if (status === 'notVisited') {
     return (
       <View style={[styles.statusBadge, { backgroundColor: 'rgba(20,17,12,0.52)' }]}>
-        <Ionicons name="add" size={9} color="#FFFBF1" />
         <Text style={styles.statusBadgeText}>Not visited</Text>
       </View>
     );
@@ -397,6 +397,8 @@ export default function ParksScreen() {
 
   const loadDataRef = useRef(loadData);
   loadDataRef.current = loadData;
+  const flatListRef = useRef<FlatList>(null);
+  useScrollToTop(flatListRef);
   useFocusEffect(useCallback(() => {
     loadDataRef.current();
     const intent = consumeParkFilterIntent();
@@ -597,6 +599,7 @@ export default function ParksScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <FlatList
+        ref={flatListRef}
         data={rows}
         keyExtractor={item => item.id}
         renderItem={({ item }) => {

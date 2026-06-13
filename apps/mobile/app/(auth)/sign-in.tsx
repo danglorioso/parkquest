@@ -3,7 +3,7 @@ import {
   Linking, Platform, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOAuth, useSignUp, useUser } from '@clerk/clerk-expo';
@@ -357,6 +357,9 @@ export default function LandingScreen() {
   const [oauthBusy, setOauthBusy] = useState<'google' | 'apple' | null>(null);
   const [busy,      setBusy]      = useState(false);
   const [error,     setError]     = useState('');
+  // Stores the OAuth sign-up object that needs a username to complete.
+  const pendingOAuthSignUpRef = useRef<any>(null);
+  const pendingSetActiveRef   = useRef<((params: any) => Promise<void>) | null>(null);
 
   const clerkMsg = (e: unknown) => {
     const ce = e as { errors?: { message?: string; longMessage?: string }[] };
@@ -374,6 +377,9 @@ export default function LandingScreen() {
         await (sa ?? setActive)!({ session: createdSessionId });
         router.replace('/(tabs)/feed' as never);
       } else if ((oauthSU as any)?.status === 'missing_requirements') {
+        // Store the OAuth sign-up object — useSignUp()'s signUp may not reflect it.
+        pendingOAuthSignUpRef.current = oauthSU;
+        pendingSetActiveRef.current = (sa ?? setActive) as any;
         setMode('username');
       }
       // else: user cancelled the OAuth sheet — do nothing, no error
@@ -394,15 +400,18 @@ export default function LandingScreen() {
     setError('');
     setBusy(true);
     try {
-      if (signUp && signUp.status === 'missing_requirements') {
+      // Prefer the stored OAuth sign-up object; fall back to useSignUp()'s signUp.
+      const pendingSU = pendingOAuthSignUpRef.current ?? signUp;
+      const sa = pendingSetActiveRef.current ?? setActive;
+      if (pendingSU && pendingSU.status === 'missing_requirements') {
         // OAuth sign-up paused on required fields — no session exists yet,
         // so user.update() is unavailable; finish the sign-up instead.
-        const result = await signUp.update({ username: uname });
+        const result = await pendingSU.update({ username: uname });
         if (result.status !== 'complete') {
           setError('Could not finish sign-up. Please try again.');
           return;
         }
-        await setActive!({ session: result.createdSessionId });
+        await sa!({ session: result.createdSessionId });
       } else if (user) {
         await user.update({ username: uname });
       } else {

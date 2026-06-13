@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  FlatList, Linking, Modal, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
+  Animated, FlatList, Linking, Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/components/Avatar';
@@ -69,11 +70,12 @@ function notificationText(n: NotificationItem): string {
 }
 
 function NotificationRow({
-  n, responded, onRespond,
+  n, responded, onRespond, onNavigateToUser,
 }: {
   n: NotificationItem;
   responded: boolean;
   onRespond: (friendshipId: number, action: 'accept' | 'reject') => Promise<void>;
+  onNavigateToUser: (userId: string) => void;
 }) {
   const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.system;
   const name = n.actor_display_name || n.actor_username || 'Someone';
@@ -90,7 +92,9 @@ function NotificationRow({
     <View style={[styles.row, !n.read && { backgroundColor: C.unreadTint }]}>
       <View style={{ position: 'relative', flexShrink: 0, alignSelf: 'flex-start' }}>
         {n.actor_id ? (
-          <Avatar url={n.actor_avatar_url} name={name} size={36} />
+          <TouchableOpacity onPress={() => onNavigateToUser(String(n.actor_id))} activeOpacity={0.75}>
+            <Avatar url={n.actor_avatar_url} name={name} size={36} />
+          </TouchableOpacity>
         ) : (
           <View style={[styles.typeCircle, { backgroundColor: cfg.bg }]}>
             <Ionicons name={cfg.icon} size={16} color={cfg.color} />
@@ -152,6 +156,7 @@ type PushStatus = 'granted' | 'denied' | 'undetermined';
 export function NotificationBell({ style }: { style?: ViewStyle }) {
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
@@ -165,23 +170,37 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
-  // Check push permission status on mount
+  // Sync push permission status (request is handled in root _layout.tsx on sign-in)
   useEffect(() => {
     Notifications.getPermissionsAsync().then(({ status }) => {
       setPushStatus(status as PushStatus);
     });
   }, []);
 
-  // On first sheet open, request push permission (iOS shows system dialog once;
-  // subsequent calls return current status without re-prompting)
-  const hasRequestedPushRef = useRef(false);
-  useEffect(() => {
-    if (!open || hasRequestedPushRef.current) return;
-    hasRequestedPushRef.current = true;
-    Notifications.requestPermissionsAsync().then(({ status }) => {
-      setPushStatus(status as PushStatus);
+  const dragY = useRef(new Animated.Value(0)).current;
+
+  const dismiss = useCallback(() => {
+    Animated.timing(dragY, { toValue: 600, duration: 200, useNativeDriver: true }).start(() => {
+      setOpen(false);
+      dragY.setValue(0);
     });
-  }, [open]);
+  }, [dragY]);
+
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, { dy }) => dy > 4,
+    onPanResponderMove: (_, { dy }) => { if (dy > 0) dragY.setValue(dy); },
+    onPanResponderRelease: (_, { dy, vy }) => {
+      if (dy > 80 || vy > 0.8) {
+        Animated.timing(dragY, { toValue: 600, duration: 200, useNativeDriver: true }).start(() => {
+          setOpen(false);
+          dragY.setValue(0);
+        });
+      } else {
+        Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+      }
+    },
+  })).current;
 
   const handleOpenPushSettings = () => Linking.openURL('app-settings:');
 
@@ -254,14 +273,18 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
         visible={open}
         transparent
         animationType="fade"
-        onRequestClose={() => setOpen(false)}
+        onRequestClose={dismiss}
         statusBarTranslucent
       >
         <View style={styles.overlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={dismiss} />
+          <Animated.View style={[styles.sheet, { paddingBottom: insets.bottom + 8, transform: [{ translateY: dragY }] }]}>
+            {/* Drag handle */}
+            <View style={styles.dragHandle} {...panResponder.panHandlers}>
+              <View style={styles.dragIndicator} />
+            </View>
             {/* Header */}
-            <View style={styles.sheetHeader}>
+            <View style={[styles.sheetHeader]} {...panResponder.panHandlers}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                 <Text style={styles.sheetTitle}>Activity</Text>
                 {newCount > 0 && (
@@ -312,6 +335,10 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                       ? respondedTo.has(item.metadata.friendship_id)
                       : false}
                     onRespond={handleRespond}
+                    onNavigateToUser={(userId) => {
+                      setOpen(false);
+                      router.push(`/user/${userId}` as any);
+                    }}
                   />
                 )}
               />
@@ -338,7 +365,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
               </View>
               <Text style={styles.permFooterAction}>Manage →</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </>
@@ -375,6 +402,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 18, borderTopRightRadius: 18,
     borderWidth: 0.5, borderColor: C.hairline,
     overflow: 'hidden',
+  },
+  dragHandle: {
+    alignItems: 'center', paddingVertical: 8,
+  },
+  dragIndicator: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: C.hairline,
   },
   sheetHeader: {
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,

@@ -48,7 +48,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { getToken } = useAuth();
+  const { getToken, signOut } = useAuth();
   const { user } = useUser();
   const { paletteId, colors: paletteColors, setPalette } = usePalette();
   const C = useMemo(
@@ -334,6 +334,15 @@ export default function EditProfileScreen() {
             }
           </TouchableOpacity>
 
+          {/* Sign out */}
+          <TouchableOpacity
+            style={styles.signOutBtn}
+            onPress={() => signOut()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.signOutText}>Sign out</Text>
+          </TouchableOpacity>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -471,6 +480,17 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     color: '#FFFBF1',
     fontWeight: '700',
     fontSize: 14,
+  },
+  signOutBtn: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  signOutText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#DC2626',
   },
   paletteGrid: {
     flexDirection: 'row',

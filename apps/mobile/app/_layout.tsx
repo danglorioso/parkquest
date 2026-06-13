@@ -1,6 +1,7 @@
 import '../global.css';
 
 import { useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import { useFonts } from 'expo-font';
 import { PaletteProvider } from '../lib/palette';
 import {
@@ -13,6 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as Notifications from 'expo-notifications';
 import LoadingScreen from '../components/LoadingScreen';
 
 const tokenCache = (() => {
@@ -31,10 +33,11 @@ const queryClient = new QueryClient({
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
 function AuthSync() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded, getToken } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const wasSignedIn = useRef(false);
+  const pushRequested = useRef(false);
 
   useEffect(() => {
     if (!isLoaded || (segments as string[]).length === 0) return;
@@ -43,6 +46,40 @@ function AuthSync() {
     if (isSignedIn && inAuth) router.replace('/(tabs)/feed');
     if (!isSignedIn && !inAuth && !wasSignedIn.current) router.replace('/(auth)/sign-in');
   }, [isLoaded, isSignedIn, segments]);
+
+  useEffect(() => {
+    if (!isSignedIn || pushRequested.current) return;
+    pushRequested.current = true;
+
+    const registerPush = async () => {
+      const { status } = await Notifications.getPermissionsAsync();
+      const finalStatus = status === 'undetermined'
+        ? (await Notifications.requestPermissionsAsync()).status
+        : status;
+      if (finalStatus !== 'granted') return;
+
+      // Expo push tokens only work on physical devices
+      if (Platform.OS === 'ios' && !Platform.isPad) {
+        try {
+          const projectId = process.env.EXPO_PUBLIC_PROJECT_ID;
+          const tokenData = await Notifications.getExpoPushTokenAsync(
+            projectId ? { projectId } : undefined
+          );
+          const apiBase = process.env.EXPO_PUBLIC_API_URL ?? '';
+          const tok = await getToken();
+          if (tok) {
+            fetch(`${apiBase}/api/push-tokens`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+              body: JSON.stringify({ token: tokenData.data }),
+            }).catch(() => {});
+          }
+        } catch { /* simulator or missing projectId — ignore */ }
+      }
+    };
+
+    registerPush();
+  }, [isSignedIn]);
 
   return null;
 }

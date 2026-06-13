@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity,
+  DeviceEventEmitter, View, Text, FlatList, TouchableOpacity,
   ActivityIndicator, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -82,6 +82,7 @@ export default function FeedScreen() {
 
   const flatListRef = useRef<FlatList<FeedPost>>(null);
   useScrollToTop(flatListRef);
+  const scrollOffsetRef = useRef(0);
 
   const scrollToTop = () => flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
 
@@ -114,6 +115,17 @@ export default function FeedScreen() {
   loadFeedRef.current = loadFeed;
 
   useFocusEffect(useCallback(() => { loadFeedRef.current(); }, []));
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('feedTabPress', () => {
+      if (scrollOffsetRef.current < 10) {
+        loadFeedRef.current(true);
+      } else {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   const handleDelete = useCallback((id: number) => {
     setPosts(prev => prev.filter(p => p.id !== id));
@@ -235,6 +247,8 @@ export default function FeedScreen() {
         ListEmptyComponent={ListEmpty}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
         refreshing={refreshing}
         onRefresh={() => loadFeed(true)}
         // Slight performance tuning for a social feed

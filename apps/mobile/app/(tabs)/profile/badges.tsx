@@ -419,26 +419,6 @@ function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => 
           {/* Header */}
           <View style={styles.shareHeader}>
             <Text style={styles.shareTitle}>Share badge</Text>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              <TouchableOpacity onPress={onClose} style={styles.shareCancelBtn} activeOpacity={0.7}>
-                <Text style={styles.shareCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleShare}
-                disabled={submitting || alreadyShared}
-                activeOpacity={0.8}
-                style={[
-                  styles.shareBtn,
-                  alreadyShared && styles.shareBtnDisabled,
-                  submitting && { opacity: 0.55 },
-                ]}
-              >
-                {!alreadyShared && <Ionicons name="checkmark" size={13} color="#FFFBF1" />}
-                <Text style={[styles.shareBtnText, alreadyShared && { color: C.inkMute }]}>
-                  {alreadyShared ? 'Already shared' : 'Share'}
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
 
           {/* Badge preview */}
@@ -489,6 +469,28 @@ function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => 
             style={styles.captionInput}
           />
           <Text style={styles.captionCount}>{caption.length} / 500</Text>
+
+          {/* Action buttons — bottom right */}
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+            <TouchableOpacity onPress={onClose} style={styles.shareCancelBtn} activeOpacity={0.7}>
+              <Text style={styles.shareCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleShare}
+              disabled={submitting || alreadyShared}
+              activeOpacity={0.8}
+              style={[
+                styles.shareBtn,
+                alreadyShared && styles.shareBtnDisabled,
+                submitting && { opacity: 0.55 },
+              ]}
+            >
+              {!alreadyShared && <Ionicons name="checkmark" size={13} color="#FFFBF1" />}
+              <Text style={[styles.shareBtnText, alreadyShared && { color: C.inkMute }]}>
+                {alreadyShared ? 'Already shared' : 'Share'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -685,7 +687,7 @@ export default function BadgesScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <SafeAreaView style={styles.screen} edges={[]}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={C.primary} />
         </View>
@@ -695,7 +697,7 @@ export default function BadgesScreen() {
 
   if (error) {
     return (
-      <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <SafeAreaView style={styles.screen} edges={[]}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
@@ -711,7 +713,7 @@ export default function BadgesScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['bottom']}>
+    <SafeAreaView style={styles.screen} edges={[]}>
       <FlatList
         data={data}
         renderItem={renderRow}

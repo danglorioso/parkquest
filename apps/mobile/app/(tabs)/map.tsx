@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Dimensions, Keyboard, Linking, PanResponder, Platform,
+  Animated, DeviceEventEmitter, Dimensions, Keyboard, Linking, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
@@ -661,19 +661,6 @@ function ParkBottomSheet({
 
   // ── Actions ───────────────────────────────────────────────────────────────────
 
-  const handleMarkVisited = async () => {
-    setActionLoading('visit');
-    try {
-      await fetch(`${BASE}/api/visits`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ park_code: park.park_code, visited_date: new Date().toISOString().split('T')[0] }),
-      });
-      onStatusChange(park.park_code, 'visited');
-    } catch { /* ignore */ }
-    setActionLoading(null);
-  };
-
   const handleBucketList = async () => {
     setActionLoading('bucket');
     try {
@@ -852,7 +839,7 @@ function ParkBottomSheet({
                     );
                   })}
                   {h.description ? (
-                    <Text style={[styles.sectionBody, { marginTop: 10 }]} numberOfLines={4}>
+                    <Text style={[styles.sectionBody, { marginTop: 10 }]}>
                       {h.description}
                     </Text>
                   ) : null}
@@ -1077,17 +1064,11 @@ function ParkBottomSheet({
           ) : (
             <>
               <TouchableOpacity
-                onPress={handleMarkVisited}
-                disabled={!!actionLoading}
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: park.park_code } } as never)}
                 style={[styles.actionBtn, { backgroundColor: C.visited, flex: 1 }]}
               >
-                {actionLoading === 'visit'
-                  ? <Text style={[styles.actionBtnText, { color: '#FFFBF1' }]}>…</Text>
-                  : <>
-                      <Ionicons name="checkmark" size={14} color="#FFFBF1" />
-                      <Text style={[styles.actionBtnText, { color: '#FFFBF1' }]}>Mark visited</Text>
-                    </>
-                }
+                <Ionicons name="checkmark" size={14} color="#FFFBF1" />
+                <Text style={[styles.actionBtnText, { color: '#FFFBF1' }]}>Mark visited</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleBucketList}
@@ -1306,6 +1287,15 @@ export default function MapScreen() {
       500
     );
   }, []);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('mapTabPress', () => {
+      setSelectedPark(null);
+      setFilterStatus('all');
+      goHome();
+    });
+    return () => sub.remove();
+  }, [goHome]);
 
   return (
     <View style={styles.screen}>

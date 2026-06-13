@@ -1736,7 +1736,7 @@ export default function LogVisitModal() {
           activeOpacity={0.8}
         >
           <Text style={{ fontSize: 14, fontWeight: '800', color: canContinue ? '#FFFBF1' : C.inkMute }}>
-            {isLast ? (submitting ? 'Saving…' : isEdit ? 'Save' : 'Post entry') : 'Continue'}
+            {isLast ? (submitting ? 'Saving…' : isEdit ? 'Save' : 'Post') : 'Continue'}
           </Text>
           {!isLast && <Ionicons name="arrow-forward" size={14} color={canContinue ? '#FFFBF1' : C.inkMute} />}
         </TouchableOpacity>

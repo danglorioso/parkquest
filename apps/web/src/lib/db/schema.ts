@@ -135,3 +135,10 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
 });
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+
+export const expoPushTokens = pgTable('expo_push_tokens', {
+  id: serial('id').primaryKey(),
+  clerk_user_id: varchar('clerk_user_id', { length: 255 }).notNull(),
+  token: text('token').notNull().unique(),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+});
