@@ -1358,14 +1358,18 @@ export default function LogVisitModal() {
   const insets   = useSafeAreaInsets();
 
   // Edit mode — opened from a feed post's "Edit visit" menu item
-  const { visitId: visitIdParam, postId: postIdParam } =
-    useLocalSearchParams<{ visitId?: string; postId?: string }>();
+  const { visitId: visitIdParam, postId: postIdParam, parkCode: parkCodeParam } =
+    useLocalSearchParams<{ visitId?: string; postId?: string; parkCode?: string }>();
   const editVisitId = visitIdParam ? Number(visitIdParam) : null;
   const editPostId  = postIdParam && !isNaN(Number(postIdParam)) ? Number(postIdParam) : null;
   const isEdit = editVisitId != null && !isNaN(editVisitId);
 
   const [token,      setToken]      = useState<string | null>(null);
-  const [draft,      setDraftState] = useState<Draft>(makeBlank);
+  const [draft,      setDraftState] = useState<Draft>(() => {
+    const blank = makeBlank();
+    if (!isEdit && parkCodeParam) blank.parkCode = parkCodeParam;
+    return blank;
+  });
   const [step,       setStep]       = useState(0);
   const [parks,      setParks]      = useState<ParkInfo[]>([]);
   const [showPicker, setShowPicker] = useState(false);

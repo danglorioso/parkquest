@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Dimensions, Image, Linking, Modal,
+  ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal,
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -198,34 +198,40 @@ function Lightbox({ images, initialIndex, onClose }: {
   onClose: () => void;
 }) {
   const [idx, setIdx] = useState(initialIndex);
+  const flatRef = useRef<FlatList<NpsImage>>(null);
+
   return (
     <Modal visible animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.lightboxBg}>
         <TouchableOpacity style={styles.lightboxClose} onPress={onClose}>
           <Ionicons name="close" size={26} color="#FFFBF1" />
         </TouchableOpacity>
-        <Image source={{ uri: images[idx]?.url }} style={styles.lightboxImg} resizeMode="contain" />
+        <FlatList
+          ref={flatRef}
+          data={images}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={initialIndex}
+          getItemLayout={(_, index) => ({ length: SW, offset: SW * index, index })}
+          onMomentumScrollEnd={e => {
+            setIdx(Math.round(e.nativeEvent.contentOffset.x / SW));
+          }}
+          renderItem={({ item }) => (
+            <View style={{ width: SW, justifyContent: 'center', alignItems: 'center' }}>
+              <Image source={{ uri: item.url }} style={styles.lightboxImg} resizeMode="contain" />
+            </View>
+          )}
+          keyExtractor={(_, i) => String(i)}
+          style={{ flexGrow: 0 }}
+        />
         {images[idx]?.title ? (
           <Text style={styles.lightboxCaption}>{images[idx].title}</Text>
         ) : null}
         {images.length > 1 && (
-          <View style={styles.lightboxNav}>
-            <TouchableOpacity
-              onPress={() => setIdx(i => (i - 1 + images.length) % images.length)}
-              style={styles.lightboxNavBtn}
-            >
-              <Ionicons name="chevron-back" size={22} color="#FFFBF1" />
-            </TouchableOpacity>
-            <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12 }}>
-              {idx + 1} / {images.length}
-            </Text>
-            <TouchableOpacity
-              onPress={() => setIdx(i => (i + 1) % images.length)}
-              style={styles.lightboxNavBtn}
-            >
-              <Ionicons name="chevron-forward" size={22} color="#FFFBF1" />
-            </TouchableOpacity>
-          </View>
+          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 24 }}>
+            {idx + 1} / {images.length}
+          </Text>
         )}
       </View>
     </Modal>
@@ -494,7 +500,7 @@ export default function ParkDetailScreen() {
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => router.push('/(modals)/log-visit' as never)}
+            onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
             activeOpacity={0.8}
           >
             <Ionicons name="pencil" size={16} color="#FFFBF1" />
@@ -749,7 +755,7 @@ export default function ParkDetailScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.actionBtn}
-                onPress={() => router.push('/(modals)/log-visit' as never)}
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
                 activeOpacity={0.8}
               >
                 <Ionicons name="pencil" size={14} color="#FFFBF1" />
@@ -761,7 +767,7 @@ export default function ParkDetailScreen() {
               {visits.map(v => <VisitCard key={v.id} visit={v} />)}
               <TouchableOpacity
                 style={styles.actionBtnOutline}
-                onPress={() => router.push('/(modals)/log-visit' as never)}
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
                 activeOpacity={0.8}
               >
                 <Ionicons name="add" size={16} color={C.primary} />

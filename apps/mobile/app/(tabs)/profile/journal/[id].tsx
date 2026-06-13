@@ -3,9 +3,9 @@ import {
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -468,7 +468,7 @@ export default function JournalEntryScreen() {
     finally { setLoading(false); }
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   function entryToDraft(e: JournalEntry): Draft {
     return {
@@ -606,14 +606,12 @@ export default function JournalEntryScreen() {
         <Stack.Screen options={{
           title: entry.park_name ?? entry.park_code,
           headerRight: () => (
-            <View style={{ flexDirection: 'row', gap: 12, paddingRight: 4 }}>
-              <TouchableOpacity onPress={confirmDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="trash-outline" size={20} color={C.danger} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setEditing(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="create-outline" size={20} color={C.primary} />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { visitId: String(entry.id) } } as never)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="create-outline" size={22} color={C.primary} />
+            </TouchableOpacity>
           ),
         }} />
 
@@ -737,6 +735,12 @@ export default function JournalEntryScreen() {
                 <Text style={{ fontSize: 14.5, color: C.inkSoft, lineHeight: 22 }}>{entry.notes}</Text>
               </View>
             ) : null}
+
+            {/* Delete */}
+            <TouchableOpacity onPress={confirmDelete} style={s.deleteBtn}>
+              <Ionicons name="trash-outline" size={15} color={C.danger} />
+              <Text style={s.deleteBtnText}>Delete entry</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -1013,6 +1017,14 @@ const s = StyleSheet.create({
     width: 80, height: 80, borderRadius: 8, borderWidth: 1.5, borderStyle: 'dashed',
     borderColor: C.primary, alignItems: 'center', justifyContent: 'center',
   },
+
+  deleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(192,57,43,0.25)',
+    backgroundColor: 'rgba(192,57,43,0.06)',
+  },
+  deleteBtnText: { fontSize: 14, fontWeight: '600', color: C.danger },
 
   ctaBtn: {
     backgroundColor: C.primary, borderRadius: 14,

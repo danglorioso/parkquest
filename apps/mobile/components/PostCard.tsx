@@ -892,7 +892,7 @@ export function PostCard({
       {!isBadge && <VisitMeta post={post} />}
 
       {/* Photo carousel */}
-      {!isBadge && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
+      {!isBadge && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
 
       {/* Action row */}
       <View style={styles.actionRow}>

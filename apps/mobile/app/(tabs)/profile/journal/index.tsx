@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, FlatList, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -244,7 +244,8 @@ export default function JournalScreen() {
   }, [entries, query, yearFilter, sortBy]);
 
   const totalPhotos = useMemo(() => entries.reduce((n, e) => n + (e.photos?.length ?? 0), 0), [entries]);
-  const SORT_LABELS = { newest: 'Newest first', oldest: 'Oldest first', rating: 'Top rated' };
+  const SORT_LABELS: Record<typeof sortBy, string> = { newest: 'Newest first', oldest: 'Oldest first', rating: 'Top rated' };
+  const SORT_LABELS_SHORT: Record<typeof sortBy, string> = { newest: 'Newest', oldest: 'Oldest', rating: 'Top rated' };
 
   const ListHeader = (
     <View>
@@ -276,9 +277,9 @@ export default function JournalScreen() {
               clearButtonMode="while-editing"
             />
           </View>
-          <TouchableOpacity onPress={() => setSortOpen(o => !o)} style={styles.sortBtn}>
-            <Ionicons name="options-outline" size={15} color={C.inkSoft} />
-            <Text style={styles.sortBtnText}>{SORT_LABELS[sortBy]}</Text>
+          <TouchableOpacity onPress={() => setSortOpen(true)} style={styles.sortBtn}>
+            <Ionicons name="funnel-outline" size={14} color={C.inkSoft} />
+            <Text style={styles.sortBtnText} numberOfLines={1}>{SORT_LABELS_SHORT[sortBy]}</Text>
           </TouchableOpacity>
         </View>
       )}

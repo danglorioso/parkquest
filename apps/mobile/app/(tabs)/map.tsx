@@ -607,21 +607,42 @@ function ParkBottomSheet({
     }).start(onClose);
   }
 
-  const panResponder = useRef(
+
+
+  // ── Hero gesture handler ──────────────────────────────────────────────────────
+  // Captures vertical drags (sheet expand/collapse) and horizontal swipes
+  // (image carousel). Pure taps pass through to the Pressable so the lightbox
+  // still opens on tap.
+
+  const imagesLenRef = useRef(0);
+  imagesLenRef.current = npsImages.length;
+
+  const heroPan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: (_, g) => {
+        const dx = Math.abs(g.dx);
+        const dy = Math.abs(g.dy);
+        if (dy > 8 && dy > dx) return true;
+        return imagesLenRef.current > 1 && dx > 14 && dx > dy * 1.4;
+      },
       onPanResponderGrant: () => {
         sheetH.stopAnimation(v => { baseH.current = v; });
       },
       onPanResponderMove: (_, g) => {
-        const next = Math.max(60, Math.min(SHEET_FULL, baseH.current - g.dy));
-        sheetH.setValue(next);
+        if (Math.abs(g.dy) > Math.abs(g.dx)) {
+          const next = Math.max(60, Math.min(SHEET_FULL, baseH.current - g.dy));
+          sheetH.setValue(next);
+        }
       },
       onPanResponderRelease: (_, g) => {
-        if (Math.abs(g.dy) < 6 && Math.abs(g.dx) < 6) {
-          if (baseH.current <= SHEET_PEEK + 10) snapTo(SHEET_FULL);
+        const len = imagesLenRef.current;
+        // Horizontal image swipe
+        if (len > 1 && Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.4) {
+          if (g.dx <= -40 || g.vx <= -0.3) setImgIdx(i => (i + 1) % len);
+          else if (g.dx >= 40 || g.vx >= 0.3) setImgIdx(i => (i - 1 + len) % len);
           return;
         }
+        // Vertical sheet snap
         const projected = baseH.current - g.dy;
         const mid = (SHEET_PEEK + SHEET_FULL) / 2;
         if (g.vy > 0.9 || projected < SHEET_PEEK * 0.45) {
@@ -630,31 +651,6 @@ function ParkBottomSheet({
           snapTo(SHEET_FULL);
         } else {
           snapTo(SHEET_PEEK);
-        }
-      },
-    })
-  ).current;
-
-  // ── Hero image swipe ──────────────────────────────────────────────────────────
-
-  const imagesLenRef = useRef(0);
-  imagesLenRef.current = npsImages.length;
-
-  const heroPan = useRef(
-    PanResponder.create({
-      // Claim only clearly horizontal gestures so taps (expand) and the
-      // vertical drag handle keep working
-      onMoveShouldSetPanResponderCapture: (_, g) =>
-        imagesLenRef.current > 1 &&
-        Math.abs(g.dx) > 14 &&
-        Math.abs(g.dx) > Math.abs(g.dy) * 1.4,
-      onPanResponderRelease: (_, g) => {
-        const len = imagesLenRef.current;
-        if (len < 2) return;
-        if (g.dx <= -40 || g.vx <= -0.3) {
-          setImgIdx(i => (i + 1) % len);
-        } else if (g.dx >= 40 || g.vx >= 0.3) {
-          setImgIdx(i => (i - 1 + len) % len);
         }
       },
     })
@@ -753,7 +749,7 @@ function ParkBottomSheet({
           {/* Top strip — drag handle, image counter, close. Shifts below the
               status bar as the sheet reaches full screen. */}
           <Animated.View pointerEvents="box-none" style={[styles.heroTopStrip, { top: topPad }]}>
-            <View {...panResponder.panHandlers} style={styles.handleArea}>
+            <View style={styles.handleArea}>
               <View style={styles.handleBar} />
             </View>
             <TouchableOpacity style={styles.heroClose} onPress={dismiss} hitSlop={8}>
@@ -1068,8 +1064,7 @@ function ParkBottomSheet({
                 <Text style={[styles.actionBtnText, { color: C.ink }]}>Edit visit</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={handleMarkVisited}
-                disabled={!!actionLoading}
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: park.park_code } } as never)}
                 style={[styles.actionBtn, { backgroundColor: C.primary, flex: 1 }]}
               >
                 <Ionicons name="checkmark" size={14} color="#FFFBF1" />
