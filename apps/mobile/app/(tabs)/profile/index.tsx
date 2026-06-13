@@ -8,8 +8,10 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { BADGE_MAP } from '@/lib/badges';
+import { setParkFilterIntent } from '@/lib/parkFilterIntent';
 import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
+import { NotificationBell } from '@/components/NotificationCenter';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -260,9 +262,7 @@ export default function ProfileScreen() {
     <View style={styles.topBar}>
       <Wordmark />
       <View style={styles.topBarActions}>
-        <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
-          <Ionicons name="notifications-outline" size={18} color={C.inkSoft} />
-        </TouchableOpacity>
+        <NotificationBell style={styles.iconBtn} />
         <TouchableOpacity
           style={styles.iconBtn}
           activeOpacity={0.7}
@@ -271,11 +271,11 @@ export default function ProfileScreen() {
           <Ionicons name="search" size={17} color={C.inkSoft} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.iconBtn, styles.plusBtn]}
+          style={styles.iconBtn}
           activeOpacity={0.8}
-          onPress={() => router.push('/(modals)/log-visit' as never)}
+          onPress={() => router.push('/profile/edit' as never)}
         >
-          <Ionicons name="add" size={20} color="#FFFBF1" />
+          <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
         </TouchableOpacity>
       </View>
     </View>
@@ -350,9 +350,15 @@ export default function ProfileScreen() {
 
         {/* ── Stats strip ──────────────────────────────────────────────────── */}
         <View style={styles.statsStrip}>
-          <StatCell value={parksVisited} sub="/63" label="PARKS" />
+          <StatCell
+            value={parksVisited} sub="/63" label="PARKS"
+            onPress={() => { setParkFilterIntent('visited'); router.push('/(tabs)/parks' as never); }}
+          />
           <View style={styles.statDivider} />
-          <StatCell value={bucketList}   label="BUCKET" />
+          <StatCell
+            value={bucketList} label="BUCKET"
+            onPress={() => { setParkFilterIntent('bucketList'); router.push('/(tabs)/parks' as never); }}
+          />
           <View style={styles.statDivider} />
           <StatCell value={badgesEarned} sub={`/${totalBadges}`} label="BADGES" />
           <View style={styles.statDivider} />

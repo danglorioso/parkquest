@@ -143,17 +143,49 @@ export default function SignUpScreen() {
       if (result.status === 'complete') {
         await setActive!({ session: result.createdSessionId });
         setStep('username');
+      } else if (result.status === 'missing_requirements') {
+        // Email verified, but the instance requires more fields (username).
+        // No session exists yet — the username step completes the sign-up.
+        setStep('username');
+      } else {
+        setError('Verification incomplete. Please try again.');
       }
-    } catch (e) { setError(clerkMsg(e)); }
-    finally { setBusy(false); }
+    } catch (e) {
+      const ce = e as { errors?: { code?: string }[] };
+      if (ce?.errors?.[0]?.code === 'verification_already_verified') {
+        // A previous tap already verified the email — move on instead of erroring.
+        try {
+          if (signUp?.status === 'complete' && signUp.createdSessionId) {
+            await setActive!({ session: signUp.createdSessionId });
+          }
+        } catch { /* session activation retried implicitly on next step */ }
+        setStep('username');
+      } else {
+        setError(clerkMsg(e));
+      }
+    } finally { setBusy(false); }
   };
 
   const handleUsername = async () => {
-    if (!user || username.length < 3) return;
+    const uname = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (uname.length < 3) return;
     setError('');
     setBusy(true);
     try {
-      await user.update({ username: username.toLowerCase().replace(/[^a-z0-9_]/g, '') });
+      if (signUp && signUp.status === 'missing_requirements') {
+        // Sign-up not finished yet (no session) — username completes it.
+        const result = await signUp.update({ username: uname });
+        if (result.status !== 'complete') {
+          setError('Could not finish sign-up. Please try again.');
+          return;
+        }
+        await setActive!({ session: result.createdSessionId });
+      } else if (user) {
+        await user.update({ username: uname });
+      } else {
+        setError('Account not ready yet. Please try again.');
+        return;
+      }
       router.replace('/(tabs)/feed' as never);
     } catch (e) { setError(clerkMsg(e)); }
     finally { setBusy(false); }

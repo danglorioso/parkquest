@@ -6,9 +6,9 @@ import {
 import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useOAuth, useUser } from '@clerk/clerk-expo';
+import { useOAuth, useSignUp, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
-import Svg, { Circle, Defs, Ellipse, LinearGradient, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -52,11 +52,16 @@ const SHOOTS: [number, number, number, number, number][] = [
   [0.12, 75, 70, 10000, 7000],
 ];
 
+// Topo watermark — same swirling contour lines as the web hero, tiled 420px
+const TOPO_TILE = 420;
+const TOPO_ROWS = [60, 110, 160, 210, 260, 310, 360, 410];
+
 // Module-level animated values — created once
 const _starOp   = STARS.map(([,, op])  => new Animated.Value(op));
 const _cloudX   = CLOUDS.map(([w])     => new Animated.Value(-w * SCREEN_W));
-const _sunScale = new Animated.Value(1);
+const _sunScale = new Animated.Value(0.92);
 const _sunOp    = new Animated.Value(0.55);
+const _topoShift = new Animated.Value(0);
 const _shootTx  = SHOOTS.map(() => new Animated.Value(0));
 const _shootTy  = SHOOTS.map(() => new Animated.Value(0));
 const _shootOp  = SHOOTS.map(() => new Animated.Value(0));
@@ -124,13 +129,18 @@ function HeroSection() {
 
     // Sun pulse
     Animated.loop(Animated.sequence([
-      Animated.timing(_sunOp,    { toValue: 0.45, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      Animated.timing(_sunOp,    { toValue: 0.75, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(_sunOp,    { toValue: 0.85, duration: 4000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(_sunOp,    { toValue: 0.55, duration: 4000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
     ])).start();
     Animated.loop(Animated.sequence([
       Animated.timing(_sunScale, { toValue: 1.10, duration: 3500, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       Animated.timing(_sunScale, { toValue: 0.92, duration: 3500, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
     ])).start();
+
+    // Topo watermark drift — one full tile per cycle, so the loop reset is invisible
+    Animated.loop(
+      Animated.timing(_topoShift, { toValue: TOPO_TILE, duration: 90000, easing: Easing.linear, useNativeDriver: true }),
+    ).start();
 
     // Shooting stars — fire, 18 s pause, repeat
     const runShoot = (i: number) => {
@@ -140,7 +150,7 @@ function HeroSection() {
         Animated.delay(delay),
         Animated.parallel([
           Animated.timing(_shootTx[i], { toValue: -260, duration, easing: Easing.linear, useNativeDriver: true }),
-          Animated.timing(_shootTy[i], { toValue:  200, duration, easing: Easing.linear, useNativeDriver: true }),
+          Animated.timing(_shootTy[i], { toValue:  234, duration, easing: Easing.linear, useNativeDriver: true }),
           Animated.sequence([
             Animated.timing(_shootOp[i], { toValue: 0.85, duration: duration * 0.15, useNativeDriver: true }),
             Animated.timing(_shootOp[i], { toValue: 0,    duration: duration * 0.70, useNativeDriver: true }),
@@ -155,6 +165,28 @@ function HeroSection() {
   return (
     <View style={[styles.hero, { height: heroH }]}>
 
+      {/* Topo watermark — drifting contour lines, same pattern as web hero */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', left: -TOPO_TILE, top: -TOPO_TILE,
+          transform: [{ translateX: _topoShift }, { translateY: _topoShift }],
+        }}
+      >
+        <Svg width={SCREEN_W + TOPO_TILE} height={heroH + TOPO_TILE}>
+          <Defs>
+            <Pattern id="heroTopo" patternUnits="userSpaceOnUse" width={TOPO_TILE} height={TOPO_TILE}>
+              <G fill="none" stroke="#FFFBF1" strokeOpacity={0.14} strokeWidth={1}>
+                {TOPO_ROWS.map((y) => (
+                  <Path key={y} d={`M-20 ${y} Q 60 ${y - 30} 130 ${y} T 280 ${y} T 440 ${y}`} />
+                ))}
+              </G>
+            </Pattern>
+          </Defs>
+          <Rect x={0} y={0} width={SCREEN_W + TOPO_TILE} height={heroH + TOPO_TILE} fill="url(#heroTopo)" />
+        </Svg>
+      </Animated.View>
+
       {/* Sun glow — behind stars/clouds/mountains */}
       <Animated.View style={{
         position: 'absolute', right: SCREEN_W * 0.08, top: insets.top + 20,
@@ -164,9 +196,9 @@ function HeroSection() {
         <Svg width={160} height={160} viewBox="0 0 160 160">
           <Defs>
             <RadialGradient id="heroSunG" cx="50%" cy="50%" r="50%">
-              <Stop offset="0%"   stopColor="#FFE6A0" stopOpacity="0.55" />
-              <Stop offset="30%"  stopColor="#D89A3A" stopOpacity="0.30" />
-              <Stop offset="65%"  stopColor="#D89A3A" stopOpacity="0.10" />
+              <Stop offset="0%"   stopColor="#FFE6A0" stopOpacity="1" />
+              <Stop offset="30%"  stopColor="#D89A3A" stopOpacity="0.55" />
+              <Stop offset="70%"  stopColor="#D89A3A" stopOpacity="0.12" />
               <Stop offset="100%" stopColor="#D89A3A" stopOpacity="0" />
             </RadialGradient>
           </Defs>
@@ -192,7 +224,7 @@ function HeroSection() {
           position: 'absolute', right: SCREEN_W * rightFrac, top: insets.top + topPx,
           width: w, height: 2,
           opacity: _shootOp[i],
-          transform: [{ rotate: '-42deg' }, { translateX: _shootTx[i] }, { translateY: _shootTy[i] }],
+          transform: [{ translateX: _shootTx[i] }, { translateY: _shootTy[i] }, { rotate: '-42deg' }],
         }}>
           <Svg width={w} height={2} viewBox={`0 0 ${w} 2`}>
             <Defs>
@@ -316,6 +348,7 @@ function ErrorBox({ msg }: { msg: string }) {
 export default function LandingScreen() {
   const router = useRouter();
   const { user } = useUser();
+  const { signUp, setActive } = useSignUp();
   const { startOAuthFlow: googleFlow } = useOAuth({ strategy: 'oauth_google' });
   const { startOAuthFlow: appleFlow  } = useOAuth({ strategy: 'oauth_apple' });
 
@@ -336,13 +369,19 @@ export default function LandingScreen() {
     try {
       const flow = provider === 'google' ? googleFlow : appleFlow;
       const { createdSessionId, setActive: sa, signUp: oauthSU } = await flow();
-      if (createdSessionId && sa) {
-        await sa({ session: createdSessionId });
+      if (createdSessionId) {
+        // Use flow's setActive, fall back to the hook's setActive (Apple can omit it).
+        await (sa ?? setActive)!({ session: createdSessionId });
         router.replace('/(tabs)/feed' as never);
       } else if ((oauthSU as any)?.status === 'missing_requirements') {
         setMode('username');
       }
+      // else: user cancelled the OAuth sheet — do nothing, no error
     } catch (e) {
+      const ce = e as { errors?: { code?: string }[]; code?: string };
+      const code = ce?.errors?.[0]?.code ?? ce?.code ?? '';
+      // Swallow Apple-specific cancellation signals silently.
+      if (code === 'user_cancelled' || code === 'cancelled' || code === 'ERR_REQUEST_CANCELLED') return;
       setError(clerkMsg(e));
     } finally {
       setOauthBusy(null);
@@ -350,11 +389,26 @@ export default function LandingScreen() {
   };
 
   const handleUsername = async () => {
-    if (!user || username.length < 3) return;
+    const uname = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (uname.length < 3) return;
     setError('');
     setBusy(true);
     try {
-      await user.update({ username: username.toLowerCase().replace(/[^a-z0-9_]/g, '') });
+      if (signUp && signUp.status === 'missing_requirements') {
+        // OAuth sign-up paused on required fields — no session exists yet,
+        // so user.update() is unavailable; finish the sign-up instead.
+        const result = await signUp.update({ username: uname });
+        if (result.status !== 'complete') {
+          setError('Could not finish sign-up. Please try again.');
+          return;
+        }
+        await setActive!({ session: result.createdSessionId });
+      } else if (user) {
+        await user.update({ username: uname });
+      } else {
+        setError('Account not ready yet. Please try again.');
+        return;
+      }
       router.replace('/(tabs)/feed' as never);
     } catch (e) {
       setError(clerkMsg(e));

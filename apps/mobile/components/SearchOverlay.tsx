@@ -98,6 +98,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
   const [parks, setParks]           = useState<ParkLite[]>([]);
   const [visits, setVisits]         = useState<Visit[]>([]);
   const [userResults, setUserResults] = useState<UserResult[]>([]);
+  const [searching, setSearching] = useState(false);
   const parksLoaded = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seq = useRef(0);
@@ -134,7 +135,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
     if (!trimmed) { setUserResults([]); return; }
     const mySeq = ++seq.current;
     const tok = await getToken();
-    if (!tok) return;
+    if (!tok) { setSearching(false); return; }
     try {
       const res = await fetch(
         `${BASE}/api/users?q=${encodeURIComponent(trimmed)}&limit=5`,
@@ -142,15 +143,16 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
       );
       if (res.ok) {
         const data: UserResult[] = await res.json();
-        if (mySeq === seq.current) setUserResults(data.slice(0, 5));
-      }
-    } catch { /* ignore */ }
+        if (mySeq === seq.current) { setUserResults(data.slice(0, 5)); setSearching(false); }
+      } else if (mySeq === seq.current) { setSearching(false); }
+    } catch { if (mySeq === seq.current) setSearching(false); }
   }, [getToken]);
 
   const handleChange = (q: string) => {
     setQuery(q);
     if (timer.current) clearTimeout(timer.current);
-    if (!q.trim()) { setUserResults([]); return; }
+    if (!q.trim()) { setUserResults([]); setSearching(false); return; }
+    setSearching(true);
     timer.current = setTimeout(() => searchUsers(q), 250);
   };
 
@@ -159,6 +161,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
     setQuery('');
     setTab('all');
     setUserResults([]);
+    setSearching(false);
     Keyboard.dismiss();
     onClose();
   };
@@ -207,7 +210,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
       : null;
 
   const showUsers = trimmedQuery.length > 0 && userResults.length > 0;
-  const noResults = trimmedQuery.length > 0 && filteredParks.length === 0 && userResults.length === 0;
+  const noResults = trimmedQuery.length > 0 && !searching && filteredParks.length === 0 && userResults.length === 0;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>

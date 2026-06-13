@@ -658,6 +658,18 @@ export function PostCard({
   const [showLikers, setShowLikers] = useState(false);
   const [commentDelta, setCommentDelta] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
+  const [previewComments, setPreviewComments] = useState<CommentRow[]>([]);
+
+  useEffect(() => {
+    if (post.comment_count <= 0) return;
+    let active = true;
+    apiReq(`/api/comments?postId=${post.id}`, token)
+      .then((rows: CommentRow[]) => { if (active) setPreviewComments(rows.slice(0, 2)); })
+      .catch(() => {});
+    return () => { active = false; };
+  // token is stable per-render of the feed screen; post.id never changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post.id]);
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionDraft, setCaptionDraft] = useState(post.caption ?? '');
   const [currentCaption, setCurrentCaption] = useState<string | null>(post.caption ?? null);
@@ -782,7 +794,9 @@ export function PostCard({
 
       {/* ... menu */}
       {showMenu && isOwnPost && (
-        <View style={styles.menu}>
+        <>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
+          <View style={styles.menu}>
           {post.visit_id != null && (
             <>
               <TouchableOpacity
@@ -808,6 +822,7 @@ export function PostCard({
             <Text style={[styles.menuItemText, { color: '#D45040' }]}>Delete post</Text>
           </TouchableOpacity>
         </View>
+        </>
       )}
 
       {/* Park chip */}
@@ -927,6 +942,49 @@ export function PostCard({
           token={token}
           onClose={() => setShowLikers(false)}
         />
+      )}
+
+      {/* Comment preview — hidden when full panel is open */}
+      {!showComments && previewComments.length > 0 && (
+        <View style={styles.previewPanel}>
+          {previewComments.map(c => {
+            const cname = c.display_name ?? c.username ?? 'Explorer';
+            return (
+              <TouchableOpacity
+                key={c.id}
+                style={styles.commentRow}
+                activeOpacity={0.75}
+                onPress={() => setShowComments(true)}
+              >
+                <TouchableOpacity onPress={() => router.push(`/user/${c.user_id}` as never)}>
+                  <Avatar url={c.avatar_url} name={cname} size={28} />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.commentBubble}>
+                    <Text
+                      style={styles.commentAuthor}
+                      onPress={() => router.push(`/user/${c.user_id}` as never)}
+                    >
+                      {cname}{' '}
+                    </Text>
+                    <Text style={styles.commentContent}>{c.content}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+          {commentCount > previewComments.length && (
+            <TouchableOpacity
+              onPress={() => setShowComments(true)}
+              style={styles.viewAllBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.viewAllText}>
+                View all {commentCount} comment{commentCount !== 1 ? 's' : ''}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* Comments panel */}
@@ -1089,6 +1147,16 @@ const styles = StyleSheet.create({
   },
 
   // Comments
+  previewPanel: {
+    borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
+    paddingBottom: 4,
+  },
+  viewAllBtn: {
+    paddingHorizontal: 18, paddingTop: 8, paddingBottom: 4,
+  },
+  viewAllText: {
+    fontSize: 12, fontWeight: '600', color: C.inkMute,
+  },
   commentsPanel: {
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
   },

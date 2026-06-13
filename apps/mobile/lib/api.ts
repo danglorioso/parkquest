@@ -187,26 +187,40 @@ export const getBadges = (token: string) =>
 
 // ── Notifications ──────────────────────────────────────────────────────────────
 
+export type NotificationType =
+  | 'friend_request' | 'friend_accepted' | 'like' | 'comment' | 'post'
+  | 'visit_logged' | 'badge_earned' | 'system' | 'recommendation';
+
 export interface NotificationItem {
   id: number;
-  type: string;
-  is_read: boolean;
-  created_at: string | null;
-  actor_id: string;
+  type: NotificationType;
+  actor_id: string | null;
   actor_username: string | null;
   actor_display_name: string | null;
   actor_avatar_url: string | null;
+  post_id: number | null;
   park_code: string | null;
   park_name: string | null;
-  post_id: number | null;
-  visit_id: number | null;
-  badge_id: string | null;
-  badge_name: string | null;
-  badge_emoji: string | null;
+  metadata: {
+    message?: string;
+    excerpt?: string;
+    friendship_id?: number;
+    badge_id?: string;
+    badge_name?: string;
+    badge_emoji?: string;
+  } | null;
+  read: boolean;
+  created_at: string;
 }
 
-export const getNotifications = (token: string) =>
-  req<NotificationItem[]>('/api/notifications', token);
+export const getNotifications = (token: string, limit = 50) =>
+  req<NotificationItem[]>(`/api/notifications?limit=${limit}`, token);
 
-export const markNotificationsRead = (token: string) =>
-  req('/api/notifications', token, { method: 'PATCH' });
+export const getUnreadNotificationCount = (token: string) =>
+  req<{ unread_count: number }>('/api/notifications?count=true', token);
+
+export const markNotificationsRead = (token: string, ids?: number[]) =>
+  req('/api/notifications', token, {
+    method: 'PATCH',
+    body: JSON.stringify(ids && ids.length > 0 ? { ids } : { all: true }),
+  });

@@ -5,11 +5,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
+import { NotificationBell } from '@/components/NotificationCenter';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -77,6 +79,11 @@ export default function FeedScreen() {
   const [filter, setFilter]       = useState<Filter>('all');
   const [error, setError]         = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  const flatListRef = useRef<FlatList<FeedPost>>(null);
+  useScrollToTop(flatListRef);
+
+  const scrollToTop = () => flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
 
   const loadFeed = useCallback(async (isRefresh = false) => {
     const tok = await getToken();
@@ -187,11 +194,9 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.screen} edges={['top']}>
       {/* Top bar — wordmark + actions */}
       <View style={styles.topBar}>
-        <Wordmark />
+        <Wordmark onPress={scrollToTop} />
         <View style={styles.topBarActions}>
-          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
-            <Ionicons name="notifications-outline" size={18} color={C.inkSoft} />
-          </TouchableOpacity>
+          <NotificationBell style={styles.iconBtn} />
           <TouchableOpacity
             style={styles.iconBtn}
             activeOpacity={0.7}
@@ -210,6 +215,7 @@ export default function FeedScreen() {
       </View>
 
       <FlatList<FeedPost>
+        ref={flatListRef}
         data={loading ? [] : filtered}
         keyExtractor={item => String(item.id)}
         renderItem={({ item }) =>

@@ -9,6 +9,7 @@ import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
+import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -396,7 +397,11 @@ export default function ParksScreen() {
 
   const loadDataRef = useRef(loadData);
   loadDataRef.current = loadData;
-  useFocusEffect(useCallback(() => { loadDataRef.current(); }, []));
+  useFocusEffect(useCallback(() => {
+    loadDataRef.current();
+    const intent = consumeParkFilterIntent();
+    if (intent) setStatusFilter(intent);
+  }, []));
 
   // Activities and topics are slow (NPS API) — load lazily in background, once
   const filtersFetched = useRef(false);
