@@ -545,7 +545,14 @@ export default function BadgesScreen() {
     [badges, tierFilter]
   );
   const visibleEarned = useMemo(() => visible.filter(b => b.earned),  [visible]);
-  const visibleLocked = useMemo(() => visible.filter(b => !b.earned), [visible]);
+  const visibleLocked = useMemo(() => {
+    const locked = visible.filter(b => !b.earned);
+    return locked.sort((a, b) => {
+      const aPct = a.progress_target ? (a.progress_current ?? 0) / a.progress_target : 0;
+      const bPct = b.progress_target ? (b.progress_current ?? 0) / b.progress_target : 0;
+      return bPct - aPct;
+    });
+  }, [visible]);
   const latestUnlock  = earned[0] ?? null;
   const earnedPct     = badges.length > 0 ? Math.round((earned.length / badges.length) * 100) : 0;
 

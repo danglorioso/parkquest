@@ -13,6 +13,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
 import { ImageLightbox } from '@/components/ImageLightbox';
+import { useColors } from '@/lib/palette';
+import { CompassSpinner } from '@/components/LoadingScreen';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -375,6 +377,7 @@ function SheetSection({ title, children }: { title: string; children: React.Reac
 // ── Stars ─────────────────────────────────────────────────────────────────────
 
 function Stars({ value }: { value: number }) {
+  const C = useColors();
   return (
     <View style={{ flexDirection: 'row', gap: 1 }}>
       {Array.from({ length: 5 }).map((_, i) => (
@@ -400,6 +403,7 @@ function StatCell({ label, value, valueColor }: { label: string; value: string; 
 function ChipGrid({
   items, muted = false, limit = 8,
 }: { items: string[]; muted?: boolean; limit?: number }) {
+  const C = useColors();
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? items : items.slice(0, limit);
   const hidden = items.length - limit;
@@ -411,13 +415,13 @@ function ChipGrid({
         </View>
       ))}
       {items.length > limit && !expanded && (
-        <TouchableOpacity onPress={() => setExpanded(true)} style={[styles.activityChip, styles.chipExpand]}>
-          <Text style={styles.chipExpandText}>+{hidden} more</Text>
+        <TouchableOpacity onPress={() => setExpanded(true)} style={[styles.activityChip, styles.chipExpand, { borderColor: C.primary }]}>
+          <Text style={[styles.chipExpandText, { color: C.primary }]}>+{hidden} more</Text>
         </TouchableOpacity>
       )}
       {expanded && items.length > limit && (
-        <TouchableOpacity onPress={() => setExpanded(false)} style={[styles.activityChip, styles.chipExpand]}>
-          <Text style={styles.chipExpandText}>Show less</Text>
+        <TouchableOpacity onPress={() => setExpanded(false)} style={[styles.activityChip, styles.chipExpand, { borderColor: C.primary }]}>
+          <Text style={[styles.chipExpandText, { color: C.primary }]}>Show less</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -441,24 +445,13 @@ function ParkBottomSheet({
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const C = useColors();
   const sheetH   = useRef(new Animated.Value(0)).current;
   const baseH    = useRef(SHEET_PEEK);
 
-  // Hero grows and sheet corners square off as the sheet approaches full screen,
-  // so the cover image extends to the top of the screen like the park detail page.
-  const heroH = sheetH.interpolate({
-    inputRange: [SHEET_PEEK, SHEET_FULL],
-    outputRange: [190, 260 + insets.top],
-    extrapolate: 'clamp',
-  });
   const sheetRadius = sheetH.interpolate({
     inputRange: [SHEET_FULL - 60, SHEET_FULL],
     outputRange: [16, 0],
-    extrapolate: 'clamp',
-  });
-  const topPad = sheetH.interpolate({
-    inputRange: [SHEET_FULL - 60, SHEET_FULL],
-    outputRange: [0, insets.top],
     extrapolate: 'clamp',
   });
 
@@ -492,9 +485,15 @@ function ParkBottomSheet({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [lightboxIdx, setLightboxIdx]     = useState<number | null>(null);
 
+  // Scroll-to-expand state
+  const sheetFullRef    = useRef(false);
+  const [scrollEnabled, setScrollEnabled] = useState(false);
+
   // ── Animate in ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    sheetFullRef.current = false;
+    setScrollEnabled(false);
     baseH.current = SHEET_PEEK;
     sheetH.setValue(0);
     Animated.spring(sheetH, {
@@ -596,6 +595,9 @@ function ParkBottomSheet({
   // ── Sheet snap / dismiss ──────────────────────────────────────────────────────
 
   function snapTo(target: number) {
+    const full = target >= SHEET_FULL;
+    sheetFullRef.current = full;
+    setScrollEnabled(full);
     Animated.spring(sheetH, {
       toValue: target, useNativeDriver: false,
       damping: 28, mass: 0.85, stiffness: 200,
@@ -604,60 +606,66 @@ function ParkBottomSheet({
   }
 
   function dismiss() {
+    sheetFullRef.current = false;
+    setScrollEnabled(false);
     onDismissStart();
     Animated.timing(sheetH, {
       toValue: 0, duration: 220, useNativeDriver: false,
     }).start(onClose);
   }
 
+  // ── Top-strip pan handler ─────────────────────────────────────────────────────
+  // Drag handle at the top of the sheet controls vertical snap/dismiss.
 
+  const topStripPan = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, { dy, dx }) => Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx),
+    onPanResponderGrant: () => {
+      sheetH.stopAnimation(v => { baseH.current = v; });
+    },
+    onPanResponderMove: (_, { dy }) => {
+      const next = Math.max(60, Math.min(SHEET_FULL, baseH.current - dy));
+      sheetH.setValue(next);
+    },
+    onPanResponderRelease: (_, { dy, vy }) => {
+      const projected = baseH.current - dy;
+      const mid = (SHEET_PEEK + SHEET_FULL) / 2;
+      if (vy > 0.9 || projected < SHEET_PEEK * 0.45) {
+        dismiss();
+      } else if (vy < -0.5 || projected > mid) {
+        snapTo(SHEET_FULL);
+      } else {
+        snapTo(SHEET_PEEK);
+      }
+    },
+  })).current;
 
-  // ── Hero gesture handler ──────────────────────────────────────────────────────
-  // Captures vertical drags (sheet expand/collapse) and horizontal swipes
-  // (image carousel). Pure taps pass through to the Pressable so the lightbox
-  // still opens on tap.
+  // ── Content pan handler ───────────────────────────────────────────────────────
+  // When sheet is not full, upward drags expand the sheet instead of scrolling.
+  // Uses a ref so the PanResponder closure always sees current state.
 
-  const imagesLenRef = useRef(0);
-  imagesLenRef.current = npsImages.length;
-
-  const heroPan = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_, g) => {
-        const dx = Math.abs(g.dx);
-        const dy = Math.abs(g.dy);
-        if (dy > 8 && dy > dx) return true;
-        return imagesLenRef.current > 1 && dx > 14 && dx > dy * 1.4;
-      },
-      onPanResponderGrant: () => {
-        sheetH.stopAnimation(v => { baseH.current = v; });
-      },
-      onPanResponderMove: (_, g) => {
-        if (Math.abs(g.dy) > Math.abs(g.dx)) {
-          const next = Math.max(60, Math.min(SHEET_FULL, baseH.current - g.dy));
-          sheetH.setValue(next);
-        }
-      },
-      onPanResponderRelease: (_, g) => {
-        const len = imagesLenRef.current;
-        // Horizontal image swipe
-        if (len > 1 && Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.4) {
-          if (g.dx <= -40 || g.vx <= -0.3) setImgIdx(i => (i + 1) % len);
-          else if (g.dx >= 40 || g.vx >= 0.3) setImgIdx(i => (i - 1 + len) % len);
-          return;
-        }
-        // Vertical sheet snap
-        const projected = baseH.current - g.dy;
-        const mid = (SHEET_PEEK + SHEET_FULL) / 2;
-        if (g.vy > 0.9 || projected < SHEET_PEEK * 0.45) {
-          dismiss();
-        } else if (g.vy < -0.5 || projected > mid) {
-          snapTo(SHEET_FULL);
-        } else {
-          snapTo(SHEET_PEEK);
-        }
-      },
-    })
-  ).current;
+  const contentPan = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, { dy, dx }) =>
+      !sheetFullRef.current && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx),
+    onPanResponderGrant: () => {
+      sheetH.stopAnimation(v => { baseH.current = v; });
+    },
+    onPanResponderMove: (_, { dy }) => {
+      // dy < 0 = swipe up = expand; dy > 0 = swipe down = collapse toward peek
+      const next = Math.max(SHEET_PEEK * 0.45, Math.min(SHEET_FULL, baseH.current - dy));
+      sheetH.setValue(next);
+    },
+    onPanResponderRelease: (_, { dy, vy }) => {
+      const projected = baseH.current - dy;
+      const mid = (SHEET_PEEK + SHEET_FULL) / 2;
+      if (vy > 0.9 || projected < SHEET_PEEK * 0.45) {
+        dismiss();
+      } else if (vy < -0.5 || projected > mid) {
+        snapTo(SHEET_FULL);
+      } else {
+        snapTo(SHEET_PEEK);
+      }
+    },
+  })).current;
 
   // ── Actions ───────────────────────────────────────────────────────────────────
 
@@ -696,15 +704,38 @@ function ParkBottomSheet({
       <Pressable style={styles.backdrop} onPress={dismiss} />
 
       <Animated.View style={[styles.sheet, { height: sheetH, borderTopLeftRadius: sheetRadius, borderTopRightRadius: sheetRadius }]}>
-        {/* Hero image — extends to top of screen when sheet is full */}
-        <Animated.View style={[styles.hero, { height: heroH }]} {...heroPan.panHandlers}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => {
-              if (npsImages.length > 0) setLightboxIdx(imgIdx);
-              else if (baseH.current <= SHEET_PEEK + 10) snapTo(SHEET_FULL);
-            }}
-          >
+        <View style={{ flex: 1 }} {...contentPan.panHandlers}>
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          scrollEnabled={scrollEnabled}
+          stickyHeaderIndices={[1]}
+          onScroll={e => {
+            const y = e.nativeEvent.contentOffset.y;
+            if (y < 0) {
+              // Overscrolling past top while sheet is full — drive sheet down
+              const newH = Math.max(SHEET_PEEK * 0.7, SHEET_FULL + y * 1.2);
+              sheetH.setValue(newH);
+              baseH.current = newH;
+            }
+          }}
+          onScrollEndDrag={e => {
+            const y = e.nativeEvent.contentOffset.y;
+            if (y <= 0) {
+              // Decide whether to collapse or spring back to full
+              const mid = (SHEET_PEEK + SHEET_FULL) / 2;
+              if (baseH.current < mid) {
+                snapTo(SHEET_PEEK);
+              } else {
+                snapTo(SHEET_FULL);
+              }
+            }
+          }}
+        >
+          {/* 0: Full-height image — extends to top of sheet, scrolls away */}
+          <View style={styles.bannerImage}>
             <LinearGradient
               colors={gradientColors(park.park_code)}
               start={{ x: 0, y: 0 }}
@@ -712,49 +743,71 @@ function ParkBottomSheet({
               style={StyleSheet.absoluteFill}
             />
             {heroUrl ? (
-              <Image
-                source={{ uri: heroUrl }}
+              <TouchableOpacity
                 style={StyleSheet.absoluteFill}
-                contentFit="cover"
-                transition={300}
-                cachePolicy="memory-disk"
-              />
+                activeOpacity={0.9}
+                onPress={() => npsImages.length > 0 && setLightboxIdx(imgIdx)}
+              >
+                <Image
+                  source={{ uri: heroUrl }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  transition={300}
+                  cachePolicy="memory-disk"
+                />
+              </TouchableOpacity>
             ) : null}
-
             <LinearGradient
-              colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.42)', 'transparent']}
-              locations={[0, 0.35, 0.65]}
-              start={{ x: 0, y: 1 }}
-              end={{ x: 0, y: 0 }}
+              colors={['rgba(0,0,0,0.65)', 'transparent']}
+              locations={[0, 0.5]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
               style={StyleSheet.absoluteFillObject}
               pointerEvents="none"
             />
-
-            <View style={styles.heroContent}>
-              <Text style={styles.heroState}>{stateLabel.toUpperCase()}</Text>
-              <Text style={styles.heroName}>{park.name}</Text>
+            {/* Drag handle + close — overlaid at top of image */}
+            <View style={styles.sheetTopStrip} {...topStripPan.panHandlers}>
+              <View style={styles.handleArea}>
+                <View style={styles.handleBar} />
+              </View>
+              <TouchableOpacity style={styles.heroClose} onPress={dismiss} hitSlop={8}>
+                <Ionicons name="close" size={14} color="#FFFBF1" />
+              </TouchableOpacity>
             </View>
-          </Pressable>
+            {/* Image navigation */}
+            {npsImages.length > 1 && (
+              <>
+                <TouchableOpacity
+                  style={[styles.imgArrow, styles.imgArrowLeft]}
+                  onPress={() => setImgIdx(i => (i - 1 + npsImages.length) % npsImages.length)}
+                  hitSlop={8}
+                >
+                  <Ionicons name="chevron-back" size={16} color="#FFFBF1" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.imgArrow, styles.imgArrowRight]}
+                  onPress={() => setImgIdx(i => (i + 1) % npsImages.length)}
+                  hitSlop={8}
+                >
+                  <Ionicons name="chevron-forward" size={16} color="#FFFBF1" />
+                </TouchableOpacity>
+                <View style={styles.imgDots}>
+                  {npsImages.map((_, i) => (
+                    <View key={i} style={[styles.imgDot, i === imgIdx && styles.imgDotActive]} />
+                  ))}
+                </View>
+              </>
+            )}
+          </View>
 
-          {/* Top strip — drag handle, image counter, close. Shifts below the
-              status bar as the sheet reaches full screen. */}
-          <Animated.View pointerEvents="box-none" style={[styles.heroTopStrip, { top: topPad }]}>
-            <View style={styles.handleArea}>
-              <View style={styles.handleBar} />
-            </View>
-            <TouchableOpacity style={styles.heroClose} onPress={dismiss} hitSlop={8}>
-              <Ionicons name="close" size={14} color="#FFFBF1" />
-            </TouchableOpacity>
-          </Animated.View>
-        </Animated.View>
+          {/* 1: Title bar — sticky */}
+          <View style={[styles.titleBar, scrollEnabled && insets.top > 0 && { paddingTop: insets.top + 12 }]}>
+            <Text style={styles.titleBarState}>{stateLabel.toUpperCase()}</Text>
+            <Text style={styles.titleBarName}>{park.name}</Text>
+          </View>
 
-        {/* Scrollable body — full profile below hero */}
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.sheetBody}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+          {/* 2+: Body content */}
+          <View style={styles.sheetBody}>
 
           {/* ── Quick stats ── */}
           <View style={styles.statsRow}>
@@ -859,7 +912,7 @@ function ParkBottomSheet({
                     <View key={i} style={styles.feeCard}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: fee.description ? 4 : 0 }}>
                         <Text style={styles.feeName}>{fee.title || 'Entrance'}</Text>
-                        <Text style={styles.feeCost}>
+                        <Text style={[styles.feeCost, { color: C.primary }]}>
                           {fee.cost === '0.00' || fee.cost === '0' ? 'Free' : `$${parseFloat(fee.cost).toFixed(0)}`}
                         </Text>
                       </View>
@@ -883,7 +936,7 @@ function ParkBottomSheet({
                   style={styles.linkBtn}
                 >
                   <Ionicons name="navigate-outline" size={13} color={C.primary} />
-                  <Text style={styles.linkBtnText}>Open directions</Text>
+                  <Text style={[styles.linkBtnText, { color: C.primary }]}>Open directions</Text>
                 </TouchableOpacity>
               ) : null}
             </SheetSection>
@@ -1013,7 +1066,7 @@ function ParkBottomSheet({
                             style={styles.visitEditBtn}
                           >
                             <Ionicons name="pencil-outline" size={11} color={C.primary} />
-                            <Text style={styles.visitEditBtnText}>Edit entry</Text>
+                            <Text style={[styles.visitEditBtnText, { color: C.primary }]}>Edit entry</Text>
                           </TouchableOpacity>
                         </View>
                       )}
@@ -1038,7 +1091,9 @@ function ParkBottomSheet({
               . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details with official sources before your visit.
             </Text>
           </View>
+          </View>{/* end sheetBody */}
         </ScrollView>
+        </View>{/* end contentPan wrapper */}
 
         {/* Action row — pinned at bottom */}
         <View style={styles.actionRow}>
@@ -1343,10 +1398,8 @@ export default function MapScreen() {
       )}
 
       {loading && (
-        <View style={[styles.loadingWrap, { top: insets.top + 12 }]}>
-          <View style={styles.pill}>
-            <Text style={[styles.pillLabel, { marginLeft: 0 }]}>Loading parks…</Text>
-          </View>
+        <View style={styles.mapLoadingOverlay} pointerEvents="none">
+          <CompassSpinner size={36} dark />
         </View>
       )}
 
@@ -1515,6 +1568,25 @@ const styles = StyleSheet.create({
     left: 14,
     zIndex: 20,
   },
+  mapLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  mapLoadingCard: {
+    backgroundColor: 'rgba(255,251,241,0.92)',
+    borderRadius: 24,
+    borderWidth: 0.5,
+    borderColor: 'rgba(27,26,22,0.10)',
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    elevation: 6,
+  },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1596,18 +1668,24 @@ const styles = StyleSheet.create({
     elevation: 16,
     overflow: 'hidden',
   },
-  heroTopStrip: {
+  // Drag handle + close — overlaid on banner image
+  sheetTopStrip: {
     position: 'absolute',
+    top: 0,
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 4,
+    paddingHorizontal: 10,
     zIndex: 5,
   },
   handleArea: {
-    alignSelf: 'center',
+    flex: 1,
     alignItems: 'center',
-    paddingTop: 10,
-    paddingBottom: 6,
-    paddingHorizontal: 40,
+    paddingVertical: 6,
+    paddingLeft: 28,
   },
   handleBar: {
     width: 36,
@@ -1615,16 +1693,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: 'rgba(255,251,241,0.65)',
   },
-
-  // Hero
-  hero: {
-    flexShrink: 0,
-    overflow: 'hidden',
-  },
   heroClose: {
-    position: 'absolute',
-    top: 8,
-    right: 10,
     width: 28,
     height: 28,
     borderRadius: 14,
@@ -1632,25 +1701,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroContent: {
-    position: 'absolute',
-    bottom: 14,
-    left: 16,
-    right: 48,
+
+  // Banner image — fills top of sheet, scrolls away
+  bannerImage: {
+    height: 200,
+    overflow: 'hidden',
   },
-  heroState: {
+  imgArrow: {
+    position: 'absolute',
+    top: '50%',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -14,
+  },
+  imgArrowLeft:  { left: 10 },
+  imgArrowRight: { right: 10 },
+  imgDots: {
+    position: 'absolute',
+    bottom: 8,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  imgDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,251,241,0.45)',
+  },
+  imgDotActive: {
+    backgroundColor: '#FFFBF1',
+    width: 14,
+  },
+
+  // Sticky title bar
+  titleBar: {
+    backgroundColor: C.surface,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: C.hairline,
+  },
+  titleBarState: {
     fontSize: 9,
     fontWeight: '700',
-    color: 'rgba(255,251,241,0.75)',
+    color: C.inkMute,
     letterSpacing: 1.4,
-    marginBottom: 3,
+    marginBottom: 2,
   },
-  heroName: {
-    fontSize: 22,
+  titleBarName: {
+    fontSize: 20,
     fontWeight: '900',
-    color: '#FFFBF1',
-    letterSpacing: -0.4,
-    lineHeight: 26,
+    color: C.ink,
+    letterSpacing: -0.3,
+    lineHeight: 24,
   },
 
   // Scrollable body

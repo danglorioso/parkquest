@@ -1,14 +1,11 @@
 import { Tabs, useRouter } from 'expo-router';
 import { DeviceEventEmitter, TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useColors } from '../../lib/palette';
 
-// Design tokens — mirrors globals.css
-const C = {
-  bg:       '#F2EBDB',
+const STATIC = {
   surface:  '#FFFBF1',
-  primary:  '#1F3D2E',
   inkMute:  '#7A746A',
-  accent:   '#C56B3D',
   hairline: 'rgba(27,26,22,0.10)',
 };
 
@@ -19,23 +16,26 @@ function TabIcon({
   name,
   activeName,
   size = 24,
+  primary,
 }: {
   focused: boolean;
   name: IconName;
   activeName: IconName;
   size?: number;
+  primary: string;
 }) {
   return (
     <Ionicons
       name={focused ? activeName : name}
       size={size}
-      color={focused ? C.primary : C.inkMute}
+      color={focused ? primary : STATIC.inkMute}
     />
   );
 }
 
 function LogVisitButton() {
   const router = useRouter();
+  const C = useColors();
   return (
     <TouchableOpacity
       onPress={() => router.push('/(modals)/log-visit')}
@@ -43,8 +43,8 @@ function LogVisitButton() {
       accessibilityRole="button"
       style={styles.fabWrapper}
     >
-      <View style={styles.fabGlow}>
-        <View style={styles.fab}>
+      <View style={[styles.fabGlow, { shadowColor: C.accent }]}>
+        <View style={[styles.fab, { backgroundColor: C.accent }]}>
           <Ionicons name="add" size={22} color="#FFFBF1" />
           <View style={styles.fabHighlight} pointerEvents="none" />
           <View style={styles.fabInnerShadow} pointerEvents="none" />
@@ -55,20 +55,20 @@ function LogVisitButton() {
 }
 
 export default function TabsLayout() {
+  const C = useColors();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: C.primary,
-        tabBarInactiveTintColor: C.inkMute,
+        tabBarInactiveTintColor: STATIC.inkMute,
         tabBarStyle: {
-          backgroundColor: C.surface,
-          borderTopColor: C.hairline,
+          backgroundColor: STATIC.surface,
+          borderTopColor: STATIC.hairline,
           borderTopWidth: StyleSheet.hairlineWidth,
           height: Platform.OS === 'ios' ? 84 : 64,
           paddingBottom: Platform.OS === 'ios' ? 28 : 8,
           paddingTop: 8,
-          // Inset outer tabs away from the screen's rounded corners
           paddingHorizontal: Platform.OS === 'ios' ? 14 : 6,
         },
         tabBarLabelStyle: {
@@ -90,7 +90,7 @@ export default function TabsLayout() {
         options={{
           title: 'Feed',
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="newspaper-outline" activeName="newspaper" />
+            <TabIcon focused={focused} name="newspaper-outline" activeName="newspaper" primary={C.primary} />
           ),
         }}
       />
@@ -106,13 +106,12 @@ export default function TabsLayout() {
         options={{
           title: 'Map',
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="map-outline" activeName="map" />
+            <TabIcon focused={focused} name="map-outline" activeName="map" primary={C.primary} />
           ),
-          // Float the tab bar over the full-bleed map
           tabBarStyle: {
             position: 'absolute',
             backgroundColor: 'rgba(255,251,241,0.88)',
-            borderTopColor: C.hairline,
+            borderTopColor: STATIC.hairline,
             borderTopWidth: StyleSheet.hairlineWidth,
             height: Platform.OS === 'ios' ? 84 : 64,
             paddingBottom: Platform.OS === 'ios' ? 28 : 8,
@@ -121,7 +120,6 @@ export default function TabsLayout() {
           },
         }}
       />
-      {/* Center FAB — no real tab route, button opens modal */}
       <Tabs.Screen
         name="log-visit-placeholder"
         options={{
@@ -134,7 +132,7 @@ export default function TabsLayout() {
         options={{
           title: 'Parks',
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="compass-outline" activeName="compass" size={26} />
+            <TabIcon focused={focused} name="compass-outline" activeName="compass" size={26} primary={C.primary} />
           ),
         }}
       />
@@ -143,7 +141,7 @@ export default function TabsLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="person-outline" activeName="person" />
+            <TabIcon focused={focused} name="person-outline" activeName="person" primary={C.primary} />
           ),
         }}
       />
@@ -157,12 +155,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Soft halo radiating evenly from the edge — outer layer is a wide diffuse
-  // glow, inner layer adds a tighter drop for depth (iOS stacks both;
-  // Android approximates with elevation)
   fabGlow: {
     borderRadius: 18,
-    shadowColor: C.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.25,
     shadowRadius: 6,
@@ -172,7 +166,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

@@ -633,13 +633,13 @@ export default function DashboardPage() {
               </div>
             }
           >
-            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+            <div style={{ display: "flex", flexDirection: "column", overflowY: "auto", maxHeight: 400 }}>
               {loading ? (
                 <div style={{ padding: "20px 0", textAlign: "center", fontSize: 12.5, color: "var(--ink-mute)" }}>
                   Loading…
                 </div>
               ) : activityItems.length === 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, textAlign: "center", padding: "24px 0" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px 0" }}>
                   <div style={{ fontSize: 13, color: "var(--ink)", fontWeight: 600, marginBottom: 6 }}>
                     Nothing here yet
                   </div>

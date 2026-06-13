@@ -12,6 +12,7 @@ import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
+import { useColors } from '@/lib/palette';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -33,13 +34,13 @@ const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 type Filter = 'all' | 'visits' | 'badges';
 
 function FilterChip({
-  label, active, onPress,
-}: { label: string; active: boolean; onPress: () => void }) {
+  label, active, primary, onPress,
+}: { label: string; active: boolean; primary: string; onPress: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.75}
-      style={[styles.chip, active && styles.chipActive]}
+      style={[styles.chip, active && [styles.chipActive, { backgroundColor: primary, borderColor: primary }]]}
     >
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
     </TouchableOpacity>
@@ -71,6 +72,7 @@ export default function FeedScreen() {
   const { getToken } = useAuth();
   const { user } = useUser();
   const router = useRouter();
+  const palette = useColors();
 
   const [token, setToken]         = useState<string | null>(null);
   const [posts, setPosts]         = useState<FeedPost[]>([]);
@@ -153,9 +155,9 @@ export default function FeedScreen() {
       {/* Filter chips — only show when there are posts */}
       {posts.length > 0 && (
         <View style={styles.chips}>
-          <FilterChip label="All"    active={filter === 'all'}    onPress={() => setFilter('all')} />
-          <FilterChip label="Visits" active={filter === 'visits'} onPress={() => setFilter('visits')} />
-          <FilterChip label="Badges" active={filter === 'badges'} onPress={() => setFilter('badges')} />
+          <FilterChip label="All"    active={filter === 'all'}    primary={palette.primary} onPress={() => setFilter('all')} />
+          <FilterChip label="Visits" active={filter === 'visits'} primary={palette.primary} onPress={() => setFilter('visits')} />
+          <FilterChip label="Badges" active={filter === 'badges'} primary={palette.primary} onPress={() => setFilter('badges')} />
         </View>
       )}
     </View>
@@ -181,7 +183,7 @@ export default function FeedScreen() {
       <Text style={[styles.emptyTitle, { marginTop: 8 }]}>Failed to load</Text>
       <TouchableOpacity
         onPress={() => loadFeed()}
-        style={{ marginTop: 4, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+        style={{ marginTop: 4, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: palette.primary, borderRadius: 12 }}
       >
         <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
       </TouchableOpacity>
@@ -217,11 +219,11 @@ export default function FeedScreen() {
             <Ionicons name="search" size={17} color={C.inkSoft} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.iconBtn, styles.plusBtn]}
-            activeOpacity={0.8}
-            onPress={() => router.push('/(modals)/log-visit' as never)}
+            style={styles.iconBtn}
+            activeOpacity={0.7}
+            onPress={() => router.push('/(tabs)/profile/edit' as never)}
           >
-            <Ionicons name="add" size={20} color="#FFFBF1" />
+            <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
           </TouchableOpacity>
         </View>
       </View>
@@ -299,11 +301,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  plusBtn: {
-    backgroundColor: C.primary,
-    borderColor: C.primary,
-  },
-
   // Header
   header: {
     paddingTop: 16,

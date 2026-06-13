@@ -55,3 +55,22 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const usePalette = () => useContext(PaletteContext);
+
+export function useColors() {
+  const { colors } = useContext(PaletteContext);
+  return {
+    bg:           '#F2EBDB',
+    surface:      '#FFFBF1',
+    surfaceAlt:   '#F7F0DE',
+    ink:          '#1B1A16',
+    inkSoft:      '#3C3A33',
+    inkMute:      '#7A746A',
+    hairline:     'rgba(27,26,22,0.10)',
+    hairlineSoft: 'rgba(27,26,22,0.06)',
+    visited:      '#2F7A4A',
+    bucket:       '#C48A20',
+    primary:      colors.primary,
+    primaryDeep:  colors.primaryDeep,
+    accent:       colors.accent,
+  };
+}

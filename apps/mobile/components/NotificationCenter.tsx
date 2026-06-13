@@ -162,7 +162,6 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [respondedTo, setRespondedTo] = useState<Set<number>>(new Set());
   const [pushStatus, setPushStatus] = useState<PushStatus>('undetermined');
 
   // getToken from @clerk/clerk-expo is a new function every render — keeping it
@@ -177,12 +176,19 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
     });
   }, []);
 
-  const dragY = useRef(new Animated.Value(0)).current;
+  const dragY = useRef(new Animated.Value(800)).current;
+
+  // Slide up when sheet opens
+  useEffect(() => {
+    if (open) {
+      dragY.setValue(800);
+      Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 3, speed: 14 }).start();
+    }
+  }, [open, dragY]);
 
   const dismiss = useCallback(() => {
-    Animated.timing(dragY, { toValue: 600, duration: 200, useNativeDriver: true }).start(() => {
+    Animated.timing(dragY, { toValue: 800, duration: 220, useNativeDriver: true }).start(() => {
       setOpen(false);
-      dragY.setValue(0);
     });
   }, [dragY]);
 
@@ -192,9 +198,8 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
     onPanResponderMove: (_, { dy }) => { if (dy > 0) dragY.setValue(dy); },
     onPanResponderRelease: (_, { dy, vy }) => {
       if (dy > 80 || vy > 0.8) {
-        Animated.timing(dragY, { toValue: 600, duration: 200, useNativeDriver: true }).start(() => {
+        Animated.timing(dragY, { toValue: 800, duration: 220, useNativeDriver: true }).start(() => {
           setOpen(false);
-          dragY.setValue(0);
         });
       } else {
         Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
@@ -249,10 +254,22 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const handleRespond = useCallback(async (friendshipId: number, action: 'accept' | 'reject') => {
     const tok = await getTokenRef.current();
     if (!tok) return;
+    // Optimistically update so buttons disappear immediately
+    setItems(prev => prev.map(n =>
+      n.metadata?.friendship_id === friendshipId
+        ? { ...n, type: action === 'accept' ? 'friend_accepted' : ('friend_rejected' as NotificationType) }
+        : n
+    ));
     try {
       await respondFriendRequest(tok, friendshipId, action);
-      setRespondedTo(prev => new Set([...prev, friendshipId]));
-    } catch { /* silent */ }
+    } catch {
+      // Revert on failure
+      setItems(prev => prev.map(n =>
+        n.metadata?.friendship_id === friendshipId
+          ? { ...n, type: 'friend_request' as NotificationType }
+          : n
+      ));
+    }
   }, []);
 
   const newCount = items.filter(n => !n.read).length;
@@ -272,7 +289,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
       <Modal
         visible={open}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={dismiss}
         statusBarTranslucent
       >
@@ -293,7 +310,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                   </View>
                 )}
               </View>
-              <TouchableOpacity onPress={() => setOpen(false)} style={styles.closeBtn}>
+              <TouchableOpacity onPress={dismiss} style={styles.closeBtn}>
                 <Ionicons name="close" size={16} color={C.inkMute} />
               </TouchableOpacity>
             </View>
@@ -331,9 +348,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                 renderItem={({ item }) => (
                   <NotificationRow
                     n={item}
-                    responded={item.type === 'friend_request' && item.metadata?.friendship_id != null
-                      ? respondedTo.has(item.metadata.friendship_id)
-                      : false}
+                    responded={item.type !== 'friend_request'}
                     onRespond={handleRespond}
                     onNavigateToUser={(userId) => {
                       setOpen(false);

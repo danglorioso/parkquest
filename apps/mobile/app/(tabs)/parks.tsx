@@ -1,8 +1,8 @@
 import {
-  Dimensions, FlatList, Image, Linking, ScrollView, StyleSheet,
+  Dimensions, FlatList, Image, Linking, Modal, Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScrollToTop } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -11,6 +11,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
 import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
+import { useColors } from '@/lib/palette';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -30,7 +31,6 @@ const C = {
 };
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
-console.log('[parks] BASE URL:', BASE);
 const CARD_GAP = 14;
 const SCREEN_W = Dimensions.get('window').width;
 const H_PAD = 16;
@@ -185,6 +185,42 @@ function ParkCard({ park, status }: { park: Park; status: ParkStatus }) {
   );
 }
 
+function ParkListRow({ park, status }: { park: Park; status: ParkStatus }) {
+  const router = useRouter();
+  const [imgFailed, setImgFailed] = useState(false);
+  const [g1] = gradientColors(park.park_code);
+  const stateCode = park.states.split(',')[0].trim();
+  const stateName = fullStateName(stateCode);
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push(`/parks/${park.park_code}` as never)}
+      style={styles.listCard}
+      activeOpacity={0.85}
+    >
+      <View style={[styles.listCardImg, { backgroundColor: g1 }]}>
+        {park.image_url && !imgFailed && (
+          <Image
+            source={{ uri: park.image_url }}
+            style={StyleSheet.absoluteFill as any}
+            resizeMode="cover"
+            onError={() => setImgFailed(true)}
+          />
+        )}
+        <View style={styles.cardImgOverlay} />
+        <StatusBadge status={status} />
+      </View>
+      <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
+        <Text style={styles.cardState} numberOfLines={1}>{stateName}</Text>
+        <Text style={styles.cardName} numberOfLines={2}>{park.name}</Text>
+        {park.description ? (
+          <Text style={styles.cardDesc} numberOfLines={2}>{park.description}</Text>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 // ── Filter panel ──────────────────────────────────────────────────────────────
 
 type FilterSection = 'status' | 'location' | 'activities' | 'topics';
@@ -192,14 +228,27 @@ type FilterSection = 'status' | 'location' | 'activities' | 'topics';
 function Chip({
   label, active, dot, onPress,
 }: { label: string; active: boolean; dot?: string; onPress: () => void }) {
+  const { primary } = useColors();
   return (
     <TouchableOpacity
       onPress={onPress} activeOpacity={0.7}
-      style={[styles.pill, active && styles.pillActive]}
+      style={[styles.pill, active && [styles.pillActive, { backgroundColor: primary, borderColor: primary }]]}
     >
       {dot ? <View style={[styles.pillDot, { backgroundColor: dot }]} /> : null}
       <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
     </TouchableOpacity>
+  );
+}
+
+function ActiveChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  const { primary } = useColors();
+  return (
+    <View style={[styles.activeChip, { borderColor: primary }]}>
+      <Text style={[styles.activeChipText, { color: primary }]} numberOfLines={1}>{label}</Text>
+      <TouchableOpacity onPress={onRemove} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+        <Ionicons name="close" size={11} color={primary} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -220,6 +269,7 @@ function FilterPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<FilterSection | null>(null);
+  const { primary, accent } = useColors();
 
   const activeCount =
     (statusFilter !== 'all' ? 1 : 0) +
@@ -249,7 +299,7 @@ function FilterPanel({
       {/* Toggle row */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <TouchableOpacity
-          style={[styles.filterToggle, (open || activeCount > 0) && styles.filterToggleActive]}
+          style={[styles.filterToggle, (open || activeCount > 0) && [styles.filterToggleActive, { backgroundColor: primary, borderColor: primary }]]}
           onPress={() => { setOpen(o => !o); if (open) setSection(null); }}
           activeOpacity={0.75}
         >
@@ -262,7 +312,7 @@ function FilterPanel({
           </Text>
           {activeCount > 0 && (
             <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>{activeCount}</Text>
+              <Text style={[styles.filterBadgeText, { color: primary }]}>{activeCount}</Text>
             </View>
           )}
           <Ionicons
@@ -273,11 +323,37 @@ function FilterPanel({
 
         {hasFilter && (
           <TouchableOpacity onPress={onReset} activeOpacity={0.7} style={styles.pillReset}>
-            <Ionicons name="close-circle" size={14} color={C.accent} />
-            <Text style={styles.pillResetText}>Reset</Text>
+            <Ionicons name="close-circle" size={14} color={accent} />
+            <Text style={[styles.pillResetText, { color: accent }]}>Reset</Text>
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Active filter chips — horizontally scrollable */}
+      {activeCount > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginTop: 8 }}
+          contentContainerStyle={{ gap: 6, paddingHorizontal: 2 }}
+        >
+          {statusFilter !== 'all' && (
+            <ActiveChip
+              label={STATUS_FILTERS.find(f => f.key === statusFilter)?.label ?? statusFilter}
+              onRemove={() => onStatusFilter('all')}
+            />
+          )}
+          {regionFilter !== 'all' && (
+            <ActiveChip label={regionFilter} onRemove={() => onRegionFilter('all')} />
+          )}
+          {activityFilters.map(a => (
+            <ActiveChip key={a} label={a} onRemove={() => onActivityToggle(a)} />
+          ))}
+          {topicFilters.map(t => (
+            <ActiveChip key={t} label={t} onRemove={() => onTopicToggle(t)} />
+          ))}
+        </ScrollView>
+      )}
 
       {/* Expanded panel — one accordion per filter category */}
       {open && (
@@ -291,7 +367,7 @@ function FilterPanel({
               >
                 <Text style={styles.filterSectionTitle}>{s.title.toUpperCase()}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.filterSectionSummary, s.hasSelection && { color: C.primary, fontWeight: '700' }]}>
+                  <Text style={[styles.filterSectionSummary, s.hasSelection && { color: primary, fontWeight: '700' }]}>
                     {s.summary}
                   </Text>
                   <Ionicons
@@ -361,6 +437,7 @@ function FilterPanel({
 
 export default function ParksScreen() {
   const { getToken } = useAuth();
+  const { primary, accent } = useColors();
 
   const [parks,   setParks]   = useState<Park[]>([]);
   const [visits,  setVisits]  = useState<Visit[]>([]);
@@ -374,6 +451,14 @@ export default function ParksScreen() {
   const [activitiesMap, setActivitiesMap] = useState<Record<string, string[]>>({});
   const [topicsMap,     setTopicsMap]     = useState<Record<string, string[]>>({});
   const [filtersLoading, setFiltersLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [showViewMenu, setShowViewMenu] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
+  const viewToggleRef = useRef<TouchableOpacity>(null);
+
+  useEffect(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [viewMode]);
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -419,11 +504,6 @@ export default function ParksScreen() {
       setFiltersLoading(false);
     }).catch(() => setFiltersLoading(false));
   }, []));
-
-  const visitedCount = useMemo(
-    () => parks.filter(p => parkStatus(p.park_code, visits) === 'visited').length,
-    [parks, visits]
-  );
 
   const filtered = useMemo(() => {
     return parks.filter(p => {
@@ -492,28 +572,47 @@ export default function ParksScreen() {
 
   type ParkRow =
     | { id: string; type: 'skeleton' }
-    | { id: string; type: 'pair'; left: Park; right: Park | null };
+    | { id: string; type: 'pair'; left: Park; right: Park | null }
+    | { id: string; type: 'single'; park: Park };
 
-  // Pair items for 2-col grid
   const rows = useMemo((): ParkRow[] => {
     if (loading) return Array.from({ length: 12 }, (_, i) => ({ id: `sk-${i}`, type: 'skeleton' as const }));
+    if (viewMode === 'list') {
+      return filtered.map(p => ({ id: p.park_code, type: 'single' as const, park: p }));
+    }
     const out: ParkRow[] = [];
     for (let i = 0; i < filtered.length; i += 2) {
       out.push({ id: filtered[i].park_code, type: 'pair', left: filtered[i], right: filtered[i + 1] ?? null });
     }
     return out;
-  }, [filtered, loading]);
+  }, [filtered, loading, viewMode]);
 
   const ListHeader = (
     <View>
       {/* Page header */}
       <View style={styles.header}>
         <Text style={styles.kicker}>{loading ? 'NATIONAL PARKS' : `${parks.length} NATIONAL PARKS`}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={styles.title}>Explore the Parks</Text>
-          {!loading && (
-            <Text style={styles.counter}>{visitedCount} / {parks.length} visited</Text>
-          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              ref={viewToggleRef}
+              onPress={() => {
+                viewToggleRef.current?.measure((_fx, _fy, _w, _h, px, py) => {
+                  setMenuAnchor({ x: px, y: py + _h + 6 });
+                  setShowViewMenu(true);
+                });
+              }}
+              hitSlop={8}
+              style={styles.viewToggle}
+            >
+              <Ionicons
+                name={viewMode === 'grid' ? 'grid-outline' : 'list-outline'}
+                size={18}
+                color={C.inkSoft}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -587,7 +686,7 @@ export default function ParksScreen() {
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load parks</Text>
           <TouchableOpacity
             onPress={() => loadData()}
-            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: primary, borderRadius: 12 }}
           >
             <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
           </TouchableOpacity>
@@ -611,6 +710,9 @@ export default function ParksScreen() {
               </View>
             );
           }
+          if (item.type === 'single') {
+            return <ParkListRow park={item.park} status={parkStatus(item.park.park_code, visits)} />;
+          }
           return (
             <View style={styles.rowWrap}>
               <ParkCard park={item.left} status={parkStatus(item.left.park_code, visits)} />
@@ -632,6 +734,32 @@ export default function ParksScreen() {
         windowSize={7}
         maxToRenderPerBatch={8}
       />
+      <Modal
+        visible={showViewMenu}
+        transparent
+        animationType="none"
+        onRequestClose={() => setShowViewMenu(false)}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowViewMenu(false)} />
+        <View style={[styles.viewMenu, { top: menuAnchor.y, right: 16 }]}>
+          {([
+            { mode: 'grid', icon: 'grid-outline', label: 'Grid' },
+            { mode: 'list', icon: 'list-outline', label: 'List' },
+          ] as const).map(opt => (
+            <TouchableOpacity
+              key={opt.mode}
+              style={[styles.viewMenuItem, viewMode === opt.mode && styles.viewMenuItemActive]}
+              onPress={() => { setViewMode(opt.mode); setShowViewMenu(false); }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name={opt.icon} size={15} color={viewMode === opt.mode ? primary : C.inkSoft} />
+              <Text style={[styles.viewMenuItemText, viewMode === opt.mode && { color: primary, fontWeight: '700' }]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -661,13 +789,6 @@ const styles = StyleSheet.create({
     color: C.ink,
     letterSpacing: -0.8,
   },
-  counter: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: C.inkMute,
-    letterSpacing: 0.3,
-  },
-
   // Search
   searchWrap: {
     flexDirection: 'row',
@@ -808,6 +929,24 @@ const styles = StyleSheet.create({
     color: C.accent,
   },
 
+  activeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(31,61,46,0.10)',
+    borderWidth: 0.5,
+    borderColor: C.primary,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  activeChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.primary,
+    maxWidth: 160,
+  },
+
   resultsCount: {
     paddingHorizontal: H_PAD,
     marginBottom: 10,
@@ -815,6 +954,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: C.inkMute,
     letterSpacing: 1.2,
+  },
+
+  // View toggle button
+  viewToggle: {
+    padding: 4,
+  },
+  viewMenu: {
+    position: 'absolute',
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    shadowColor: '#000',
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+    minWidth: 120,
+    overflow: 'hidden',
+  },
+  viewMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  viewMenuItemActive: {
+    backgroundColor: 'rgba(31,61,46,0.07)',
+  },
+  viewMenuItemText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: C.inkSoft,
   },
 
   // Grid rows
@@ -825,10 +998,27 @@ const styles = StyleSheet.create({
     marginBottom: CARD_GAP,
   },
 
+  // List row
+  listCard: {
+    backgroundColor: C.surface,
+    borderRadius: 20,
+    borderCurve: 'continuous',
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    overflow: 'hidden',
+    marginHorizontal: H_PAD,
+    marginBottom: CARD_GAP,
+  },
+  listCardImg: {
+    height: 120,
+    position: 'relative',
+  },
+
   // Card
   card: {
     backgroundColor: C.surface,
-    borderRadius: 14,
+    borderRadius: 20,
+    borderCurve: 'continuous',
     borderWidth: 0.5,
     borderColor: C.hairline,
     overflow: 'hidden',

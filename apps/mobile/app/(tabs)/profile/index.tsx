@@ -12,6 +12,7 @@ import { setParkFilterIntent } from '@/lib/parkFilterIntent';
 import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
+import { useColors } from '@/lib/palette';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -148,9 +149,10 @@ function NavRow({
   icon: string; label: string; subtitle?: string;
   count?: number | string; onPress: () => void; danger?: boolean;
 }) {
+  const C = useColors();
   return (
     <TouchableOpacity onPress={onPress} style={styles.navRow} activeOpacity={0.7}>
-      <View style={[styles.navIcon, danger && { backgroundColor: 'rgba(197,107,61,0.12)' }]}>
+      <View style={[styles.navIcon, { backgroundColor: C.primary + '12' }, danger && { backgroundColor: 'rgba(197,107,61,0.12)' }]}>
         <Ionicons name={icon as any} size={18} color={danger ? C.accent : C.primary} />
       </View>
       <View style={{ flex: 1 }}>
@@ -172,6 +174,7 @@ function NavRow({
 export default function ProfileScreen() {
   const router   = useRouter();
   const { getToken } = useAuth();
+  const C = useColors();
   const { user }     = useUser();
   const { signOut }  = useClerk();
 
@@ -322,7 +325,7 @@ export default function ProfileScreen() {
             {avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
+              <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: C.primary }]}>
                 <Text style={styles.avatarInitial}>{(displayName[0] ?? 'E').toUpperCase()}</Text>
               </View>
             )}
@@ -338,8 +341,8 @@ export default function ProfileScreen() {
               {joinDate ? (
                 <Text style={styles.heroMetaText}>Joined {joinDate}</Text>
               ) : null}
-              <View style={styles.rankBadge}>
-                <Text style={styles.rankText}>{rank}</Text>
+              <View style={[styles.rankBadge, { backgroundColor: C.primary + '18' }]}>
+                <Text style={[styles.rankText, { color: C.primary }]}>{rank}</Text>
               </View>
             </View>
             {profile?.bio ? (
@@ -367,7 +370,7 @@ export default function ProfileScreen() {
 
         {/* ── Mini passport card ───────────────────────────────────────────── */}
         <TouchableOpacity
-          style={styles.passportCard}
+          style={[styles.passportCard, { backgroundColor: C.primaryDeep, shadowColor: C.primaryDeep }]}
           onPress={() => router.push('/profile/passport' as never)}
           activeOpacity={0.88}
         >
@@ -422,7 +425,7 @@ export default function ProfileScreen() {
                 style={styles.badgePreviewMore}
               >
                 <Ionicons name="arrow-forward-circle" size={24} color={C.primary} />
-                <Text style={styles.badgePreviewMoreText}>See all</Text>
+                <Text style={[styles.badgePreviewMoreText, { color: C.primary }]}>See all</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>

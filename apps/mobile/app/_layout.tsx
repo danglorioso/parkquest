@@ -2,6 +2,7 @@ import '../global.css';
 
 import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { useFonts } from 'expo-font';
 import { PaletteProvider } from '../lib/palette';
 import {
@@ -17,14 +18,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
 import LoadingScreen from '../components/LoadingScreen';
 
-const tokenCache = (() => {
-  const cache = new Map<string, string>();
-  return {
-    getToken: async (key: string) => cache.get(key) ?? null,
-    saveToken: async (key: string, token: string) => { cache.set(key, token); },
-    clearToken: async (key: string) => { cache.delete(key); },
-  };
-})();
+const tokenCache = {
+  getToken: (key: string) => SecureStore.getItemAsync(key),
+  saveToken: (key: string, value: string) => SecureStore.setItemAsync(key, value),
+  clearToken: (key: string) => SecureStore.deleteItemAsync(key),
+};
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000 } },

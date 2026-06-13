@@ -2,6 +2,7 @@ import {
   ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal,
   Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
+import AppTabBar from '@/components/AppTabBar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -11,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker } from 'react-native-maps';
 import { fullStateName } from '@/lib/stateNames';
+import { useColors } from '@/lib/palette';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -166,6 +168,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function ChipGrid({
   items, muted = false, limit = 8,
 }: { items: string[]; muted?: boolean; limit?: number }) {
+  const C = useColors();
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? items : items.slice(0, limit);
   const hidden = items.length - limit;
@@ -177,13 +180,13 @@ function ChipGrid({
         </View>
       ))}
       {items.length > limit && !expanded && (
-        <TouchableOpacity onPress={() => setExpanded(true)} style={[styles.chip, styles.chipExpand]}>
-          <Text style={styles.chipExpandText}>+{hidden} more</Text>
+        <TouchableOpacity onPress={() => setExpanded(true)} style={[styles.chip, styles.chipExpand, { borderColor: C.primary }]}>
+          <Text style={[styles.chipExpandText, { color: C.primary }]}>+{hidden} more</Text>
         </TouchableOpacity>
       )}
       {expanded && items.length > limit && (
-        <TouchableOpacity onPress={() => setExpanded(false)} style={[styles.chip, styles.chipExpand]}>
-          <Text style={styles.chipExpandText}>Show less</Text>
+        <TouchableOpacity onPress={() => setExpanded(false)} style={[styles.chip, styles.chipExpand, { borderColor: C.primary }]}>
+          <Text style={[styles.chipExpandText, { color: C.primary }]}>Show less</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -241,6 +244,7 @@ function Lightbox({ images, initialIndex, onClose }: {
 // ── Visit card ────────────────────────────────────────────────────────────────
 
 function VisitCard({ visit }: { visit: Visit }) {
+  const C = useColors();
   const date = visit.visited_date
     ? new Date(visit.visited_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
@@ -281,6 +285,7 @@ export default function ParkDetailScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
+  const C = useColors();
 
   const [park,     setPark]     = useState<Park | null>(null);
   const [nps,      setNps]      = useState<NpsData | null>(null);
@@ -421,7 +426,7 @@ export default function ParkDetailScreen() {
   const stateName = fullStateName(park.states);
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
       {lightbox && (
         <Lightbox
           images={lightbox.images}
@@ -430,10 +435,19 @@ export default function ParkDetailScreen() {
         />
       )}
 
+      {/* Back button — fixed overlay, always visible */}
+      <TouchableOpacity
+        style={[styles.backBtn, { top: insets.top + 8, zIndex: 10 }]}
+        onPress={() => router.back()}
+        hitSlop={8}
+      >
+        <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
+      </TouchableOpacity>
+
       <ScrollView
         style={styles.screen}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 60 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
       >
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
         <View style={[styles.hero, { height: 260 + insets.top, backgroundColor: gradientColor(park.park_code) }]}>
@@ -462,13 +476,7 @@ export default function ParkDetailScreen() {
             style={StyleSheet.absoluteFillObject}
             pointerEvents="none"
           />
-          <TouchableOpacity
-            style={[styles.backBtn, { top: insets.top + 8 }]}
-            onPress={() => router.back()}
-            hitSlop={8}
-          >
-            <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
-          </TouchableOpacity>
+
           <View style={styles.heroContent} pointerEvents="none">
             <Text style={styles.heroDesignation}>{stateName.toUpperCase()}</Text>
             <Text style={styles.heroName}>{park.name}</Text>
@@ -523,9 +531,9 @@ export default function ParkDetailScreen() {
         </View>
 
         {/* ── Action buttons ────────────────────────────────────────────────── */}
-        <View style={styles.actionRow}>
+        <View style={[styles.actionRow, parkStatus !== 'visited' && { marginVertical: 24 }]}>
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={[styles.actionBtn, { backgroundColor: C.primary }]}
             onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
             activeOpacity={0.8}
           >
@@ -535,12 +543,12 @@ export default function ParkDetailScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.actionBtnOutline}
+            style={[styles.actionBtnOutline, { borderColor: C.primary }]}
             onPress={() => router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code } } as never)}
             activeOpacity={0.8}
           >
             <Ionicons name="map-outline" size={16} color={C.primary} />
-            <Text style={styles.actionBtnOutlineText}>View on map</Text>
+            <Text style={[styles.actionBtnOutlineText, { color: C.primary }]}>View on map</Text>
           </TouchableOpacity>
         </View>
 
@@ -669,7 +677,7 @@ export default function ParkDetailScreen() {
               <View key={fi} style={[styles.feeRow, fi < nps.entranceFees.length - 1 && { marginBottom: 12 }]}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
                   <Text style={styles.feeName}>{fee.title || 'Entrance'}</Text>
-                  <Text style={styles.feeCost}>
+                  <Text style={[styles.feeCost, { color: C.primary }]}>
                     {fee.cost === '0.00' || fee.cost === '0' ? 'Free' : `$${parseFloat(fee.cost).toFixed(0)}`}
                   </Text>
                 </View>
@@ -691,7 +699,7 @@ export default function ParkDetailScreen() {
                 style={styles.linkBtn}
               >
                 <Ionicons name="navigate-outline" size={14} color={C.primary} />
-                <Text style={styles.linkBtnText}>Open directions</Text>
+                <Text style={[styles.linkBtnText, { color: C.primary }]}>Open directions</Text>
               </TouchableOpacity>
             ) : null}
           </Section>
@@ -780,7 +788,7 @@ export default function ParkDetailScreen() {
                 Be the first to log your adventure at {park.name}.
               </Text>
               <TouchableOpacity
-                style={styles.actionBtn}
+                style={[styles.actionBtn, { backgroundColor: C.primary }]}
                 onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
                 activeOpacity={0.8}
               >
@@ -792,12 +800,12 @@ export default function ParkDetailScreen() {
             <View style={{ gap: 12 }}>
               {visits.map(v => <VisitCard key={v.id} visit={v} />)}
               <TouchableOpacity
-                style={styles.actionBtnOutline}
+                style={[styles.actionBtnOutline, { borderColor: C.primary }]}
                 onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
                 activeOpacity={0.8}
               >
                 <Ionicons name="add" size={16} color={C.primary} />
-                <Text style={styles.actionBtnOutlineText}>Log another visit</Text>
+                <Text style={[styles.actionBtnOutlineText, { color: C.primary }]}>Log another visit</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -818,7 +826,8 @@ export default function ParkDetailScreen() {
           </Text>
         </View>
       </ScrollView>
-    </>
+      <AppTabBar activeTab="parks" />
+    </View>
   );
 }
 
@@ -904,7 +913,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
     overflow: 'hidden',
-    marginTop: 4,
+    marginTop: 0,
     marginBottom: 14,
   },
   statCell: {

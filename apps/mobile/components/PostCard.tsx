@@ -8,6 +8,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BADGE_MAP, BADGE_TIER_COLORS } from '@/lib/badges';
+import { useColors } from '@/lib/palette';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -525,7 +526,7 @@ function VisitMeta({ post }: { post: FeedPost }) {
 const COMMENT_LIMIT = 500;
 
 function CommentsPanel({
-  postId, token, myUserId, myAvatarUrl, myName, onCountChange,
+  postId, token, myUserId, myAvatarUrl, myName, onCountChange, onClose,
 }: {
   postId: number;
   token: string;
@@ -533,8 +534,10 @@ function CommentsPanel({
   myAvatarUrl?: string | null;
   myName?: string | null;
   onCountChange: (delta: number) => void;
+  onClose: () => void;
 }) {
   const router = useRouter();
+  const C = useColors();
   const [rows, setRows] = useState<CommentRow[]>([]);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -584,6 +587,12 @@ function CommentsPanel({
 
   return (
     <View style={styles.commentsPanel}>
+      <View style={styles.commentsPanelHeader}>
+        <Text style={styles.commentsPanelTitle}>Comments</Text>
+        <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="chevron-up" size={16} color={C.inkMute} />
+        </TouchableOpacity>
+      </View>
       {loading && (
         <ActivityIndicator size="small" color={C.inkMute} style={{ margin: 12 }} />
       )}
@@ -681,6 +690,7 @@ export function PostCard({
   onDelete?: (id: number) => void;
 }) {
   const router = useRouter();
+  const C = useColors();
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likeCount, setLikeCount] = useState(post.like_count);
   const [showComments, setShowComments] = useState(false);
@@ -786,7 +796,7 @@ export function PostCard({
       {isBadge && (
         <View style={styles.badgeBanner}>
           <Ionicons name="ribbon" size={14} color={C.primary} />
-          <Text style={styles.badgeBannerText}>BADGE EARNED</Text>
+          <Text style={[styles.badgeBannerText, { color: C.primary }]}>BADGE EARNED</Text>
         </View>
       )}
 
@@ -861,7 +871,7 @@ export function PostCard({
           onPress={() => router.push(`/parks/${post.park_code}` as never)}
         >
           <Ionicons name="location-sharp" size={11} color={C.primary} />
-          <Text style={styles.parkChipText}>{post.park_name.toUpperCase()}</Text>
+          <Text style={[styles.parkChipText, { color: C.primary }]}>{post.park_name.toUpperCase()}</Text>
         </TouchableOpacity>
       )}
 
@@ -1023,6 +1033,7 @@ export function PostCard({
           myAvatarUrl={myAvatarUrl}
           myName={myName}
           onCountChange={delta => setCommentDelta(prev => prev + delta)}
+          onClose={() => setShowComments(false)}
         />
       )}
 
@@ -1224,6 +1235,13 @@ const styles = StyleSheet.create({
   commentCharCount: {
     fontSize: 10, color: C.inkMute, paddingHorizontal: 4,
   },
+  commentsPanelHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 18, paddingTop: 12, paddingBottom: 4,
+  },
+  commentsPanelTitle: {
+    fontSize: 12, fontWeight: '600', color: C.inkMute, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
 
   // Card
   card: {
@@ -1301,22 +1319,17 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 9, paddingHorizontal: 12, paddingVertical: 6,
+    paddingHorizontal: 4, paddingVertical: 6,
   },
-  actionBtnLiked: {
-    backgroundColor: 'rgba(212,80,64,0.10)', borderColor: 'rgba(212,80,64,0.38)',
-  },
-  actionBtnActive: {
-    backgroundColor: 'rgba(31,61,46,0.10)', borderColor: 'rgba(31,61,46,0.30)',
-  },
+  actionBtnLiked: {},
+  actionBtnActive: {},
   actionBtnText: {
     fontSize: 11, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.5,
   },
   // Left padding lines the date up with the heart icon inside the like
   // button (18 row padding + 12 chip padding)
   footerDate: {
-    paddingHorizontal: 30, paddingBottom: 14, paddingTop: 4,
+    paddingLeft: 18, paddingRight: 18, paddingBottom: 14, paddingTop: 4,
     fontSize: 11, color: C.inkMute, letterSpacing: 0.3,
   },
 });

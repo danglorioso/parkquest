@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
+import { useColors } from '@/lib/palette';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -201,6 +202,7 @@ const HALF_LABELS: Record<number, string> = {
 };
 
 function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const C = useColors();
   return (
     <View>
       <View style={{ flexDirection: 'row', gap: 4, marginBottom: 8 }}>
@@ -245,6 +247,7 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
 // ── ScaleRow ──────────────────────────────────────────────────────────────────
 
 function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: number) => void; labels: string[] }) {
+  const C = useColors();
   return (
     <View>
       {/* Segmented track — fills up to the selected level */}
@@ -276,6 +279,7 @@ function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: nu
 // ── WeatherGrid ───────────────────────────────────────────────────────────────
 
 function WeatherGrid({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const C = useColors();
   const toggle = (id: string) =>
     onChange(value.includes(id) ? value.filter(w => w !== id) : [...value, id]);
   return (
@@ -303,6 +307,7 @@ function ActivityChips({ value, onChange, npsActivityNames = [] }: {
   onChange: (v: string[]) => void;
   npsActivityNames?: string[];
 }) {
+  const C = useColors();
   const [customQ, setCustomQ] = useState('');
 
   const toggle = (a: string) =>
@@ -421,6 +426,7 @@ function ActivityChips({ value, onChange, npsActivityNames = [] }: {
 // ── ReturnRow ─────────────────────────────────────────────────────────────────
 
 function ReturnRow({ value, onChange }: { value: Draft['wouldReturn']; onChange: (v: Draft['wouldReturn']) => void }) {
+  const C = useColors();
   return (
     <View style={{ flexDirection: 'row', gap: 7 }}>
       {RETURN_OPTS.map(o => {
@@ -449,6 +455,7 @@ const VIS_OPTS: Array<{ v: Draft['visibility']; icon: string; desc: string }> = 
 ];
 
 function VisibilityPicker({ value, onChange }: { value: Draft['visibility']; onChange: (v: Draft['visibility']) => void }) {
+  const C = useColors();
   return (
     <View style={{ gap: 8 }}>
       {VIS_OPTS.map(o => {
@@ -598,6 +605,7 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover }: {
   onRemove: (url: string) => void;
   onSetCover: (url: string) => void;
 }) {
+  const C = useColors();
   const [uploading, setUploading] = useState(false);
 
   const pickAndUpload = async () => {
@@ -769,6 +777,7 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
   onApply: (start: Date | null, end: Date | null) => void;
   onClose: () => void;
 }) {
+  const C = useColors();
   const [selStart, setSelStart] = useState<Date | null>(start);
   const [selEnd,   setSelEnd]   = useState<Date | null>(end);
   const [view, setView] = useState(() => {
@@ -906,21 +915,42 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
                 <View key={wi} style={{ flexDirection: 'row' }}>
                   {week.map((d, di) => {
                     if (!d) return <View key={di} style={styles.calCell} />;
-                    const isStart  = sameDay(d, selStart);
-                    const isEnd    = selEnd ? sameDay(d, selEnd) : false;
-                    const endpoint = isStart || isEnd;
-                    const mid = !!(selStart && selEnd && stripTime(d) > stripTime(selStart) && stripTime(d) < stripTime(selEnd));
-                    const isToday  = sameDay(d, today);
-                    const disabled = stripTime(d) > stripTime(maxDate);
+                    const isStart    = sameDay(d, selStart);
+                    const isEnd      = selEnd ? sameDay(d, selEnd) : false;
+                    const endpoint   = isStart || isEnd;
+                    const mid        = !!(selStart && selEnd && stripTime(d) > stripTime(selStart) && stripTime(d) < stripTime(selEnd));
+                    const isToday    = sameDay(d, today);
+                    const disabled   = stripTime(d) > stripTime(maxDate);
+                    const isRowStart = di === 0;
+                    const isRowEnd   = di === 6;
                     return (
                       <View key={di} style={styles.calCell}>
-                        {/* Range background — half-fill at endpoints */}
-                        {mid && <View style={[StyleSheet.absoluteFillObject as object, { backgroundColor: rangeBg }]} />}
+                        {/* Range background — pill strip, rounded at row edges and endpoints */}
+                        {mid && (
+                          <View style={{
+                            position: 'absolute', top: 4, bottom: 4, left: 0, right: 0,
+                            backgroundColor: rangeBg,
+                            borderTopLeftRadius:     isRowStart ? 999 : 0,
+                            borderBottomLeftRadius:  isRowStart ? 999 : 0,
+                            borderTopRightRadius:    isRowEnd   ? 999 : 0,
+                            borderBottomRightRadius: isRowEnd   ? 999 : 0,
+                          }} />
+                        )}
                         {isStart && selEnd && !isEnd && (
-                          <View style={{ position: 'absolute', top: 0, bottom: 0, right: 0, left: '50%', backgroundColor: rangeBg }} />
+                          <View style={{
+                            position: 'absolute', top: 4, bottom: 4, right: 0, left: '50%',
+                            backgroundColor: rangeBg,
+                            borderTopRightRadius:    isRowEnd ? 999 : 0,
+                            borderBottomRightRadius: isRowEnd ? 999 : 0,
+                          }} />
                         )}
                         {isEnd && !isStart && (
-                          <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: '50%', backgroundColor: rangeBg }} />
+                          <View style={{
+                            position: 'absolute', top: 4, bottom: 4, left: 0, right: '50%',
+                            backgroundColor: rangeBg,
+                            borderTopLeftRadius:    isRowStart ? 999 : 0,
+                            borderBottomLeftRadius: isRowStart ? 999 : 0,
+                          }} />
                         )}
                         <TouchableOpacity
                           disabled={disabled}
@@ -928,7 +958,7 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
                           style={[
                             styles.calDayBtn,
                             endpoint && { backgroundColor: C.primary },
-                            isToday && !endpoint && { borderWidth: 1.5, borderColor: 'rgba(31,61,46,0.4)' },
+                            isToday && !endpoint && !mid && { borderWidth: 1.5, borderColor: 'rgba(31,61,46,0.4)' },
                           ]}
                         >
                           <Text style={{
@@ -986,6 +1016,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   parks: ParkInfo[]; onPickPark: () => void;
 }) {
+  const C = useColors();
   const park = parks.find(p => p.park_code === draft.parkCode);
   const [showCalendar, setShowCalendar] = useState(false);
   const today = new Date();
@@ -1109,6 +1140,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
 }
 
 function StepVisit({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void }) {
+  const C = useColors();
   return (
     <View>
       <Section kicker="02" title="How was it?" tag="optional">
@@ -1153,6 +1185,7 @@ function StepJournal({ draft, set, token, npsActivityNames }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void; token: string;
   npsActivityNames: string[];
 }) {
+  const C = useColors();
   return (
     <View>
       <View style={{ marginBottom: 24 }}>
@@ -1327,6 +1360,7 @@ function StepShare({ draft, set, park, userName, avatarUrl }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   park: ParkInfo | undefined; userName: string; avatarUrl?: string | null;
 }) {
+  const C = useColors();
   return (
     <View>
       <Section title="Add a caption" tag="optional">
@@ -1356,6 +1390,7 @@ export default function LogVisitModal() {
   const { getToken } = useAuth();
   const { user } = useUser();
   const insets   = useSafeAreaInsets();
+  const C = useColors();
 
   // Edit mode — opened from a feed post's "Edit visit" menu item
   const { visitId: visitIdParam, postId: postIdParam, parkCode: parkCodeParam } =
@@ -1684,7 +1719,7 @@ export default function LogVisitModal() {
               <Ionicons name="trash-outline" size={15} color={C.inkMute} />
             </TouchableOpacity>
             <TouchableOpacity onPress={resumeDraft} style={styles.draftResumeBtn} activeOpacity={0.8}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFBF1' }}>Resume</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFBF1' }}>Restore</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1756,8 +1791,8 @@ const styles = StyleSheet.create({
   // Draft restore banner
   draftBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: 'rgba(197,107,61,0.08)',
-    borderWidth: 0.5, borderColor: 'rgba(197,107,61,0.35)',
+    backgroundColor: C.surface,
+    borderWidth: 0.5, borderColor: C.hairline,
     borderRadius: 14,
     paddingHorizontal: 14, paddingVertical: 11,
     marginBottom: 20,
@@ -1770,8 +1805,8 @@ const styles = StyleSheet.create({
   },
   draftResumeBtn: {
     backgroundColor: C.primary,
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 100,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 10,
   },
 
   // Modal chrome

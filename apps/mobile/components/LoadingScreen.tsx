@@ -44,7 +44,7 @@ function Star({ x, y, size, opacity, delay }: { x: number; y: number; size: numb
   );
 }
 
-function CompassSpinner() {
+export function CompassSpinner({ size = 44, dark = false }: { size?: number; dark?: boolean }) {
   const rotation = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -60,29 +60,39 @@ function CompassSpinner() {
   }, []);
 
   const rotate = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const cx = size / 2;
+  const cy = size / 2;
+  const r  = size * 0.455;
+
+  const ring1  = dark ? 'rgba(31,61,46,0.20)' : 'rgba(255,251,241,0.30)';
+  const ring2  = dark ? 'rgba(31,61,46,0.70)' : 'rgba(255,251,241,0.80)';
+  const tick   = dark ? 'rgba(31,61,46,0.55)' : 'rgba(255,251,241,0.60)';
+  const north  = dark ? '#1F3D2E' : '#FFFBF1';
+  const south  = dark ? 'rgba(31,61,46,0.28)' : 'rgba(255,251,241,0.35)';
 
   return (
     <Animated.View style={{ transform: [{ rotate }] }}>
-      <Svg width={44} height={44} viewBox="0 0 44 44">
-        {/* Outer ring */}
-        <Circle cx="22" cy="22" r="20" stroke="rgba(255,251,241,0.30)" strokeWidth="1" fill="none" />
-        <Circle cx="22" cy="22" r="20" stroke="rgba(255,251,241,0.80)" strokeWidth="1.5" fill="none"
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Circle cx={cx} cy={cy} r={r} stroke={ring1} strokeWidth="1" fill="none" />
+        <Circle cx={cx} cy={cy} r={r} stroke={ring2} strokeWidth="1.5" fill="none"
           strokeDasharray="10 20" strokeLinecap="round" />
-        {/* Cardinal ticks */}
         {[0, 90, 180, 270].map((deg) => {
-          const r = Math.PI * deg / 180;
-          const x1 = 22 + Math.sin(r) * 16;
-          const y1 = 22 - Math.cos(r) * 16;
-          const x2 = 22 + Math.sin(r) * 20;
-          const y2 = 22 - Math.cos(r) * 20;
-          return <Line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,251,241,0.60)" strokeWidth="1.5" strokeLinecap="round" />;
+          const rad = Math.PI * deg / 180;
+          const x1 = cx + Math.sin(rad) * r * 0.78;
+          const y1 = cy - Math.cos(rad) * r * 0.78;
+          const x2 = cx + Math.sin(rad) * r;
+          const y2 = cy - Math.cos(rad) * r;
+          return <Line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke={tick} strokeWidth="1.5" strokeLinecap="round" />;
         })}
-        {/* North needle */}
-        <Path d="M22 8 L19 22 L22 20 L25 22 Z" fill="#FFFBF1" opacity={0.95} />
-        {/* South needle */}
-        <Path d="M22 36 L19 22 L22 24 L25 22 Z" fill="rgba(255,251,241,0.35)" />
-        {/* Center dot */}
-        <Circle cx="22" cy="22" r="2.5" fill="#D89A3A" />
+        <Path
+          d={`M${cx} ${cy - r * 0.68} L${cx - 3} ${cy} L${cx} ${cy - r * 0.10} L${cx + 3} ${cy} Z`}
+          fill={north} opacity={0.95}
+        />
+        <Path
+          d={`M${cx} ${cy + r * 0.68} L${cx - 3} ${cy} L${cx} ${cy + r * 0.10} L${cx + 3} ${cy} Z`}
+          fill={south}
+        />
+        <Circle cx={cx} cy={cy} r="2.5" fill="#D89A3A" />
       </Svg>
     </Animated.View>
   );
