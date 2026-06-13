@@ -112,7 +112,7 @@ function NotificationRow({
       display: "flex", gap: 10, padding: "10px 14px",
       background: n.read ? "transparent" : "rgba(31,61,46,0.045)",
     }}>
-      <div style={{ position: "relative", flexShrink: 0 }}>
+      <div style={{ position: "relative", flexShrink: 0, alignSelf: "flex-start" }}>
         {avatarEl}
         {n.actor_id && (
           <div style={{

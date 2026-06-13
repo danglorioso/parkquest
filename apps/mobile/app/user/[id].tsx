@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Image, Modal, ScrollView, StyleSheet,
+  ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -9,6 +9,7 @@ import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { BADGE_MAP, BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
+import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ interface UserProfile {
   friendship_status: FriendshipStatus;
   badges: ProfileBadge[];
   visited_parks: VisitedPark[];
+  journal?: JournalEntry[];
 }
 
 function explorerRank(n: number): string {
@@ -131,6 +133,86 @@ function BadgeInfoModal({ badge, onClose }: { badge: ProfileBadge; onClose: () =
   );
 }
 
+interface FriendRow {
+  clerk_user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+function FriendListModal({ userId, onClose, onNavigate }: {
+  userId: string;
+  onClose: () => void;
+  onNavigate: (id: string) => void;
+}) {
+  const { getToken } = useAuth();
+  const [friends, setFriends] = useState<FriendRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const tok = await getToken();
+        const res = await fetch(`${BASE}/api/friends?userId=${userId}&type=friends`, {
+          headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+        });
+        if (res.ok) setFriends(await res.json());
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [userId]);
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <View style={{ flex: 1 }}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+        <View style={styles.friendsSheet}>
+          <View style={styles.friendsHandle} />
+          <Text style={styles.friendsTitle}>
+            {loading ? 'Friends' : `${friends.length} ${friends.length === 1 ? 'Friend' : 'Friends'}`}
+          </Text>
+          {loading ? (
+            <ActivityIndicator color={C.primary} style={{ marginTop: 24, marginBottom: 16 }} />
+          ) : friends.length === 0 ? (
+            <Text style={styles.friendsEmpty}>No friends yet</Text>
+          ) : (
+            <FlatList
+              data={friends}
+              keyExtractor={f => f.clerk_user_id}
+              style={{ maxHeight: 400 }}
+              renderItem={({ item: f }) => (
+                <TouchableOpacity
+                  style={styles.friendRow}
+                  onPress={() => onNavigate(f.clerk_user_id)}
+                  activeOpacity={0.7}
+                >
+                  {f.avatar_url ? (
+                    <Image source={{ uri: f.avatar_url }} style={styles.friendAvatar} />
+                  ) : (
+                    <View style={[styles.friendAvatar, styles.friendAvatarFallback]}>
+                      <Text style={styles.friendAvatarInitials}>
+                        {(f.display_name ?? f.username ?? '?').trim().split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.friendRowName}>{f.display_name ?? f.username}</Text>
+                    {f.display_name ? <Text style={styles.friendRowHandle}>@{f.username}</Text> : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={C.inkMute} />
+                </TouchableOpacity>
+              )}
+              ItemSeparatorComponent={() => <View style={styles.friendRowSep} />}
+            />
+          )}
+          <View style={{ height: 24 }} />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getToken } = useAuth();
@@ -142,6 +224,7 @@ export default function UserProfileScreen() {
   const [notFound, setNotFound] = useState(false);
   const [friendBusy, setFriendBusy] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<ProfileBadge | null>(null);
+  const [showFriendsModal, setShowFriendsModal] = useState(false);
 
   const isOwnProfile = me?.id === id;
 
@@ -351,10 +434,15 @@ export default function UserProfileScreen() {
                 <Text style={styles.statLabel}>PARKS</Text>
               </View>
               <View style={styles.statDivider} />
-              <View style={styles.statCell}>
+              <TouchableOpacity
+                style={styles.statCell}
+                onPress={() => setShowFriendsModal(true)}
+                activeOpacity={0.7}
+                disabled={profile.friend_count === 0}
+              >
                 <Text style={styles.statValue}>{profile.friend_count}</Text>
                 <Text style={styles.statLabel}>FRIENDS</Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* Friend action */}
@@ -455,11 +543,30 @@ export default function UserProfileScreen() {
               </View>
             ) : null}
 
+            {/* Journal timeline */}
+            {profile.journal && profile.journal.length > 0 ? (
+              <View style={styles.section}>
+                <SectionHeader icon="journal-outline" title="JOURNAL" />
+                <JournalTimeline entries={profile.journal ?? []} />
+              </View>
+            ) : null}
+
           </ScrollView>
         )}
 
         {selectedBadge ? (
           <BadgeInfoModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+        ) : null}
+
+        {showFriendsModal && profile ? (
+          <FriendListModal
+            userId={profile.clerk_user_id}
+            onClose={() => setShowFriendsModal(false)}
+            onNavigate={(friendId) => {
+              setShowFriendsModal(false);
+              router.push(`/user/${friendId}` as never);
+            }}
+          />
         ) : null}
       </SafeAreaView>
     </>
@@ -746,5 +853,72 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: C.inkMute,
     textAlign: 'center',
+  },
+
+  // Friends list bottom sheet
+  friendsSheet: {
+    backgroundColor: C.bg,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  friendsHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: C.hairline,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  friendsTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: C.ink,
+    letterSpacing: -0.3,
+    marginBottom: 16,
+  },
+  friendsEmpty: {
+    fontSize: 13,
+    color: C.inkMute,
+    textAlign: 'center',
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  friendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+  },
+  friendRowSep: {
+    height: 0.5,
+    backgroundColor: C.hairline,
+  },
+  friendAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  friendAvatarFallback: {
+    backgroundColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendAvatarInitials: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFBF1',
+  },
+  friendRowName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  friendRowHandle: {
+    fontSize: 12,
+    color: C.inkMute,
+    marginTop: 1,
   },
 });

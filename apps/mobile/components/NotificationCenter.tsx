@@ -87,7 +87,7 @@ function NotificationRow({
 
   return (
     <View style={[styles.row, !n.read && { backgroundColor: C.unreadTint }]}>
-      <View style={{ position: 'relative', flexShrink: 0 }}>
+      <View style={{ position: 'relative', flexShrink: 0, alignSelf: 'flex-start' }}>
         {n.actor_id ? (
           <Avatar url={n.actor_avatar_url} name={name} size={36} />
         ) : (
@@ -217,8 +217,8 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 
   return (
     <>
-      <TouchableOpacity style={style} activeOpacity={0.7} onPress={() => setOpen(true)}>
-        <Ionicons name="notifications-outline" size={18} color={C.inkSoft} />
+      <TouchableOpacity style={[style, open && styles.bellActive]} activeOpacity={0.7} onPress={() => setOpen(true)}>
+        <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? C.primary : C.inkSoft} />
         {displayCount > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{displayCount > 99 ? '99+' : displayCount}</Text>
@@ -287,6 +287,12 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 }
 
 const styles = StyleSheet.create({
+  // Bell selected state (mirrors web open state)
+  bellActive: {
+    backgroundColor: 'rgba(31,61,46,0.07)',
+    borderColor: C.hairline,
+  },
+
   // Bell badge
   badge: {
     position: 'absolute', top: 2, right: 2,

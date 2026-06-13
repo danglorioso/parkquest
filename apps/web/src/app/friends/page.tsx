@@ -194,7 +194,7 @@ export default function FriendsPage() {
   const Section = ({ title, icon: Icon, count, children }: {
     title: string; icon: React.ElementType; count?: number; children: React.ReactNode;
   }) => (
-    <section style={{ marginBottom: 36 }}>
+    <section style={{ marginBottom: 56 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
         <Icon size={14} style={{ color: "var(--ink-mute)" }} />
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.4px", color: "var(--ink-mute)", fontWeight: 600 }}>
@@ -202,8 +202,9 @@ export default function FriendsPage() {
         </span>
         {count != null && count > 0 && (
           <span style={{
-            background: "#DC2626", color: "#fff", fontSize: 9, fontWeight: 700,
+            background: "transparent", color: "#4ade80", fontSize: 9, fontWeight: 700,
             borderRadius: 10, padding: "1px 6px", fontFamily: "var(--font-mono)",
+            border: "1px solid #4ade80",
           }}>
             {count}
           </span>

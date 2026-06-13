@@ -12,6 +12,7 @@ import { setParkFilterIntent } from '@/lib/parkFilterIntent';
 import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
+import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -183,6 +184,7 @@ export default function ProfileScreen() {
   const [friendCount,  setFriendCount]  = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<BadgeSummary[]>([]);
   const [selectedBadge, setSelectedBadge] = useState<BadgeSummary | null>(null);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [searchOpen,   setSearchOpen]   = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
@@ -215,6 +217,22 @@ export default function ProfileScreen() {
         const visited = [...new Set(vs.filter((v: any) => !v.is_bucket_list && v.visited_date).map((v: any) => v.park_code))];
         setParksVisited(visited.length);
         setBucketList(vs.filter((v: any) => v.is_bucket_list).length);
+        setJournalEntries(
+          vs
+            .filter((v: any) => !v.is_bucket_list && v.visited_date)
+            .map((v: any) => ({
+              visit_id:    v.id,
+              visited_date: v.visited_date,
+              park_code:   v.park_code,
+              park_name:   v.park_name,
+              title:       v.title ?? null,
+              notes:       v.notes ?? null,
+              rating:      v.rating ?? null,
+              activities:  v.activities ?? null,
+              visibility:  v.visibility ?? null,
+              redacted:    false,
+            }))
+        );
       }
       if (badgesRes.status === 'fulfilled') {
         const all = badgesRes.value.badges ?? [];
@@ -360,7 +378,7 @@ export default function ProfileScreen() {
             onPress={() => { setParkFilterIntent('bucketList'); router.push('/(tabs)/parks' as never); }}
           />
           <View style={styles.statDivider} />
-          <StatCell value={badgesEarned} sub={`/${totalBadges}`} label="BADGES" />
+          <StatCell value={badgesEarned} sub={`/${totalBadges}`} label="BADGES" onPress={() => router.push('/profile/badges' as never)} />
           <View style={styles.statDivider} />
           <StatCell value={friendCount}  label="FRIENDS" onPress={() => router.push('/profile/friends' as never)} />
         </View>
@@ -427,6 +445,17 @@ export default function ProfileScreen() {
             </ScrollView>
           </View>
         )}
+
+        {/* ── Visit timeline ───────────────────────────────────────────────── */}
+        {journalEntries.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="journal-outline" size={13} color={C.inkMute} />
+              <Text style={styles.sectionKicker}>JOURNAL</Text>
+            </View>
+            <JournalTimeline entries={journalEntries} />
+          </View>
+        ) : null}
 
         {/* ── My collection nav rows ───────────────────────────────────────── */}
         <View style={styles.section}>

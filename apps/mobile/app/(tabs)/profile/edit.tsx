@@ -3,38 +3,43 @@ import {
   Platform, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { usePalette, PALETTES } from '@/lib/palette';
 import * as ImagePicker from 'expo-image-picker';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
-const C = {
-  bg:         '#F2EBDB',
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkSoft:    '#3C3A33',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  primary:    '#1F3D2E',
-  accent:     '#C56B3D',
-  error:      '#C04040',
+const BASE_C = {
+  bg:       '#F2EBDB',
+  surface:  '#FFFBF1',
+  surfaceAlt:'#F7F0DE',
+  ink:      '#1B1A16',
+  inkSoft:  '#3C3A33',
+  inkMute:  '#7A746A',
+  hairline: 'rgba(27,26,22,0.10)',
+  error:    '#C04040',
 };
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 // ── Field ─────────────────────────────────────────────────────────────────────
 
+const fieldStyles = StyleSheet.create({
+  field:      { gap: 5 },
+  fieldLabel: { fontWeight: '600', fontSize: 12, color: BASE_C.ink, letterSpacing: 0.2 },
+  fieldError: { fontSize: 11, color: BASE_C.error },
+});
+
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+    <View style={fieldStyles.field}>
+      <Text style={fieldStyles.fieldLabel}>{label}</Text>
       {children}
-      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+      {error ? <Text style={fieldStyles.fieldError}>{error}</Text> : null}
     </View>
   );
 }
@@ -45,6 +50,12 @@ export default function EditProfileScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
   const { user } = useUser();
+  const { paletteId, colors: paletteColors, setPalette } = usePalette();
+  const C = useMemo(
+    () => ({ ...BASE_C, primary: paletteColors.primary, accent: paletteColors.accent }),
+    [paletteColors],
+  );
+  const styles = useMemo(() => makeStyles(C), [C]);
 
   const [firstName,     setFirstName]     = useState('');
   const [lastName,      setLastName]      = useState('');
@@ -274,6 +285,35 @@ export default function EditProfileScreen() {
             </View>
           </Field>
 
+          {/* Appearance */}
+          <View style={fieldStyles.field}>
+            <Text style={fieldStyles.fieldLabel}>Appearance</Text>
+            <View style={styles.paletteGrid}>
+              {PALETTES.map(({ id, label, colors }) => {
+                const selected = id === paletteId;
+                return (
+                  <TouchableOpacity
+                    key={id}
+                    onPress={() => setPalette(id)}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.paletteChip,
+                      selected && { borderColor: colors.primary, borderWidth: 2, backgroundColor: C.surface },
+                    ]}
+                  >
+                    <View style={[styles.paletteSwatch, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.paletteLabel, selected && { color: C.ink, fontWeight: '700' }]}>
+                      {label}
+                    </Text>
+                    {selected && (
+                      <Ionicons name="checkmark" size={12} color={colors.primary} style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           {/* Error */}
           {error ? (
             <View style={styles.errorBox}>
@@ -302,7 +342,8 @@ export default function EditProfileScreen() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
+  return StyleSheet.create({
   scroll: {
     padding: 20,
     gap: 16,
@@ -359,19 +400,6 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     gap: 12,
-  },
-  field: {
-    gap: 5,
-  },
-  fieldLabel: {
-    fontWeight: '600',
-    fontSize: 12,
-    color: C.ink,
-    letterSpacing: 0.2,
-  },
-  fieldError: {
-    fontSize: 11,
-    color: C.error,
   },
   input: {
     backgroundColor: C.surface,
@@ -443,4 +471,34 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-});
+  paletteGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  paletteChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    backgroundColor: C.surfaceAlt,
+    minWidth: '46%',
+    flex: 1,
+  },
+  paletteSwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    flexShrink: 0,
+  },
+  paletteLabel: {
+    fontSize: 12.5,
+    fontWeight: '500',
+    color: C.inkSoft,
+  },
+  });
+}

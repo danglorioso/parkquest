@@ -95,11 +95,11 @@ function initials(name: string): string {
 function Avatar({ url, name, size = 44 }: { url: string | null; name: string; size?: number }) {
   const r = size / 2;
   return (
-    <View style={{ width: size, height: size, borderRadius: r, overflow: 'hidden', flexShrink: 0, borderWidth: 1, borderColor: C.hairline }}>
+    <View style={{ width: size, height: size, borderRadius: r, flexShrink: 0, borderWidth: 1, borderColor: C.hairline }}>
       {url ? (
-        <Image source={{ uri: url }} style={{ width: size, height: size }} resizeMode="cover" />
+        <Image source={{ uri: url }} style={{ width: size, height: size, borderRadius: r }} resizeMode="cover" />
       ) : (
-        <View style={{ flex: 1, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ flex: 1, borderRadius: r, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
           <Text style={{ fontSize: size * 0.33, fontWeight: '900', color: '#FFFBF1' }}>
             {initials(name)}
           </Text>
@@ -338,6 +338,8 @@ export default function FriendsScreen() {
   const [sentSuggestion,  setSentSuggestion]  = useState<Set<string>>(new Set());
   const [busySuggestion,  setBusySuggestion]  = useState<Set<string>>(new Set());
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const debounce    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -369,6 +371,12 @@ export default function FriendsScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { loadAll(); }, [loadAll]));
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadAll();
+    setRefreshing(false);
+  }, [loadAll]);
 
   // ── Search ─────────────────────────────────────────────────────────────────
 
@@ -697,7 +705,7 @@ export default function FriendsScreen() {
   }
 
   return (
-    <SafeAreaView style={st.screen} edges={['bottom']}>
+    <SafeAreaView style={st.screen} edges={['top']}>
       <FlatList
         data={rows}
         keyExtractor={(item, index) => {
@@ -711,6 +719,8 @@ export default function FriendsScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
         contentContainerStyle={{ paddingBottom: 40 }}
       />
     </SafeAreaView>

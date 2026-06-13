@@ -2,6 +2,7 @@ import '../global.css';
 
 import { useEffect, useRef, useState } from 'react';
 import { useFonts } from 'expo-font';
+import { PaletteProvider } from '../lib/palette';
 import {
   JetBrainsMono_400Regular,
   JetBrainsMono_600SemiBold,
@@ -70,6 +71,7 @@ export default function RootLayout() {
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
+          <PaletteProvider>
           <SafeAreaProvider>
             <SplashController onReady={() => setAppReady(true)} />
             <ClerkLoaded>
@@ -102,6 +104,7 @@ export default function RootLayout() {
             </ClerkLoaded>
             <LoadingScreen visible={!appReady} />
           </SafeAreaProvider>
+          </PaletteProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>
     </ClerkProvider>
