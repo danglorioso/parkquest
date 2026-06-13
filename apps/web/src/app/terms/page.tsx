@@ -315,7 +315,7 @@ function TermsContent() {
 
       <Section title="9. Limitation of Liability">
         <P>To the fullest extent permitted by applicable law, ParkQuest and its creator shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of or inability to use the Service — including loss of data, loss of profits, or any other intangible losses — even if we have been advised of the possibility of such damages.</P>
-        <P>Our total liability to you for any claims arising from these Terms or the Service shall not exceed the greater of $10 USD or the amount you have paid to us in the past twelve months (which is currently $0 as the Service is free).</P>
+        <P>Our total liability to you for any claims arising from these Terms or the Service shall not exceed the greater of $0 USD or the amount you have paid to us in the past twelve months (which is currently $0 as the Service is free).</P>
       </Section>
 
       <Section title="10. Indemnification">
