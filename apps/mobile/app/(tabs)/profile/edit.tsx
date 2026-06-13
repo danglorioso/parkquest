@@ -465,6 +465,7 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     paddingVertical: 13,
     alignItems: 'center',
     marginTop: 4,
+    minHeight: 46,
   },
   saveText: {
     color: '#FFFBF1',

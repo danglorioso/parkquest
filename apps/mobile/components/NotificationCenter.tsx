@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
+  FlatList, Linking, Modal, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -146,6 +147,8 @@ function NotificationRow({
   );
 }
 
+type PushStatus = 'granted' | 'denied' | 'undetermined';
+
 export function NotificationBell({ style }: { style?: ViewStyle }) {
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
@@ -155,11 +158,32 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [respondedTo, setRespondedTo] = useState<Set<number>>(new Set());
+  const [pushStatus, setPushStatus] = useState<PushStatus>('undetermined');
 
   // getToken from @clerk/clerk-expo is a new function every render — keeping it
   // in dep arrays re-triggers effects on each render and loops fetches forever.
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
+
+  // Check push permission status on mount
+  useEffect(() => {
+    Notifications.getPermissionsAsync().then(({ status }) => {
+      setPushStatus(status as PushStatus);
+    });
+  }, []);
+
+  // On first sheet open, request push permission (iOS shows system dialog once;
+  // subsequent calls return current status without re-prompting)
+  const hasRequestedPushRef = useRef(false);
+  useEffect(() => {
+    if (!open || hasRequestedPushRef.current) return;
+    hasRequestedPushRef.current = true;
+    Notifications.requestPermissionsAsync().then(({ status }) => {
+      setPushStatus(status as PushStatus);
+    });
+  }, [open]);
+
+  const handleOpenPushSettings = () => Linking.openURL('app-settings:');
 
   // Poll unread count every 30s, same cadence as web
   useEffect(() => {
@@ -251,6 +275,19 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
               </TouchableOpacity>
             </View>
 
+            {/* Denied banner */}
+            {pushStatus === 'denied' && (
+              <TouchableOpacity
+                style={styles.permBanner}
+                onPress={handleOpenPushSettings}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="notifications-off-outline" size={13} color="#92400E" />
+                <Text style={styles.permBannerText}>Push notifications disabled</Text>
+                <Text style={styles.permBannerCta}>Enable in Settings →</Text>
+              </TouchableOpacity>
+            )}
+
             {/* List */}
             {loading ? (
               <View style={styles.centerBox}>
@@ -279,6 +316,28 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                 )}
               />
             )}
+
+            {/* Permission settings footer — always visible so user can manage later */}
+            <TouchableOpacity
+              style={styles.permFooter}
+              onPress={handleOpenPushSettings}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Ionicons
+                  name={pushStatus === 'granted' ? 'notifications' : 'notifications-off-outline'}
+                  size={12}
+                  color={pushStatus === 'granted' ? C.primary : C.inkMute}
+                />
+                <Text style={styles.permFooterLabel}>
+                  Push notifications:{' '}
+                  <Text style={{ color: pushStatus === 'granted' ? C.primary : C.inkMute }}>
+                    {pushStatus === 'granted' ? 'On' : pushStatus === 'denied' ? 'Off' : 'Not set'}
+                  </Text>
+                </Text>
+              </View>
+              <Text style={styles.permFooterAction}>Manage →</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -374,9 +433,27 @@ const styles = StyleSheet.create({
   },
   respondedText: { fontSize: 11, color: C.inkMute },
 
+  // Push permission
+  permBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#FEF3C7',
+    borderBottomWidth: 0.5, borderBottomColor: '#F59E0B',
+    paddingHorizontal: 16, paddingVertical: 9,
+  },
+  permBannerText: { flex: 1, fontSize: 12, color: '#92400E', fontWeight: '500' },
+  permBannerCta: { fontSize: 12, color: '#92400E', fontWeight: '700' },
+  permFooter: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 10,
+    borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
+  },
+  permFooterLabel: { fontSize: 11.5, color: C.inkMute },
+  permFooterAction: { fontSize: 11.5, color: C.inkMute, fontWeight: '600' },
+
   // Empty / loading
   centerBox: {
-    paddingVertical: 32, paddingHorizontal: 24, alignItems: 'center',
+    height: 480, paddingHorizontal: 24,
+    alignItems: 'center', justifyContent: 'center',
   },
   emptyTitle: {
     fontSize: 14, color: C.ink, fontWeight: '600', marginBottom: 4,

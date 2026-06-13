@@ -782,7 +782,7 @@ const st = StyleSheet.create({
   btn: {
     flexDirection: 'row', alignItems: 'center',
     borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6,
-    flexShrink: 0,
+    flexShrink: 0, minHeight: 32,
   },
   btnPrimary:       { backgroundColor: C.primary },
   btnPrimaryText:   { fontSize: 12.5, fontWeight: '700', color: '#FFFBF1' },

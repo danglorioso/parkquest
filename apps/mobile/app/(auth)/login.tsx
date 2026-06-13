@@ -287,7 +287,7 @@ const st = StyleSheet.create({
   fFieldInput:  { fontSize: 15, color: C.ink, paddingTop: 4 },
   trailingText: { fontSize: 12, fontWeight: '600', color: C.primary },
 
-  primaryBtn:     { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 10 },
+  primaryBtn:     { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 10, minHeight: 50 },
   primaryBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFBF1' },
   secondaryBtn:   { paddingVertical: 12, alignItems: 'center' },
   secondaryBtnText: { fontSize: 13, fontWeight: '600', color: C.inkMute },

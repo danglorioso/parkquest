@@ -978,6 +978,7 @@ const styles = StyleSheet.create({
     gap: 6,
     borderRadius: 12,
     paddingVertical: 12,
+    minHeight: 44,
     borderWidth: 1.5,
     borderColor: C.bucket,
     marginHorizontal: 16,

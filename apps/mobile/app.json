@@ -36,6 +36,14 @@
       "expo-splash-screen",
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1F3D2E",
+          "sounds": []
+        }
+      ],
+      [
         "expo-image-picker",
         { "photosPermission": "ParkQuest needs access to your photos to share your adventures." }
       ],

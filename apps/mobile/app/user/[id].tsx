@@ -689,6 +689,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.primary,
     borderRadius: 10,
     paddingVertical: 13,
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

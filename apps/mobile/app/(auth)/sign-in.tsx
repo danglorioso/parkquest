@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, backgroundColor: C.surface,
     borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 12, paddingVertical: 13, marginBottom: 8,
+    borderRadius: 12, paddingVertical: 13, marginBottom: 8, minHeight: 46,
   },
   oauthBtnText: { fontSize: 13, fontWeight: '600', color: C.ink },
 
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
 
   primaryBtn: {
     backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15,
-    alignItems: 'center', marginBottom: 10,
+    alignItems: 'center', marginBottom: 10, minHeight: 50,
   },
   primaryBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFBF1' },
 
