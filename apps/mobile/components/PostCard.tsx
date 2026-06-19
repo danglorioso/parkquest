@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BADGE_MAP, BADGE_TIER_COLORS } from '@/lib/badges';
 import { useColors } from '@/lib/palette';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -219,6 +220,7 @@ function LikersSheet({
   postId, token, onClose,
 }: { postId: number; token: string; onClose: () => void }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<Liker[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -234,48 +236,64 @@ function LikersSheet({
     router.push(`/user/${userId}` as never);
   };
 
-  const slide = useRef(new Animated.Value(480)).current;
+  const slide = useRef(new Animated.Value(400)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    Animated.timing(slide, {
-      toValue: 0,
-      duration: 260,
-      useNativeDriver: true,
-    }).start();
-  }, [slide]);
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 0, duration: 260, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 260, useNativeDriver: true }),
+    ]).start();
+  }, [slide, backdropOpacity]);
+
+  const dismiss = () => {
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 400, duration: 200, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => onClose());
+  };
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
-      <Animated.View style={[styles.sheet, { transform: [{ translateY: slide }] }]}>
-        <View style={styles.sheetHandle} />
-        <Text style={styles.sheetTitle}>LIKED BY</Text>
-        {loading ? (
-          <ActivityIndicator size="small" color={C.inkMute} style={{ margin: 24 }} />
-        ) : rows.length === 0 ? (
-          <Text style={styles.sheetEmpty}>No likes yet</Text>
-        ) : (
-          <ScrollView style={{ maxHeight: 380 }} bounces={false}>
-            {rows.map(l => {
-              const lname = l.display_name ?? l.username ?? 'Explorer';
-              return (
-                <TouchableOpacity
-                  key={l.user_id}
-                  style={styles.likerRow}
-                  activeOpacity={0.7}
-                  onPress={() => openProfile(l.user_id)}
-                >
-                  <Avatar url={l.avatar_url} name={lname} size={36} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.likerName}>{lname}</Text>
-                    {l.username ? <Text style={styles.likerSub}>@{l.username}</Text> : null}
-                  </View>
-                  <Ionicons name="chevron-forward" size={14} color={C.inkMute} />
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        )}
-      </Animated.View>
+    <Modal visible transparent animationType="none" onRequestClose={dismiss} statusBarTranslucent>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.sheetBackdrop, { opacity: backdropOpacity }]}
+          pointerEvents="none"
+        />
+        <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
+        <Animated.View
+          style={[styles.sheet, { paddingBottom: insets.bottom + 8, transform: [{ translateY: slide }] }]}
+        >
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>LIKED BY</Text>
+          {loading ? (
+            <ActivityIndicator size="small" color={C.inkMute} style={{ margin: 24 }} />
+          ) : rows.length === 0 ? (
+            <Text style={styles.sheetEmpty}>No likes yet</Text>
+          ) : (
+            <ScrollView style={{ maxHeight: 380 }} bounces={false}>
+              {rows.map(l => {
+                const lname = l.display_name ?? l.username ?? 'Explorer';
+                return (
+                  <TouchableOpacity
+                    key={l.user_id}
+                    style={styles.likerRow}
+                    activeOpacity={0.7}
+                    onPress={() => openProfile(l.user_id)}
+                  >
+                    <Avatar url={l.avatar_url} name={lname} size={36} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.likerName}>{lname}</Text>
+                      {l.username ? <Text style={styles.likerSub}>@{l.username}</Text> : null}
+                    </View>
+                    <Ionicons name="chevron-forward" size={14} color={C.inkMute} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </Animated.View>
+      </View>
     </Modal>
   );
 }

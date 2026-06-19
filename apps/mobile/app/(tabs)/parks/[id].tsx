@@ -569,11 +569,11 @@ export default function ParkDetailScreen() {
             horizontal showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.photoStrip}
           >
-            {stripImages.map(({ img, actualIdx }) => {
+            {stripImages.map(({ img, actualIdx }, slotIdx) => {
               const gc = gradientColors(park.park_code);
               return (
                 <TouchableOpacity
-                  key={actualIdx}
+                  key={slotIdx}
                   onPress={() => setLightbox({ images: nps!.images, idx: actualIdx })}
                   activeOpacity={0.85}
                   style={styles.photoStripItem}

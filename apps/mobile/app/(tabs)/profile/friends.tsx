@@ -1,9 +1,9 @@
 import {
-  ActivityIndicator, Alert, FlatList, Image, Platform,
+  ActivityIndicator, Alert, FlatList, Image,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -319,6 +319,7 @@ function SearchResultRow({
 export default function FriendsScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [friends,    setFriends]    = useState<FriendUser[]  | null>(null);
   const [incoming,   setIncoming]   = useState<PendingUser[] | null>(null);
@@ -538,9 +539,17 @@ export default function FriendsScreen() {
     switch (item._t) {
       case 'header':
         return (
-          <View style={st.pageHeader}>
-            <Text style={st.kicker}>CONNECTIONS</Text>
-            <Text style={st.pageTitle}>Friends</Text>
+          <View style={[st.pageHeader, { paddingTop: insets.top + 8 }]}>
+            <View style={st.dragHandle} />
+            <View style={st.sheetTitleRow}>
+              <View>
+                <Text style={st.kicker}>CONNECTIONS</Text>
+                <Text style={st.pageTitle}>Friends</Text>
+              </View>
+              <TouchableOpacity onPress={() => router.back()} style={st.closeBtn} hitSlop={8}>
+                <Ionicons name="close" size={18} color={C.inkSoft} />
+              </TouchableOpacity>
+            </View>
             <Text style={st.pageSub}>
               {loading
                 ? 'Loading…'
@@ -705,7 +714,7 @@ export default function FriendsScreen() {
   }
 
   return (
-    <SafeAreaView style={st.screen} edges={[]}>
+    <View style={st.screen}>
       <FlatList
         data={rows}
         keyExtractor={(item, index) => {
@@ -721,9 +730,9 @@ export default function FriendsScreen() {
         keyboardDismissMode="on-drag"
         refreshing={refreshing}
         onRefresh={handleRefresh}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -732,7 +741,10 @@ export default function FriendsScreen() {
 const st = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
-  pageHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 36 },
+  pageHeader:    { paddingHorizontal: 16, paddingBottom: 28 },
+  dragHandle:    { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(27,26,22,0.18)', alignSelf: 'center', marginBottom: 20 },
+  sheetTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 },
+  closeBtn:      { width: 32, height: 32, borderRadius: 16, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: C.hairline },
   kicker:    { fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4, marginBottom: 3 },
   pageTitle: { fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
   pageSub:   { fontSize: 13.5, color: C.inkMute, marginTop: 4 },

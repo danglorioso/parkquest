@@ -751,9 +751,12 @@ function ParkBottomSheet({
           )}
           onScrollEndDrag={e => {
             const y = e.nativeEvent.contentOffset.y;
+            const vy = (e.nativeEvent as any).velocity?.y ?? 0;
             if (y <= 0) {
               const mid = (SHEET_PEEK + SHEET_FULL) / 2;
-              if (baseH.current < mid) {
+              if (vy < -0.3 || baseH.current < SHEET_PEEK * 0.45) {
+                dismiss();
+              } else if (baseH.current < mid) {
                 snapTo(SHEET_PEEK);
               } else {
                 snapTo(SHEET_FULL);
@@ -1058,21 +1061,23 @@ function ParkBottomSheet({
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          {heroUrl ? (
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={0.9}
-              onPress={() => npsImages.length > 0 && setLightboxIdx(imgIdx)}
-            >
-              <Image
-                source={{ uri: heroUrl }}
+          <View style={StyleSheet.absoluteFill} {...topStripPan.panHandlers}>
+            {heroUrl ? (
+              <TouchableOpacity
                 style={StyleSheet.absoluteFill}
-                contentFit="cover"
-                transition={300}
-                cachePolicy="memory-disk"
-              />
-            </TouchableOpacity>
-          ) : null}
+                activeOpacity={0.9}
+                onPress={() => npsImages.length > 0 && setLightboxIdx(imgIdx)}
+              >
+                <Image
+                  source={{ uri: heroUrl }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  transition={300}
+                  cachePolicy="memory-disk"
+                />
+              </TouchableOpacity>
+            ) : null}
+          </View>
           <LinearGradient
             colors={['rgba(0,0,0,0.45)', 'transparent', 'rgba(0,0,0,0.78)']}
             locations={[0, 0.42, 1]}
