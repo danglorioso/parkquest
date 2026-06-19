@@ -705,7 +705,7 @@ export default function FriendsScreen() {
   }
 
   return (
-    <SafeAreaView style={st.screen} edges={['top']}>
+    <SafeAreaView style={st.screen} edges={[]}>
       <FlatList
         data={rows}
         keyExtractor={(item, index) => {

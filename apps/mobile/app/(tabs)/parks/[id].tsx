@@ -2,12 +2,12 @@ import {
   ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal,
   Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
-import AppTabBar from '@/components/AppTabBar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth, useUser } from '@clerk/clerk-expo';
+import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker } from 'react-native-maps';
@@ -50,10 +50,38 @@ interface Visit {
   park_code: string;
   is_bucket_list: boolean;
   visited_date: string | null;
+  end_date: string | null;
   title: string | null;
   notes: string | null;
+  highlight: string | null;
   rating: number | null;
+  crowd: number | null;
+  difficulty: number | null;
+  weather_conditions: string[] | null;
+  activities: string[] | null;
+  companions: string[] | null;
   photos: string[] | null;
+  cover_photo: string | null;
+  visibility: string | null;
+  created_at: string;
+}
+
+interface PostLite {
+  id: number;
+  caption: string | null;
+  photos: string[] | null;
+  park_code: string | null;
+  visit_id: number | null;
+  badge_id: string | null;
+  created_at: string;
+  clerk_user_id: string;
+  park_name: string | null;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  like_count: number;
+  comment_count: number;
+  liked_by_me: boolean;
 }
 
 interface NpsImage {
@@ -284,44 +312,76 @@ export default function ParkDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { getToken } = useAuth();
+  const { user } = useUser();
   const insets = useSafeAreaInsets();
   const C = useColors();
 
-  const [park,     setPark]     = useState<Park | null>(null);
-  const [nps,      setNps]      = useState<NpsData | null>(null);
-  const [weather,  setWeather]  = useState<WeatherForecast | null>(null);
-  const [visits,   setVisits]   = useState<Visit[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [lightbox, setLightbox] = useState<{ images: NpsImage[]; idx: number } | null>(null);
-  const [onBucket, setOnBucket] = useState(false);
-  const [bucketBusy, setBucketBusy] = useState(false);
-  const [heroIdx,    setHeroIdx]    = useState(0);
-  const [heroLoaded, setHeroLoaded] = useState(false);
+  const [park,         setPark]         = useState<Park | null>(null);
+  const [nps,          setNps]          = useState<NpsData | null>(null);
+  const [weather,      setWeather]      = useState<WeatherForecast | null>(null);
+  const [visits,       setVisits]       = useState<Visit[]>([]);
+  const [myParkPosts,  setMyParkPosts]  = useState<FeedPost[]>([]);
+  const [token,        setToken]        = useState<string | null>(null);
+  const [loading,      setLoading]      = useState(true);
+  const [lightbox,     setLightbox]     = useState<{ images: NpsImage[]; idx: number } | null>(null);
+  const [onBucket,     setOnBucket]     = useState(false);
+  const [bucketBusy,   setBucketBusy]   = useState(false);
+  const [heroIdx,      setHeroIdx]      = useState(0);
+  const [heroLoaded,   setHeroLoaded]   = useState(false);
+  const [prevHeroImage, setPrevHeroImage] = useState<string | null>(null);
+  const prevHeroRef = useRef<string | null>(null);
   const npsRef = useRef<NpsData | null>(null);
   npsRef.current = nps;
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
     if (!tok || !id) return;
+    setToken(tok);
     setPark(prev => { if (!prev) setLoading(true); return prev; });
     try {
-      const [parkData, npsData, visitsData] = await Promise.allSettled([
+      const [parkData, npsData, visitsData, postsData] = await Promise.allSettled([
         apiFetch<Park>(`/api/parks/${id}`, tok),
         apiFetch<NpsData>(`/api/parks/${id}/nps`, tok),
         apiFetch<Visit[]>('/api/visits', tok),
+        apiFetch<PostLite[]>(`/api/posts?parkCode=${id}`, tok),
       ]);
       if (parkData.status === 'fulfilled') setPark(parkData.value);
       if (npsData.status === 'fulfilled')  setNps(npsData.value);
-      if (visitsData.status === 'fulfilled') {
-        setVisits(visitsData.value.filter((v: Visit) => v.park_code === id && !v.is_bucket_list && v.visited_date));
-        setOnBucket(visitsData.value.some((v: Visit) => v.park_code === id && v.is_bucket_list));
+
+      const allVisits = visitsData.status === 'fulfilled' ? visitsData.value : [];
+      const parkVisits = allVisits.filter((v: Visit) => v.park_code === id && !v.is_bucket_list && v.visited_date);
+      setVisits(parkVisits);
+      setOnBucket(allVisits.some((v: Visit) => v.park_code === id && v.is_bucket_list));
+
+      if (postsData.status === 'fulfilled') {
+        const merged: FeedPost[] = postsData.value
+          .filter(p => p.clerk_user_id === user?.id)
+          .map(p => {
+            const v = parkVisits.find(pv => pv.id === p.visit_id);
+            return {
+              ...p,
+              park_image_url: null,
+              is_friend_post: false,
+              visibility: v?.visibility ?? null,
+              visit_date: v?.visited_date ?? null,
+              visit_rating: v?.rating ?? null,
+              visit_activities: v?.activities ?? null,
+              visit_weather: v?.weather_conditions ?? null,
+              visit_crowd: v?.crowd ?? null,
+              visit_difficulty: v?.difficulty ?? null,
+              visit_companion_count: v?.companions?.length ?? null,
+              visit_companion_names: null,
+              visit_highlight: v?.highlight ?? null,
+            } as FeedPost;
+          });
+        setMyParkPosts(merged);
       }
     } catch (e) {
       console.error('Park detail load failed:', e);
     } finally {
       setLoading(false);
     }
-  }, [getToken, id]);
+  }, [getToken, id, user?.id]);
 
   const loadWeather = useCallback(async () => {
     const tok = await getToken();
@@ -367,7 +427,17 @@ export default function ParkDetailScreen() {
   useEffect(() => {
     setHeroIdx(0);
     setHeroLoaded(false);
+    setPrevHeroImage(null);
+    prevHeroRef.current = null;
   }, [nps]);
+
+  useEffect(() => {
+    if (!heroImage) return;
+    if (prevHeroRef.current !== heroImage) {
+      setPrevHeroImage(prevHeroRef.current);
+      prevHeroRef.current = heroImage;
+    }
+  }, [heroImage]);
 
   useEffect(() => {
     if (!heroLoaded || !nps || nps.images.length < 2) return;
@@ -451,6 +521,15 @@ export default function ParkDetailScreen() {
       >
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
         <View style={[styles.hero, { height: 260 + insets.top, backgroundColor: gradientColor(park.park_code) }]}>
+          {/* Previous image stays visible as background during cross-dissolve */}
+          {prevHeroImage && (
+            <ExpoImage
+              source={{ uri: prevHeroImage }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          )}
           {heroImage && (
             <TouchableOpacity
               style={StyleSheet.absoluteFill}
@@ -459,10 +538,11 @@ export default function ParkDetailScreen() {
               onPress={() => nps?.images?.length && setLightbox({ images: nps.images, idx: heroIdx })}
             >
               <ExpoImage
+                key={heroImage}
                 source={{ uri: heroImage }}
                 style={StyleSheet.absoluteFill}
                 contentFit="cover"
-                transition={1200}
+                transition={800}
                 cachePolicy="memory-disk"
                 onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
               />
@@ -531,7 +611,7 @@ export default function ParkDetailScreen() {
         </View>
 
         {/* ── Action buttons ────────────────────────────────────────────────── */}
-        <View style={[styles.actionRow, parkStatus !== 'visited' && { marginVertical: 24 }]}>
+        <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: C.primary }]}
             onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
@@ -617,7 +697,7 @@ export default function ParkDetailScreen() {
                   );
                 })}
                 {h.description ? (
-                  <Text style={[styles.bodyText, { marginTop: 10 }]} numberOfLines={4}>
+                  <Text style={[styles.bodyText, { marginTop: 10 }]}>
                     {h.description}
                   </Text>
                 ) : null}
@@ -682,7 +762,7 @@ export default function ParkDetailScreen() {
                   </Text>
                 </View>
                 {fee.description ? (
-                  <Text style={styles.feeDesc} numberOfLines={3}>{fee.description}</Text>
+                  <Text style={styles.feeDesc}>{fee.description}</Text>
                 ) : null}
               </View>
             ))}
@@ -780,15 +860,15 @@ export default function ParkDetailScreen() {
         <Section title={`Your Journal (${visits.length})`}>
           {visits.length === 0 ? (
             <View style={styles.journalEmpty}>
-              <Text style={{ fontSize: 28, marginBottom: 10 }}>🌲</Text>
-              <Text style={{ fontWeight: '700', color: C.ink, fontSize: 14, marginBottom: 4 }}>
+              <Text style={{ fontSize: 36, marginBottom: 14 }}>🌲</Text>
+              <Text style={{ fontWeight: '800', color: C.ink, fontSize: 16, marginBottom: 6 }}>
                 No visits yet
               </Text>
-              <Text style={{ color: C.inkMute, fontSize: 12, textAlign: 'center', marginBottom: 16 }}>
-                Be the first to log your adventure at {park.name}.
+              <Text style={{ color: C.inkMute, fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: 22 }}>
+                Log your first adventure at {park.name}.
               </Text>
               <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: C.primary }]}
+                style={[styles.journalEmptyBtn, { backgroundColor: C.primary }]}
                 onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
                 activeOpacity={0.8}
               >
@@ -797,10 +877,33 @@ export default function ParkDetailScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={{ gap: 12 }}>
-              {visits.map(v => <VisitCard key={v.id} visit={v} />)}
+            <View style={{ gap: 0 }}>
+              {token && myParkPosts.length > 0
+                ? myParkPosts.map(post => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      token={token}
+                      myUserId={user?.id ?? ''}
+                      myAvatarUrl={user?.imageUrl}
+                      myName={user?.fullName ?? user?.username}
+                      onDelete={deletedId => setMyParkPosts(prev => prev.filter(p => p.id !== deletedId))}
+                    />
+                  ))
+                : visits.map(v => (
+                    <View key={v.id} style={[styles.visitCard, { marginBottom: 12 }]}>
+                      <Text style={styles.visitDate}>
+                        {v.visited_date
+                          ? new Date(v.visited_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                          : 'No date'}
+                      </Text>
+                      {v.title ? <Text style={styles.visitTitle}>{v.title}</Text> : null}
+                      {v.notes ? <Text style={styles.visitNotes} numberOfLines={4}>{v.notes}</Text> : null}
+                    </View>
+                  ))
+              }
               <TouchableOpacity
-                style={[styles.actionBtnOutline, { borderColor: C.primary }]}
+                style={[styles.actionBtnOutline, { borderColor: C.primary, marginTop: 4 }]}
                 onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
                 activeOpacity={0.8}
               >
@@ -826,7 +929,6 @@ export default function ParkDetailScreen() {
           </Text>
         </View>
       </ScrollView>
-      <AppTabBar activeTab="parks" />
     </View>
   );
 }
@@ -914,7 +1016,7 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
     overflow: 'hidden',
     marginTop: 0,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   statCell: {
     flex: 1,
@@ -946,7 +1048,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginHorizontal: 16,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   actionBtn: {
     flex: 1,
@@ -956,7 +1058,7 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: C.primary,
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 11,
   },
   actionBtnText: {
     fontSize: 13,
@@ -971,7 +1073,7 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: 'transparent',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderWidth: 1.5,
     borderColor: C.primary,
   },
@@ -986,13 +1088,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     borderRadius: 12,
-    paddingVertical: 12,
-    minHeight: 44,
+    paddingVertical: 11,
     borderWidth: 1.5,
     borderColor: C.bucket,
     marginHorizontal: 16,
-    marginTop: -10,
-    marginBottom: 20,
+    marginTop: 0,
+    marginBottom: 12,
   },
   bucketBtnActive: {
     backgroundColor: C.bucket,
@@ -1007,7 +1108,8 @@ const styles = StyleSheet.create({
     height: 0.5,
     backgroundColor: C.hairline,
     marginHorizontal: 16,
-    marginVertical: 8,
+    marginTop: 12,
+    marginBottom: 0,
   },
 
   // Section
@@ -1189,12 +1291,22 @@ const styles = StyleSheet.create({
   // Journal
   journalEmpty: {
     alignItems: 'center',
-    paddingVertical: 24,
+    paddingTop: 32,
+    paddingBottom: 28,
+    paddingHorizontal: 24,
     backgroundColor: C.surface,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 0.5,
     borderColor: C.hairline,
-    paddingHorizontal: 20,
+  },
+  journalEmptyBtn: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+    paddingVertical: 13,
   },
   visitCard: {
     backgroundColor: C.surface,

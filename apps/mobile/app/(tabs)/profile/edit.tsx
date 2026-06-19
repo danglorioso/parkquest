@@ -177,7 +177,27 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top', 'bottom']}>
+      {/* Top bar */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: 16, paddingVertical: 10,
+        borderBottomWidth: 0.5, borderBottomColor: BASE_C.hairline,
+        backgroundColor: C.bg,
+      }}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+          hitSlop={8}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={20} color={C.primary} />
+          <Text style={{ fontSize: 15, color: C.primary, fontWeight: '600' }}>Back</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: BASE_C.ink }}>Edit Profile</Text>
+        <View style={{ width: 60 }} />
+      </View>
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -483,9 +503,13 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
   },
   signOutBtn: {
     alignItems: 'center',
-    paddingVertical: 14,
+    justifyContent: 'center',
+    paddingVertical: 12,
     marginTop: 8,
     marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#DC2626',
   },
   signOutText: {
     fontSize: 14,

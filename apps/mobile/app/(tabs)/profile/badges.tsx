@@ -603,7 +603,7 @@ export default function BadgesScreen() {
         return (
           <View style={styles.pageHeader}>
             <Text style={styles.headerKicker}>
-              {earned.length} OF {badges.length} EARNED · {earnedPct}%
+              {earned.length} EARNED
             </Text>
             <Text style={styles.headerTitle}>Badge collection</Text>
             <Text style={styles.headerSub}>Five tiers, every milestone marked. Earn them by exploring.</Text>

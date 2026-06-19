@@ -5,6 +5,7 @@ import {
   StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BADGE_MAP, BADGE_TIER_COLORS } from '@/lib/badges';
@@ -38,6 +39,7 @@ export interface FeedPost {
   created_at: string;
   clerk_user_id: string;
   park_name: string | null;
+  park_image_url: string | null;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
@@ -57,6 +59,7 @@ export interface FeedPost {
   visit_companion_count: number | null;
   visit_companion_names: Array<{ username: string; display_name: string | null; avatar_url: string | null }> | null;
   visit_highlight: string | null;
+  visit_ordinal: number | null;
 }
 
 interface CommentRow {
@@ -413,6 +416,63 @@ function BadgePostBody({ badgeId }: { badgeId: string }) {
   );
 }
 
+// ── ParkHeroBanner ────────────────────────────────────────────────────────────
+
+function ParkHeroBanner({ post, onPress }: { post: FeedPost; onPress?: () => void }) {
+  const parkCol = parkColor(post.park_code ?? 'ZZZZ');
+  const isFirst = Number(post.visit_ordinal) === 1;
+  const [npsImageUrl, setNpsImageUrl] = useState<string | null>(null);
+  const imageUrl = post.park_image_url ?? npsImageUrl;
+
+  useEffect(() => {
+    if (post.park_image_url || !post.park_code) return;
+    fetch(`${BASE}/api/parks/${post.park_code}/images`)
+      .then(r => r.json())
+      .then((d: { images?: { url: string }[] }) => {
+        const url = d.images?.[0]?.url ?? null;
+        if (url) setNpsImageUrl(url);
+      })
+      .catch(() => {});
+  }, [post.park_code, post.park_image_url]);
+
+  return (
+    <TouchableOpacity activeOpacity={0.92} onPress={onPress} disabled={!onPress}>
+      <View style={styles.parkHero}>
+        {imageUrl ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: parkCol }]} />
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)']}
+          locations={[0.25, 0.6, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.parkHeroContent}>
+          {isFirst && (
+            <Text style={styles.parkHeroLabel}>FIRST VISIT</Text>
+          )}
+          <Text style={styles.parkHeroName} numberOfLines={2}>
+            {post.park_name ?? 'National Park'}
+          </Text>
+          {post.visit_date && (
+            <Text style={styles.parkHeroDate}>
+              {new Date(post.visit_date).toLocaleDateString('en-US', {
+                month: 'long', day: 'numeric', year: 'numeric',
+              })}
+            </Text>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 // ── MetaChip ──────────────────────────────────────────────────────────────────
 
 function MetaChip({ children }: { children: React.ReactNode }) {
@@ -427,7 +487,7 @@ function MetaChip({ children }: { children: React.ReactNode }) {
 
 // ── VisitMeta ─────────────────────────────────────────────────────────────────
 
-function VisitMeta({ post }: { post: FeedPost }) {
+function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: boolean }) {
   const router = useRouter();
 
   const hasAny =
@@ -462,7 +522,7 @@ function VisitMeta({ post }: { post: FeedPost }) {
             </Text>
           </MetaChip>
         ) : null}
-        {dateLabel ? (
+        {dateLabel && !heroDate ? (
           <MetaChip><Text style={styles.chipText}>{dateLabel}</Text></MetaChip>
         ) : null}
         {post.visit_weather?.map(w => (
@@ -524,6 +584,7 @@ function VisitMeta({ post }: { post: FeedPost }) {
 // ── CommentsPanel ─────────────────────────────────────────────────────────────
 
 const COMMENT_LIMIT = 500;
+const COMMENT_PREVIEW_CHARS = 200;
 
 function CommentsPanel({
   postId, token, myUserId, myAvatarUrl, myName, onCountChange, onClose,
@@ -542,6 +603,9 @@ function CommentsPanel({
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeCommentMenu, setActiveCommentMenu] = useState<number | null>(null);
+  const [editingComment, setEditingComment] = useState<{ id: number; text: string } | null>(null);
+  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     apiReq(`/api/comments?postId=${postId}`, token)
@@ -575,15 +639,30 @@ function CommentsPanel({
   }, [draft, submitting, postId, token, myName, myAvatarUrl, onCountChange]);
 
   const deleteComment = useCallback(async (commentId: number) => {
+    setActiveCommentMenu(null);
     setRows(prev => prev.filter(c => c.id !== commentId));
     onCountChange(-1);
     try {
       await apiReq(`/api/comments/${commentId}`, token, { method: 'DELETE' });
     } catch {
-      // re-fetch on failure to restore state
       apiReq(`/api/comments?postId=${postId}`, token).then(setRows).catch(() => {});
     }
   }, [token, postId, onCountChange]);
+
+  const editComment = useCallback(async (commentId: number, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setEditingComment(null);
+    setRows(prev => prev.map(c => c.id === commentId ? { ...c, content: trimmed } : c));
+    try {
+      await apiReq(`/api/comments/${commentId}`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({ content: trimmed }),
+      });
+    } catch {
+      apiReq(`/api/comments?postId=${postId}`, token).then(setRows).catch(() => {});
+    }
+  }, [token, postId]);
 
   return (
     <View style={styles.commentsPanel}>
@@ -596,34 +675,96 @@ function CommentsPanel({
       {loading && (
         <ActivityIndicator size="small" color={C.inkMute} style={{ margin: 12 }} />
       )}
+      {activeCommentMenu !== null && (
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setActiveCommentMenu(null)} />
+      )}
       {rows.map(c => {
         const cname = c.display_name ?? c.username ?? 'Explorer';
         const isOwn = myUserId && c.user_id === myUserId;
+        const isExpanded = expandedComments.has(c.id);
+        const isEditing = editingComment?.id === c.id;
+        const menuOpen = activeCommentMenu === c.id;
         return (
           <View key={c.id} style={styles.commentRow}>
             <TouchableOpacity onPress={() => router.push(`/user/${c.user_id}` as never)}>
               <Avatar url={c.avatar_url} name={cname} size={28} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
-              <View style={styles.commentBubble}>
-                <Text
-                  style={styles.commentAuthor}
-                  onPress={() => router.push(`/user/${c.user_id}` as never)}
-                >
-                  {cname}{' '}
-                </Text>
-                <Text style={styles.commentContent}>{c.content}</Text>
+              {isEditing ? (
+                <View style={styles.commentEditInput}>
+                  <TextInput
+                    autoFocus
+                    value={editingComment.text}
+                    onChangeText={t => setEditingComment({ id: c.id, text: t.slice(0, COMMENT_LIMIT) })}
+                    style={[styles.commentTextInput, { paddingLeft: 0 }]}
+                    multiline
+                    returnKeyType="done"
+                    blurOnSubmit
+                    onSubmitEditing={() => editComment(c.id, editingComment.text)}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                    <TouchableOpacity onPress={() => editComment(c.id, editingComment.text)}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: C.primary }}>Save</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setEditingComment(null)}>
+                      <Text style={{ fontSize: 12, color: C.inkMute }}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.commentBubble}>
+                  <Text
+                    style={styles.commentAuthor}
+                    onPress={() => router.push(`/user/${c.user_id}` as never)}
+                  >
+                    {cname}{' '}
+                  </Text>
+                  <Text style={styles.commentContent}>
+                    {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
+                      ? c.content
+                      : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
+                    {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
+                      <Text
+                        style={styles.commentMore}
+                        onPress={() => setExpandedComments(prev => { const next = new Set(prev); next.add(c.id); return next; })}
+                      >
+                        {'… more'}
+                      </Text>
+                    )}
+                  </Text>
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 9 }}>
+                <Text style={styles.commentTime}>{relTime(c.created_at)}</Text>
               </View>
-              <Text style={styles.commentTime}>{relTime(c.created_at)}</Text>
             </View>
             {isOwn && (
-              <TouchableOpacity
-                onPress={() => deleteComment(c.id)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ paddingLeft: 6 }}
-              >
-                <Ionicons name="trash-outline" size={14} color={C.inkMute} />
-              </TouchableOpacity>
+              <View style={{ position: 'relative' }}>
+                <TouchableOpacity
+                  onPress={() => setActiveCommentMenu(menuOpen ? null : c.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ paddingLeft: 6, paddingTop: 2 }}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={15} color={C.inkMute} />
+                </TouchableOpacity>
+                {menuOpen && (
+                  <View style={styles.commentMenu}>
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        setActiveCommentMenu(null);
+                        setEditingComment({ id: c.id, text: c.content });
+                      }}
+                    >
+                      <Text style={styles.menuItemText}>Edit</Text>
+                    </TouchableOpacity>
+                    <View style={styles.menuDivider} />
+                    <TouchableOpacity style={styles.menuItem} onPress={() => deleteComment(c.id)}>
+                      <Text style={[styles.menuItemText, { color: '#D45040' }]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
             )}
           </View>
         );
@@ -703,7 +844,7 @@ export function PostCard({
     if (post.comment_count <= 0) return;
     let active = true;
     apiReq(`/api/comments?postId=${post.id}`, token)
-      .then((rows: CommentRow[]) => { if (active) setPreviewComments(rows.slice(0, 2)); })
+      .then((rows: CommentRow[]) => { if (active) setPreviewComments(rows.slice(-2)); })
       .catch(() => {});
     return () => { active = false; };
   // token is stable per-render of the feed screen; post.id never changes
@@ -791,7 +932,7 @@ export function PostCard({
   };
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isBadge && { borderColor: C.primary + '80' }]}>
       {/* Badge banner */}
       {isBadge && (
         <View style={styles.badgeBanner}>
@@ -802,70 +943,76 @@ export function PostCard({
 
       {/* Header */}
       <View style={styles.cardHeader}>
-        <TouchableOpacity onPress={() => router.push(`/user/${post.clerk_user_id}` as never)}>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
+          activeOpacity={0.7}
+          onPress={() => router.push(`/user/${post.clerk_user_id}` as never)}
+        >
           <Avatar url={post.avatar_url} name={name} size={40} />
-        </TouchableOpacity>
-        <View style={styles.cardHeaderMeta}>
-          <TouchableOpacity onPress={() => router.push(`/user/${post.clerk_user_id}` as never)}>
+          <View style={styles.cardHeaderMeta}>
             <Text style={styles.authorName}>{name}</Text>
-          </TouchableOpacity>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 1 }}>
-            <Text style={[styles.authorSub, { marginTop: 0 }]}>
-              {post.username ? `@${post.username} · ` : ''}
-              {relTime(post.created_at)}
-            </Text>
-            {isOwnPost && visibility != null && (
-              <Ionicons
-                name={VIS_ICONS[visibility] ?? VIS_ICONS.public}
-                size={10.5}
-                color={C.inkMute}
-                style={{ opacity: 0.75 }}
-              />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 1 }}>
+              <Text style={[styles.authorSub, { marginTop: 0 }]}>
+                {post.username ? `@${post.username} · ` : ''}
+                {relTime(post.created_at)}
+              </Text>
+              {isOwnPost && visibility != null && (
+                <Ionicons
+                  name={VIS_ICONS[visibility] ?? VIS_ICONS.public}
+                  size={10.5}
+                  color={C.inkMute}
+                  style={{ opacity: 0.75 }}
+                />
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+        {isOwnPost && (
+          <View style={{ position: 'relative' }}>
+            {showMenu && (
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
+            )}
+            <TouchableOpacity
+              onPress={() => setShowMenu(v => !v)}
+              hitSlop={8}
+              style={[styles.menuBtn, showMenu && styles.menuBtnActive]}
+            >
+              <Ionicons name="ellipsis-horizontal" size={18} color={showMenu ? C.primary : C.inkMute} />
+            </TouchableOpacity>
+            {showMenu && (
+              <View style={styles.menu}>
+                {post.visit_id != null && (
+                  <>
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        setShowMenu(false);
+                        router.push(`/(modals)/log-visit?visitId=${post.visit_id}&postId=${post.id}` as never);
+                      }}
+                    >
+                      <Text style={styles.menuItemText}>Edit visit</Text>
+                    </TouchableOpacity>
+                    <View style={styles.menuDivider} />
+                  </>
+                )}
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setCaptionDraft(currentCaption ?? ''); setVisDraft(visibility ?? 'public'); setEditingCaption(true); setShowMenu(false); }}
+                >
+                  <Text style={styles.menuItemText}>Edit caption</Text>
+                </TouchableOpacity>
+                <View style={styles.menuDivider} />
+                <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
+                  <Text style={[styles.menuItemText, { color: '#D45040' }]}>Delete post</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
-        </View>
-        {isOwnPost && (
-          <TouchableOpacity onPress={() => setShowMenu(v => !v)} hitSlop={8} style={styles.menuBtn}>
-            <Ionicons name="ellipsis-horizontal" size={18} color={C.inkMute} />
-          </TouchableOpacity>
         )}
       </View>
 
-      {/* ... menu */}
-      {showMenu && isOwnPost && (
-        <>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
-          <View style={styles.menu}>
-          {post.visit_id != null && (
-            <>
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setShowMenu(false);
-                  router.push(`/(modals)/log-visit?visitId=${post.visit_id}&postId=${post.id}` as never);
-                }}
-              >
-                <Text style={styles.menuItemText}>Edit visit</Text>
-              </TouchableOpacity>
-              <View style={styles.menuDivider} />
-            </>
-          )}
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => { setCaptionDraft(currentCaption ?? ''); setVisDraft(visibility ?? 'public'); setEditingCaption(true); setShowMenu(false); }}
-          >
-            <Text style={styles.menuItemText}>Edit caption</Text>
-          </TouchableOpacity>
-          <View style={styles.menuDivider} />
-          <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
-            <Text style={[styles.menuItemText, { color: '#D45040' }]}>Delete post</Text>
-          </TouchableOpacity>
-        </View>
-        </>
-      )}
-
       {/* Park chip */}
-      {post.park_name && !isBadge && (
+      {post.park_name && !isBadge && !(!hasPhotos && post.visit_id) && (
         <TouchableOpacity
           style={styles.parkChip}
           onPress={() => router.push(`/parks/${post.park_code}` as never)}
@@ -927,8 +1074,18 @@ export function PostCard({
         </View>
       )}
 
+      {/* Park hero banner — visit posts with no photos */}
+      {!isBadge && !hasPhotos && post.visit_id && (
+        <View style={styles.padH}>
+          <ParkHeroBanner
+            post={post}
+            onPress={post.park_code ? () => router.push(`/parks/${post.park_code}` as never) : undefined}
+          />
+        </View>
+      )}
+
       {/* Visit metadata */}
-      {!isBadge && <VisitMeta post={post} />}
+      {!isBadge && <VisitMeta post={post} heroDate={!hasPhotos && !!post.visit_id} />}
 
       {/* Photo carousel */}
       {!isBadge && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
@@ -944,7 +1101,7 @@ export function PostCard({
         >
           <Ionicons
             name={liked ? 'heart' : 'heart-outline'}
-            size={15}
+            size={22}
             color={liked ? C.liked : C.inkSoft}
           />
           {likeCount > 0 && (
@@ -961,7 +1118,7 @@ export function PostCard({
         >
           <Ionicons
             name={showComments ? 'chatbubble' : 'chatbubble-outline'}
-            size={15}
+            size={20}
             color={showComments ? C.primary : C.inkSoft}
           />
           {commentCount > 0 && (
@@ -982,45 +1139,36 @@ export function PostCard({
       )}
 
       {/* Comment preview — hidden when full panel is open */}
-      {!showComments && previewComments.length > 0 && (
+      {!showComments && commentCount > 0 && (
         <View style={styles.previewPanel}>
           {previewComments.map(c => {
             const cname = c.display_name ?? c.username ?? 'Explorer';
+            const isTruncated = c.content.length > 100;
             return (
               <TouchableOpacity
                 key={c.id}
-                style={styles.commentRow}
-                activeOpacity={0.75}
                 onPress={() => setShowComments(true)}
+                activeOpacity={0.75}
+                style={styles.previewCommentRow}
               >
-                <TouchableOpacity onPress={() => router.push(`/user/${c.user_id}` as never)}>
-                  <Avatar url={c.avatar_url} name={cname} size={28} />
-                </TouchableOpacity>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.commentBubble}>
-                    <Text
-                      style={styles.commentAuthor}
-                      onPress={() => router.push(`/user/${c.user_id}` as never)}
-                    >
-                      {cname}{' '}
-                    </Text>
-                    <Text style={styles.commentContent}>{c.content}</Text>
-                  </View>
-                </View>
+                <Text style={styles.previewCommentText} numberOfLines={2}>
+                  <Text style={styles.previewCommentAuthor}>{cname} </Text>
+                  {isTruncated ? `${c.content.slice(0, 100)}…` : c.content}
+                </Text>
               </TouchableOpacity>
             );
           })}
-          {commentCount > previewComments.length && (
-            <TouchableOpacity
-              onPress={() => setShowComments(true)}
-              style={styles.viewAllBtn}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.viewAllText}>
-                View all {commentCount} comment{commentCount !== 1 ? 's' : ''}
-              </Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            onPress={() => setShowComments(true)}
+            style={styles.viewAllBtn}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.viewAllText}>
+              {commentCount > previewComments.length
+                ? `View all ${commentCount} comment${commentCount !== 1 ? 's' : ''}`
+                : `View ${commentCount} comment${commentCount !== 1 ? 's' : ''}`}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -1146,6 +1294,27 @@ const styles = StyleSheet.create({
   likerSub: { fontSize: 12, color: C.inkMute, marginTop: 1 },
 
   // Badge post body
+  parkHero: {
+    borderRadius: 14, overflow: 'hidden',
+    height: 180, marginBottom: 14,
+    justifyContent: 'flex-end',
+  },
+  parkHeroContent: {
+    padding: 16,
+  },
+  parkHeroLabel: {
+    fontSize: 9, letterSpacing: 2, fontWeight: '700',
+    color: 'rgba(255,251,241,0.65)', marginBottom: 4,
+  },
+  parkHeroName: {
+    fontSize: 22, fontWeight: '800', color: '#FFFBF1',
+    letterSpacing: -0.4, lineHeight: 26,
+  },
+  parkHeroDate: {
+    fontSize: 11, color: 'rgba(255,251,241,0.70)',
+    marginTop: 4, fontWeight: '500', letterSpacing: 0.2,
+  },
+
   badgeBody: {
     borderRadius: 14, padding: 18, borderWidth: 0.5,
     flexDirection: 'row', alignItems: 'center', gap: 18,
@@ -1191,10 +1360,19 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   viewAllBtn: {
-    paddingHorizontal: 18, paddingTop: 8, paddingBottom: 4,
+    paddingHorizontal: 18, paddingTop: 8, paddingBottom: 2,
   },
   viewAllText: {
     fontSize: 12, fontWeight: '600', color: C.inkMute,
+  },
+  previewCommentRow: {
+    paddingHorizontal: 18, paddingTop: 10, paddingBottom: 0,
+  },
+  previewCommentText: {
+    fontSize: 12.5, color: C.ink, lineHeight: 18,
+  },
+  previewCommentAuthor: {
+    fontWeight: '700', fontSize: 12.5, color: C.ink,
   },
   commentsPanel: {
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
@@ -1211,8 +1389,8 @@ const styles = StyleSheet.create({
   },
   commentAuthor: { fontWeight: '700', fontSize: 12, color: C.ink, lineHeight: 18 },
   commentContent: { fontSize: 12.5, color: C.ink, lineHeight: 18 },
+  commentMore: { fontSize: 12.5, color: C.inkMute, fontWeight: '600' },
   commentTime: {
-    paddingLeft: 9, marginTop: 3,
     fontSize: 9.5, color: C.inkMute, letterSpacing: 0.3,
   },
   commentInput: {
@@ -1235,6 +1413,18 @@ const styles = StyleSheet.create({
   commentCharCount: {
     fontSize: 10, color: C.inkMute, paddingHorizontal: 4,
   },
+  commentMenu: {
+    position: 'absolute', top: 22, right: 0, zIndex: 200,
+    backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12, shadowRadius: 12, elevation: 8,
+    minWidth: 120, overflow: 'hidden',
+  },
+  commentEditInput: {
+    flex: 1, backgroundColor: C.surfaceAlt, borderRadius: 12,
+    borderTopLeftRadius: 4, padding: 8, paddingHorizontal: 11,
+    borderWidth: 0.5, borderColor: C.hairline,
+  },
   commentsPanelHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 18, paddingTop: 12, paddingBottom: 4,
@@ -1252,7 +1442,8 @@ const styles = StyleSheet.create({
   badgeBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 18, paddingVertical: 10,
-    backgroundColor: C.surfaceAlt, borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
+    backgroundColor: C.surfaceAlt,
+    borderBottomWidth: 1, borderBottomColor: C.primary + '60',
   },
   badgeBannerText: {
     fontSize: 10, letterSpacing: 1.2, fontWeight: '700', color: C.primary,
@@ -1266,11 +1457,14 @@ const styles = StyleSheet.create({
   authorSub: { fontSize: 12, color: C.inkMute, marginTop: 1 },
   menuBtn: { padding: 6, borderRadius: 6 },
   menu: {
-    position: 'absolute', top: 52, right: 14, zIndex: 100,
-    backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12, shadowRadius: 12, elevation: 8,
-    minWidth: 150, overflow: 'hidden',
+    position: 'absolute', top: 30, right: 0, zIndex: 100,
+    backgroundColor: C.surface, borderWidth: 1, borderColor: C.hairline,
+    borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18, shadowRadius: 20, elevation: 12,
+    minWidth: 160, overflow: 'hidden',
+  },
+  menuBtnActive: {
+    backgroundColor: C.primary + '14', borderRadius: 6,
   },
   menuItem: { paddingHorizontal: 14, paddingVertical: 11 },
   menuItemText: { fontSize: 14, color: C.ink },
@@ -1314,7 +1508,7 @@ const styles = StyleSheet.create({
   padH: { paddingHorizontal: 18 },
   actionRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 18, paddingVertical: 12,
+    paddingHorizontal: 18, paddingVertical: 6,
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
   },
   actionBtn: {
@@ -1324,7 +1518,7 @@ const styles = StyleSheet.create({
   actionBtnLiked: {},
   actionBtnActive: {},
   actionBtnText: {
-    fontSize: 11, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.5,
+    fontSize: 13, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.3,
   },
   // Left padding lines the date up with the heart icon inside the like
   // button (18 row padding + 12 chip padding)

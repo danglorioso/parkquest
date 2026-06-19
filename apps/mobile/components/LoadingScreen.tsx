@@ -301,11 +301,25 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
           <CompassSpinner />
         </View>
       </View>
+
+      {/* Copyright */}
+      <Animated.Text style={styles.copyright}>
+        © {new Date().getFullYear()} ParkQuest. All rights reserved.
+      </Animated.Text>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
+  copyright: {
+    position: 'absolute',
+    bottom: 90,
+    alignSelf: 'center',
+    color: 'rgba(255,251,241,0.28)',
+    fontSize: 10,
+    fontWeight: '400',
+    letterSpacing: 0.5,
+  },
   center: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

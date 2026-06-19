@@ -1,5 +1,5 @@
 import {
-  Dimensions, FlatList, Image, Linking, Modal, Pressable, ScrollView, StyleSheet,
+  Dimensions, FlatList, Image, Linking, Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -185,12 +185,21 @@ function ParkCard({ park, status }: { park: Park; status: ParkStatus }) {
   );
 }
 
-function ParkListRow({ park, status }: { park: Park; status: ParkStatus }) {
+function ParkListRow({ park, status, visitCount }: { park: Park; status: ParkStatus; visitCount: number }) {
   const router = useRouter();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
   const stateCode = park.states.split(',')[0].trim();
   const stateName = fullStateName(stateCode);
+
+  const statusLine =
+    status === 'visited'    ? `Visited · ${visitCount} ${visitCount === 1 ? 'trip' : 'trips'}` :
+    status === 'bucketList' ? 'On bucket list' :
+    null;
+  const statusColor =
+    status === 'visited'    ? C.visited :
+    status === 'bucketList' ? C.bucket  :
+    C.inkMute;
 
   return (
     <TouchableOpacity
@@ -211,10 +220,17 @@ function ParkListRow({ park, status }: { park: Park; status: ParkStatus }) {
         <StatusBadge status={status} />
       </View>
       <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
-        <Text style={styles.cardState} numberOfLines={1}>{stateName}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 1 }}>
+          <Text style={styles.cardState} numberOfLines={1}>{stateName}</Text>
+          {statusLine && (
+            <Text style={[styles.cardState, { color: statusColor, fontWeight: '600' }]} numberOfLines={1}>
+              {statusLine}
+            </Text>
+          )}
+        </View>
         <Text style={styles.cardName} numberOfLines={2}>{park.name}</Text>
         {park.description ? (
-          <Text style={styles.cardDesc} numberOfLines={2}>{park.description}</Text>
+          <Text style={styles.cardDesc} numberOfLines={4}>{park.description}</Text>
         ) : null}
       </View>
     </TouchableOpacity>
@@ -453,8 +469,6 @@ export default function ParksScreen() {
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showViewMenu, setShowViewMenu] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
-  const viewToggleRef = useRef<TouchableOpacity>(null);
 
   useEffect(() => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
@@ -595,23 +609,39 @@ export default function ParksScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={styles.title}>Explore the Parks</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TouchableOpacity
-              ref={viewToggleRef}
-              onPress={() => {
-                viewToggleRef.current?.measure((_fx, _fy, _w, _h, px, py) => {
-                  setMenuAnchor({ x: px, y: py + _h + 6 });
-                  setShowViewMenu(true);
-                });
-              }}
-              hitSlop={8}
-              style={styles.viewToggle}
-            >
-              <Ionicons
-                name={viewMode === 'grid' ? 'grid-outline' : 'list-outline'}
-                size={18}
-                color={C.inkSoft}
-              />
-            </TouchableOpacity>
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity
+                onPress={() => setShowViewMenu(v => !v)}
+                hitSlop={8}
+                style={[styles.viewToggle, showViewMenu && styles.viewToggleActive]}
+              >
+                <Ionicons
+                  name={viewMode === 'grid' ? 'grid-outline' : 'list-outline'}
+                  size={18}
+                  color={showViewMenu ? primary : C.inkSoft}
+                />
+              </TouchableOpacity>
+              {showViewMenu && (
+                <View style={styles.viewMenu}>
+                  {([
+                    { mode: 'grid', icon: 'grid-outline', label: 'Grid' },
+                    { mode: 'list', icon: 'list-outline', label: 'List' },
+                  ] as const).map(opt => (
+                    <TouchableOpacity
+                      key={opt.mode}
+                      style={[styles.viewMenuItem, viewMode === opt.mode && styles.viewMenuItemActive]}
+                      onPress={() => { setViewMode(opt.mode); setShowViewMenu(false); }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={opt.icon} size={15} color={viewMode === opt.mode ? primary : C.inkSoft} />
+                      <Text style={[styles.viewMenuItemText, viewMode === opt.mode && { color: primary, fontWeight: '700' }]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
           </View>
         </View>
       </View>
@@ -711,7 +741,9 @@ export default function ParksScreen() {
             );
           }
           if (item.type === 'single') {
-            return <ParkListRow park={item.park} status={parkStatus(item.park.park_code, visits)} />;
+            const s = parkStatus(item.park.park_code, visits);
+            const vc = visits.filter(v => v.park_code === item.park.park_code && !v.is_bucket_list && v.visited_date).length;
+            return <ParkListRow park={item.park} status={s} visitCount={vc} />;
           }
           return (
             <View style={styles.rowWrap}>
@@ -734,32 +766,6 @@ export default function ParksScreen() {
         windowSize={7}
         maxToRenderPerBatch={8}
       />
-      <Modal
-        visible={showViewMenu}
-        transparent
-        animationType="none"
-        onRequestClose={() => setShowViewMenu(false)}
-      >
-        <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowViewMenu(false)} />
-        <View style={[styles.viewMenu, { top: menuAnchor.y, right: 16 }]}>
-          {([
-            { mode: 'grid', icon: 'grid-outline', label: 'Grid' },
-            { mode: 'list', icon: 'list-outline', label: 'List' },
-          ] as const).map(opt => (
-            <TouchableOpacity
-              key={opt.mode}
-              style={[styles.viewMenuItem, viewMode === opt.mode && styles.viewMenuItemActive]}
-              onPress={() => { setViewMode(opt.mode); setShowViewMenu(false); }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name={opt.icon} size={15} color={viewMode === opt.mode ? primary : C.inkSoft} />
-              <Text style={[styles.viewMenuItemText, viewMode === opt.mode && { color: primary, fontWeight: '700' }]}>
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -960,19 +966,26 @@ const styles = StyleSheet.create({
   viewToggle: {
     padding: 4,
   },
+  viewToggleActive: {
+    backgroundColor: C.primary + '14',
+    borderRadius: 6,
+  },
   viewMenu: {
     position: 'absolute',
+    top: 30,
+    right: 0,
     backgroundColor: C.surface,
     borderRadius: 12,
-    borderWidth: 0.5,
+    borderWidth: 1,
     borderColor: C.hairline,
     shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 6,
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 12,
     minWidth: 120,
     overflow: 'hidden',
+    zIndex: 100,
   },
   viewMenuItem: {
     flexDirection: 'row',

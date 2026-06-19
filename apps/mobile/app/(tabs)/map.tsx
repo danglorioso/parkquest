@@ -448,6 +448,8 @@ function ParkBottomSheet({
   const C = useColors();
   const sheetH   = useRef(new Animated.Value(0)).current;
   const baseH    = useRef(SHEET_PEEK);
+  const scrollY  = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<any>(null);
 
   const sheetRadius = sheetH.interpolate({
     inputRange: [SHEET_FULL - 60, SHEET_FULL],
@@ -697,6 +699,27 @@ function ParkBottomSheet({
   const forecastNights = (weather ?? []).filter(p => !p.isDaytime);
   const hasContact   = npsPhone || npsEmail || npsWebUrl;
 
+  // ── Collapsing header animations ─────────────────────────────────────────────
+
+  const BANNER_H = 240;
+  const COLLAPSED_H = 56;
+
+  const headerHeight = scrollY.interpolate({
+    inputRange: [0, BANNER_H - COLLAPSED_H],
+    outputRange: [BANNER_H, COLLAPSED_H],
+    extrapolate: 'clamp',
+  });
+  const heroTitleFontSize = scrollY.interpolate({
+    inputRange: [0, (BANNER_H - COLLAPSED_H) * 0.75],
+    outputRange: [26, 15],
+    extrapolate: 'clamp',
+  });
+  const stateOpacity = scrollY.interpolate({
+    inputRange: [0, (BANNER_H - COLLAPSED_H) * 0.45],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
@@ -705,26 +728,30 @@ function ParkBottomSheet({
 
       <Animated.View style={[styles.sheet, { height: sheetH, borderTopLeftRadius: sheetRadius, borderTopRightRadius: sheetRadius }]}>
         <View style={{ flex: 1 }} {...contentPan.panHandlers}>
-        <ScrollView
+        <Animated.ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
           scrollEnabled={scrollEnabled}
-          stickyHeaderIndices={[1]}
-          onScroll={e => {
-            const y = e.nativeEvent.contentOffset.y;
-            if (y < 0) {
-              // Overscrolling past top while sheet is full — drive sheet down
-              const newH = Math.max(SHEET_PEEK * 0.7, SHEET_FULL + y * 1.2);
-              sheetH.setValue(newH);
-              baseH.current = newH;
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            {
+              useNativeDriver: false,
+              listener: (e: any) => {
+                const y = e.nativeEvent.contentOffset.y;
+                if (y < 0) {
+                  const newH = Math.max(SHEET_PEEK * 0.7, SHEET_FULL + y * 1.2);
+                  sheetH.setValue(newH);
+                  baseH.current = newH;
+                }
+              },
             }
-          }}
+          )}
           onScrollEndDrag={e => {
             const y = e.nativeEvent.contentOffset.y;
             if (y <= 0) {
-              // Decide whether to collapse or spring back to full
               const mid = (SHEET_PEEK + SHEET_FULL) / 2;
               if (baseH.current < mid) {
                 snapTo(SHEET_PEEK);
@@ -733,80 +760,9 @@ function ParkBottomSheet({
               }
             }
           }}
+          contentContainerStyle={{ paddingTop: BANNER_H }}
         >
-          {/* 0: Full-height image — extends to top of sheet, scrolls away */}
-          <View style={styles.bannerImage}>
-            <LinearGradient
-              colors={gradientColors(park.park_code)}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            {heroUrl ? (
-              <TouchableOpacity
-                style={StyleSheet.absoluteFill}
-                activeOpacity={0.9}
-                onPress={() => npsImages.length > 0 && setLightboxIdx(imgIdx)}
-              >
-                <Image
-                  source={{ uri: heroUrl }}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="cover"
-                  transition={300}
-                  cachePolicy="memory-disk"
-                />
-              </TouchableOpacity>
-            ) : null}
-            <LinearGradient
-              colors={['rgba(0,0,0,0.65)', 'transparent']}
-              locations={[0, 0.5]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={StyleSheet.absoluteFillObject}
-              pointerEvents="none"
-            />
-            {/* Drag handle + close — overlaid at top of image */}
-            <View style={styles.sheetTopStrip} {...topStripPan.panHandlers}>
-              <View style={styles.handleArea}>
-                <View style={styles.handleBar} />
-              </View>
-              <TouchableOpacity style={styles.heroClose} onPress={dismiss} hitSlop={8}>
-                <Ionicons name="close" size={14} color="#FFFBF1" />
-              </TouchableOpacity>
-            </View>
-            {/* Image navigation */}
-            {npsImages.length > 1 && (
-              <>
-                <TouchableOpacity
-                  style={[styles.imgArrow, styles.imgArrowLeft]}
-                  onPress={() => setImgIdx(i => (i - 1 + npsImages.length) % npsImages.length)}
-                  hitSlop={8}
-                >
-                  <Ionicons name="chevron-back" size={16} color="#FFFBF1" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.imgArrow, styles.imgArrowRight]}
-                  onPress={() => setImgIdx(i => (i + 1) % npsImages.length)}
-                  hitSlop={8}
-                >
-                  <Ionicons name="chevron-forward" size={16} color="#FFFBF1" />
-                </TouchableOpacity>
-                <View style={styles.imgDots}>
-                  {npsImages.map((_, i) => (
-                    <View key={i} style={[styles.imgDot, i === imgIdx && styles.imgDotActive]} />
-                  ))}
-                </View>
-              </>
-            )}
-          </View>
-
-          {/* 1: Title bar — sticky */}
-          <View style={[styles.titleBar, scrollEnabled && insets.top > 0 && { paddingTop: insets.top + 12 }]}>
-            <Text style={styles.titleBarState}>{stateLabel.toUpperCase()}</Text>
-            <Text style={styles.titleBarName}>{park.name}</Text>
-          </View>
-
-          {/* 2+: Body content */}
+          {/* Body content */}
           <View style={styles.sheetBody}>
 
           {/* ── Quick stats ── */}
@@ -1092,72 +1048,141 @@ function ParkBottomSheet({
             </Text>
           </View>
           </View>{/* end sheetBody */}
-        </ScrollView>
-        </View>{/* end contentPan wrapper */}
+        </Animated.ScrollView>
 
-        {/* Action row — pinned at bottom */}
-        <View style={styles.actionRow}>
-          {park.status === 'visited' ? (
+        {/* Collapsing header — image clips from bottom as height shrinks; title stays pinned */}
+        <Animated.View style={[styles.collapsingHeader, { height: headerHeight }]} pointerEvents="box-none">
+          <LinearGradient
+            colors={gradientColors(park.park_code)}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          {heroUrl ? (
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={0.9}
+              onPress={() => npsImages.length > 0 && setLightboxIdx(imgIdx)}
+            >
+              <Image
+                source={{ uri: heroUrl }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                transition={300}
+                cachePolicy="memory-disk"
+              />
+            </TouchableOpacity>
+          ) : null}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.45)', 'transparent', 'rgba(0,0,0,0.78)']}
+            locations={[0, 0.42, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+          <View style={styles.sheetTopStrip} {...topStripPan.panHandlers}>
+            <View style={styles.handleArea}>
+              <View style={styles.handleBar} />
+            </View>
+          </View>
+          {npsImages.length > 1 && (
             <>
               <TouchableOpacity
-                onPress={() => {
-                  if (fullVisits[0]) router.push(`/profile/journal/${fullVisits[0].id}` as never);
-                }}
-                style={[styles.actionBtn, { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline, flex: 1 }]}
+                style={[styles.imgArrow, styles.imgArrowLeft]}
+                onPress={() => setImgIdx(i => (i - 1 + npsImages.length) % npsImages.length)}
+                hitSlop={8}
               >
-                <Ionicons name="pencil-outline" size={13} color={C.ink} />
-                <Text style={[styles.actionBtnText, { color: C.ink }]}>Edit visit</Text>
+                <Ionicons name="chevron-back" size={16} color="#FFFBF1" />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: park.park_code } } as never)}
-                style={[styles.actionBtn, { backgroundColor: C.primary, flex: 1 }]}
+                style={[styles.imgArrow, styles.imgArrowRight]}
+                onPress={() => setImgIdx(i => (i + 1) % npsImages.length)}
+                hitSlop={8}
               >
-                <Ionicons name="checkmark" size={14} color="#FFFBF1" />
-                <Text style={[styles.actionBtnText, { color: '#FFFBF1' }]}>Log a visit</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity
-                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: park.park_code } } as never)}
-                style={[styles.actionBtn, { backgroundColor: C.visited, flex: 1 }]}
-              >
-                <Ionicons name="checkmark" size={14} color="#FFFBF1" />
-                <Text style={[styles.actionBtnText, { color: '#FFFBF1' }]}>Mark visited</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleBucketList}
-                disabled={!!actionLoading}
-                style={[
-                  styles.actionBtn,
-                  {
-                    flex: 1,
-                    backgroundColor: park.status === 'bucketList' ? C.bucket : C.surfaceAlt,
-                    borderWidth: park.status === 'bucketList' ? 0 : 0.5,
-                    borderColor: C.hairline,
-                  },
-                ]}
-              >
-                {actionLoading === 'bucket'
-                  ? <Text style={styles.actionBtnText}>…</Text>
-                  : <>
-                      <Ionicons
-                        name={park.status === 'bucketList' ? 'bookmark' : 'bookmark-outline'}
-                        size={14}
-                        color={park.status === 'bucketList' ? '#FFFBF1' : C.ink}
-                      />
-                      <Text style={[
-                        styles.actionBtnText,
-                        { color: park.status === 'bucketList' ? '#FFFBF1' : C.ink },
-                      ]}>
-                        {park.status === 'bucketList' ? 'On bucket list' : 'Bucket list'}
-                      </Text>
-                    </>
-                }
+                <Ionicons name="chevron-forward" size={16} color="#FFFBF1" />
               </TouchableOpacity>
             </>
           )}
-        </View>
+          <View style={styles.heroContent} pointerEvents="none">
+            <Animated.Text style={[styles.heroDesignation, { opacity: stateOpacity }]}>
+              {stateLabel.toUpperCase()}
+            </Animated.Text>
+            <Animated.Text style={[styles.heroName, { fontSize: heroTitleFontSize }]} numberOfLines={1}>
+              {park.name}
+            </Animated.Text>
+          </View>
+        </Animated.View>
+
+        {/* Back button — outside ScrollView so it persists after banner scrolls away */}
+        {scrollEnabled && (
+          <TouchableOpacity
+            style={[styles.heroBackBtn, { top: insets.top + 8 }]}
+            onPress={dismiss}
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
+          </TouchableOpacity>
+        )}
+        </View>{/* end contentPan wrapper */}
+
+        {/* Action row — pinned at bottom, only visible when sheet is full-screen */}
+        {scrollEnabled && <View style={styles.actionRowWrap}>
+          <View style={styles.actionRow}>
+            {park.status === 'visited' ? (
+              <>
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: park.park_code } } as never)}
+                  style={[styles.actionBtn, { backgroundColor: C.primary, flex: 1 }]}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="pencil" size={14} color="#FFFBF1" />
+                  <Text style={styles.actionBtnText}>Log a visit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => { if (fullVisits[0]) router.push(`/profile/journal/${fullVisits[0].id}` as never); }}
+                  style={[styles.actionBtnOutline, { flex: 1 }]}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="pencil-outline" size={14} color={C.primary} />
+                  <Text style={[styles.actionBtnOutlineText, { color: C.primary }]}>Edit last visit</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: park.park_code } } as never)}
+                style={[styles.actionBtn, { backgroundColor: C.primary, flex: 1 }]}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="pencil" size={14} color="#FFFBF1" />
+                <Text style={styles.actionBtnText}>Log a visit</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {park.status !== 'visited' && (
+            <TouchableOpacity
+              onPress={handleBucketList}
+              disabled={!!actionLoading}
+              activeOpacity={0.8}
+              style={[styles.bucketBtn, park.status === 'bucketList' && styles.bucketBtnActive]}
+            >
+              {actionLoading === 'bucket' ? (
+                <Text style={[styles.bucketBtnText]}>…</Text>
+              ) : (
+                <>
+                  <Ionicons
+                    name={park.status === 'bucketList' ? 'bookmark' : 'bookmark-outline'}
+                    size={14}
+                    color={park.status === 'bucketList' ? '#FFFBF1' : C.bucket}
+                  />
+                  <Text style={[styles.bucketBtnText, park.status === 'bucketList' && { color: '#FFFBF1' }]}>
+                    {park.status === 'bucketList' ? 'On bucket list' : 'Add to bucket list'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>}
       </Animated.View>
 
       {lightboxIdx != null && (
@@ -1375,7 +1400,7 @@ export default function MapScreen() {
           const selected = selectedPark?.park_code === park.park_code;
           return (
             <Marker
-              key={`${park.park_code}-${park.status}`}
+              key={`${park.park_code}-${park.status}-${selected ? 's' : 'u'}`}
               coordinate={{ latitude: park.latitude, longitude: park.longitude }}
               onPress={e => { e.stopPropagation(); handleSelectPark(park); }}
               tracksViewChanges={selected}
@@ -1387,15 +1412,13 @@ export default function MapScreen() {
         })}
       </MapView>
 
-      {!loading && (
-        <View style={[styles.filterPillWrap, { top: insets.top + 60 }]}>
-          <FilterPill
-            active={filterStatus}
-            counts={counts}
-            onSelect={f => { setFilterStatus(f); setSelectedPark(null); }}
-          />
-        </View>
-      )}
+      <View style={[styles.filterPillWrap, { top: insets.top + 60 }]}>
+        <FilterPill
+          active={filterStatus}
+          counts={counts}
+          onSelect={f => { setFilterStatus(f); setSelectedPark(null); }}
+        />
+      </View>
 
       {loading && (
         <View style={styles.mapLoadingOverlay} pointerEvents="none">
@@ -1429,21 +1452,19 @@ export default function MapScreen() {
 
       {/* Search — rendered last so results overlay everything (like the park sheet),
           but drops behind the sheet while a park profile is open */}
-      {!loading && (
-        <View style={[
-          styles.searchBarWrap,
-          { top: insets.top + 12 },
-          selectedPark ? { zIndex: 10, elevation: 0 } : null,
-        ]}>
-          <MapSearchBar
-            token={token}
-            parks={parks}
-            closeSignal={mapPressKey}
-            onSelectPark={handleSelectPark}
-            onSelectUser={id => router.push(`/user/${id}` as never)}
-          />
-        </View>
-      )}
+      <View style={[
+        styles.searchBarWrap,
+        { top: insets.top + 12 },
+        selectedPark ? { zIndex: 10, elevation: 0 } : null,
+      ]}>
+        <MapSearchBar
+          token={token}
+          parks={parks}
+          closeSignal={mapPressKey}
+          onSelectPark={handleSelectPark}
+          onSelectUser={id => router.push(`/user/${id}` as never)}
+        />
+      </View>
     </View>
   );
 }
@@ -1685,7 +1706,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingVertical: 6,
-    paddingLeft: 28,
   },
   handleBar: {
     width: 36,
@@ -1701,11 +1721,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heroBackBtn: {
+    position: 'absolute',
+    left: 16,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  // Banner image — fills top of sheet, scrolls away
-  bannerImage: {
-    height: 200,
+  // Collapsing header — absolute, overlays scroll; height drives the collapse
+  collapsingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     overflow: 'hidden',
+    zIndex: 5,
+  },
+  heroContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    paddingBottom: 14,
+  },
+  heroDesignation: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.65)',
+    letterSpacing: 1.4,
+    marginBottom: 4,
+  },
+  heroName: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#FFFBF1',
+    letterSpacing: -0.5,
+    lineHeight: 30,
   },
   imgArrow: {
     position: 'absolute',
@@ -1740,11 +1797,11 @@ const styles = StyleSheet.create({
     width: 14,
   },
 
-  // Sticky title bar
+  // Sticky title bar — compact single-line name when scrolled
   titleBar: {
     backgroundColor: C.surface,
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 10,
     paddingBottom: 10,
     borderBottomWidth: 0.5,
     borderBottomColor: C.hairline,
@@ -1757,11 +1814,10 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   titleBarName: {
-    fontSize: 20,
-    fontWeight: '900',
+    fontSize: 16,
+    fontWeight: '800',
     color: C.ink,
-    letterSpacing: -0.3,
-    lineHeight: 24,
+    letterSpacing: -0.2,
   },
 
   // Scrollable body
@@ -1821,9 +1877,9 @@ const styles = StyleSheet.create({
 
 
   sectionBody: {
-    fontSize: 12.5,
+    fontSize: 13.5,
     color: C.inkSoft,
-    lineHeight: 19,
+    lineHeight: 20,
   },
 
   // Full profile sections
@@ -2064,26 +2120,68 @@ const styles = StyleSheet.create({
   },
 
   // Action row — bottom padding clears the floating tab bar
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 14,
-    paddingBottom: TAB_BAR_H + 10,
+  actionRowWrap: {
+    flexShrink: 0,
     borderTopWidth: 0.5,
     borderTopColor: C.hairlineSoft,
-    flexShrink: 0,
+    paddingTop: 12,
+    paddingHorizontal: 14,
+    paddingBottom: TAB_BAR_H + 8,
+    gap: 10,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 10,
+    gap: 6,
+    paddingVertical: 12,
     paddingHorizontal: 14,
-    borderRadius: 10,
+    borderRadius: 12,
   },
   actionBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
+    color: '#FFFBF1',
+  },
+  actionBtnOutline: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: C.primary,
+    backgroundColor: 'transparent',
+  },
+  actionBtnOutlineText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.primary,
+  },
+  bucketBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: C.bucket,
+  },
+  bucketBtnActive: {
+    backgroundColor: C.bucket,
+    borderColor: C.bucket,
+  },
+  bucketBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.bucket,
   },
 });

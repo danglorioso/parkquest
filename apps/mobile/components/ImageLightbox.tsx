@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import {
-  Dimensions, FlatList, Modal, ScrollView, StyleSheet,
+  Dimensions, FlatList, Modal, Pressable, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -33,7 +33,7 @@ export function ImageLightbox({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.bg}>
+      <Pressable style={styles.bg} onPress={onClose}>
         <FlatList
           ref={listRef}
           data={images}
@@ -108,7 +108,7 @@ export function ImageLightbox({
             <Text style={styles.captionText} numberOfLines={2}>{images[idx].title}</Text>
           </View>
         ) : null}
-      </View>
+      </Pressable>
     </Modal>
   );
 }

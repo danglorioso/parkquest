@@ -10,11 +10,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/components/Avatar';
 import {
   getNotifications, getUnreadNotificationCount, markNotificationsRead,
-  respondFriendRequest, type NotificationItem, type NotificationType,
+  respondFriendRequest, dismissNotification, type NotificationItem, type NotificationType,
 } from '@/lib/api';
-
-// Mirrors web NotificationCenter.tsx — same types, copy, icon colors, and
-// mark-read-on-open behavior, rendered as a native bottom sheet.
 
 const C = {
   bg:           '#F2EBDB',
@@ -26,7 +23,7 @@ const C = {
   hairline:     'rgba(27,26,22,0.10)',
   hairlineSoft: 'rgba(27,26,22,0.06)',
   primary:      '#1F3D2E',
-  unreadTint:   'rgba(31,61,46,0.045)',
+  unreadAccent: '#1F3D2E',
 };
 
 const TYPE_CONFIG: Record<NotificationType, { icon: keyof typeof Ionicons.glyphMap; bg: string; color: string }> = {
@@ -53,20 +50,52 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(days / 7)}w ago`;
 }
 
-function notificationText(n: NotificationItem): string {
-  const name = n.actor_display_name || n.actor_username || 'Someone';
+function buildText(n: NotificationItem): { actorName: string | null; rest: string } {
+  const actorName = n.actor_display_name || n.actor_username || null;
+  const d = actorName ?? 'Someone';
   switch (n.type) {
-    case 'friend_request':  return `${name} sent you a friend request`;
-    case 'friend_accepted': return `${name} accepted your friend request`;
-    case 'like':            return `${name} liked your post`;
-    case 'comment':         return `${name} commented on your post`;
-    case 'post':            return n.park_name ? `${name} posted at ${n.park_name}` : `${name} shared a new post`;
-    case 'visit_logged':    return n.park_name ? `${name} visited ${n.park_name}` : `${name} logged a visit`;
-    case 'badge_earned':    return n.metadata?.badge_emoji
-      ? `${n.metadata.badge_emoji} You earned the ${n.metadata.badge_name ?? 'badge'} badge!`
-      : `You earned a new badge: ${n.metadata?.badge_name ?? 'Unknown'}`;
-    default:                return n.metadata?.message ?? 'New notification';
+    case 'friend_request':  return { actorName: d, rest: ' sent you a friend request' };
+    case 'friend_accepted': return { actorName: d, rest: ' accepted your friend request' };
+    case 'like':            return { actorName: d, rest: ' liked your post' };
+    case 'comment':         return { actorName: d, rest: ' commented on your post' };
+    case 'post':            return { actorName: d, rest: n.park_name ? ` posted at ${n.park_name}` : ' shared a new post' };
+    case 'visit_logged':    return { actorName: d, rest: n.park_name ? ` visited ${n.park_name}` : ' logged a visit' };
+    case 'badge_earned':    return {
+      actorName: null,
+      rest: n.metadata?.badge_emoji
+        ? `${n.metadata.badge_emoji} You earned the ${n.metadata.badge_name ?? 'badge'} badge!`
+        : `You earned a new badge: ${n.metadata?.badge_name ?? 'Unknown'}`,
+    };
+    default: return { actorName: null, rest: n.metadata?.message ?? 'New notification' };
   }
+}
+
+const SWIPE_THRESHOLD = -80;
+
+function SwipeableRow({ children, onDismiss }: { children: React.ReactNode; onDismiss: () => void }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, { dx, dy }) => Math.abs(dx) > Math.abs(dy) + 4 && dx < -4,
+    onPanResponderMove: (_, { dx }) => { if (dx < 0) translateX.setValue(dx); },
+    onPanResponderRelease: (_, { dx, vx }) => {
+      if (dx < SWIPE_THRESHOLD || vx < -0.8) {
+        Animated.timing(translateX, { toValue: -500, duration: 200, useNativeDriver: true })
+          .start(onDismiss);
+      } else {
+        Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
+      }
+    },
+  })).current;
+
+  return (
+    <View style={{ overflow: 'hidden' }}>
+      <View style={styles.swipeBg} />
+      <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
+        {children}
+      </Animated.View>
+    </View>
+  );
 }
 
 function NotificationRow({
@@ -78,8 +107,8 @@ function NotificationRow({
   onNavigateToUser: (userId: string) => void;
 }) {
   const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.system;
-  const name = n.actor_display_name || n.actor_username || 'Someone';
   const [busy, setBusy] = useState(false);
+  const { actorName, rest } = buildText(n);
 
   const handleRespond = async (action: 'accept' | 'reject') => {
     const fid = n.metadata?.friendship_id;
@@ -89,38 +118,51 @@ function NotificationRow({
   };
 
   return (
-    <View style={[styles.row, !n.read && { backgroundColor: C.unreadTint }]}>
-      <View style={{ position: 'relative', flexShrink: 0, alignSelf: 'flex-start' }}>
+    <TouchableOpacity
+      activeOpacity={n.actor_id ? 0.7 : 1}
+      onPress={n.actor_id ? () => onNavigateToUser(String(n.actor_id)) : undefined}
+      style={[styles.row, !n.read && styles.rowUnread]}
+    >
+      {/* Unread accent bar */}
+      {!n.read && <View style={styles.unreadBar} />}
+
+      {/* Avatar / type icon */}
+      <View style={{ flexShrink: 0, alignSelf: 'flex-start', position: 'relative' }}>
         {n.actor_id ? (
-          <TouchableOpacity onPress={() => onNavigateToUser(String(n.actor_id))} activeOpacity={0.75}>
-            <Avatar url={n.actor_avatar_url} name={name} size={36} />
-          </TouchableOpacity>
+          <Avatar url={n.actor_avatar_url} name={actorName ?? undefined} size={40} />
         ) : (
           <View style={[styles.typeCircle, { backgroundColor: cfg.bg }]}>
-            <Ionicons name={cfg.icon} size={16} color={cfg.color} />
+            <Ionicons name={cfg.icon} size={18} color={cfg.color} />
           </View>
         )}
-        {n.actor_id ? (
+        {n.actor_id && (
           <View style={[styles.typeDot, { backgroundColor: cfg.bg }]}>
             <Ionicons name={cfg.icon} size={8} color={cfg.color} />
           </View>
-        ) : null}
+        )}
       </View>
 
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.rowText, !n.read && { fontWeight: '600' }]}>
-          {notificationText(n)}
+      {/* Content */}
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+        <Text style={styles.rowText} numberOfLines={3}>
+          {actorName ? (
+            <Text style={styles.rowTextBold}>{actorName}</Text>
+          ) : null}
+          <Text>{rest}</Text>
         </Text>
+
         {n.type === 'comment' && n.metadata?.excerpt ? (
-          <Text style={styles.rowExcerpt} numberOfLines={1}>
-            &ldquo;{n.metadata.excerpt}&rdquo;
-          </Text>
+          <View style={styles.excerptWrap}>
+            <Text style={styles.rowExcerpt} numberOfLines={1}>
+              &ldquo;{n.metadata.excerpt}&rdquo;
+            </Text>
+          </View>
         ) : null}
 
         {n.type === 'friend_request' && n.metadata?.friendship_id ? (
           responded ? (
             <View style={styles.respondedRow}>
-              <Ionicons name="checkmark" size={11} color={C.inkMute} />
+              <Ionicons name="checkmark-circle" size={12} color={C.inkMute} />
               <Text style={styles.respondedText}>Responded</Text>
             </View>
           ) : (
@@ -128,7 +170,7 @@ function NotificationRow({
               <TouchableOpacity
                 onPress={() => handleRespond('accept')}
                 disabled={busy}
-                style={[styles.acceptBtn, busy && { opacity: 0.7 }]}
+                style={[styles.acceptBtn, busy && { opacity: 0.6 }]}
                 activeOpacity={0.8}
               >
                 <Text style={styles.acceptText}>Accept</Text>
@@ -136,7 +178,7 @@ function NotificationRow({
               <TouchableOpacity
                 onPress={() => handleRespond('reject')}
                 disabled={busy}
-                style={[styles.declineBtn, busy && { opacity: 0.7 }]}
+                style={[styles.declineBtn, busy && { opacity: 0.6 }]}
                 activeOpacity={0.8}
               >
                 <Text style={styles.declineText}>Decline</Text>
@@ -147,7 +189,7 @@ function NotificationRow({
 
         <Text style={styles.rowTime}>{timeAgo(n.created_at)}</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -164,12 +206,9 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const [loading, setLoading] = useState(false);
   const [pushStatus, setPushStatus] = useState<PushStatus>('undetermined');
 
-  // getToken from @clerk/clerk-expo is a new function every render — keeping it
-  // in dep arrays re-triggers effects on each render and loops fetches forever.
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
-  // Sync push permission status (request is handled in root _layout.tsx on sign-in)
   useEffect(() => {
     Notifications.getPermissionsAsync().then(({ status }) => {
       setPushStatus(status as PushStatus);
@@ -178,13 +217,9 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 
   const dragY = useRef(new Animated.Value(800)).current;
 
-  // Slide up when sheet opens
-  useEffect(() => {
-    if (open) {
-      dragY.setValue(800);
-      Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 3, speed: 14 }).start();
-    }
-  }, [open, dragY]);
+  const animateIn = useCallback(() => {
+    Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 3, speed: 14 }).start();
+  }, [dragY]);
 
   const dismiss = useCallback(() => {
     Animated.timing(dragY, { toValue: 800, duration: 220, useNativeDriver: true }).start(() => {
@@ -209,7 +244,6 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 
   const handleOpenPushSettings = () => Linking.openURL('app-settings:');
 
-  // Poll unread count every 30s, same cadence as web
   useEffect(() => {
     let active = true;
     const fetchCount = async () => {
@@ -225,15 +259,16 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
     return () => { active = false; clearInterval(id); };
   }, []);
 
-  // Fetch list + mark read when sheet opens
   useEffect(() => {
     if (!open) return;
     let active = true;
+    // Fallback: animate in after 2.5s even if fetch stalls
+    const fallback = setTimeout(() => { if (active) animateIn(); }, 2500);
     (async () => {
       setLoading(true);
       try {
         const tok = await getTokenRef.current();
-        if (!tok) return;
+        if (!tok) { animateIn(); return; }
         const data = await getNotifications(tok);
         if (!active) return;
         setItems(data);
@@ -245,16 +280,19 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
           setUnreadCount(0);
         }
       } catch { /* silent */ } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          clearTimeout(fallback);
+          animateIn();
+        }
       }
     })();
-    return () => { active = false; };
-  }, [open]);
+    return () => { active = false; clearTimeout(fallback); };
+  }, [open, animateIn]);
 
   const handleRespond = useCallback(async (friendshipId: number, action: 'accept' | 'reject') => {
     const tok = await getTokenRef.current();
     if (!tok) return;
-    // Optimistically update so buttons disappear immediately
     setItems(prev => prev.map(n =>
       n.metadata?.friendship_id === friendshipId
         ? { ...n, type: action === 'accept' ? 'friend_accepted' : ('friend_rejected' as NotificationType) }
@@ -263,7 +301,6 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
     try {
       await respondFriendRequest(tok, friendshipId, action);
     } catch {
-      // Revert on failure
       setItems(prev => prev.map(n =>
         n.metadata?.friendship_id === friendshipId
           ? { ...n, type: 'friend_request' as NotificationType }
@@ -272,12 +309,20 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
     }
   }, []);
 
+  const handleDismiss = useCallback(async (id: number) => {
+    setItems(prev => prev.filter(n => n.id !== id));
+    try {
+      const tok = await getTokenRef.current();
+      if (tok) await dismissNotification(tok, id);
+    } catch { /* already removed from UI */ }
+  }, []);
+
   const newCount = items.filter(n => !n.read).length;
   const displayCount = open ? newCount : unreadCount;
 
   return (
     <>
-      <TouchableOpacity style={[style, open && styles.bellActive]} activeOpacity={0.7} onPress={() => setOpen(true)}>
+      <TouchableOpacity style={[style, open && styles.bellActive]} activeOpacity={0.7} onPress={() => { dragY.setValue(800); setOpen(true); }}>
         <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? C.primary : C.inkSoft} />
         {displayCount > 0 && (
           <View style={styles.badge}>
@@ -296,22 +341,27 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
         <View style={styles.overlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={dismiss} />
           <Animated.View style={[styles.sheet, { paddingBottom: insets.bottom + 8, transform: [{ translateY: dragY }] }]}>
+
             {/* Drag handle */}
             <View style={styles.dragHandle} {...panResponder.panHandlers}>
               <View style={styles.dragIndicator} />
             </View>
+
             {/* Header */}
-            <View style={[styles.sheetHeader]} {...panResponder.panHandlers}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <Text style={styles.sheetTitle}>Activity</Text>
-                {newCount > 0 && (
-                  <View style={styles.newChip}>
-                    <Text style={styles.newChipText}>{newCount} new</Text>
-                  </View>
-                )}
+            <View style={styles.sheetHeader} {...panResponder.panHandlers}>
+              <View>
+                <Text style={styles.sheetKicker}>ACTIVITY</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 1 }}>
+                  <Text style={styles.sheetTitle}>Notifications</Text>
+                  {newCount > 0 && (
+                    <View style={styles.newChip}>
+                      <Text style={styles.newChipText}>{newCount} new</Text>
+                    </View>
+                  )}
+                </View>
               </View>
-              <TouchableOpacity onPress={dismiss} style={styles.closeBtn}>
-                <Ionicons name="close" size={16} color={C.inkMute} />
+              <TouchableOpacity onPress={dismiss} style={styles.closeBtn} hitSlop={8}>
+                <Ionicons name="close" size={17} color={C.inkMute} />
               </TouchableOpacity>
             </View>
 
@@ -324,7 +374,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
               >
                 <Ionicons name="notifications-off-outline" size={13} color="#92400E" />
                 <Text style={styles.permBannerText}>Push notifications disabled</Text>
-                <Text style={styles.permBannerCta}>Enable in Settings →</Text>
+                <Text style={styles.permBannerCta}>Enable →</Text>
               </TouchableOpacity>
             )}
 
@@ -335,31 +385,33 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
               </View>
             ) : items.length === 0 ? (
               <View style={styles.centerBox}>
-                <Ionicons name="notifications-outline" size={26} color={C.inkMute} style={{ marginBottom: 10 }} />
-                <Text style={styles.emptyTitle}>No notifications yet</Text>
+                <Text style={styles.emptyEmoji}>🔔</Text>
+                <Text style={styles.emptyTitle}>All quiet here</Text>
                 <Text style={styles.centerMuted}>Add friends and interact with posts to get started.</Text>
               </View>
             ) : (
               <FlatList
                 data={items}
                 keyExtractor={n => String(n.id)}
-                style={{ maxHeight: 480 }}
-                ItemSeparatorComponent={() => <View style={styles.separator} />}
+                style={{ maxHeight: 500 }}
+                contentContainerStyle={{ paddingVertical: 6 }}
                 renderItem={({ item }) => (
-                  <NotificationRow
-                    n={item}
-                    responded={item.type !== 'friend_request'}
-                    onRespond={handleRespond}
-                    onNavigateToUser={(userId) => {
-                      setOpen(false);
-                      router.push(`/user/${userId}` as any);
-                    }}
-                  />
+                  <SwipeableRow onDismiss={() => handleDismiss(item.id)}>
+                    <NotificationRow
+                      n={item}
+                      responded={item.type !== 'friend_request'}
+                      onRespond={handleRespond}
+                      onNavigateToUser={(userId) => {
+                        dismiss();
+                        router.push(`/user/${userId}` as any);
+                      }}
+                    />
+                  </SwipeableRow>
                 )}
               />
             )}
 
-            {/* Permission settings footer — always visible so user can manage later */}
+            {/* Push permission footer */}
             <TouchableOpacity
               style={styles.permFooter}
               onPress={handleOpenPushSettings}
@@ -373,7 +425,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                 />
                 <Text style={styles.permFooterLabel}>
                   Push notifications:{' '}
-                  <Text style={{ color: pushStatus === 'granted' ? C.primary : C.inkMute }}>
+                  <Text style={{ color: pushStatus === 'granted' ? C.primary : C.inkMute, fontWeight: '600' }}>
                     {pushStatus === 'granted' ? 'On' : pushStatus === 'denied' ? 'Off' : 'Not set'}
                   </Text>
                 </Text>
@@ -388,13 +440,10 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 }
 
 const styles = StyleSheet.create({
-  // Bell selected state (mirrors web open state)
   bellActive: {
     backgroundColor: 'rgba(31,61,46,0.07)',
     borderColor: C.hairline,
   },
-
-  // Bell badge
   badge: {
     position: 'absolute', top: 2, right: 2,
     minWidth: 14, height: 14, borderRadius: 7,
@@ -407,80 +456,110 @@ const styles = StyleSheet.create({
     fontSize: 8, fontWeight: '700', color: '#fff', lineHeight: 9,
   },
 
-  // Sheet
+  swipeBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#D45040',
+  },
+
   overlay: {
     flex: 1, justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   sheet: {
     backgroundColor: C.surface,
-    borderTopLeftRadius: 18, borderTopRightRadius: 18,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
     borderWidth: 0.5, borderColor: C.hairline,
     overflow: 'hidden',
   },
   dragHandle: {
-    alignItems: 'center', paddingVertical: 8,
+    alignItems: 'center', paddingTop: 10, paddingBottom: 4,
   },
   dragIndicator: {
     width: 36, height: 4, borderRadius: 2,
-    backgroundColor: C.hairline,
+    backgroundColor: 'rgba(27,26,22,0.15)',
   },
+
   sheetHeader: {
-    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
+    paddingHorizontal: 18, paddingTop: 12, paddingBottom: 14,
     borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
   },
-  sheetTitle: { fontWeight: '700', fontSize: 16, color: C.ink },
+  sheetKicker: {
+    fontSize: 9.5, fontWeight: '700', letterSpacing: 1.5,
+    color: C.inkMute,
+  },
+  sheetTitle: {
+    fontWeight: '800', fontSize: 20, color: C.ink, letterSpacing: -0.3,
+  },
   newChip: {
-    backgroundColor: C.surfaceAlt, borderRadius: 4,
-    paddingHorizontal: 6, paddingVertical: 2,
+    backgroundColor: C.primary, borderRadius: 100,
+    paddingHorizontal: 8, paddingVertical: 3,
   },
   newChipText: {
-    fontSize: 9, fontWeight: '700', color: C.inkMute, letterSpacing: 0.4,
+    fontSize: 9.5, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.3,
   },
-  closeBtn: { padding: 4 },
+  closeBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: C.surfaceAlt,
+    borderWidth: 0.5, borderColor: C.hairline,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   // Rows
   row: {
-    flexDirection: 'row', gap: 10,
-    paddingHorizontal: 16, paddingVertical: 10,
+    flexDirection: 'row', gap: 12,
+    paddingHorizontal: 18, paddingVertical: 13,
+    position: 'relative',
+    backgroundColor: C.surface,
+  },
+  rowUnread: {
+    backgroundColor: '#EEF4EE',
+  },
+  unreadBar: {
+    position: 'absolute',
+    left: 0, top: 10, bottom: 10,
+    width: 3, borderRadius: 2,
+    backgroundColor: C.unreadAccent,
   },
   typeCircle: {
-    width: 36, height: 36, borderRadius: 18,
+    width: 40, height: 40, borderRadius: 20,
     alignItems: 'center', justifyContent: 'center',
   },
   typeDot: {
     position: 'absolute', bottom: -1, right: -1,
-    width: 16, height: 16, borderRadius: 8,
+    width: 17, height: 17, borderRadius: 9,
     borderWidth: 1.5, borderColor: C.surface,
     alignItems: 'center', justifyContent: 'center',
   },
-  rowText: { fontSize: 13, color: C.ink, lineHeight: 18 },
-  rowExcerpt: {
-    fontSize: 12, color: C.inkSoft, marginTop: 2, fontStyle: 'italic',
-  },
-  rowTime: { fontSize: 11, color: C.inkMute, marginTop: 3 },
-  separator: {
-    height: 0.5, backgroundColor: C.hairlineSoft, marginHorizontal: 16,
-  },
-
-  // Friend request actions
-  actionRow: { flexDirection: 'row', gap: 6, marginTop: 7 },
-  acceptBtn: {
-    backgroundColor: C.primary, borderRadius: 7,
-    paddingHorizontal: 14, paddingVertical: 5,
-  },
-  acceptText: { color: '#FFFBF1', fontSize: 12, fontWeight: '700' },
-  declineBtn: {
-    backgroundColor: C.surfaceAlt, borderRadius: 7,
+  rowText: { fontSize: 13.5, color: C.ink, lineHeight: 19 },
+  rowTextBold: { fontWeight: '700', fontSize: 13.5, color: C.ink },
+  excerptWrap: {
+    backgroundColor: C.surfaceAlt, borderRadius: 8,
+    paddingHorizontal: 9, paddingVertical: 5,
     borderWidth: 0.5, borderColor: C.hairline,
-    paddingHorizontal: 14, paddingVertical: 5,
   },
-  declineText: { color: C.ink, fontSize: 12, fontWeight: '600' },
+  rowExcerpt: {
+    fontSize: 12, color: C.inkSoft, fontStyle: 'italic',
+  },
+  rowTime: { fontSize: 11, color: C.inkMute, marginTop: 1 },
+
+  // Friend request
+  actionRow: { flexDirection: 'row', gap: 7, marginTop: 8 },
+  acceptBtn: {
+    backgroundColor: C.primary, borderRadius: 100,
+    paddingHorizontal: 16, paddingVertical: 6,
+  },
+  acceptText: { color: '#FFFBF1', fontSize: 12.5, fontWeight: '700' },
+  declineBtn: {
+    backgroundColor: C.surfaceAlt, borderRadius: 100,
+    borderWidth: 0.5, borderColor: C.hairline,
+    paddingHorizontal: 16, paddingVertical: 6,
+  },
+  declineText: { color: C.inkSoft, fontSize: 12.5, fontWeight: '600' },
   respondedRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5,
+    flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6,
   },
-  respondedText: { fontSize: 11, color: C.inkMute },
+  respondedText: { fontSize: 11.5, color: C.inkMute },
 
   // Push permission
   permBanner: {
@@ -493,21 +572,23 @@ const styles = StyleSheet.create({
   permBannerCta: { fontSize: 12, color: '#92400E', fontWeight: '700' },
   permFooter: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 10,
+    paddingHorizontal: 18, paddingVertical: 11,
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
+    backgroundColor: C.surfaceAlt,
   },
   permFooterLabel: { fontSize: 11.5, color: C.inkMute },
   permFooterAction: { fontSize: 11.5, color: C.inkMute, fontWeight: '600' },
 
   // Empty / loading
   centerBox: {
-    height: 480, paddingHorizontal: 24,
-    alignItems: 'center', justifyContent: 'center',
+    height: 400, paddingHorizontal: 32,
+    alignItems: 'center', justifyContent: 'center', gap: 6,
   },
+  emptyEmoji: { fontSize: 38, marginBottom: 6 },
   emptyTitle: {
-    fontSize: 14, color: C.ink, fontWeight: '600', marginBottom: 4,
+    fontSize: 16, color: C.ink, fontWeight: '700', letterSpacing: -0.2,
   },
   centerMuted: {
-    fontSize: 12.5, color: C.inkMute, textAlign: 'center',
+    fontSize: 13, color: C.inkMute, textAlign: 'center', lineHeight: 19,
   },
 });

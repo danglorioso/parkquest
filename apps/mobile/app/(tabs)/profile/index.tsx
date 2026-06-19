@@ -13,6 +13,7 @@ import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { useColors } from '@/lib/palette';
+import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -363,7 +364,7 @@ export default function ProfileScreen() {
             onPress={() => { setParkFilterIntent('bucketList'); router.push('/(tabs)/parks' as never); }}
           />
           <View style={styles.statDivider} />
-          <StatCell value={badgesEarned} sub={`/${totalBadges}`} label="BADGES" onPress={() => router.push('/profile/badges' as never)} />
+          <StatCell value={badgesEarned} label="BADGES" onPress={() => router.push('/profile/badges' as never)} />
           <View style={styles.statDivider} />
           <StatCell value={friendCount}  label="FRIENDS" onPress={() => router.push('/profile/friends' as never)} />
         </View>
@@ -422,10 +423,37 @@ export default function ProfileScreen() {
               ))}
               <TouchableOpacity
                 onPress={() => router.push('/profile/badges' as never)}
-                style={styles.badgePreviewMore}
+                style={styles.badgePreviewItem}
+                activeOpacity={0.7}
               >
-                <Ionicons name="arrow-forward-circle" size={24} color={C.primary} />
-                <Text style={[styles.badgePreviewMoreText, { color: C.primary }]}>See all</Text>
+                <Svg width={52} height={52} viewBox="0 0 52 52" style={{ marginBottom: 6 }}>
+                  <Circle
+                    cx={26} cy={26} r={23}
+                    fill="none"
+                    stroke={C.primary}
+                    strokeWidth={1}
+                    strokeDasharray="3 2.5"
+                  />
+                  <SvgText
+                    x={26} y={19.5}
+                    textAnchor="middle"
+                    alignmentBaseline="central"
+                    fill={C.primary}
+                    fontSize={9.5}
+                    fontWeight="800"
+                    letterSpacing={0.6}
+                  >SEE</SvgText>
+                  <SvgText
+                    x={26} y={32.5}
+                    textAnchor="middle"
+                    alignmentBaseline="central"
+                    fill={C.primary}
+                    fontSize={9.5}
+                    fontWeight="800"
+                    letterSpacing={0.6}
+                  >ALL</SvgText>
+                </Svg>
+                <Text style={[styles.badgePreviewName, { color: C.primary }]} numberOfLines={2}>All Badges</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -442,7 +470,7 @@ export default function ProfileScreen() {
               icon="ribbon-outline"
               label="Badges"
               subtitle="Achievements and milestones"
-              count={badgesEarned > 0 ? `${badgesEarned}/${totalBadges}` : undefined}
+              count={badgesEarned > 0 ? badgesEarned : undefined}
               onPress={() => router.push('/profile/badges' as never)}
             />
             <View style={styles.rowDivider} />
@@ -649,12 +677,6 @@ const styles = StyleSheet.create({
   },
   badgePreviewName: {
     fontSize: 10, fontWeight: '600', color: C.ink, textAlign: 'center', lineHeight: 13,
-  },
-  badgePreviewMore: {
-    width: 70, alignItems: 'center', justifyContent: 'center', gap: 4,
-  },
-  badgePreviewMoreText: {
-    fontSize: 10, fontWeight: '600', color: C.primary,
   },
 
   // Sections

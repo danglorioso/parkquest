@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Alert, Animated, FlatList, Image, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator, Alert, Animated, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
@@ -201,31 +201,55 @@ const HALF_LABELS: Record<number, string> = {
   4:'Great', 4.5:'Amazing', 5:'Unreal',
 };
 
+const STAR_GAP = 4;
+const STAR_TOTAL = STAR_SIZE + STAR_GAP; // 40px per star slot
+
+function valueFromX(x: number): number {
+  const clamped = Math.max(0, x);
+  const starIdx = Math.floor(clamped / STAR_TOTAL);
+  if (starIdx >= 5) return 5;
+  const posInStar = clamped - starIdx * STAR_TOTAL;
+  return posInStar < STAR_SIZE / 2 ? starIdx + 0.5 : starIdx + 1;
+}
+
 function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const C = useColors();
+  const containerX = useRef(0);
+  const isDragging = useRef(false);
+
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (e) => {
+      isDragging.current = true;
+      const x = e.nativeEvent.pageX - containerX.current;
+      onChange(valueFromX(x));
+    },
+    onPanResponderMove: (e) => {
+      const x = e.nativeEvent.pageX - containerX.current;
+      onChange(valueFromX(x));
+    },
+    onPanResponderRelease: () => { isDragging.current = false; },
+    onPanResponderTerminate: () => { isDragging.current = false; },
+  })).current;
+
   return (
     <View>
-      <View style={{ flexDirection: 'row', gap: 4, marginBottom: 8 }}>
+      <View
+        onLayout={e => { containerX.current = e.nativeEvent.layout.x; }}
+        ref={r => {
+          if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; });
+        }}
+        style={{ flexDirection: 'row', gap: STAR_GAP, marginBottom: 8 }}
+        {...panResponder.panHandlers}
+      >
         {Array.from({ length: 5 }).map((_, i) => (
-          <View key={i} style={{ width: STAR_SIZE, height: STAR_SIZE }}>
+          <View key={i} style={{ width: STAR_SIZE, height: STAR_SIZE }} pointerEvents="none">
             <Ionicons
               name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
               size={STAR_SIZE}
               color={value >= i + 0.5 ? C.accent : 'rgba(27,26,22,0.28)'}
             />
-            {/* Invisible half-star tap targets */}
-            <View style={[StyleSheet.absoluteFillObject as object, { flexDirection: 'row' }]}>
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                onPress={() => onChange(value === i + 0.5 ? 0 : i + 0.5)}
-                activeOpacity={0.6}
-              />
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                onPress={() => onChange(value === i + 1 ? 0 : i + 1)}
-                activeOpacity={0.6}
-              />
-            </View>
           </View>
         ))}
       </View>
@@ -237,7 +261,7 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
             <Text style={{ fontSize: 14, fontWeight: '700', color: C.accent }}>{HALF_LABELS[value]}</Text>
           </>
         ) : (
-          <Text style={{ fontSize: 12.5, color: C.inkMute }}>Tap a star to rate</Text>
+          <Text style={{ fontSize: 12.5, color: C.inkMute }}>Tap or swipe to rate</Text>
         )}
       </View>
     </View>
@@ -246,31 +270,65 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
 
 // ── ScaleRow ──────────────────────────────────────────────────────────────────
 
+const SCALE_BAR_W = 38;
+const SCALE_BAR_GAP = 5;
+const SCALE_BAR_SLOT = SCALE_BAR_W + SCALE_BAR_GAP;
+const SCALE_BAR_HEIGHTS = [14, 22, 30, 40, 52];
+
 function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: number) => void; labels: string[] }) {
   const C = useColors();
+  const containerX = useRef(0);
+  const maxH = SCALE_BAR_HEIGHTS[SCALE_BAR_HEIGHTS.length - 1];
+
+  const valueFromX = (x: number) => {
+    const clamped = Math.max(0, x);
+    const idx = Math.floor(clamped / SCALE_BAR_SLOT);
+    return Math.min(labels.length, Math.max(1, idx + 1));
+  };
+
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (e) => {
+      const x = e.nativeEvent.pageX - containerX.current;
+      onChange(valueFromX(x));
+    },
+    onPanResponderMove: (e) => {
+      const x = e.nativeEvent.pageX - containerX.current;
+      onChange(valueFromX(x));
+    },
+  })).current;
+
   return (
     <View>
-      {/* Segmented track — fills up to the selected level */}
-      <View style={{ flexDirection: 'row', gap: 5 }}>
+      <View
+        ref={r => { if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; }); }}
+        style={{ flexDirection: 'row', alignItems: 'flex-end', gap: SCALE_BAR_GAP, height: maxH + 4 }}
+        {...panResponder.panHandlers}
+      >
         {labels.map((l, i) => {
           const filled = value >= i + 1;
           const isSel  = value === i + 1;
+          const h = SCALE_BAR_HEIGHTS[i];
           return (
-            <TouchableOpacity
+            <View
               key={l}
-              onPress={() => onChange(isSel ? 0 : i + 1)}
-              style={[styles.scaleSeg, {
+              pointerEvents="none"
+              style={{
+                width: SCALE_BAR_W,
+                height: h,
+                borderRadius: 6,
                 backgroundColor: filled ? C.primary : C.surfaceAlt,
+                borderWidth: 0.5,
                 borderColor: filled ? C.primary : C.hairline,
-                opacity: filled && !isSel ? 0.55 : 1,
-              }]}
-              activeOpacity={0.7}
+                opacity: filled && !isSel ? 0.5 : 1,
+              }}
             />
           );
         })}
       </View>
-      <Text style={{ marginTop: 7, fontSize: 12, fontWeight: '600', color: value > 0 ? C.primary : C.inkMute }}>
-        {value > 0 ? labels[value - 1] : 'Tap to set'}
+      <Text style={{ marginTop: 8, fontSize: 12, fontWeight: '600', color: value > 0 ? C.primary : C.inkMute }}>
+        {value > 0 ? labels[value - 1] : 'Swipe or tap to set'}
       </Text>
     </View>
   );
@@ -1664,19 +1722,17 @@ export default function LogVisitModal() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
-      {/* Grabber — modal is natively swipe-down dismissible */}
-      <View style={{ alignItems: 'center', paddingTop: 9 }}>
-        <View style={styles.grabber} />
-      </View>
-
-      {/* Close — pinned to the top corner so it sits in the sheet's rounding */}
-      <TouchableOpacity onPress={handleCancel} style={styles.modalClose} hitSlop={8}>
-        <Ionicons name="close" size={16} color={C.inkSoft} />
-      </TouchableOpacity>
-
-      {/* Title row */}
+      {/* Header: grabber + title on left, close centered on right */}
       <View style={styles.modalTopRow}>
-        <Text style={styles.modalTitle}>{isEdit ? 'Edit visit' : 'Log a visit'}</Text>
+        <View style={{ flex: 1 }}>
+          <View style={{ alignItems: 'center', marginBottom: 8 }}>
+            <View style={styles.grabber} />
+          </View>
+          <Text style={styles.modalTitle}>{isEdit ? 'Edit visit' : 'Log a visit'}</Text>
+        </View>
+        <TouchableOpacity onPress={handleCancel} style={styles.modalClose} hitSlop={8}>
+          <Ionicons name="close" size={16} color={C.inkSoft} />
+        </TouchableOpacity>
       </View>
 
       {/* Step indicator */}
@@ -1707,19 +1763,19 @@ export default function LogVisitModal() {
       >
         {step === 0 && restoreBanner && restoreBanner.id !== draftId.current && (
           <View style={styles.draftBanner}>
-            <Ionicons name="document-text-outline" size={16} color={C.accent} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.draftBannerTitle} numberOfLines={1}>
+              <Text style={styles.draftBannerTitle}>You have a saved draft</Text>
+              <Text style={styles.draftBannerSub} numberOfLines={1}>
                 {restoreBanner.parkName ?? 'No park selected'}
                 {restoreBanner.draft.title ? ` — ${restoreBanner.draft.title}` : ''}
+                {' · '}{draftAge(restoreBanner.savedAt)}
               </Text>
-              <Text style={styles.draftBannerSub}>Draft saved {draftAge(restoreBanner.savedAt)}</Text>
             </View>
-            <TouchableOpacity onPress={discardSavedDraft} hitSlop={6} style={{ padding: 4 }}>
-              <Ionicons name="trash-outline" size={15} color={C.inkMute} />
-            </TouchableOpacity>
             <TouchableOpacity onPress={resumeDraft} style={styles.draftResumeBtn} activeOpacity={0.8}>
               <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFBF1' }}>Restore</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={discardSavedDraft} hitSlop={6} style={styles.draftDiscardBtn} activeOpacity={0.7}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: C.inkMute }}>Discard</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1790,10 +1846,10 @@ export default function LogVisitModal() {
 const styles = StyleSheet.create({
   // Draft restore banner
   draftBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: C.surface,
-    borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(31,61,46,0.07)',
+    borderWidth: 0.5, borderColor: 'rgba(31,61,46,0.18)',
+    borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 11,
     marginBottom: 20,
   },
@@ -1801,12 +1857,19 @@ const styles = StyleSheet.create({
     fontSize: 13, fontWeight: '700', color: C.ink,
   },
   draftBannerSub: {
-    fontSize: 11, color: C.inkMute, marginTop: 1,
+    fontSize: 11.5, color: C.inkMute, marginTop: 1,
   },
   draftResumeBtn: {
     backgroundColor: C.primary,
     paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 8,
+    flexShrink: 0,
+  },
+  draftDiscardBtn: {
+    borderWidth: 0.5, borderColor: C.hairline,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 8,
+    flexShrink: 0,
   },
 
   // Modal chrome
@@ -1815,14 +1878,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(27,26,22,0.18)',
   },
   modalTopRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 2,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10,
   },
   modalTitle: {
     fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.3,
   },
   modalClose: {
-    position: 'absolute', top: 10, right: 16, zIndex: 10,
+    flexShrink: 0,
     width: 30, height: 30, borderRadius: 15,
     backgroundColor: C.surfaceAlt,
     borderWidth: 0.5, borderColor: C.hairline,

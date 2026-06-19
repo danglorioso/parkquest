@@ -1,4 +1,5 @@
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -56,14 +57,16 @@ export default function AppTabBar({ activeTab }: { activeTab: Tab }) {
         <View style={[styles.fabGlow, { shadowColor: C.accent }]}>
           <View style={[styles.fab, { backgroundColor: C.accent }]}>
             <Ionicons name="add" size={24} color="#FFFBF1" />
-            {/* Upper-left radial brightening */}
-            <View style={styles.fabRadial} pointerEvents="none" />
-            {/* Specular highlight dot */}
-            <View style={styles.fabSpecular} pointerEvents="none" />
-            {/* Inner rim — bright top-left edge */}
-            <View style={styles.fabRimLight} pointerEvents="none" />
-            {/* Inner rim — dark bottom-right edge */}
-            <View style={styles.fabRimDark} pointerEvents="none" />
+            {/* Rim glow — radial gradient from outer edge inward */}
+            <Svg width={42} height={42} style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Defs>
+                <RadialGradient id="rimGlow" cx="50%" cy="50%" r="50%">
+                  <Stop offset="52%" stopColor="white" stopOpacity={0} />
+                  <Stop offset="100%" stopColor="white" stopOpacity={0.38} />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={21} cy={21} r={21} fill="url(#rimGlow)" />
+            </Svg>
           </View>
         </View>
       </TouchableOpacity>
@@ -144,39 +147,5 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
-  },
-  fabRadial: {
-    position: 'absolute',
-    top: -8, left: -8,
-    width: 36, height: 30,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  fabSpecular: {
-    position: 'absolute',
-    top: 6, left: 7,
-    width: 11, height: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-  },
-  fabRimLight: {
-    position: 'absolute',
-    top: 2, left: 2, right: 2, bottom: 2,
-    borderRadius: 19,
-    borderWidth: 1.5,
-    borderTopColor: 'rgba(255,255,255,0.60)',
-    borderLeftColor: 'rgba(255,255,255,0.38)',
-    borderBottomColor: 'transparent',
-    borderRightColor: 'transparent',
-  },
-  fabRimDark: {
-    position: 'absolute',
-    top: 2, left: 2, right: 2, bottom: 2,
-    borderRadius: 19,
-    borderWidth: 1.5,
-    borderTopColor: 'transparent',
-    borderLeftColor: 'transparent',
-    borderBottomColor: 'rgba(0,0,0,0.40)',
-    borderRightColor: 'rgba(0,0,0,0.25)',
   },
 });

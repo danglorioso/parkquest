@@ -96,9 +96,10 @@ export default function FeedScreen() {
     else setPosts(prev => { if (prev.length === 0) setLoading(true); return prev; });
     setError(false);
     try {
-      const res = await fetch(`${BASE}/api/feed`, {
-        headers: { Authorization: `Bearer ${tok}` },
-      });
+      const [res] = await Promise.all([
+        fetch(`${BASE}/api/feed`, { headers: { Authorization: `Bearer ${tok}` } }),
+        isRefresh ? new Promise<void>(r => setTimeout(r, 700)) : Promise.resolve(),
+      ]);
       if (res.ok) {
         const data = await res.json();
         setPosts(data);
@@ -120,11 +121,8 @@ export default function FeedScreen() {
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('feedTabPress', () => {
-      if (scrollOffsetRef.current < 10) {
-        loadFeedRef.current(true);
-      } else {
-        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-      }
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+      loadFeedRef.current(true);
     });
     return () => sub.remove();
   }, []);
@@ -156,8 +154,8 @@ export default function FeedScreen() {
       {posts.length > 0 && (
         <View style={styles.chips}>
           <FilterChip label="All"    active={filter === 'all'}    primary={palette.primary} onPress={() => setFilter('all')} />
-          <FilterChip label="Visits" active={filter === 'visits'} primary={palette.primary} onPress={() => setFilter('visits')} />
-          <FilterChip label="Badges" active={filter === 'badges'} primary={palette.primary} onPress={() => setFilter('badges')} />
+          <FilterChip label="Visits" active={filter === 'visits'} primary={palette.primary} onPress={() => setFilter(f => f === 'visits' ? 'all' : 'visits')} />
+          <FilterChip label="Badges" active={filter === 'badges'} primary={palette.primary} onPress={() => setFilter(f => f === 'badges' ? 'all' : 'badges')} />
         </View>
       )}
     </View>
@@ -208,7 +206,10 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.screen} edges={['top']}>
       {/* Top bar — wordmark + actions */}
       <View style={styles.topBar}>
-        <Wordmark onPress={scrollToTop} />
+        <Wordmark onPress={() => {
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+          loadFeed(true);
+        }} />
         <View style={styles.topBarActions}>
           <NotificationBell style={styles.iconBtn} />
           <TouchableOpacity
