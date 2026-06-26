@@ -103,6 +103,18 @@ const WEATHER_LABELS: Record<string, string> = {
   clear: 'Clear', partly: 'Partly cloudy', cloudy: 'Cloudy',
   rain: 'Rain', storm: 'Storms', snow: 'Snow', fog: 'Fog', wind: 'Windy',
 };
+const WEATHER_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+  clear: 'sunny-outline', partly: 'partly-sunny-outline', cloudy: 'cloud-outline',
+  rain: 'rainy-outline', storm: 'thunderstorm-outline', snow: 'snow-outline',
+  fog: 'water-outline', wind: 'speedometer-outline',
+};
+const ACTIVITY_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+  hiking: 'walk-outline', camping: 'bonfire-outline', backpacking: 'walk-outline',
+  climbing: 'trending-up-outline', kayaking: 'boat-outline', rafting: 'boat-outline',
+  fishing: 'fish-outline', diving: 'water-outline', wildlife: 'paw-outline',
+  photography: 'camera-outline', stargazing: 'moon-outline', tours: 'map-outline',
+  cycling: 'bicycle-outline', mountaineering: 'trending-up-outline',
+};
 const CROWD_LABELS  = ['Empty', 'Quiet', 'Moderate', 'Busy', 'Packed'];
 const DIFF_LABELS   = ['Easy', 'Light', 'Moderate', 'Hard', 'Strenuous'];
 
@@ -494,9 +506,10 @@ function ParkHeroBanner({ post, onPress }: { post: FeedPost; onPress?: () => voi
 
 // ── MetaChip ──────────────────────────────────────────────────────────────────
 
-function MetaChip({ children }: { children: React.ReactNode }) {
+function MetaChip({ icon, children }: { icon?: React.ComponentProps<typeof Ionicons>['name']; children: React.ReactNode }) {
   return (
     <View style={styles.chip}>
+      {icon && <Ionicons name={icon} size={11} color={C.inkSoft} style={{ marginRight: 3 }} />}
       {typeof children === 'string'
         ? <Text style={styles.chipText}>{children}</Text>
         : children}
@@ -542,21 +555,21 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
           </MetaChip>
         ) : null}
         {dateLabel && !heroDate ? (
-          <MetaChip><Text style={styles.chipText}>{dateLabel}</Text></MetaChip>
+          <MetaChip icon="calendar-outline"><Text style={styles.chipText}>{dateLabel}</Text></MetaChip>
         ) : null}
         {post.visit_weather?.map(w => (
-          <MetaChip key={w}>
+          <MetaChip key={w} icon={WEATHER_ICONS[w] ?? 'cloudy-outline'}>
             <Text style={styles.chipText}>{WEATHER_LABELS[w] ?? w}</Text>
           </MetaChip>
         ))}
         {post.visit_crowd ? (
-          <MetaChip><Text style={styles.chipText}>{CROWD_LABELS[post.visit_crowd - 1]} crowd</Text></MetaChip>
+          <MetaChip icon="people-outline"><Text style={styles.chipText}>{CROWD_LABELS[post.visit_crowd - 1]}</Text></MetaChip>
         ) : null}
         {post.visit_difficulty ? (
-          <MetaChip><Text style={styles.chipText}>{DIFF_LABELS[post.visit_difficulty - 1]}</Text></MetaChip>
+          <MetaChip icon="trail-sign-outline"><Text style={styles.chipText}>{DIFF_LABELS[post.visit_difficulty - 1]}</Text></MetaChip>
         ) : null}
         {post.visit_activities?.map(a => (
-          <MetaChip key={a}>
+          <MetaChip key={a} icon={ACTIVITY_ICONS[a.toLowerCase()] ?? 'star-outline'}>
             <Text style={styles.chipText}>{a.charAt(0).toUpperCase() + a.slice(1)}</Text>
           </MetaChip>
         ))}
@@ -567,7 +580,7 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
             const shown = names.slice(0, MAX);
             const extra = names.length - MAX;
             return (
-              <MetaChip>
+              <MetaChip icon="people-outline">
                 <Text style={styles.chipText}>
                   {'With '}
                   {shown.map((c, i) => (
@@ -587,7 +600,7 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
             );
           }
           return (
-            <MetaChip>
+            <MetaChip icon="people-outline">
               <Text style={styles.chipText}>
                 +{post.visit_companion_count}{' '}
                 {post.visit_companion_count === 1 ? 'companion' : 'companions'}

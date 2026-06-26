@@ -126,6 +126,10 @@ export default function RootLayout() {
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen
+                  name="profile/edit"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
                   name="user/[id]"
                   options={{
                     headerShown: true,

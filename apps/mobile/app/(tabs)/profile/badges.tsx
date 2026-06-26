@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, KeyboardAvoidingView, Modal,
-  Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  Platform, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,12 +52,9 @@ interface BadgeData {
   progress_target: number | null;
 }
 
-type TierFilter = 'all' | typeof TIER_ORDER[number];
-
 // FlatList row union
 type Row =
   | { _type: 'pageHeader' }
-  | { _type: 'filterBar' }
   | { _type: 'featured'; badge: BadgeData }
   | { _type: 'sectionHead'; kicker: string; title: string }
   | { _type: 'badgeRow'; items: BadgeData[] }
@@ -188,9 +185,6 @@ function BadgeCell({ badge, onPress }: { badge: BadgeData; onPress: () => void }
         {badge.name}
       </Text>
 
-      {/* Tier label — full name, inkMute, matches web */}
-      <Text style={styles.cellTier}>{t.name}</Text>
-
       {/* Earned date or progress bar */}
       {badge.earned && earnedDateStr ? (
         <Text style={styles.cellDate}>{earnedDateStr}</Text>
@@ -221,7 +215,7 @@ function FeaturedCard({ badge, onPress, onShare }: { badge: BadgeData; onPress: 
       </View>
       <View style={{ flex: 1, gap: 5, position: 'relative' }}>
         <Text style={styles.featuredKicker}>
-          LATEST UNLOCK · {dateStr} · {t.name.toUpperCase()}
+          LATEST UNLOCK · {dateStr}
         </Text>
         <Text style={styles.featuredName}>{badge.name}</Text>
         <Text style={styles.featuredDesc} numberOfLines={2}>{badge.description}</Text>
@@ -296,12 +290,6 @@ function BadgeDetailModal({ badge, onClose, onShare }: { badge: BadgeData; onClo
           }}>
             <BadgePatch emoji={badge.emoji} tier={badge.tier} size={120} earned={badge.earned} />
           </Animated.View>
-
-          {/* Tier pill */}
-          <View style={[styles.tierPill, { backgroundColor: t.fill + '22' }]}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.fill }} />
-            <Text style={[styles.tierPillText, { color: t.fill }]}>{t.name.toUpperCase()} TIER</Text>
-          </View>
 
           {/* Name + description */}
           <Text style={styles.modalName}>{badge.name}</Text>
@@ -504,7 +492,6 @@ export default function BadgesScreen() {
   const [badges,        setBadges]        = useState<BadgeData[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState(false);
-  const [tierFilter,    setTierFilter]    = useState<TierFilter>('all');
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
   const [sharingBadge,  setSharingBadge]  = useState<BadgeData | null>(null);
 
@@ -540,19 +527,15 @@ export default function BadgesScreen() {
   useEffect(() => { loadBadges(); }, [loadBadges]);
 
   const earned  = useMemo(() => badges.filter(b => b.earned), [badges]);
-  const visible = useMemo(
-    () => tierFilter === 'all' ? badges : badges.filter(b => b.tier === tierFilter),
-    [badges, tierFilter]
-  );
-  const visibleEarned = useMemo(() => visible.filter(b => b.earned),  [visible]);
+  const visibleEarned = useMemo(() => badges.filter(b => b.earned),  [badges]);
   const visibleLocked = useMemo(() => {
-    const locked = visible.filter(b => !b.earned);
+    const locked = badges.filter(b => !b.earned);
     return locked.sort((a, b) => {
       const aPct = a.progress_target ? (a.progress_current ?? 0) / a.progress_target : 0;
       const bPct = b.progress_target ? (b.progress_current ?? 0) / b.progress_target : 0;
       return bPct - aPct;
     });
-  }, [visible]);
+  }, [badges]);
   const latestUnlock  = earned[0] ?? null;
   const earnedPct     = badges.length > 0 ? Math.round((earned.length / badges.length) * 100) : 0;
 
@@ -560,10 +543,9 @@ export default function BadgesScreen() {
   const data: Row[] = useMemo(() => {
     const rows: Row[] = [
       { _type: 'pageHeader' },
-      { _type: 'filterBar' },
     ];
 
-    if (latestUnlock && tierFilter === 'all') {
+    if (latestUnlock) {
       rows.push({ _type: 'featured', badge: latestUnlock });
     }
 
@@ -594,7 +576,7 @@ export default function BadgesScreen() {
     }
 
     return rows;
-  }, [latestUnlock, tierFilter, visibleEarned, visibleLocked, loading, badges.length]);
+  }, [latestUnlock, visibleEarned, visibleLocked, loading, badges.length]);
 
   const renderRow = useCallback(({ item }: { item: Row }) => {
     switch (item._type) {
@@ -606,41 +588,8 @@ export default function BadgesScreen() {
               {earned.length} EARNED
             </Text>
             <Text style={styles.headerTitle}>Badge collection</Text>
-            <Text style={styles.headerSub}>Five tiers, every milestone marked. Earn them by exploring.</Text>
+            <Text style={styles.headerSub}>See your progress and earn more by exploring.</Text>
           </View>
-        );
-
-      case 'filterBar':
-        return (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterScroll}
-          >
-            {(['all', ...TIER_ORDER] as TierFilter[]).map(f => {
-              const active = tierFilter === f;
-              const tier   = TIERS[f];
-              const count  = f === 'all' ? badges.length : badges.filter(b => b.tier === f).length;
-              return (
-                <TouchableOpacity
-                  key={f}
-                  onPress={() => setTierFilter(f)}
-                  activeOpacity={0.7}
-                  style={[styles.filterPill, active && styles.filterPillActive]}
-                >
-                  {f !== 'all' && tier && (
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tier.fill }} />
-                  )}
-                  <Text style={[styles.filterLabel, active && styles.filterLabelActive]}>
-                    {f === 'all' ? 'All tiers' : tier.name}
-                  </Text>
-                  <Text style={[styles.filterCount, active && { color: 'rgba(255,251,241,0.7)' }]}>
-                    {count}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
         );
 
       case 'featured':
@@ -688,7 +637,7 @@ export default function BadgesScreen() {
         );
     }
   }, [
-    earned.length, badges, earnedPct, tierFilter,
+    earned.length, badges, earnedPct,
     visibleEarned.length, visibleLocked.length,
   ]);
 

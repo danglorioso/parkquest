@@ -478,7 +478,7 @@ export default function BadgesPage() {
         <DesktopHeader
           kicker={`${earned.length} OF ${badges.length} EARNED · ${earnedPct}%`}
           title="Badge collection"
-          sub="Five tiers, every milestone marked. Earn them by exploring."
+          sub="See your progress and earn more by exploring."
         />
 
         {/* ── Tier filter ─────────────────────────────────────────── */}

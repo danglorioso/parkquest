@@ -3,7 +3,7 @@ import {
   Platform, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -68,6 +68,8 @@ export default function EditProfileScreen() {
   const [error,         setError]         = useState('');
   const [usernameError, setUsernameError] = useState('');
 
+  const original = useRef({ firstName: '', lastName: '', username: '', bio: '', paletteId: '' });
+
   // Load current values
   useEffect(() => {
     if (!user) return;
@@ -75,16 +77,38 @@ export default function EditProfileScreen() {
     setLastName(user.lastName ?? '');
     setUsername(user.username ?? '');
     setAvatarPreview(user.imageUrl ?? null);
+    original.current.firstName = user.firstName ?? '';
+    original.current.lastName  = user.lastName ?? '';
+    original.current.username  = user.username ?? '';
 
     getToken().then(tok => {
       if (!tok) { setLoading(false); return; }
       fetch(`${BASE}/api/profile`, { headers: { Authorization: `Bearer ${tok}` } })
         .then(r => r.ok ? r.json() : null)
-        .then(data => { if (data) setBio(data.bio ?? ''); })
+        .then(data => {
+          if (data) {
+            setBio(data.bio ?? '');
+            original.current.bio = data.bio ?? '';
+          }
+        })
         .catch(() => {})
         .finally(() => setLoading(false));
     });
   }, [user]);
+
+  useEffect(() => {
+    original.current.paletteId = paletteId;
+  // only on mount — paletteId changes after user edits, so capture initial value
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const hasChanges =
+    firstName !== original.current.firstName ||
+    lastName  !== original.current.lastName  ||
+    username  !== original.current.username  ||
+    bio       !== original.current.bio       ||
+    paletteId !== original.current.paletteId ||
+    avatarFile !== null;
 
   const pickAvatar = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -343,9 +367,13 @@ export default function EditProfileScreen() {
 
           {/* Save button */}
           <TouchableOpacity
-            style={[styles.saveButton, (saving || username.trim().length < 3) && { opacity: 0.55 }]}
+            style={[
+              styles.saveButton,
+              !hasChanges && { backgroundColor: C.inkMute, opacity: 0.45 },
+              (saving || username.trim().length < 3) && { opacity: 0.55 },
+            ]}
             onPress={handleSave}
-            disabled={saving || username.trim().length < 3}
+            disabled={saving || username.trim().length < 3 || !hasChanges}
             activeOpacity={0.8}
           >
             {saving
@@ -493,7 +521,7 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     borderRadius: 10,
     paddingVertical: 13,
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 16,
     minHeight: 46,
   },
   saveText: {
@@ -505,7 +533,7 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-    marginTop: 8,
+    marginTop: 16,
     marginBottom: 8,
     borderRadius: 12,
     borderWidth: 1.5,

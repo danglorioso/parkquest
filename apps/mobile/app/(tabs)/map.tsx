@@ -1226,6 +1226,8 @@ export default function MapScreen() {
   const [loading, setLoading]           = useState(true);
   const [mapPressKey, setMapPressKey]   = useState(0);
   const mapRef = useRef<MapView>(null);
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const controlsBottomAnim = useRef(new Animated.Value(0)).current;
   const rawParksRef = useRef<Array<{
     park_code: string; name: string; states: string;
@@ -1298,7 +1300,7 @@ export default function MapScreen() {
   }, []);
 
   const loadVisits = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     setToken(tok);
     try {
@@ -1312,10 +1314,10 @@ export default function MapScreen() {
     } catch (e) {
       console.error('Map visits load failed:', e);
     }
-  }, [getToken, mergeVisits]);
+  }, [mergeVisits]);
 
   const loadData = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     setToken(tok);
     setLoading(true);
@@ -1340,7 +1342,7 @@ export default function MapScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken, mergeVisits]);
+  }, [mergeVisits]);
 
   // Parks are static — load once on mount. Visits change — reload on every focus.
   useEffect(() => { loadData(); }, [loadData]);

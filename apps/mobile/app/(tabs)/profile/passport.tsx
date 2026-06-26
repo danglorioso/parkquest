@@ -2,7 +2,7 @@ import {
   Dimensions, FlatList, Image, Platform, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
-import Svg, { Circle, Defs, Path as SvgPath, Text as SvgText, TextPath } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, Path as SvgPath, Text as SvgText, TextPath } from 'react-native-svg';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -299,32 +299,55 @@ function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) 
             <SvgPath id={topId} d="M 14 50 A 36 36 0 0 1 86 50" />
             <SvgPath id={botId} d="M 14 50 A 36 36 0 0 0 86 50" />
           </Defs>
-          {/* Outer ring */}
-          <Circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="2.2" opacity="0.85" />
+
+          {/* Outer thick ring — matches real stamp border weight */}
+          <Circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" />
           {/* Inner ring */}
-          <Circle cx="50" cy="50" r="38" fill="none" stroke={c} strokeWidth="0.8" opacity="0.7" />
+          <Circle cx="50" cy="50" r="37" fill="none" stroke={c} strokeWidth="1.1" opacity="0.85" />
+
+          {/* Tick marks between rings at 8 positions (cardinal + diagonal) */}
+          <Line x1="88.5" y1="50"   x2="93"   y2="50"   stroke={c} strokeWidth="1.4" opacity="0.85" />
+          <Line x1="11.5" y1="50"   x2="7"    y2="50"   stroke={c} strokeWidth="1.4" opacity="0.85" />
+          <Line x1="50"   y1="88.5" x2="50"   y2="93"   stroke={c} strokeWidth="1.4" opacity="0.85" />
+          <Line x1="50"   y1="11.5" x2="50"   y2="7"    stroke={c} strokeWidth="1.4" opacity="0.85" />
+          <Line x1="77.2" y1="77.2" x2="80.4" y2="80.4" stroke={c} strokeWidth="1.4" opacity="0.85" />
+          <Line x1="22.8" y1="77.2" x2="19.6" y2="80.4" stroke={c} strokeWidth="1.4" opacity="0.85" />
+          <Line x1="22.8" y1="22.8" x2="19.6" y2="19.6" stroke={c} strokeWidth="1.4" opacity="0.85" />
+          <Line x1="77.2" y1="22.8" x2="80.4" y2="19.6" stroke={c} strokeWidth="1.4" opacity="0.85" />
+
+          {/* Horizontal band dividers — create 3-section stamp layout */}
+          <Line x1="17"   y1="34"   x2="83"   y2="34"   stroke={c} strokeWidth="0.9" opacity="0.8" />
+          <Line x1="17"   y1="66"   x2="83"   y2="66"   stroke={c} strokeWidth="0.9" opacity="0.8" />
+
           {/* Park name on top arc */}
-          <SvgText fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.9">
+          <SvgText fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.92">
             <TextPath href={`#${topId}`} startOffset="50%" textAnchor="middle">
               {shortName}
             </TextPath>
           </SvgText>
+
           {/* State code on bottom arc */}
-          <SvgText fill={c} fontWeight="600" fontSize="6.5" letterSpacing="1.5" opacity="0.85">
+          <SvgText fill={c} fontWeight="700" fontSize="6.5" letterSpacing="1.8" opacity="0.88">
             <TextPath href={`#${botId}`} startOffset="50%" textAnchor="middle">
               ★ {sc} ★
             </TextPath>
           </SvgText>
-          {/* Mountain */}
-          <SvgPath d="M30 60 L 42 44 L 50 52 L 60 38 L 70 60 Z" fill={c} opacity="0.85" />
-          {/* Snow cap */}
-          <Circle cx="60" cy="34" r="2" fill={c} opacity="0.85" />
-          {/* Date */}
-          {date ? (
-            <SvgText x="50" y="76" fill={c} fontWeight="700" fontSize="6.5" textAnchor="middle" letterSpacing="0.8" opacity="0.9">
-              {date}
-            </SvgText>
-          ) : null}
+
+          {/* Center scene ─────────────────────────────────────────── */}
+          {/* Back mountain (left, lighter for depth) */}
+          <SvgPath d="M 18 63 L 36 44 L 54 63 Z" fill={c} opacity="0.38" />
+          {/* Front mountain (center, taller) */}
+          <SvgPath d="M 33 63 L 53 37 L 73 63 Z" fill={c} opacity="0.88" />
+          {/* Snow cap on front peak */}
+          <SvgPath d="M 53 37 L 47 48 L 59 48 Z" fill="white" opacity="0.28" />
+          {/* Pine trees — left */}
+          <SvgPath d="M 18 63 L 21 56 L 24 63 Z" fill={c} opacity="0.9" />
+          <SvgPath d="M 23 63 L 27 55 L 31 63 Z" fill={c} opacity="0.9" />
+          {/* Pine trees — right */}
+          <SvgPath d="M 72 63 L 75 56 L 78 63 Z" fill={c} opacity="0.9" />
+          <SvgPath d="M 77 63 L 80 55 L 83 63 Z" fill={c} opacity="0.88" />
+          {/* Sun */}
+          <Circle cx="72" cy="43" r="2.8" fill={c} opacity="0.88" />
         </Svg>
       </View>
 
@@ -335,6 +358,11 @@ function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) 
       >
         {item.name}
       </Text>
+      {date ? (
+        <Text style={{ fontSize: 7.5, color: C.inkMute, textAlign: 'center', marginTop: 1 }}>
+          {date}
+        </Text>
+      ) : null}
     </TouchableOpacity>
   );
 }

@@ -24,7 +24,6 @@ export default function ProfileStackLayout() {
           contentStyle: { backgroundColor: '#F2EBDB' },
         }}
       />
-      <Stack.Screen name="edit"     options={{ headerShown: false }} />
     </Stack>
   );
 }

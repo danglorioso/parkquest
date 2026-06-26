@@ -3,11 +3,12 @@ import {
   DeviceEventEmitter, View, Text, FlatList, TouchableOpacity,
   ActivityIndicator, StyleSheet,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+
 import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
@@ -73,6 +74,8 @@ export default function FeedScreen() {
   const { user } = useUser();
   const router = useRouter();
   const palette = useColors();
+  const insets = useSafeAreaInsets();
+  const TOP_BAR_H = insets.top + 56;
 
   const [token, setToken]         = useState<string | null>(null);
   const [posts, setPosts]         = useState<FeedPost[]>([]);
@@ -203,32 +206,7 @@ export default function FeedScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      {/* Top bar — wordmark + actions */}
-      <View style={styles.topBar}>
-        <Wordmark onPress={() => {
-          flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
-          loadFeed(true);
-        }} />
-        <View style={styles.topBarActions}>
-          <NotificationBell style={styles.iconBtn} />
-          <TouchableOpacity
-            style={styles.iconBtn}
-            activeOpacity={0.7}
-            onPress={() => setSearchOpen(true)}
-          >
-            <Ionicons name="search" size={17} color={C.inkSoft} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            activeOpacity={0.7}
-            onPress={() => router.push('/(tabs)/profile/edit' as never)}
-          >
-            <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
+    <View style={styles.screen}>
       <FlatList<FeedPost>
         ref={flatListRef}
         data={loading ? [] : filtered}
@@ -249,20 +227,47 @@ export default function FeedScreen() {
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         ListEmptyComponent={ListEmpty}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingTop: TOP_BAR_H + 8 }]}
         showsVerticalScrollIndicator={false}
         onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
         scrollEventThrottle={16}
         refreshing={refreshing}
         onRefresh={() => loadFeed(true)}
-        // Slight performance tuning for a social feed
         removeClippedSubviews
         windowSize={5}
         maxToRenderPerBatch={3}
       />
 
+      {/* Floating glass top bar */}
+      <View style={[styles.topBar, { paddingTop: insets.top, height: TOP_BAR_H }]}>
+        <View style={styles.topBarInner}>
+          <Wordmark onPress={() => {
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+            loadFeed(true);
+          }} />
+          <View style={styles.topBarActions}>
+            <NotificationBell style={styles.iconBtn} />
+            <TouchableOpacity
+              style={styles.iconBtn}
+              activeOpacity={0.7}
+              onPress={() => setSearchOpen(true)}
+            >
+              <Ionicons name="search" size={17} color={C.inkSoft} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              activeOpacity={0.7}
+              onPress={() => router.push('/profile/edit' as never)}
+            >
+              <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <View style={styles.topBarHairline} />
+      </View>
+
       <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -278,15 +283,27 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
 
-  // Top bar
+  // Glass top bar — semi-transparent until expo-blur lands in a native build
   topBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(242,235,219,0.88)',
+  },
+  topBarInner: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 0.5,
-    borderBottomColor: C.hairline,
+    paddingBottom: 10,
+  },
+  topBarHairline: {
+    height: 0.5,
+    backgroundColor: C.hairline,
   },
   topBarActions: {
     flexDirection: 'row',
@@ -297,9 +314,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: C.surface,
+    backgroundColor: 'rgba(255,251,241,0.55)',
     borderWidth: 0.5,
-    borderColor: C.hairline,
+    borderColor: 'rgba(27,26,22,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
