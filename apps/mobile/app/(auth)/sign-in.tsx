@@ -467,10 +467,12 @@ export default function LandingScreen() {
                       disabled={oauthBusy !== null}
                       activeOpacity={0.8}
                     >
-                      {oauthBusy === p
-                        ? <ActivityIndicator size="small" color={C.ink} />
-                        : p === 'google' ? <GoogleG size={16} /> : <AppleIcon size={16} />
-                      }
+                      <View style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}>
+                        {oauthBusy === p
+                          ? <ActivityIndicator size="small" color={C.ink} />
+                          : p === 'google' ? <GoogleG size={16} /> : <AppleIcon size={16} />
+                        }
+                      </View>
                       <Text style={styles.oauthBtnText}>
                         Continue with {p === 'apple' ? 'Apple' : 'Google'}
                       </Text>

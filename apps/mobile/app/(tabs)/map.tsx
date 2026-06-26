@@ -602,7 +602,7 @@ function ParkBottomSheet({
     setScrollEnabled(full);
     Animated.spring(sheetH, {
       toValue: target, useNativeDriver: false,
-      damping: 28, mass: 0.85, stiffness: 200,
+      damping: 22, mass: 0.75, stiffness: 260,
     }).start();
     baseH.current = target;
   }
@@ -612,8 +612,17 @@ function ParkBottomSheet({
     setScrollEnabled(false);
     onDismissStart();
     Animated.timing(sheetH, {
-      toValue: 0, duration: 220, useNativeDriver: false,
+      toValue: 0, duration: 200, useNativeDriver: false,
     }).start(onClose);
+  }
+
+  // Rubber-band resistance for drags that go below SHEET_PEEK.
+  // Returns the next sheet height with exponential damping below peek.
+  function rubberBandHeight(raw: number): number {
+    if (raw >= SHEET_PEEK) return Math.min(SHEET_FULL, raw);
+    const overshoot = SHEET_PEEK - raw;
+    // 0.22 coefficient: only ~22% of each extra pixel gets through
+    return Math.max(40, SHEET_PEEK - overshoot * 0.22);
   }
 
   // ── Top-strip pan handler ─────────────────────────────────────────────────────
@@ -625,15 +634,15 @@ function ParkBottomSheet({
       sheetH.stopAnimation(v => { baseH.current = v; });
     },
     onPanResponderMove: (_, { dy }) => {
-      const next = Math.max(60, Math.min(SHEET_FULL, baseH.current - dy));
-      sheetH.setValue(next);
+      sheetH.setValue(rubberBandHeight(baseH.current - dy));
     },
     onPanResponderRelease: (_, { dy, vy }) => {
-      const projected = baseH.current - dy;
+      const raw = baseH.current - dy;
       const mid = (SHEET_PEEK + SHEET_FULL) / 2;
-      if (vy > 0.9 || projected < SHEET_PEEK * 0.45) {
+      // Require significant velocity OR drag well past peek to dismiss.
+      if (vy > 2.5 || (vy > 1.2 && raw < SHEET_PEEK * 0.65)) {
         dismiss();
-      } else if (vy < -0.5 || projected > mid) {
+      } else if (vy < -0.5 || raw > mid) {
         snapTo(SHEET_FULL);
       } else {
         snapTo(SHEET_PEEK);
@@ -652,16 +661,15 @@ function ParkBottomSheet({
       sheetH.stopAnimation(v => { baseH.current = v; });
     },
     onPanResponderMove: (_, { dy }) => {
-      // dy < 0 = swipe up = expand; dy > 0 = swipe down = collapse toward peek
-      const next = Math.max(SHEET_PEEK * 0.45, Math.min(SHEET_FULL, baseH.current - dy));
-      sheetH.setValue(next);
+      // dy < 0 = swipe up = expand; dy > 0 = swipe down = rubber-band resist
+      sheetH.setValue(rubberBandHeight(baseH.current - dy));
     },
     onPanResponderRelease: (_, { dy, vy }) => {
-      const projected = baseH.current - dy;
+      const raw = baseH.current - dy;
       const mid = (SHEET_PEEK + SHEET_FULL) / 2;
-      if (vy > 0.9 || projected < SHEET_PEEK * 0.45) {
+      if (vy > 2.5 || (vy > 1.2 && raw < SHEET_PEEK * 0.65)) {
         dismiss();
-      } else if (vy < -0.5 || projected > mid) {
+      } else if (vy < -0.5 || raw > mid) {
         snapTo(SHEET_FULL);
       } else {
         snapTo(SHEET_PEEK);
@@ -742,7 +750,8 @@ function ParkBottomSheet({
               listener: (e: any) => {
                 const y = e.nativeEvent.contentOffset.y;
                 if (y < 0) {
-                  const newH = Math.max(SHEET_PEEK * 0.7, SHEET_FULL + y * 1.2);
+                  // Rubber-band: 0.28x of overscroll reaches the sheet height
+                  const newH = Math.max(SHEET_PEEK * 0.72, SHEET_FULL + y * 0.28);
                   sheetH.setValue(newH);
                   baseH.current = newH;
                 }
@@ -754,7 +763,8 @@ function ParkBottomSheet({
             const vy = (e.nativeEvent as any).velocity?.y ?? 0;
             if (y <= 0) {
               const mid = (SHEET_PEEK + SHEET_FULL) / 2;
-              if (vy < -0.3 || baseH.current < SHEET_PEEK * 0.45) {
+              // Require a fast deliberate flick OR very large drag to dismiss
+              if (vy < -2.0 || (vy < -0.8 && baseH.current < SHEET_PEEK * 0.72)) {
                 dismiss();
               } else if (baseH.current < mid) {
                 snapTo(SHEET_PEEK);

@@ -242,6 +242,7 @@ export default function FeedScreen() {
               myAvatarUrl={user?.imageUrl}
               myName={user?.fullName ?? user?.username}
               onDelete={handleDelete}
+              onParkPress={(code) => router.push(`/(tabs)/feed/park/${code}` as never)}
             />
           ) : null
         }

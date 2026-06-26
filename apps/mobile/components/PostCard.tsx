@@ -301,6 +301,7 @@ function LikersSheet({
 // ── PhotoCarousel ─────────────────────────────────────────────────────────────
 
 const SCREEN_W = Dimensions.get('window').width;
+const SCREEN_H = Dimensions.get('window').height;
 // Cards have 16px horizontal margin on each side in the feed list.
 const CARD_W   = SCREEN_W - 32;
 const PHOTO_H  = 380;
@@ -599,12 +600,12 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
   );
 }
 
-// ── CommentsPanel ─────────────────────────────────────────────────────────────
+// ── CommentsSheet ──────────────────────────────────────────────────────────────
 
 const COMMENT_LIMIT = 500;
 const COMMENT_PREVIEW_CHARS = 200;
 
-function CommentsPanel({
+function CommentsSheet({
   postId, token, myUserId, myAvatarUrl, myName, onCountChange, onClose,
 }: {
   postId: number;
@@ -617,6 +618,7 @@ function CommentsPanel({
 }) {
   const router = useRouter();
   const C = useColors();
+  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<CommentRow[]>([]);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -624,6 +626,10 @@ function CommentsPanel({
   const [activeCommentMenu, setActiveCommentMenu] = useState<number | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: number; text: string } | null>(null);
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
+  const scrollRef = useRef<ScrollView>(null);
+
+  const slide = useRef(new Animated.Value(600)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     apiReq(`/api/comments?postId=${postId}`, token)
@@ -631,6 +637,20 @@ function CommentsPanel({
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [postId, token]);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(slide, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 16 }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 240, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const dismiss = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 600, duration: 220, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => onClose());
+  }, [slide, backdropOpacity, onClose]);
 
   const submit = useCallback(async () => {
     const text = draft.trim();
@@ -649,6 +669,7 @@ function CommentsPanel({
         avatar_url: myAvatarUrl ?? null,
       }]);
       onCountChange(1);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
     } catch {
       setDraft(text);
     } finally {
@@ -683,142 +704,170 @@ function CommentsPanel({
   }, [token, postId]);
 
   return (
-    <View style={styles.commentsPanel}>
-      <View style={styles.commentsPanelHeader}>
-        <Text style={styles.commentsPanelTitle}>Comments</Text>
-        <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="chevron-up" size={16} color={C.inkMute} />
-        </TouchableOpacity>
-      </View>
-      {loading && (
-        <ActivityIndicator size="small" color={C.inkMute} style={{ margin: 12 }} />
-      )}
-      {activeCommentMenu !== null && (
-        <Pressable style={StyleSheet.absoluteFill} onPress={() => setActiveCommentMenu(null)} />
-      )}
-      {rows.map(c => {
-        const cname = c.display_name ?? c.username ?? 'Explorer';
-        const isOwn = myUserId && c.user_id === myUserId;
-        const isExpanded = expandedComments.has(c.id);
-        const isEditing = editingComment?.id === c.id;
-        const menuOpen = activeCommentMenu === c.id;
-        return (
-          <View key={c.id} style={styles.commentRow}>
-            <TouchableOpacity onPress={() => router.push(`/user/${c.user_id}` as never)}>
-              <Avatar url={c.avatar_url} name={cname} size={28} />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              {isEditing ? (
-                <View style={styles.commentEditInput}>
-                  <TextInput
-                    autoFocus
-                    value={editingComment.text}
-                    onChangeText={t => setEditingComment({ id: c.id, text: t.slice(0, COMMENT_LIMIT) })}
-                    style={[styles.commentTextInput, { paddingLeft: 0 }]}
-                    multiline
-                    returnKeyType="done"
-                    blurOnSubmit
-                    onSubmitEditing={() => editComment(c.id, editingComment.text)}
-                  />
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                    <TouchableOpacity onPress={() => editComment(c.id, editingComment.text)}>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: C.primary }}>Save</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setEditingComment(null)}>
-                      <Text style={{ fontSize: 12, color: C.inkMute }}>Cancel</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+    <Modal visible transparent animationType="none" onRequestClose={dismiss} statusBarTranslucent>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.sheetBackdrop, { opacity: backdropOpacity }]}
+          pointerEvents="none"
+        />
+        <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Animated.View
+            style={[styles.commentsSheet, { paddingBottom: insets.bottom || 12, transform: [{ translateY: slide }] }]}
+          >
+            <View style={styles.sheetHandle} />
+            <View style={styles.commentsSheetHeader}>
+              <Text style={styles.commentsSheetTitle}>COMMENTS</Text>
+              <TouchableOpacity onPress={dismiss} hitSlop={12}>
+                <Ionicons name="close" size={20} color={C.inkMute} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ height: 0.5, backgroundColor: C.hairline }} />
+
+            {activeCommentMenu !== null && (
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setActiveCommentMenu(null)} />
+            )}
+            <ScrollView
+              ref={scrollRef}
+              style={{ maxHeight: SCREEN_H * 0.52 }}
+              contentContainerStyle={{ paddingVertical: 4 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={C.inkMute} style={{ margin: 24 }} />
+              ) : rows.length === 0 ? (
+                <Text style={styles.sheetEmpty}>No comments yet. Be the first!</Text>
               ) : (
-                <View style={styles.commentBubble}>
-                  <Text
-                    style={styles.commentAuthor}
-                    onPress={() => router.push(`/user/${c.user_id}` as never)}
-                  >
-                    {cname}{' '}
-                  </Text>
-                  <Text style={styles.commentContent}>
-                    {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
-                      ? c.content
-                      : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
-                    {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
-                      <Text
-                        style={styles.commentMore}
-                        onPress={() => setExpandedComments(prev => { const next = new Set(prev); next.add(c.id); return next; })}
-                      >
-                        {'… more'}
-                      </Text>
-                    )}
-                  </Text>
-                </View>
+                rows.map(c => {
+                  const cname = c.display_name ?? c.username ?? 'Explorer';
+                  const isOwn = myUserId && c.user_id === myUserId;
+                  const isExpanded = expandedComments.has(c.id);
+                  const isEditing = editingComment?.id === c.id;
+                  const menuOpen = activeCommentMenu === c.id;
+                  return (
+                    <View key={c.id} style={styles.commentRow}>
+                      <TouchableOpacity onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}>
+                        <Avatar url={c.avatar_url} name={cname} size={28} />
+                      </TouchableOpacity>
+                      <View style={{ flex: 1 }}>
+                        {isEditing ? (
+                          <View style={styles.commentEditInput}>
+                            <TextInput
+                              autoFocus
+                              value={editingComment.text}
+                              onChangeText={t => setEditingComment({ id: c.id, text: t.slice(0, COMMENT_LIMIT) })}
+                              style={[styles.commentTextInput, { paddingLeft: 0 }]}
+                              multiline
+                              returnKeyType="done"
+                              blurOnSubmit
+                              onSubmitEditing={() => editComment(c.id, editingComment.text)}
+                            />
+                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                              <TouchableOpacity onPress={() => editComment(c.id, editingComment.text)}>
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: C.primary }}>Save</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity onPress={() => setEditingComment(null)}>
+                                <Text style={{ fontSize: 12, color: C.inkMute }}>Cancel</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={styles.commentBubble}>
+                            <Text
+                              style={styles.commentAuthor}
+                              onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}
+                            >
+                              {cname}{' '}
+                            </Text>
+                            <Text style={styles.commentContent}>
+                              {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
+                                ? c.content
+                                : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
+                              {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
+                                <Text
+                                  style={styles.commentMore}
+                                  onPress={() => setExpandedComments(prev => {
+                                    const next = new Set(prev); next.add(c.id); return next;
+                                  })}
+                                >
+                                  {'… more'}
+                                </Text>
+                              )}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 9 }}>
+                          <Text style={styles.commentTime}>{relTime(c.created_at)}</Text>
+                        </View>
+                      </View>
+                      {isOwn && (
+                        <View style={{ position: 'relative' }}>
+                          <TouchableOpacity
+                            onPress={() => setActiveCommentMenu(menuOpen ? null : c.id)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={{ paddingLeft: 6, paddingTop: 2 }}
+                          >
+                            <Ionicons name="ellipsis-horizontal" size={15} color={C.inkMute} />
+                          </TouchableOpacity>
+                          {menuOpen && (
+                            <View style={styles.commentMenu}>
+                              <TouchableOpacity
+                                style={styles.menuItem}
+                                onPress={() => {
+                                  setActiveCommentMenu(null);
+                                  setEditingComment({ id: c.id, text: c.content });
+                                }}
+                              >
+                                <Text style={styles.menuItemText}>Edit</Text>
+                              </TouchableOpacity>
+                              <View style={styles.menuDivider} />
+                              <TouchableOpacity style={styles.menuItem} onPress={() => deleteComment(c.id)}>
+                                <Text style={[styles.menuItemText, { color: '#D45040' }]}>Delete</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
               )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 9 }}>
-                <Text style={styles.commentTime}>{relTime(c.created_at)}</Text>
+            </ScrollView>
+
+            <View style={{ height: 0.5, backgroundColor: C.hairline }} />
+            <View style={styles.commentInput}>
+              <Avatar url={myAvatarUrl} name={myName} size={28} />
+              <View style={styles.commentInputInner}>
+                <TextInput
+                  value={draft}
+                  onChangeText={v => setDraft(v.slice(0, COMMENT_LIMIT))}
+                  onSubmitEditing={submit}
+                  placeholder="Add a comment…"
+                  placeholderTextColor={C.inkMute}
+                  returnKeyType="send"
+                  style={styles.commentTextInput}
+                />
+                {draft.length >= COMMENT_LIMIT - 50 && (
+                  <Text style={styles.commentCharCount}>
+                    {COMMENT_LIMIT - draft.length}
+                  </Text>
+                )}
+                <TouchableOpacity
+                  onPress={submit}
+                  disabled={!draft.trim() || submitting}
+                  style={[styles.commentSend, { backgroundColor: draft.trim() ? C.primary : 'transparent' }]}
+                >
+                  {submitting
+                    ? <ActivityIndicator size="small" color={draft.trim() ? '#FFFBF1' : C.inkMute} />
+                    : <Ionicons name="send" size={13} color={draft.trim() ? '#FFFBF1' : C.inkMute} />}
+                </TouchableOpacity>
               </View>
             </View>
-            {isOwn && (
-              <View style={{ position: 'relative' }}>
-                <TouchableOpacity
-                  onPress={() => setActiveCommentMenu(menuOpen ? null : c.id)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={{ paddingLeft: 6, paddingTop: 2 }}
-                >
-                  <Ionicons name="ellipsis-horizontal" size={15} color={C.inkMute} />
-                </TouchableOpacity>
-                {menuOpen && (
-                  <View style={styles.commentMenu}>
-                    <TouchableOpacity
-                      style={styles.menuItem}
-                      onPress={() => {
-                        setActiveCommentMenu(null);
-                        setEditingComment({ id: c.id, text: c.content });
-                      }}
-                    >
-                      <Text style={styles.menuItemText}>Edit</Text>
-                    </TouchableOpacity>
-                    <View style={styles.menuDivider} />
-                    <TouchableOpacity style={styles.menuItem} onPress={() => deleteComment(c.id)}>
-                      <Text style={[styles.menuItemText, { color: '#D45040' }]}>Delete</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        );
-      })}
-
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.commentInput}>
-          <Avatar url={myAvatarUrl} name={myName} size={28} />
-          <View style={styles.commentInputInner}>
-            <TextInput
-              value={draft}
-              onChangeText={v => setDraft(v.slice(0, COMMENT_LIMIT))}
-              onSubmitEditing={submit}
-              placeholder="Add a comment…"
-              placeholderTextColor={C.inkMute}
-              returnKeyType="send"
-              style={styles.commentTextInput}
-            />
-            {draft.length >= COMMENT_LIMIT - 50 && (
-              <Text style={styles.commentCharCount}>
-                {COMMENT_LIMIT - draft.length}
-              </Text>
-            )}
-            <TouchableOpacity
-              onPress={submit}
-              disabled={!draft.trim() || submitting}
-              style={[styles.commentSend, { backgroundColor: draft.trim() ? C.primary : 'transparent' }]}
-            >
-              {submitting
-                ? <ActivityIndicator size="small" color={draft.trim() ? '#FFFBF1' : C.inkMute} />
-                : <Ionicons name="send" size={13} color={draft.trim() ? '#FFFBF1' : C.inkMute} />}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 }
 
@@ -840,6 +889,7 @@ export function PostCard({
   myAvatarUrl,
   myName,
   onDelete,
+  onParkPress,
 }: {
   post: FeedPost;
   token: string;
@@ -847,6 +897,7 @@ export function PostCard({
   myAvatarUrl?: string | null;
   myName?: string | null;
   onDelete?: (id: number) => void;
+  onParkPress?: (parkCode: string) => void;
 }) {
   const router = useRouter();
   const C = useColors();
@@ -949,13 +1000,23 @@ export function PostCard({
     setEditingCaption(false);
   };
 
+  const isFirstVisit = !isBadge && !!post.visit_id && Number(post.visit_ordinal) === 1;
+
   return (
-    <View style={[styles.card, isBadge && { borderColor: C.primary + '80' }]}>
+    <View style={[styles.card, isBadge && { borderColor: C.primary + '80' }, isFirstVisit && { borderColor: C.accent + '80' }]}>
       {/* Badge banner */}
       {isBadge && (
         <View style={styles.badgeBanner}>
           <Ionicons name="ribbon" size={14} color={C.primary} />
           <Text style={[styles.badgeBannerText, { color: C.primary }]}>BADGE EARNED</Text>
+        </View>
+      )}
+
+      {/* First visit banner */}
+      {isFirstVisit && (
+        <View style={[styles.badgeBanner, { backgroundColor: C.accent + '1a', borderBottomColor: C.accent + '60' }]}>
+          <Ionicons name="star" size={14} color={C.accent} />
+          <Text style={[styles.badgeBannerText, { color: C.accent }]}>FIRST VISIT</Text>
         </View>
       )}
 
@@ -1033,7 +1094,11 @@ export function PostCard({
       {post.park_name && !isBadge && !(!hasPhotos && post.visit_id) && (
         <TouchableOpacity
           style={styles.parkChip}
-          onPress={() => router.push(`/parks/${post.park_code}` as never)}
+          onPress={() =>
+            onParkPress
+              ? onParkPress(post.park_code!)
+              : router.push(`/parks/${post.park_code}` as never)
+          }
         >
           <Ionicons name="location-sharp" size={11} color={C.primary} />
           <Text style={[styles.parkChipText, { color: C.primary }]}>{post.park_name.toUpperCase()}</Text>
@@ -1097,7 +1162,11 @@ export function PostCard({
         <View style={styles.padH}>
           <ParkHeroBanner
             post={post}
-            onPress={post.park_code ? () => router.push(`/parks/${post.park_code}` as never) : undefined}
+            onPress={post.park_code
+              ? () => (onParkPress
+                  ? onParkPress(post.park_code!)
+                  : router.push(`/parks/${post.park_code}` as never))
+              : undefined}
           />
         </View>
       )}
@@ -1130,17 +1199,13 @@ export function PostCard({
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setShowComments(v => !v)}
+          onPress={() => setShowComments(true)}
           activeOpacity={0.7}
-          style={[styles.actionBtn, showComments && styles.actionBtnActive]}
+          style={styles.actionBtn}
         >
-          <Ionicons
-            name={showComments ? 'chatbubble' : 'chatbubble-outline'}
-            size={20}
-            color={showComments ? C.primary : C.inkSoft}
-          />
+          <Ionicons name="chatbubble-outline" size={20} color={C.inkSoft} />
           {commentCount > 0 && (
-            <Text style={[styles.actionBtnText, showComments && { color: C.primary }]}>
+            <Text style={styles.actionBtnText}>
               {commentCount.toLocaleString()}
             </Text>
           )}
@@ -1156,8 +1221,8 @@ export function PostCard({
         />
       )}
 
-      {/* Comment preview — hidden when full panel is open */}
-      {!showComments && commentCount > 0 && (
+      {/* Comment preview */}
+      {commentCount > 0 && (
         <View style={styles.previewPanel}>
           {previewComments.map(c => {
             const cname = c.display_name ?? c.username ?? 'Explorer';
@@ -1190,9 +1255,9 @@ export function PostCard({
         </View>
       )}
 
-      {/* Comments panel */}
+      {/* Comments sheet */}
       {showComments && (
-        <CommentsPanel
+        <CommentsSheet
           postId={post.id}
           token={token}
           myUserId={myUserId}
@@ -1392,8 +1457,17 @@ const styles = StyleSheet.create({
   previewCommentAuthor: {
     fontWeight: '700', fontSize: 12.5, color: C.ink,
   },
-  commentsPanel: {
-    borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
+  commentsSheet: {
+    backgroundColor: C.surface,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingTop: 8,
+  },
+  commentsSheetHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 18, paddingTop: 4, paddingBottom: 12,
+  },
+  commentsSheetTitle: {
+    fontSize: 11, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4,
   },
   commentRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 9,
@@ -1442,13 +1516,6 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: C.surfaceAlt, borderRadius: 12,
     borderTopLeftRadius: 4, padding: 8, paddingHorizontal: 11,
     borderWidth: 0.5, borderColor: C.hairline,
-  },
-  commentsPanelHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingTop: 12, paddingBottom: 4,
-  },
-  commentsPanelTitle: {
-    fontSize: 12, fontWeight: '600', color: C.inkMute, textTransform: 'uppercase', letterSpacing: 0.5,
   },
 
   // Card
