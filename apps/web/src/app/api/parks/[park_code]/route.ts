@@ -19,7 +19,9 @@ export async function GET(
       return NextResponse.json({ error: "Park not found" }, { status: 404 });
     }
 
-    return NextResponse.json(park);
+    return NextResponse.json(park, {
+      headers: { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=600' },
+    });
   } catch (error) {
     console.error("Error fetching park:", error);
     return NextResponse.json({ error: "Failed to fetch park" }, { status: 500 });

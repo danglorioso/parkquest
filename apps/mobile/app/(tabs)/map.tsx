@@ -1227,6 +1227,11 @@ export default function MapScreen() {
   const [mapPressKey, setMapPressKey]   = useState(0);
   const mapRef = useRef<MapView>(null);
   const controlsBottomAnim = useRef(new Animated.Value(0)).current;
+  const rawParksRef = useRef<Array<{
+    park_code: string; name: string; states: string;
+    latitude: string | null; longitude: string | null;
+    description: string | null; image_url: string | null;
+  }>>([]);
   const currentRegionRef = useRef({ latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 });
 
   const counts: Record<FilterStatus, number> = {
@@ -1241,11 +1246,79 @@ export default function MapScreen() {
     filterStatus === 'notVisited' ? parks.filter(p => p.status === 'notVisited' || p.status === 'bucketList') :
     parks.filter(p => p.status === filterStatus);
 
+  const mergeVisits = useCallback((
+    parksData: typeof rawParksRef.current,
+    visitsData: Array<{
+      id: number; park_code: string; is_bucket_list: boolean;
+      visited_date: string | null; end_date: string | null;
+      title: string | null; notes: string | null; photos: string[] | null;
+      visibility: string | null;
+    }>
+  ) => {
+    const visitedSet    = new Set<string>();
+    const bucketSet     = new Set<string>();
+    const visitsPerPark: Record<string, VisitEntry[]> = {};
+
+    for (const v of visitsData) {
+      if (v.is_bucket_list) {
+        bucketSet.add(v.park_code);
+      } else if (v.visited_date) {
+        visitedSet.add(v.park_code);
+        if (!visitsPerPark[v.park_code]) visitsPerPark[v.park_code] = [];
+        visitsPerPark[v.park_code].push({
+          id: v.id,
+          visited_date: v.visited_date,
+          end_date: v.end_date,
+          title: v.title,
+          notes: v.notes,
+        });
+      }
+    }
+
+    const transformed: ParkForMap[] = parksData
+      .filter(p => p.latitude && p.longitude)
+      .map(p => {
+        let status: ParkStatus = 'notVisited';
+        if (visitedSet.has(p.park_code))     status = 'visited';
+        else if (bucketSet.has(p.park_code)) status = 'bucketList';
+        return {
+          park_code:   p.park_code,
+          name:        p.name,
+          states:      p.states,
+          latitude:    parseFloat(p.latitude!),
+          longitude:   parseFloat(p.longitude!),
+          status,
+          description: p.description,
+          image_url:   p.image_url,
+          visits:      visitsPerPark[p.park_code] ?? [],
+        };
+      });
+
+    setParks(transformed);
+  }, []);
+
+  const loadVisits = useCallback(async () => {
+    const tok = await getToken();
+    if (!tok) return;
+    setToken(tok);
+    try {
+      const visitsData = await apiFetch<Array<{
+        id: number; park_code: string; is_bucket_list: boolean;
+        visited_date: string | null; end_date: string | null;
+        title: string | null; notes: string | null; photos: string[] | null;
+        visibility: string | null;
+      }>>('/api/visits', tok);
+      mergeVisits(rawParksRef.current, visitsData);
+    } catch (e) {
+      console.error('Map visits load failed:', e);
+    }
+  }, [getToken, mergeVisits]);
+
   const loadData = useCallback(async () => {
     const tok = await getToken();
     if (!tok) return;
     setToken(tok);
-    setParks(prev => { if (prev.length === 0) setLoading(true); return prev; });
+    setLoading(true);
     try {
       const [parksData, visitsData] = await Promise.all([
         apiFetch<Array<{
@@ -1260,57 +1333,21 @@ export default function MapScreen() {
           visibility: string | null;
         }>>('/api/visits', tok),
       ]);
-
-      const visitedSet    = new Set<string>();
-      const bucketSet     = new Set<string>();
-      const visitsPerPark: Record<string, VisitEntry[]> = {};
-
-      for (const v of visitsData) {
-        if (v.is_bucket_list) {
-          bucketSet.add(v.park_code);
-        } else if (v.visited_date) {
-          visitedSet.add(v.park_code);
-          if (!visitsPerPark[v.park_code]) visitsPerPark[v.park_code] = [];
-          visitsPerPark[v.park_code].push({
-            id: v.id,
-            visited_date: v.visited_date,
-            end_date: v.end_date,
-            title: v.title,
-            notes: v.notes,
-          });
-        }
-      }
-
-      const transformed: ParkForMap[] = parksData
-        .filter(p => p.latitude && p.longitude)
-        .map(p => {
-          let status: ParkStatus = 'notVisited';
-          if (visitedSet.has(p.park_code))     status = 'visited';
-          else if (bucketSet.has(p.park_code)) status = 'bucketList';
-          return {
-            park_code:   p.park_code,
-            name:        p.name,
-            states:      p.states,
-            latitude:    parseFloat(p.latitude!),
-            longitude:   parseFloat(p.longitude!),
-            status,
-            description: p.description,
-            image_url:   p.image_url,
-            visits:      visitsPerPark[p.park_code] ?? [],
-          };
-        });
-
-      setParks(transformed);
+      rawParksRef.current = parksData;
+      mergeVisits(parksData, visitsData);
     } catch (e) {
       console.error('Map data load failed:', e);
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, [getToken, mergeVisits]);
 
-  const loadDataRef = useRef(loadData);
-  loadDataRef.current = loadData;
-  useFocusEffect(useCallback(() => { loadDataRef.current(); }, []));
+  // Parks are static — load once on mount. Visits change — reload on every focus.
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const loadVisitsRef = useRef(loadVisits);
+  loadVisitsRef.current = loadVisits;
+  useFocusEffect(useCallback(() => { loadVisitsRef.current(); }, []));
 
   // Animate map controls away from sheet edge when sheet opens/closes
   useEffect(() => {

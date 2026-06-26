@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { parks } from '@/lib/db/schema';
 import { and, isNotNull } from 'drizzle-orm';
 
+export const revalidate = 86400;
+
 export async function GET() {
   try {
     const allParks = await db
@@ -23,7 +25,9 @@ export async function GET() {
         )
       );
 
-    return NextResponse.json(allParks);
+    return NextResponse.json(allParks, {
+      headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=3600' },
+    });
   } catch (error) {
     console.error('Error fetching parks:', error);
     return NextResponse.json(
