@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, FlatList, Linking, Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
+  Animated, AppState, FlatList, Linking, Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -195,6 +195,30 @@ function NotificationRow({
 
 type PushStatus = 'granted' | 'denied' | 'undetermined';
 
+// ── Singleton unread count ────────────────────────────────────────────────────
+// Feed and profile tabs both mount NotificationBell simultaneously.
+// This singleton ensures one fetch serves both instances.
+const _countSetters = new Set<React.Dispatch<React.SetStateAction<number>>>();
+let _cachedCount = 0;
+let _getTokenFn: (() => Promise<string | null>) | null = null;
+let _appStateSub: ReturnType<typeof AppState.addEventListener> | null = null;
+let _notifSub: ReturnType<typeof Notifications.addNotificationReceivedListener> | null = null;
+
+function _broadcastCount(n: number) {
+  _cachedCount = n;
+  _countSetters.forEach(s => s(n));
+}
+
+async function _fetchCount() {
+  if (!_getTokenFn) return;
+  try {
+    const tok = await _getTokenFn();
+    if (!tok) return;
+    const d = await getUnreadNotificationCount(tok);
+    _broadcastCount(d.unread_count ?? 0);
+  } catch { /* silent */ }
+}
+
 export function NotificationBell({ style }: { style?: ViewStyle }) {
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
@@ -245,18 +269,27 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const handleOpenPushSettings = () => Linking.openURL('app-settings:');
 
   useEffect(() => {
-    let active = true;
-    const fetchCount = async () => {
-      try {
-        const tok = await getTokenRef.current();
-        if (!tok) return;
-        const d = await getUnreadNotificationCount(tok);
-        if (active) setUnreadCount(d.unread_count ?? 0);
-      } catch { /* silent */ }
+    _countSetters.add(setUnreadCount);
+    setUnreadCount(_cachedCount);
+    _getTokenFn = getToken;
+
+    if (_countSetters.size === 1) {
+      _fetchCount();
+      _appStateSub = AppState.addEventListener('change', s => {
+        if (s === 'active') _fetchCount();
+      });
+      _notifSub = Notifications.addNotificationReceivedListener(() => _fetchCount());
+    }
+
+    return () => {
+      _countSetters.delete(setUnreadCount);
+      if (_countSetters.size === 0) {
+        _appStateSub?.remove(); _appStateSub = null;
+        _notifSub?.remove();   _notifSub = null;
+        _getTokenFn = null;
+      }
     };
-    fetchCount();
-    const id = setInterval(fetchCount, 30_000);
-    return () => { active = false; clearInterval(id); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -274,10 +307,10 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
         setItems(data);
         if (data.some(n => !n.read)) {
           markNotificationsRead(tok)
-            .then(() => { if (active) setUnreadCount(0); })
+            .then(() => { if (active) _broadcastCount(0); })
             .catch(() => {});
         } else {
-          setUnreadCount(0);
+          _broadcastCount(0);
         }
       } catch { /* silent */ } finally {
         if (active) {
