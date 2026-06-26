@@ -240,16 +240,23 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   }, []);
 
   const dragY = useRef(new Animated.Value(800)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   const animateIn = useCallback(() => {
-    Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 3, speed: 14 }).start();
-  }, [dragY]);
+    Animated.parallel([
+      Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 3, speed: 14 }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 240, useNativeDriver: true }),
+    ]).start();
+  }, [dragY, backdropOpacity]);
 
   const dismiss = useCallback(() => {
-    Animated.timing(dragY, { toValue: 800, duration: 220, useNativeDriver: true }).start(() => {
+    Animated.parallel([
+      Animated.timing(dragY, { toValue: 800, duration: 220, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => {
       setOpen(false);
     });
-  }, [dragY]);
+  }, [dragY, backdropOpacity]);
 
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -257,9 +264,10 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
     onPanResponderMove: (_, { dy }) => { if (dy > 0) dragY.setValue(dy); },
     onPanResponderRelease: (_, { dy, vy }) => {
       if (dy > 80 || vy > 0.8) {
-        Animated.timing(dragY, { toValue: 800, duration: 220, useNativeDriver: true }).start(() => {
-          setOpen(false);
-        });
+        Animated.parallel([
+          Animated.timing(dragY, { toValue: 800, duration: 220, useNativeDriver: true }),
+          Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        ]).start(() => { setOpen(false); });
       } else {
         Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
       }
@@ -355,7 +363,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 
   return (
     <>
-      <TouchableOpacity style={[style, open && styles.bellActive]} activeOpacity={0.7} onPress={() => { dragY.setValue(800); setOpen(true); }}>
+      <TouchableOpacity style={[style, open && styles.bellActive]} activeOpacity={0.7} onPress={() => { dragY.setValue(800); backdropOpacity.setValue(0); setOpen(true); }}>
         <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? C.primary : C.inkSoft} />
         {displayCount > 0 && (
           <View style={styles.badge}>
@@ -371,7 +379,8 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
         onRequestClose={dismiss}
         statusBarTranslucent
       >
-        <View style={styles.overlay}>
+        <View style={styles.overlayContainer}>
+          <Animated.View style={[StyleSheet.absoluteFill, styles.overlayBackdrop, { opacity: backdropOpacity }]} pointerEvents="none" />
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={dismiss} />
           <Animated.View style={[styles.sheet, { paddingBottom: insets.bottom + 8, transform: [{ translateY: dragY }] }]}>
 
@@ -494,8 +503,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#D45040',
   },
 
-  overlay: {
+  overlayContainer: {
     flex: 1, justifyContent: 'flex-end',
+  },
+  overlayBackdrop: {
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   sheet: {

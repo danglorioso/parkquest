@@ -640,6 +640,7 @@ function CommentsSheet({
   const [editingComment, setEditingComment] = useState<{ id: number; text: string } | null>(null);
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
   const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
 
   const slide = useRef(new Animated.Value(600)).current;
   const panY = useRef(new Animated.Value(0)).current;
@@ -671,7 +672,7 @@ function CommentsSheet({
 
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_, { dy }) => dy > 6,
+    onMoveShouldSetPanResponder: (_, { dy }) => scrollY.current <= 0 && dy > 6,
     onPanResponderMove: (_, { dy }) => {
       if (dy > 0) panY.setValue(dy);
     },
@@ -749,8 +750,9 @@ function CommentsSheet({
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Animated.View
             style={[styles.commentsSheet, { paddingBottom: insets.bottom || 12, transform: [{ translateY: Animated.add(slide, panY) }] }]}
+            {...panResponder.panHandlers}
           >
-            <View {...panResponder.panHandlers}>
+            <View>
               <View style={styles.sheetHandle} />
               <View style={styles.commentsSheetHeader}>
                 <Text style={styles.commentsSheetTitle}>COMMENTS</Text>
@@ -770,6 +772,8 @@ function CommentsSheet({
               contentContainerStyle={{ paddingVertical: 4 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
+              scrollEventThrottle={16}
+              onScroll={(e) => { scrollY.current = e.nativeEvent.contentOffset.y; }}
             >
               {loading ? (
                 <ActivityIndicator size="small" color={C.inkMute} style={{ margin: 24 }} />
@@ -1268,23 +1272,29 @@ export function PostCard({
                 style={styles.previewCommentRow}
               >
                 <Text style={styles.previewCommentText} numberOfLines={2}>
-                  <Text style={styles.previewCommentAuthor}>{cname} </Text>
+                  <Text
+                    style={styles.previewCommentAuthor}
+                    onPress={() => router.push(`/user/${c.user_id}` as never)}
+                    suppressHighlighting
+                  >
+                    {cname}{' '}
+                  </Text>
                   {isTruncated ? `${c.content.slice(0, 100)}…` : c.content}
                 </Text>
               </TouchableOpacity>
             );
           })}
-          <TouchableOpacity
-            onPress={() => setShowComments(true)}
-            style={styles.viewAllBtn}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.viewAllText}>
-              {commentCount > previewComments.length
-                ? `View all ${commentCount} comment${commentCount !== 1 ? 's' : ''}`
-                : `View ${commentCount} comment${commentCount !== 1 ? 's' : ''}`}
-            </Text>
-          </TouchableOpacity>
+          {commentCount > previewComments.length && (
+            <TouchableOpacity
+              onPress={() => setShowComments(true)}
+              style={styles.viewAllBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.viewAllText}>
+                {`View all ${commentCount} comment${commentCount !== 1 ? 's' : ''}`}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -1627,7 +1637,7 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 4, paddingVertical: 6,
+    paddingRight: 4, paddingVertical: 6,
   },
   actionBtnLiked: {},
   actionBtnActive: {},

@@ -110,19 +110,24 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
 
   // ── Animation — slides DOWN from top ──────────────────────────────────────
   const dragY = useRef(new Animated.Value(-800)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   const animateIn = useCallback(() => {
-    Animated.spring(dragY, {
-      toValue: 0, useNativeDriver: true, bounciness: 3, speed: 14,
-    }).start(() => setTimeout(() => inputRef.current?.focus(), 80));
-  }, [dragY]);
+    Animated.parallel([
+      Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 3, speed: 14 }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 240, useNativeDriver: true }),
+    ]).start(() => setTimeout(() => inputRef.current?.focus(), 80));
+  }, [dragY, backdropOpacity]);
 
   const dismiss = useCallback(() => {
     Keyboard.dismiss();
-    Animated.timing(dragY, { toValue: -800, duration: 220, useNativeDriver: true }).start(() => {
+    Animated.parallel([
+      Animated.timing(dragY, { toValue: -800, duration: 220, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => {
       onClose();
     });
-  }, [dragY, onClose]);
+  }, [dragY, backdropOpacity, onClose]);
 
   // Swipe UP to dismiss (dy negative = moving toward top)
   const panResponder = useRef(PanResponder.create({
@@ -132,7 +137,10 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
     onPanResponderRelease: (_, { dy, vy }) => {
       if (dy < -80 || vy < -0.8) {
         Keyboard.dismiss();
-        Animated.timing(dragY, { toValue: -800, duration: 220, useNativeDriver: true }).start(() => onClose());
+        Animated.parallel([
+          Animated.timing(dragY, { toValue: -800, duration: 220, useNativeDriver: true }),
+          Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        ]).start(() => onClose());
       } else {
         Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
       }
@@ -142,9 +150,10 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
   useEffect(() => {
     if (visible) {
       dragY.setValue(-800);
+      backdropOpacity.setValue(0);
       animateIn();
     }
-  }, [visible, dragY, animateIn]);
+  }, [visible, dragY, backdropOpacity, animateIn]);
 
   // ── Data loading ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -263,6 +272,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
         keyboardVerticalOffset={0}
       >
         <View style={{ flex: 1, justifyContent: 'flex-start' }}>
+          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.35)', opacity: backdropOpacity }]} pointerEvents="none" />
           <Pressable style={StyleSheet.absoluteFill} onPress={close} />
 
           <Animated.View

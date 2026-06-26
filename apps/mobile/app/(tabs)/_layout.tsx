@@ -1,6 +1,7 @@
 import { Tabs, useRouter } from 'expo-router';
 import { DeviceEventEmitter, TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '../../lib/palette';
 
 const STATIC = {
@@ -43,11 +44,15 @@ function LogVisitButton() {
       accessibilityRole="button"
       style={styles.fabWrapper}
     >
-      <View style={[styles.fabGlow, { shadowColor: C.accent }]}>
+      <View style={[styles.fabGlow, { backgroundColor: C.accent }]}>
         <View style={[styles.fab, { backgroundColor: C.accent }]}>
-          <Ionicons name="add" size={22} color="#FFFBF1" />
-          <View style={styles.fabHighlight} pointerEvents="none" />
-          <View style={styles.fabInnerShadow} pointerEvents="none" />
+          <LinearGradient
+            colors={['rgba(255,200,150,0.38)', 'transparent', 'rgba(0,0,0,0.34)']}
+            locations={[0, 0.48, 1]}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+          <Ionicons name="add" size={26} color="#FFFBF1" />
         </View>
       </View>
     </TouchableOpacity>
@@ -156,40 +161,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fabGlow: {
-    borderRadius: 18,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
+    borderRadius: 26,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.42,
+    shadowRadius: 8,
+    elevation: 12,
   },
   fab: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.35)',
-  },
-  fabHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '45%',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  fabInnerShadow: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '45%',
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
-    backgroundColor: 'rgba(110,35,0,0.28)',
+    borderWidth: 0.75,
+    borderColor: 'rgba(255,255,255,0.22)',
   },
 });
