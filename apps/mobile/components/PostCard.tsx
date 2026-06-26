@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   Modal, Dimensions, Alert, ActivityIndicator,
-  StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated,
+  StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -629,6 +629,7 @@ function CommentsSheet({
   const scrollRef = useRef<ScrollView>(null);
 
   const slide = useRef(new Animated.Value(600)).current;
+  const panY = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -646,11 +647,32 @@ function CommentsSheet({
   }, []);
 
   const dismiss = useCallback(() => {
+    // Transfer any live drag offset into slide so dismiss starts from current position
+    const offset = (panY as any)._value ?? 0;
+    if (offset > 0) { panY.setValue(0); slide.setValue(offset); }
     Animated.parallel([
-      Animated.timing(slide, { toValue: 600, duration: 220, useNativeDriver: true }),
+      Animated.timing(slide, { toValue: 700, duration: 220, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => onClose());
-  }, [slide, backdropOpacity, onClose]);
+  }, [slide, panY, backdropOpacity, onClose]);
+
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, { dy }) => dy > 6,
+    onPanResponderMove: (_, { dy }) => {
+      if (dy > 0) panY.setValue(dy);
+    },
+    onPanResponderRelease: (_, { dy, vy }) => {
+      if (dy > 100 || vy > 0.8) {
+        dismiss();
+      } else {
+        Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 6, speed: 14 }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 6, speed: 14 }).start();
+    },
+  })).current;
 
   const submit = useCallback(async () => {
     const text = draft.trim();
@@ -713,14 +735,16 @@ function CommentsSheet({
         <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Animated.View
-            style={[styles.commentsSheet, { paddingBottom: insets.bottom || 12, transform: [{ translateY: slide }] }]}
+            style={[styles.commentsSheet, { paddingBottom: insets.bottom || 12, transform: [{ translateY: Animated.add(slide, panY) }] }]}
           >
-            <View style={styles.sheetHandle} />
-            <View style={styles.commentsSheetHeader}>
-              <Text style={styles.commentsSheetTitle}>COMMENTS</Text>
-              <TouchableOpacity onPress={dismiss} hitSlop={12}>
-                <Ionicons name="close" size={20} color={C.inkMute} />
-              </TouchableOpacity>
+            <View {...panResponder.panHandlers}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.commentsSheetHeader}>
+                <Text style={styles.commentsSheetTitle}>COMMENTS</Text>
+                <TouchableOpacity onPress={dismiss} hitSlop={12}>
+                  <Ionicons name="close" size={20} color={C.inkMute} />
+                </TouchableOpacity>
+              </View>
             </View>
             <View style={{ height: 0.5, backgroundColor: C.hairline }} />
 
@@ -748,7 +772,7 @@ function CommentsSheet({
                   return (
                     <View key={c.id} style={styles.commentRow}>
                       <TouchableOpacity onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}>
-                        <Avatar url={c.avatar_url} name={cname} size={28} />
+                        <Avatar url={c.avatar_url} name={cname} size={36} />
                       </TouchableOpacity>
                       <View style={{ flex: 1 }}>
                         {isEditing ? (
@@ -773,33 +797,29 @@ function CommentsSheet({
                             </View>
                           </View>
                         ) : (
-                          <View style={styles.commentBubble}>
+                          <Text style={styles.commentInlineText}>
                             <Text
                               style={styles.commentAuthor}
                               onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}
                             >
                               {cname}{' '}
                             </Text>
-                            <Text style={styles.commentContent}>
-                              {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
-                                ? c.content
-                                : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
-                              {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
-                                <Text
-                                  style={styles.commentMore}
-                                  onPress={() => setExpandedComments(prev => {
-                                    const next = new Set(prev); next.add(c.id); return next;
-                                  })}
-                                >
-                                  {'… more'}
-                                </Text>
-                              )}
-                            </Text>
-                          </View>
+                            {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
+                              ? c.content
+                              : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
+                            {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
+                              <Text
+                                style={styles.commentMore}
+                                onPress={() => setExpandedComments(prev => {
+                                  const next = new Set(prev); next.add(c.id); return next;
+                                })}
+                              >
+                                {'… more'}
+                              </Text>
+                            )}
+                          </Text>
                         )}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 9 }}>
-                          <Text style={styles.commentTime}>{relTime(c.created_at)}</Text>
-                        </View>
+                        <Text style={[styles.commentTime, { marginTop: 3 }]}>{relTime(c.created_at)}</Text>
                       </View>
                       {isOwn && (
                         <View style={{ position: 'relative' }}>
@@ -1470,18 +1490,14 @@ const styles = StyleSheet.create({
     fontSize: 11, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4,
   },
   commentRow: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 9,
-    paddingHorizontal: 18, paddingTop: 10,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    paddingHorizontal: 18, paddingVertical: 10,
   },
-  commentBubble: {
-    flex: 1, flexDirection: 'row', flexWrap: 'wrap',
-    backgroundColor: C.surfaceAlt, borderRadius: 12,
-    borderTopLeftRadius: 4, padding: 8, paddingHorizontal: 11,
-    borderWidth: 0.5, borderColor: C.hairline,
+  commentInlineText: {
+    fontSize: 13.5, color: C.ink, lineHeight: 19, flexShrink: 1,
   },
-  commentAuthor: { fontWeight: '700', fontSize: 12, color: C.ink, lineHeight: 18 },
-  commentContent: { fontSize: 12.5, color: C.ink, lineHeight: 18 },
-  commentMore: { fontSize: 12.5, color: C.inkMute, fontWeight: '600' },
+  commentAuthor: { fontWeight: '700', fontSize: 13.5, color: C.ink },
+  commentMore: { fontSize: 13.5, color: C.inkMute, fontWeight: '600' },
   commentTime: {
     fontSize: 9.5, color: C.inkMute, letterSpacing: 0.3,
   },
