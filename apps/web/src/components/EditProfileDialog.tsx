@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
-import { X, Camera, Loader2, Mail } from "lucide-react";
+import { useUser, useClerk } from "@clerk/nextjs";
+import { X, Camera, Loader2, Mail, TriangleAlert } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
+import { useRouter } from "next/navigation";
 
 interface Props {
   open: boolean;
@@ -36,7 +37,9 @@ function Field({ label, children, error }: { label: string; children: React.Reac
 
 export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props) {
   const { user } = useUser();
+  const { signOut } = useClerk();
   const { toast } = useToast();
+  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [firstName, setFirstName] = useState("");
@@ -50,12 +53,15 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
   const [error,  setError]  = useState("");
   const [usernameError, setUsernameError] = useState("");
   const [emailSent, setEmailSent] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   // Escape key to close
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !saving) onOpenChange(false);
+      if (e.key === "Escape" && !saving && !deleting) onOpenChange(false);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -73,6 +79,8 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
     setError("");
     setUsernameError("");
     setEmailSent(false);
+    setShowDeleteConfirm(false);
+    setDeleteConfirmInput("");
     fetch("/api/profile")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => data && setBio(data.bio ?? ""))
@@ -154,6 +162,20 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
     }
   };
 
+  const handleDelete = async () => {
+    if (!user || deleteConfirmInput !== user.username) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/account", { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed to delete account");
+      await signOut();
+      router.replace("/");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete account");
+      setDeleting(false);
+    }
+  };
+
   if (!open) return null;
 
   const displayAvatar = avatarPreview ?? user?.imageUrl ?? null;
@@ -161,7 +183,7 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
 
   return (
     <div
-      onClick={() => !saving && onOpenChange(false)}
+      onClick={() => !saving && !deleting && onOpenChange(false)}
       style={{
         position: "fixed", inset: 0, zIndex: 200,
         background: "rgba(0,0,0,0.48)",
@@ -190,7 +212,7 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "1.2px", color: "var(--ink-mute)", marginTop: 2 }}>PROFILE &amp; PREFERENCES</div>
           </div>
           <button
-            onClick={() => !saving && onOpenChange(false)}
+            onClick={() => !saving && !deleting && onOpenChange(false)}
             style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface-alt)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-soft)" }}
           >
             <X style={{ width: 14, height: 14 }} strokeWidth={2.2} />
@@ -305,6 +327,54 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
             </Field>
           )}
 
+          {/* Danger zone */}
+          <div style={{ borderTop: "0.5px solid var(--hairline-soft)", paddingTop: 16 }}>
+            {!showDeleteConfirm ? (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={saving}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "0.5px solid rgba(192,64,64,0.35)", background: "rgba(192,64,64,0.05)", color: "#C04040", fontSize: 12.5, fontWeight: 600, cursor: "pointer", width: "100%" }}
+              >
+                <TriangleAlert style={{ width: 13, height: 13, flexShrink: 0 }} strokeWidth={2.2} />
+                Delete account
+              </button>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "14px", background: "rgba(192,64,64,0.05)", border: "0.5px solid rgba(192,64,64,0.25)", borderRadius: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <TriangleAlert style={{ width: 13, height: 13, color: "#C04040", flexShrink: 0 }} strokeWidth={2.2} />
+                  <span style={{ fontWeight: 700, fontSize: 12.5, color: "#C04040" }}>This cannot be undone</span>
+                </div>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--ink-mute)", lineHeight: 1.5 }}>
+                  All your visits, posts, badges, and account data will be permanently deleted. Type your username <strong style={{ color: "var(--ink)" }}>@{user?.username}</strong> to confirm.
+                </p>
+                <input
+                  style={{ ...INPUT, borderColor: "rgba(192,64,64,0.4)" }}
+                  placeholder={`@${user?.username ?? "username"}`}
+                  value={deleteConfirmInput}
+                  onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                  autoFocus
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmInput(""); }}
+                    disabled={deleting}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "0.5px solid var(--hairline)", background: "var(--surface-alt)", color: "var(--ink)", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting || deleteConfirmInput !== user?.username}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: "#C04040", color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: (deleting || deleteConfirmInput !== user?.username) ? "not-allowed" : "pointer", opacity: (deleting || deleteConfirmInput !== user?.username) ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                  >
+                    {deleting && <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />}
+                    {deleting ? "Deleting…" : "Delete account"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {error && (
             <div style={{ padding: "8px 12px", background: "rgba(192,64,64,0.08)", border: "0.5px solid rgba(192,64,64,0.25)", borderRadius: 8, fontSize: 12.5, color: "#C04040" }}>
               {error}
@@ -316,7 +386,7 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
         <div style={{ padding: "14px 20px", borderTop: "0.5px solid var(--hairline-soft)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button
             onClick={() => onOpenChange(false)}
-            disabled={saving}
+            disabled={saving || deleting}
             style={{ padding: "9px 18px", borderRadius: 9, border: "0.5px solid var(--hairline)", background: "var(--surface-alt)", color: "var(--ink)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
           >
             {emailSent ? "Done" : "Cancel"}
