@@ -59,7 +59,7 @@ function VisibilityPill({ vis }: { vis: string | null }) {
   const color = vis === 'private' ? '#9A6B4B' : '#5B8A96';
   return (
     <View style={{ backgroundColor: color + '18', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1.5 }}>
-      <Text style={{ fontSize: 8.5, fontWeight: '600', color, letterSpacing: 0.8 }}>{label}</Text>
+      <Text style={{ fontSize: 13, fontWeight: '600', color, letterSpacing: 0.8 }}>{label}</Text>
     </View>
   );
 }
@@ -68,7 +68,7 @@ function StarRating({ n }: { n: number }) {
   return (
     <Text>
       {Array.from({ length: 5 }, (_, i) => (
-        <Text key={i} style={{ fontSize: 11, color: i < n ? '#C49A28' : C.hairline }}>★</Text>
+        <Text key={i} style={{ fontSize: 13, color: i < n ? '#C49A28' : C.hairline }}>★</Text>
       ))}
     </Text>
   );
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   monthLabel: {
-    fontSize: 9,
+    fontSize: 13,
     letterSpacing: 1.6,
     fontWeight: '700',
     color: C.inkMute,
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dateLabel: {
-    fontSize: 10,
+    fontSize: 13,
     letterSpacing: 0.6,
     fontWeight: '600',
     color: C.inkMute,
@@ -260,12 +260,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   privateText: {
-    fontSize: 12.5,
+    fontSize: 13,
     color: C.inkMute,
     fontStyle: 'italic',
   },
   entryTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkSoft,
     fontStyle: 'italic',
@@ -278,12 +278,12 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   activities: {
-    fontSize: 11,
+    fontSize: 13,
     color: C.inkMute,
     flex: 1,
   },
   notes: {
-    fontSize: 12.5,
+    fontSize: 13,
     color: C.inkSoft,
     lineHeight: 20,
     marginTop: 5,

@@ -33,8 +33,8 @@ export default function AppTabBar({ activeTab }: { activeTab: Tab }) {
   const insets = useSafeAreaInsets();
   const C = useColors();
 
-  const barHeight = Platform.OS === 'ios' ? 84 : 64;
   const paddingBottom = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 8;
+  const barHeight = Platform.OS === 'ios' ? paddingBottom + 54 : 64;
 
   return (
     <View style={[styles.bar, { height: barHeight, paddingBottom }]}>
@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   label: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '500',
     letterSpacing: 0.2,
   },

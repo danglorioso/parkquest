@@ -537,13 +537,13 @@ const styles = StyleSheet.create({
   wordmarkText: { fontSize: 20, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.4 },
   heroBottom: { position: 'absolute', bottom: 58, left: 22, right: 22 },
   heroKicker: {
-    fontFamily: MONO, fontSize: 9.5, letterSpacing: 2.5,
+    fontFamily: MONO, fontSize: 13, letterSpacing: 2.5,
     color: 'rgba(255,251,241,0.70)', fontWeight: '600', marginBottom: 8,
   },
   heroHeadline: { fontSize: 32, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.8, lineHeight: 34 },
 
   panel: { backgroundColor: C.bg, paddingHorizontal: 24, paddingTop: 28, paddingBottom: 44 },
-  kicker: { fontFamily: MONO, fontSize: 9.5, letterSpacing: 2, color: C.inkMute, fontWeight: '600' },
+  kicker: { fontFamily: MONO, fontSize: 13, letterSpacing: 2, color: C.inkMute, fontWeight: '600' },
   headline: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.8, marginTop: 8, lineHeight: 34 },
   sub: { fontSize: 14, color: C.inkMute, marginTop: 6 },
 
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
 
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 14 },
   dividerLine: { flex: 1, height: 0.5, backgroundColor: C.hairline },
-  dividerText: { fontFamily: MONO, fontSize: 10, letterSpacing: 1.5, color: C.inkMute, fontWeight: '600' },
+  dividerText: { fontFamily: MONO, fontSize: 13, letterSpacing: 1.5, color: C.inkMute, fontWeight: '600' },
 
   primaryBtn: {
     backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15,
@@ -572,15 +572,15 @@ const styles = StyleSheet.create({
   },
   outlineBtnText: { fontSize: 15, fontWeight: '700', color: C.primary },
 
-  terms: { fontSize: 11.5, color: C.inkMute, textAlign: 'center', marginTop: 12, lineHeight: 17 },
+  terms: { fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 12, lineHeight: 17 },
 
   fField: {
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
     borderRadius: 12, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, marginBottom: 10,
   },
-  fFieldLabel: { fontFamily: MONO, fontSize: 9, letterSpacing: 1.4, color: C.inkMute, fontWeight: '600' },
+  fFieldLabel: { fontFamily: MONO, fontSize: 13, letterSpacing: 1.4, color: C.inkMute, fontWeight: '600' },
   fFieldInput: { fontSize: 15, color: C.ink, paddingTop: 4 },
-  helperText: { fontSize: 11.5, color: C.inkMute, marginBottom: 14 },
+  helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
   errorBox: {
     backgroundColor: 'rgba(197,107,61,0.10)', borderRadius: 10,
     borderWidth: 0.5, borderColor: 'rgba(197,107,61,0.30)',

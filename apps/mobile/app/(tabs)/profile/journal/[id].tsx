@@ -169,7 +169,7 @@ function RatingInput({ value, onChange }: { value: number; onChange: (n: number)
       ))}
       {value > 0 && (
         <TouchableOpacity onPress={() => onChange(0)} style={{ marginLeft: 4 }}>
-          <Text style={{ fontSize: 11, color: C.inkMute }}>Clear</Text>
+          <Text style={{ fontSize: 13, color: C.inkMute }}>Clear</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -374,7 +374,7 @@ function PhotoStrip({
               {uploading
                 ? <Ionicons name="cloud-upload-outline" size={22} color={C.primary} />
                 : <Ionicons name="add-circle-outline" size={22} color={C.primary} />}
-              <Text style={{ fontSize: 11, color: C.primary, fontWeight: '600', marginTop: 4 }}>
+              <Text style={{ fontSize: 13, color: C.primary, fontWeight: '600', marginTop: 4 }}>
                 {uploading ? 'Uploading…' : 'Add photo'}
               </Text>
             </TouchableOpacity>
@@ -382,7 +382,7 @@ function PhotoStrip({
         </View>
       </ScrollView>
       {photos.length > 0 && (
-        <Text style={{ fontSize: 11, color: C.inkMute }}>Tap ★ to set cover photo</Text>
+        <Text style={{ fontSize: 13, color: C.inkMute }}>Tap ★ to set cover photo</Text>
       )}
     </View>
   );
@@ -621,7 +621,7 @@ export default function JournalEntryScreen() {
             ? <PhotoHero photos={photos} cover={entry.cover_photo} />
             : (
               <View style={[s.heroPlaceholder, { backgroundColor: placeholderBg }]}>
-                <Text style={{ fontSize: 11, color: 'rgba(255,251,241,0.6)', fontWeight: '600', letterSpacing: 0.8 }}>
+                <Text style={{ fontSize: 13, color: 'rgba(255,251,241,0.6)', fontWeight: '600', letterSpacing: 0.8 }}>
                   {(entry.park_name ?? entry.park_code).toUpperCase()}
                 </Text>
               </View>
@@ -946,7 +946,7 @@ const s = StyleSheet.create({
   metaText: { fontSize: 13, color: C.inkMute },
   metaDivider: { width: 1, height: 12, backgroundColor: C.hairline },
   daysBadge: { backgroundColor: C.surfaceAlt, borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2 },
-  daysBadgeText: { fontSize: 12, fontWeight: '700', color: C.accent },
+  daysBadgeText: { fontSize: 13, fontWeight: '700', color: C.accent },
 
   highlightBox: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
@@ -957,7 +957,7 @@ const s = StyleSheet.create({
   highlightText: { flex: 1, fontSize: 14.5, fontStyle: 'italic', color: C.inkSoft, lineHeight: 22 },
 
   section:      { gap: 10, paddingTop: 4 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8, textTransform: 'uppercase' },
+  sectionLabel: { fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8, textTransform: 'uppercase' },
   condRow:      { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   condKey:      { fontSize: 13.5, color: C.inkMute, width: 96 },
   condVal:      { fontSize: 13.5, color: C.ink, fontWeight: '600' },
@@ -967,10 +967,10 @@ const s = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 4,
     borderWidth: 0.5, borderColor: C.hairline,
   },
-  viewChipText: { fontSize: 12, color: C.inkSoft, fontWeight: '500' },
+  viewChipText: { fontSize: 13, color: C.inkSoft, fontWeight: '500' },
 
   // Edit form
-  fieldLabel: { fontSize: 11, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8, textTransform: 'uppercase' },
+  fieldLabel: { fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8, textTransform: 'uppercase' },
   editField: {
     backgroundColor: C.surface, borderRadius: 12,
     borderWidth: 0.5, borderColor: C.hairline,
@@ -997,7 +997,7 @@ const s = StyleSheet.create({
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
   },
   scalePillOn:     { backgroundColor: C.primary, borderColor: C.primary },
-  scalePillText:   { fontSize: 12.5, fontWeight: '600', color: C.inkSoft },
+  scalePillText:   { fontSize: 13, fontWeight: '600', color: C.inkSoft },
   scalePillTextOn: { color: '#FFFBF1' },
 
   chip: {

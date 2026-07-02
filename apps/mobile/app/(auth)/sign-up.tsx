@@ -273,7 +273,7 @@ export default function SignUpScreen() {
 const st = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
-  kicker:   { fontFamily: MONO, fontSize: 9.5, letterSpacing: 2, color: C.inkMute, fontWeight: '600' },
+  kicker:   { fontFamily: MONO, fontSize: 13, letterSpacing: 2, color: C.inkMute, fontWeight: '600' },
   headline: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.8, marginTop: 8, lineHeight: 34 },
   sub:      { fontSize: 14, color: C.inkMute, marginTop: 6 },
 
@@ -282,9 +282,9 @@ const st = StyleSheet.create({
     borderRadius: 12, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10,
     marginBottom: 10, flexDirection: 'row', alignItems: 'flex-end', gap: 10,
   },
-  fFieldLabel:  { fontFamily: MONO, fontSize: 9, letterSpacing: 1.4, color: C.inkMute, fontWeight: '600' },
+  fFieldLabel:  { fontFamily: MONO, fontSize: 13, letterSpacing: 1.4, color: C.inkMute, fontWeight: '600' },
   fFieldInput:  { fontSize: 15, color: C.ink, paddingTop: 4 },
-  trailingText: { fontSize: 12, fontWeight: '600', color: C.primary },
+  trailingText: { fontSize: 13, fontWeight: '600', color: C.primary },
 
   primaryBtn:       { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 10, minHeight: 50 },
   primaryBtnText:   { fontSize: 15, fontWeight: '700', color: '#FFFBF1' },
@@ -293,7 +293,7 @@ const st = StyleSheet.create({
 
   errorBox:     { backgroundColor: 'rgba(192,64,64,0.08)', borderRadius: 10, borderWidth: 0.5, borderColor: 'rgba(192,64,64,0.25)', padding: 12, marginBottom: 12 },
   errorBoxText: { fontSize: 13, color: '#C04040' },
-  helperText:   { fontSize: 11.5, color: C.inkMute, marginBottom: 14 },
+  helperText:   { fontSize: 13, color: C.inkMute, marginBottom: 14 },
 
   switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
   switchText: { fontSize: 13, color: C.inkMute },

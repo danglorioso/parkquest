@@ -487,15 +487,15 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
   },
   badge: {
-    position: 'absolute', top: 2, right: 2,
-    minWidth: 14, height: 14, borderRadius: 7,
+    position: 'absolute', top: 0, right: 0,
+    minWidth: 18, height: 18, borderRadius: 9,
     backgroundColor: '#DC2626',
     borderWidth: 1.5, borderColor: C.bg,
     alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
   },
   badgeText: {
-    fontSize: 8, fontWeight: '700', color: '#fff', lineHeight: 9,
+    fontSize: 13, fontWeight: '700', color: '#fff', lineHeight: 15,
   },
 
   swipeBg: {
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
   },
   sheetKicker: {
-    fontSize: 9.5, fontWeight: '700', letterSpacing: 1.5,
+    fontSize: 13, fontWeight: '700', letterSpacing: 1.5,
     color: C.inkMute,
   },
   sheetTitle: {
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3,
   },
   newChipText: {
-    fontSize: 9.5, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.3,
+    fontSize: 13, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.3,
   },
   closeBtn: {
     width: 30, height: 30, borderRadius: 15,
@@ -583,9 +583,9 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: C.hairline,
   },
   rowExcerpt: {
-    fontSize: 12, color: C.inkSoft, fontStyle: 'italic',
+    fontSize: 13, color: C.inkSoft, fontStyle: 'italic',
   },
-  rowTime: { fontSize: 11, color: C.inkMute, marginTop: 1 },
+  rowTime: { fontSize: 13, color: C.inkMute, marginTop: 1 },
 
   // Friend request
   actionRow: { flexDirection: 'row', gap: 7, marginTop: 8 },
@@ -593,17 +593,17 @@ const styles = StyleSheet.create({
     backgroundColor: C.primary, borderRadius: 100,
     paddingHorizontal: 16, paddingVertical: 6,
   },
-  acceptText: { color: '#FFFBF1', fontSize: 12.5, fontWeight: '700' },
+  acceptText: { color: '#FFFBF1', fontSize: 13, fontWeight: '700' },
   declineBtn: {
     backgroundColor: C.surfaceAlt, borderRadius: 100,
     borderWidth: 0.5, borderColor: C.hairline,
     paddingHorizontal: 16, paddingVertical: 6,
   },
-  declineText: { color: C.inkSoft, fontSize: 12.5, fontWeight: '600' },
+  declineText: { color: C.inkSoft, fontSize: 13, fontWeight: '600' },
   respondedRow: {
     flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6,
   },
-  respondedText: { fontSize: 11.5, color: C.inkMute },
+  respondedText: { fontSize: 13, color: C.inkMute },
 
   // Push permission
   permBanner: {
@@ -612,16 +612,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: '#F59E0B',
     paddingHorizontal: 16, paddingVertical: 9,
   },
-  permBannerText: { flex: 1, fontSize: 12, color: '#92400E', fontWeight: '500' },
-  permBannerCta: { fontSize: 12, color: '#92400E', fontWeight: '700' },
+  permBannerText: { flex: 1, fontSize: 13, color: '#92400E', fontWeight: '500' },
+  permBannerCta: { fontSize: 13, color: '#92400E', fontWeight: '700' },
   permFooter: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 18, paddingVertical: 11,
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
     backgroundColor: C.surfaceAlt,
   },
-  permFooterLabel: { fontSize: 11.5, color: C.inkMute },
-  permFooterAction: { fontSize: 11.5, color: C.inkMute, fontWeight: '600' },
+  permFooterLabel: { fontSize: 13, color: C.inkMute },
+  permFooterAction: { fontSize: 13, color: C.inkMute, fontWeight: '600' },
 
   // Empty / loading
   centerBox: {

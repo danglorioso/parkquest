@@ -33,7 +33,7 @@ export function Chip({ children, variant = 'default', size = 'md', selected, onP
   const v = VARIANTS[variant];
   const px = size === 'sm' ? 8  : 12;
   const py = size === 'sm' ? 3  : 6;
-  const fs = size === 'sm' ? 10 : 12;
+  const fs = 13;
 
   const chipStyle = [
     s.base,

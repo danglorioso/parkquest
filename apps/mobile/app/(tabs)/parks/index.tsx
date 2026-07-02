@@ -694,7 +694,7 @@ export default function ParksScreen() {
 
   const ListFooter = !loading && filtered.length > 0 ? (
     <View style={{ paddingHorizontal: H_PAD, paddingTop: 24, paddingBottom: 40, borderTopWidth: 0.5, borderTopColor: C.hairline, marginHorizontal: H_PAD, marginTop: 16 }}>
-      <Text style={{ fontSize: 11, color: C.inkMute, lineHeight: 17 }}>
+      <Text style={{ fontSize: 13, color: C.inkMute, lineHeight: 17 }}>
         Park information is sourced directly from the{" "}
         <Text style={{ textDecorationLine: 'underline' }} onPress={() => Linking.openURL('https://www.nps.gov')}>
           National Park Service (NPS)
@@ -783,7 +783,7 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   kicker: {
-    fontSize: 9.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.inkMute,
     letterSpacing: 1.4,
@@ -837,7 +837,7 @@ const styles = StyleSheet.create({
     borderColor: C.primary,
   },
   filterToggleText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.inkSoft,
   },
@@ -851,7 +851,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   filterBadgeText: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '800',
     color: C.primary,
   },
@@ -871,13 +871,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   filterSectionTitle: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     letterSpacing: 1,
   },
   filterSectionSummary: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
     color: C.inkMute,
   },
@@ -890,7 +890,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterLoadingText: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.inkMute,
   },
   pill: {
@@ -914,7 +914,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   pillText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
     color: C.ink,
   },
@@ -930,7 +930,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   pillResetText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: C.accent,
   },
@@ -947,7 +947,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   activeChipText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: C.primary,
     maxWidth: 160,
@@ -956,7 +956,7 @@ const styles = StyleSheet.create({
   resultsCount: {
     paddingHorizontal: H_PAD,
     marginBottom: 10,
-    fontSize: 9.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.inkMute,
     letterSpacing: 1.2,
@@ -1045,7 +1045,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.14)',
   },
   cardState: {
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     letterSpacing: 0.8,
@@ -1060,7 +1060,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   cardDesc: {
-    fontSize: 11.5,
+    fontSize: 13,
     color: C.inkMute,
     lineHeight: 17,
     marginTop: 6,
@@ -1079,7 +1079,7 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
   statusBadgeText: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '700',
     color: '#FFFBF1',
     letterSpacing: 0.3,

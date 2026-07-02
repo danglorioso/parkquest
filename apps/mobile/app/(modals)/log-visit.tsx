@@ -257,11 +257,11 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
         {value > 0 ? (
           <>
             <Text style={{ fontSize: 22, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }}>{value}</Text>
-            <Text style={{ fontSize: 12, color: C.inkMute, fontWeight: '600' }}>/ 5</Text>
+            <Text style={{ fontSize: 13, color: C.inkMute, fontWeight: '600' }}>/ 5</Text>
             <Text style={{ fontSize: 14, fontWeight: '700', color: C.accent }}>{HALF_LABELS[value]}</Text>
           </>
         ) : (
-          <Text style={{ fontSize: 12.5, color: C.inkMute }}>Tap or swipe to rate</Text>
+          <Text style={{ fontSize: 13, color: C.inkMute }}>Tap or swipe to rate</Text>
         )}
       </View>
     </View>
@@ -327,7 +327,7 @@ function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: nu
           );
         })}
       </View>
-      <Text style={{ marginTop: 8, fontSize: 12, fontWeight: '600', color: value > 0 ? C.primary : C.inkMute }}>
+      <Text style={{ marginTop: 8, fontSize: 13, fontWeight: '600', color: value > 0 ? C.primary : C.inkMute }}>
         {value > 0 ? labels[value - 1] : 'Swipe or tap to set'}
       </Text>
     </View>
@@ -528,7 +528,7 @@ function VisibilityPicker({ value, onChange }: { value: Draft['visibility']; onC
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontWeight: '700', fontSize: 14, color: C.ink }}>{o.v}</Text>
-              <Text style={{ fontSize: 11.5, color: C.inkMute, marginTop: 1 }}>{o.desc}</Text>
+              <Text style={{ fontSize: 13, color: C.inkMute, marginTop: 1 }}>{o.desc}</Text>
             </View>
             <View style={[styles.visRadio, { borderColor: on ? C.primary : C.hairline, backgroundColor: on ? C.primary : 'transparent' }]}>
               {on && <Ionicons name="checkmark" size={11} color="#FFFBF1" />}
@@ -597,9 +597,9 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
               <View key={u.clerk_user_id} style={styles.companionChip}>
                 {u.avatar_url
                   ? <Image source={{ uri: u.avatar_url }} style={{ width: 22, height: 22, borderRadius: 11 }} />
-                  : <View style={styles.companionInitial}><Text style={{ color: '#FFFBF1', fontSize: 10, fontWeight: '700' }}>{name[0]}</Text></View>
+                  : <View style={styles.companionInitial}><Text style={{ color: '#FFFBF1', fontSize: 13, fontWeight: '700' }}>{name[0]}</Text></View>
                 }
-                <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#FFFBF1' }}>{name}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFBF1' }}>{name}</Text>
                 <TouchableOpacity onPress={() => toggle(u)} hitSlop={6}>
                   <Ionicons name="close" size={13} color="rgba(255,251,241,0.8)" />
                 </TouchableOpacity>
@@ -640,7 +640,7 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
                 }
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: '600', fontSize: 13.5, color: C.ink }}>{name}</Text>
-                  <Text style={{ fontSize: 11.5, color: C.inkMute }}>@{u.username}</Text>
+                  <Text style={{ fontSize: 13, color: C.inkMute }}>@{u.username}</Text>
                 </View>
                 {on && <Ionicons name="checkmark-circle" size={18} color={C.primary} />}
               </TouchableOpacity>
@@ -722,11 +722,11 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover }: {
               </TouchableOpacity>
               {isCover && (
                 <View style={styles.coverBadge}>
-                  <Text style={{ fontSize: 7.5, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.5 }}>COVER</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.5 }}>COVER</Text>
                 </View>
               )}
               <View style={styles.photoIndex}>
-                <Text style={{ fontSize: 9, fontWeight: '800', color: '#FFFBF1' }}>{idx + 1}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFBF1' }}>{idx + 1}</Text>
               </View>
             </View>
           );
@@ -734,7 +734,7 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover }: {
         {photos.length < 10 && (
           <TouchableOpacity onPress={pickAndUpload} disabled={uploading} style={styles.photoAdd} activeOpacity={0.7}>
             <Ionicons name={uploading ? 'hourglass' : 'add'} size={24} color={C.primary} />
-            <Text style={{ fontSize: 10.5, fontWeight: '600', color: C.primary, marginTop: 3 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: C.primary, marginTop: 3 }}>
               {uploading ? 'Uploading…' : 'Add photos'}
             </Text>
           </TouchableOpacity>
@@ -798,11 +798,11 @@ function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
               <TouchableOpacity onPress={() => { onPick(p.park_code); onClose(); }} activeOpacity={0.7}
                 style={[styles.parkRow, { backgroundColor: on ? C.surfaceAlt : 'transparent' }]}>
                 <View style={styles.parkBadge}>
-                  <Text style={{ color: '#FFFBF1', fontWeight: '800', fontSize: 11 }}>{state2}</Text>
+                  <Text style={{ color: '#FFFBF1', fontWeight: '800', fontSize: 13 }}>{state2}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>{p.name}</Text>
-                  <Text style={{ fontSize: 11.5, color: C.inkMute }}>{fullStateName(p.states.split(',')[0].trim())}</Text>
+                  <Text style={{ fontSize: 13, color: C.inkMute }}>{fullStateName(p.states.split(',')[0].trim())}</Text>
                 </View>
                 {on && <Ionicons name="checkmark" size={17} color={C.primary} />}
               </TouchableOpacity>
@@ -1043,7 +1043,7 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
 function RequirementTag({ kind }: { kind: 'required' | 'optional' }) {
   return (
     <Text style={{
-      fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase',
+      fontSize: 13, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase',
       color: kind === 'required' ? C.primary : C.inkMute,
     }}>
       {'  '}{kind}
@@ -1060,7 +1060,7 @@ function Section({ kicker, title, hint, tag, children }: {
         <View style={{ marginBottom: 10 }}>
           {kicker && <Text style={styles.kicker}>{kicker}</Text>}
           {title  && <Text style={styles.sectionTitle}>{title}{tag && <RequirementTag kind={tag} />}</Text>}
-          {hint   && <Text style={{ fontSize: 12.5, color: C.inkMute, marginTop: 3, lineHeight: 17 }}>{hint}</Text>}
+          {hint   && <Text style={{ fontSize: 13, color: C.inkMute, marginTop: 3, lineHeight: 17 }}>{hint}</Text>}
         </View>
       )}
       {children}
@@ -1116,13 +1116,13 @@ function StepWhere({ draft, set, parks, onPickPark }: {
               />
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '600', color: 'rgba(255,251,241,0.8)', letterSpacing: 1.2 }}>NATIONAL PARK</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: 'rgba(255,251,241,0.8)', letterSpacing: 1.2 }}>NATIONAL PARK</Text>
                   <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.3, marginTop: 2 }}>{park.name}</Text>
-                  <Text style={{ fontSize: 12, color: 'rgba(255,251,241,0.8)', marginTop: 1 }}>{fullStateName(park.states.split(',')[0].trim())}</Text>
+                  <Text style={{ fontSize: 13, color: 'rgba(255,251,241,0.8)', marginTop: 1 }}>{fullStateName(park.states.split(',')[0].trim())}</Text>
                 </View>
                 <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,251,241,0.92)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
                   <Ionicons name="pencil" size={11} color={C.ink} />
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: C.ink }}>Change</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }}>Change</Text>
                 </View>
               </View>
             </>
@@ -1133,7 +1133,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
               </View>
               <View>
                 <Text style={{ fontWeight: '800', fontSize: 16, color: C.ink, letterSpacing: -0.2 }}>Select a park</Text>
-                <Text style={{ fontSize: 12.5, color: C.inkMute, marginTop: 2 }}>Search all 63 national parks</Text>
+                <Text style={{ fontSize: 13, color: C.inkMute, marginTop: 2 }}>Search all 63 national parks</Text>
               </View>
             </View>
           )}
@@ -1189,7 +1189,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
             </TouchableOpacity>
           </View>
           {days > 1 && (
-            <Text style={{ fontSize: 11.5, color: C.accent, fontWeight: '700', marginTop: 6 }}>{days} day trip</Text>
+            <Text style={{ fontSize: 13, color: C.accent, fontWeight: '700', marginTop: 6 }}>{days} day trip</Text>
           )}
         </Section>
       </View>
@@ -1337,14 +1337,14 @@ function VisitPreview({ draft, park, userName, avatarUrl }: {
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Ionicons name="location" size={10} color={C.primary} />
-            <Text style={{ fontSize: 9.5, color: C.primary, letterSpacing: 0.4, fontWeight: '700' }} numberOfLines={1}>
+            <Text style={{ fontSize: 13, color: C.primary, letterSpacing: 0.4, fontWeight: '700' }} numberOfLines={1}>
               {park ? `${park.name.toUpperCase()} · ${park.states.split(',')[0].trim()}` : 'NO PARK'}
             </Text>
           </View>
         </View>
         <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: C.surfaceAlt, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100 }}>
           <Ionicons name={visIcon} size={11} color={C.inkMute} />
-          <Text style={{ fontSize: 10.5, fontWeight: '600', color: C.inkMute }}>{draft.visibility}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: C.inkMute }}>{draft.visibility}</Text>
         </View>
       </View>
 
@@ -1375,7 +1375,7 @@ function VisitPreview({ draft, park, userName, avatarUrl }: {
           {draft.photos.length > 1 && (
             <View style={{ position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(20,17,12,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 100 }}>
               <Ionicons name="images-outline" size={11} color="#FFFBF1" />
-              <Text style={{ color: '#FFFBF1', fontSize: 10, fontWeight: '600' }}>{draft.photos.length}</Text>
+              <Text style={{ color: '#FFFBF1', fontSize: 13, fontWeight: '600' }}>{draft.photos.length}</Text>
             </View>
           )}
         </View>
@@ -1385,13 +1385,13 @@ function VisitPreview({ draft, park, userName, avatarUrl }: {
       <View style={{ paddingHorizontal: 13, paddingTop: 11, paddingBottom: 13 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 7 }}>
           <Ionicons name="calendar-outline" size={13} color={C.inkMute} />
-          <Text style={{ fontWeight: '600', fontSize: 11.5, color: C.inkSoft }}>
+          <Text style={{ fontWeight: '600', fontSize: 13, color: C.inkSoft }}>
             {draft.startDate ? fmtDate(draft.startDate) : 'No date'}
             {draft.endDate ? ` – ${fmtDate(draft.endDate)}` : ''}
           </Text>
           {days > 1 && (
             <View style={{ backgroundColor: 'rgba(197,107,61,0.1)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 100 }}>
-              <Text style={{ fontSize: 9, letterSpacing: 0.6, color: C.accent, fontWeight: '700' }}>{days} DAYS</Text>
+              <Text style={{ fontSize: 13, letterSpacing: 0.6, color: C.accent, fontWeight: '700' }}>{days} DAYS</Text>
             </View>
           )}
         </View>
@@ -1772,10 +1772,10 @@ export default function LogVisitModal() {
               </Text>
             </View>
             <TouchableOpacity onPress={resumeDraft} style={styles.draftResumeBtn} activeOpacity={0.8}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFBF1' }}>Restore</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFBF1' }}>Restore</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={discardSavedDraft} hitSlop={6} style={styles.draftDiscardBtn} activeOpacity={0.7}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: C.inkMute }}>Discard</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: C.inkMute }}>Discard</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1857,7 +1857,7 @@ const styles = StyleSheet.create({
     fontSize: 13, fontWeight: '700', color: C.ink,
   },
   draftBannerSub: {
-    fontSize: 11.5, color: C.inkMute, marginTop: 1,
+    fontSize: 13, color: C.inkMute, marginTop: 1,
   },
   draftResumeBtn: {
     backgroundColor: C.primary,
@@ -1902,7 +1902,7 @@ const styles = StyleSheet.create({
 
   // Typography
   kicker: {
-    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4,
+    fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4,
   },
   sectionTitle: {
     fontSize: 19, fontWeight: '800', color: C.ink, letterSpacing: -0.3, marginTop: 2,
@@ -1925,7 +1925,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', gap: 4,
   },
   weatherLabel: {
-    fontSize: 11, fontWeight: '600',
+    fontSize: 13, fontWeight: '600',
   },
 
   // Activity
@@ -1934,7 +1934,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13, paddingVertical: 7, borderRadius: 100, borderWidth: 0.5,
   },
   activityChipText: {
-    fontSize: 12.5, fontWeight: '600', textTransform: 'capitalize',
+    fontSize: 13, fontWeight: '600', textTransform: 'capitalize',
   },
 
   // Would return
@@ -1943,7 +1943,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
   },
   returnBtnText: {
-    fontSize: 12.5, fontWeight: '700',
+    fontSize: 13, fontWeight: '700',
   },
 
   // Visibility
@@ -2007,7 +2007,7 @@ const styles = StyleSheet.create({
   },
   photoIndex: {
     position: 'absolute', bottom: 5, right: 5,
-    backgroundColor: 'rgba(20,17,12,0.55)', width: 17, height: 17, borderRadius: 8.5,
+    backgroundColor: 'rgba(20,17,12,0.55)', width: 20, height: 20, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center',
   },
   photoAdd: {
@@ -2076,7 +2076,7 @@ const styles = StyleSheet.create({
   },
   calDow: {
     flex: 1, textAlign: 'center',
-    fontSize: 10, fontWeight: '600', color: C.inkMute,
+    fontSize: 13, fontWeight: '600', color: C.inkMute,
     paddingVertical: 4,
   },
   calCell: {
@@ -2106,7 +2106,7 @@ const styles = StyleSheet.create({
   },
   charCountOutside: {
     alignSelf: 'flex-end', marginTop: 5,
-    fontSize: 9.5, color: C.inkMute, fontWeight: '600', letterSpacing: 0.5,
+    fontSize: 13, color: C.inkMute, fontWeight: '600', letterSpacing: 0.5,
   },
 
   // Post preview
@@ -2123,7 +2123,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9, paddingVertical: 4,
   },
   previewChipText: {
-    fontWeight: '600', fontSize: 11, color: C.inkSoft,
+    fontWeight: '600', fontSize: 13, color: C.inkSoft,
     textTransform: 'capitalize',
   },
 
@@ -2149,7 +2149,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   dateLabel: {
-    fontSize: 11.5, fontWeight: '600', color: C.inkMute, letterSpacing: 0.3,
+    fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 0.3,
   },
   dateValue: {
     fontSize: 15, fontWeight: '600', marginTop: 1,

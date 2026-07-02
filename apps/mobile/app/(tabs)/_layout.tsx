@@ -2,6 +2,7 @@ import { Tabs, useRouter } from 'expo-router';
 import { DeviceEventEmitter, TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../../lib/palette';
 
 const STATIC = {
@@ -61,6 +62,10 @@ function LogVisitButton() {
 
 export default function TabsLayout() {
   const C = useColors();
+  const insets = useSafeAreaInsets();
+  const tabPaddingBottom = Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 4);
+  const tabBarHeight = tabPaddingBottom + 64;
+
   return (
     <Tabs
       screenOptions={{
@@ -71,13 +76,13 @@ export default function TabsLayout() {
           backgroundColor: STATIC.surface,
           borderTopColor: STATIC.hairline,
           borderTopWidth: StyleSheet.hairlineWidth,
-          height: Platform.OS === 'ios' ? 84 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 8,
+          height: tabBarHeight,
+          paddingBottom: tabPaddingBottom,
           paddingTop: 8,
           paddingHorizontal: Platform.OS === 'ios' ? 14 : 6,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 13,
           fontWeight: '500',
           letterSpacing: 0.2,
         },
@@ -118,8 +123,8 @@ export default function TabsLayout() {
             backgroundColor: 'rgba(255,251,241,0.88)',
             borderTopColor: STATIC.hairline,
             borderTopWidth: StyleSheet.hairlineWidth,
-            height: Platform.OS === 'ios' ? 84 : 64,
-            paddingBottom: Platform.OS === 'ios' ? 28 : 8,
+            height: tabBarHeight,
+            paddingBottom: tabPaddingBottom,
             paddingTop: 8,
             paddingHorizontal: Platform.OS === 'ios' ? 14 : 6,
           },

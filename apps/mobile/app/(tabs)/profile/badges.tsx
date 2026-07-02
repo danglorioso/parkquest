@@ -143,7 +143,7 @@ function ProgressBar({ current, target, fill }: { current: number; target: numbe
       <View style={{ height: 3.5, backgroundColor: C.surfaceAlt, borderRadius: 2, overflow: 'hidden' }}>
         <View style={{ height: '100%', width: `${pct}%`, backgroundColor: fill, borderRadius: 2 }} />
       </View>
-      <Text style={{ fontSize: 9.5, fontWeight: '600', color: C.inkMute, marginTop: 4, textAlign: 'center', letterSpacing: 0.4 }}>
+      <Text style={{ fontSize: 13, fontWeight: '600', color: C.inkMute, marginTop: 4, textAlign: 'center', letterSpacing: 0.4 }}>
         {current} / {target}
       </Text>
     </View>
@@ -303,10 +303,10 @@ function BadgeDetailModal({ badge, onClose, onShare }: { badge: BadgeData; onClo
           ) : badge.progress_current != null && badge.progress_target != null ? (
             <View style={{ width: '100%', marginTop: 20, paddingHorizontal: 8 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,251,241,0.4)', letterSpacing: 0.6 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: 'rgba(255,251,241,0.4)', letterSpacing: 0.6 }}>
                   PROGRESS
                 </Text>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: t.fill, letterSpacing: 0.4 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: t.fill, letterSpacing: 0.4 }}>
                   {badge.progress_current} / {badge.progress_target}
                 </Text>
               </View>
@@ -710,7 +710,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: 'rgba(27,26,22,0.06)',
   },
   headerKicker: {
-    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 5,
+    fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 5,
   },
   headerTitle: {
     fontSize: 30, fontWeight: '800', color: C.ink, letterSpacing: -0.6,
@@ -733,13 +733,13 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface, borderColor: C.hairline,
   },
   filterLabel: {
-    fontSize: 12, fontWeight: '500', color: C.ink,
+    fontSize: 13, fontWeight: '500', color: C.ink,
   },
   filterLabelActive: {
     fontWeight: '700',
   },
   filterCount: {
-    fontSize: 10, fontWeight: '600', color: C.inkMute,
+    fontSize: 13, fontWeight: '600', color: C.inkMute,
   },
 
   // Featured card
@@ -751,7 +751,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden', position: 'relative',
   },
   featuredKicker: {
-    fontSize: 10, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6,
+    fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6,
   },
   featuredName: {
     fontSize: 28, fontWeight: '800', color: C.ink, letterSpacing: -0.5,
@@ -768,7 +768,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   featuredShareText: {
-    fontSize: 12, fontWeight: '700', color: C.ink,
+    fontSize: 13, fontWeight: '700', color: C.ink,
   },
 
   // Section headers
@@ -776,7 +776,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: H_PAD, paddingTop: 24, paddingBottom: 14,
   },
   sectionKicker: {
-    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6,
+    fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6,
     textTransform: 'uppercase', marginBottom: 3,
   },
   sectionTitle: {
@@ -800,16 +800,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden', position: 'relative',
   },
   cellName: {
-    fontSize: 12.5, fontWeight: '700', color: C.ink,
+    fontSize: 13, fontWeight: '700', color: C.ink,
     textAlign: 'center', lineHeight: 15,
   },
   // Tier label: full name, inkMute — matches web
   cellTier: {
-    fontSize: 9, fontWeight: '600', color: C.inkMute,
+    fontSize: 13, fontWeight: '600', color: C.inkMute,
     letterSpacing: 1, textTransform: 'uppercase',
   },
   cellDate: {
-    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 0.6,
+    fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 0.6,
   },
 
   // Detail modal
@@ -840,7 +840,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   tierPillText: {
-    fontSize: 10, fontWeight: '600', letterSpacing: 1.6,
+    fontSize: 13, fontWeight: '600', letterSpacing: 1.6,
   },
   modalName: {
     fontSize: 26, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.5,
@@ -855,7 +855,7 @@ const styles = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8,
   },
   earnedText: {
-    fontSize: 11, fontWeight: '600', color: 'rgba(255,251,241,0.55)', letterSpacing: 0.6,
+    fontSize: 13, fontWeight: '600', color: 'rgba(255,251,241,0.55)', letterSpacing: 0.6,
   },
   emptyState: {
     alignItems: 'center', paddingTop: 60, paddingHorizontal: 32,
@@ -896,7 +896,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 5,
   },
   shareCancelText: {
-    fontSize: 12.5, fontWeight: '700', color: C.ink,
+    fontSize: 13, fontWeight: '700', color: C.ink,
   },
   shareBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -908,7 +908,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: C.hairline,
   },
   shareBtnText: {
-    fontSize: 12.5, fontWeight: '700', color: '#FFFBF1',
+    fontSize: 13, fontWeight: '700', color: '#FFFBF1',
   },
   sharePreview: {
     marginHorizontal: 18, marginTop: 16,
@@ -922,13 +922,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sharePreviewKicker: {
-    fontSize: 9, fontWeight: '700', letterSpacing: 1.4, marginBottom: 2,
+    fontSize: 13, fontWeight: '700', letterSpacing: 1.4, marginBottom: 2,
   },
   sharePreviewName: {
     fontSize: 16, fontWeight: '800', color: C.ink, letterSpacing: -0.3,
   },
   sharePreviewDesc: {
-    fontSize: 12, color: C.inkMute, marginTop: 2,
+    fontSize: 13, color: C.inkMute, marginTop: 2,
   },
   audienceRow: {
     flexDirection: 'row', gap: 6,
@@ -944,7 +944,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(31,61,46,0.09)',
   },
   audienceLabel: {
-    fontSize: 12, fontWeight: '700', color: C.inkMute,
+    fontSize: 13, fontWeight: '700', color: C.inkMute,
   },
   captionInput: {
     marginHorizontal: 18, marginTop: 12,
@@ -955,7 +955,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   captionCount: {
-    fontSize: 10, fontWeight: '600', color: C.inkMute, letterSpacing: 0.5,
+    fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 0.5,
     textAlign: 'right', marginHorizontal: 18, marginTop: 6,
   },
 });

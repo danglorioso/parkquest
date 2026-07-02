@@ -40,7 +40,7 @@ const s = StyleSheet.create({
     borderWidth: 0.5, borderColor: C.hairline,
   },
   label: {
-    fontSize: 9, fontWeight: '700', color: C.inkMute,
+    fontSize: 13, fontWeight: '700', color: C.inkMute,
     letterSpacing: 0.8, fontVariant: ['tabular-nums'],
   },
 });

@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   },
   counterText: {
     color: '#FFFBF1',
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
   },
   close: {
@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
   },
   captionText: {
     color: 'rgba(255,251,241,0.85)',
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
     lineHeight: 17,
   },

@@ -95,7 +95,7 @@ function Stars({ value, size = 11 }: { value: number; size?: number }) {
       {Array.from({ length: 5 }).map((_, i) => (
         <Ionicons key={i} name={i < Math.round(value) ? 'star' : 'star-outline'} size={size} color={C.accent} />
       ))}
-      <Text style={{ fontSize: size - 2, fontWeight: '600', color: C.inkMute, marginLeft: 4 }}>
+      <Text style={{ fontSize: Math.max(13, size - 2), fontWeight: '600', color: C.inkMute, marginLeft: 4 }}>
         {value}/5
       </Text>
     </View>
@@ -144,7 +144,7 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
         {(entry.photos?.length ?? 0) > 1 && (
           <View style={styles.photoCountBadge}>
             <Ionicons name="images-outline" size={9} color="#FFFBF1" />
-            <Text style={{ color: '#FFFBF1', fontSize: 9, fontWeight: '600' }}>{entry.photos!.length}</Text>
+            <Text style={{ color: '#FFFBF1', fontSize: 13, fontWeight: '600' }}>{entry.photos!.length}</Text>
           </View>
         )}
       </View>
@@ -169,7 +169,7 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
           <Text style={styles.entryDate}>{fmtRange(entry.visited_date, entry.end_date)}</Text>
           {days > 1 && (
             <View style={styles.daysBadge}>
-              <Text style={{ fontSize: 9, fontWeight: '700', color: C.accent }}>{days}D</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>{days}D</Text>
             </View>
           )}
         </View>
@@ -179,7 +179,7 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
           {entry.rating ? <Stars value={entry.rating} size={11} /> : <View />}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
             <Ionicons name={visIcon as any} size={10} color={visColor} />
-            <Text style={{ fontSize: 9, fontWeight: '600', color: visColor, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: visColor, letterSpacing: 0.8, textTransform: 'uppercase' }}>
               {visKey}
             </Text>
           </View>
@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
   pageHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 16 },
-  kicker:     { fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 4 },
+  kicker:     { fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 4 },
   title:      { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.7 },
   subtitle:   { fontSize: 13.5, color: C.inkMute, marginTop: 6 },
 
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     borderWidth: 0.5, borderColor: C.hairline,
   },
-  sortBtnText: { fontSize: 12.5, fontWeight: '600', color: C.inkSoft },
+  sortBtnText: { fontSize: 13, fontWeight: '600', color: C.inkSoft },
 
   sortBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
   },
   yearPillOn:     { backgroundColor: C.primary, borderColor: C.primary },
-  yearPillText:   { fontSize: 10.5, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.4 },
+  yearPillText:   { fontSize: 13, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.4 },
   yearPillTextOn: { color: '#FFFBF1' },
 
   emptyWrap:  { alignItems: 'center', paddingVertical: 60, gap: 12 },
@@ -457,12 +457,12 @@ const styles = StyleSheet.create({
     flex: 1, minWidth: 0, padding: 12, paddingLeft: 13, paddingRight: 14, gap: 4,
   },
   parkKicker: {
-    flex: 1, fontSize: 9.5, fontWeight: '700', color: C.primary, letterSpacing: 0.8,
+    flex: 1, fontSize: 13, fontWeight: '700', color: C.primary, letterSpacing: 0.8,
   },
   entryTitle: {
     fontSize: 14, fontWeight: '800', color: C.ink, letterSpacing: -0.2, lineHeight: 17,
   },
-  entryDate:  { fontSize: 11.5, color: C.inkMute },
+  entryDate:  { fontSize: 13, color: C.inkMute },
   daysBadge:  {
     backgroundColor: C.surfaceAlt, borderRadius: 100,
     paddingHorizontal: 6, paddingVertical: 1,

@@ -168,9 +168,9 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderRadius: 100, paddingHorizontal: 9, paddingVertical: 4,
   },
-  badgeText: { fontSize: 10, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.3 },
+  badgeText: { fontSize: 13, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.3 },
   info:  { padding: 10, gap: 3 },
-  state: { fontSize: 9, fontWeight: '700', color: C.inkMute, letterSpacing: 1, textTransform: 'uppercase' },
+  state: { fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 1, textTransform: 'uppercase' },
   name:  { fontSize: 14, fontWeight: '800', color: C.ink, lineHeight: 17, letterSpacing: -0.2 },
-  desc:  { fontSize: 11.5, color: C.inkMute, lineHeight: 16, marginTop: 2 },
+  desc:  { fontSize: 13, color: C.inkMute, lineHeight: 16, marginTop: 2 },
 });

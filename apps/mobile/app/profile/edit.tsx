@@ -1,12 +1,12 @@
 import {
-  ActivityIndicator, Alert, Image, KeyboardAvoidingView,
-  Platform, ScrollView, StyleSheet, Text, TextInput,
+  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal,
+  Platform, Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useAuth, useUser } from '@clerk/clerk-expo';
+import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { usePalette, PALETTES } from '@/lib/palette';
 import * as ImagePicker from 'expo-image-picker';
@@ -30,8 +30,8 @@ const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 const fieldStyles = StyleSheet.create({
   field:      { gap: 5 },
-  fieldLabel: { fontWeight: '600', fontSize: 12, color: BASE_C.ink, letterSpacing: 0.2 },
-  fieldError: { fontSize: 11, color: BASE_C.error },
+  fieldLabel: { fontWeight: '600', fontSize: 13, color: BASE_C.ink, letterSpacing: 0.2 },
+  fieldError: { fontSize: 13, color: BASE_C.error },
 });
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
@@ -48,7 +48,8 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { getToken, signOut } = useAuth();
+  const { getToken } = useAuth();
+  const { signOut } = useClerk();
   const { user } = useUser();
   const { paletteId, colors: paletteColors, setPalette } = usePalette();
   const C = useMemo(
@@ -67,6 +68,11 @@ export default function EditProfileScreen() {
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState('');
   const [usernameError, setUsernameError] = useState('');
+  const [deleteModal,         setDeleteModal]         = useState(false);
+  const [deleteInput,         setDeleteInput]         = useState('');
+  const [deleting,            setDeleting]            = useState(false);
+  const [removeAvatarPending, setRemoveAvatarPending] = useState(false);
+  const [fullscreenAvatar,    setFullscreenAvatar]    = useState(false);
 
   const original = useRef({ firstName: '', lastName: '', username: '', bio: '', paletteId: '' });
 
@@ -77,6 +83,7 @@ export default function EditProfileScreen() {
     setLastName(user.lastName ?? '');
     setUsername(user.username ?? '');
     setAvatarPreview(user.imageUrl ?? null);
+    setRemoveAvatarPending(false);
     original.current.firstName = user.firstName ?? '';
     original.current.lastName  = user.lastName ?? '';
     original.current.username  = user.username ?? '';
@@ -108,7 +115,8 @@ export default function EditProfileScreen() {
     username  !== original.current.username  ||
     bio       !== original.current.bio       ||
     paletteId !== original.current.paletteId ||
-    avatarFile !== null;
+    avatarFile !== null ||
+    removeAvatarPending;
 
   const pickAvatar = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -127,7 +135,23 @@ export default function EditProfileScreen() {
       const asset = result.assets[0];
       setAvatarPreview(asset.uri);
       setAvatarFile({ uri: asset.uri, base64: asset.base64 });
+      setRemoveAvatarPending(false);
     }
+  };
+
+  const handleAvatarTap = () => {
+    const hasImage = avatarPreview !== null && !removeAvatarPending;
+    const canRemove = (user?.hasImage || avatarFile !== null) && !removeAvatarPending;
+    Alert.alert('Profile photo', undefined, [
+      ...(hasImage ? [{ text: 'View photo', onPress: () => setFullscreenAvatar(true) }] : []),
+      { text: hasImage ? 'Choose new photo' : 'Choose photo', onPress: pickAvatar },
+      ...(canRemove ? [{
+        text: 'Remove photo',
+        style: 'destructive' as const,
+        onPress: () => { setAvatarPreview(null); setAvatarFile(null); setRemoveAvatarPending(true); },
+      }] : []),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
   };
 
   const validateUsername = (val: string) => {
@@ -144,8 +168,10 @@ export default function EditProfileScreen() {
     setSaving(true);
 
     try {
-      // Upload avatar via Clerk
-      if (avatarFile?.base64) {
+      // Upload / remove avatar via Clerk
+      if (removeAvatarPending) {
+        try { await user.setProfileImage({ file: null as unknown as File }); } catch { /* non-fatal */ }
+      } else if (avatarFile?.base64) {
         try {
           const blob = await fetch(avatarFile.uri).then(r => r.blob());
           await user.setProfileImage({ file: blob as File });
@@ -189,6 +215,32 @@ export default function EditProfileScreen() {
     }
   };
 
+  const handleDeleteAccount = () => {
+    setDeleteInput('');
+    setDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteInput !== 'DELETE') return;
+    setDeleting(true);
+    try {
+      const tok = await getToken();
+      if (!tok) throw new Error('Not authenticated');
+      const res = await fetch(`${BASE}/api/account`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!res.ok) throw new Error('Failed to delete account');
+      setDeleteModal(false);
+      await signOut();
+      router.replace('/(auth)/sign-in' as never);
+    } catch {
+      Alert.alert('Error', 'Failed to delete account. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const initials = ([firstName[0], lastName[0]].filter(Boolean).join('').toUpperCase()
     || user?.username?.[0]?.toUpperCase()) ?? '?';
 
@@ -201,27 +253,7 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top', 'bottom']}>
-      {/* Top bar */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        paddingHorizontal: 16, paddingVertical: 10,
-        borderBottomWidth: 0.5, borderBottomColor: BASE_C.hairline,
-        backgroundColor: C.bg,
-      }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-          hitSlop={8}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="chevron-back" size={20} color={C.primary} />
-          <Text style={{ fontSize: 15, color: C.primary, fontWeight: '600' }}>Back</Text>
-        </TouchableOpacity>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: BASE_C.ink }}>Edit Profile</Text>
-        <View style={{ width: 60 }} />
-      </View>
-
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['bottom']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -231,11 +263,11 @@ export default function EditProfileScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Avatar */}
-          <View style={styles.avatarRow}>
-            <TouchableOpacity onPress={pickAvatar} activeOpacity={0.8}>
+          {/* Avatar + Name */}
+          <View style={styles.avatarNameRow}>
+            <TouchableOpacity onPress={handleAvatarTap} activeOpacity={0.8}>
               <View style={styles.avatarWrap}>
-                {avatarPreview ? (
+                {avatarPreview && !removeAvatarPending ? (
                   <Image source={{ uri: avatarPreview }} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatar, styles.avatarFallback]}>
@@ -247,15 +279,7 @@ export default function EditProfileScreen() {
                 </View>
               </View>
             </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.avatarHint}>Tap to change photo</Text>
-              <Text style={styles.avatarSub}>Square photos work best</Text>
-            </View>
-          </View>
-
-          {/* Name row */}
-          <View style={styles.nameRow}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, gap: 10 }}>
               <Field label="First name">
                 <TextInput
                   style={styles.input}
@@ -268,8 +292,6 @@ export default function EditProfileScreen() {
                   returnKeyType="next"
                 />
               </Field>
-            </View>
-            <View style={{ flex: 1 }}>
               <Field label="Last name">
                 <TextInput
                   style={styles.input}
@@ -330,7 +352,7 @@ export default function EditProfileScreen() {
           </Field>
 
           {/* Appearance */}
-          <View style={fieldStyles.field}>
+          <View style={[fieldStyles.field, { gap: 10 }]}>
             <Text style={fieldStyles.fieldLabel}>Appearance</Text>
             <View style={styles.paletteGrid}>
               {PALETTES.map(({ id, label, colors }) => {
@@ -342,7 +364,9 @@ export default function EditProfileScreen() {
                     activeOpacity={0.7}
                     style={[
                       styles.paletteChip,
-                      selected && { borderColor: colors.primary, borderWidth: 2, backgroundColor: C.surface },
+                      selected
+                        ? { borderColor: colors.primary, backgroundColor: C.surface }
+                        : { borderColor: 'transparent' },
                     ]}
                   >
                     <View style={[styles.paletteSwatch, { backgroundColor: colors.primary }]} />
@@ -382,17 +406,100 @@ export default function EditProfileScreen() {
             }
           </TouchableOpacity>
 
-          {/* Sign out */}
-          <TouchableOpacity
-            style={styles.signOutBtn}
-            onPress={() => signOut()}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.signOutText}>Sign out</Text>
-          </TouchableOpacity>
-
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Delete account — fixed footer */}
+      <TouchableOpacity
+        style={styles.deleteBtn}
+        onPress={handleDeleteAccount}
+        activeOpacity={0.5}
+      >
+        <Text style={styles.deleteBtnText}>Delete account</Text>
+      </TouchableOpacity>
+
+      {/* Fullscreen avatar */}
+      <Modal visible={fullscreenAvatar} transparent animationType="fade" onRequestClose={() => setFullscreenAvatar(false)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' }}
+          onPress={() => setFullscreenAvatar(false)}
+        >
+          {avatarPreview && (
+            <Image source={{ uri: avatarPreview }} style={{ width: '86%', aspectRatio: 1, borderRadius: 16 }} resizeMode="cover" />
+          )}
+          <TouchableOpacity
+            onPress={() => setFullscreenAvatar(false)}
+            style={{ position: 'absolute', top: 56, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="close" size={20} color="#fff" />
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
+
+      {/* Delete confirmation modal */}
+      <Modal visible={deleteModal} transparent animationType="fade" onRequestClose={() => !deleting && setDeleteModal(false)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
+          onPress={() => !deleting && setDeleteModal(false)}
+        >
+          <Pressable onPress={() => {}} style={{ width: '100%', backgroundColor: BASE_C.surface, borderRadius: 16, padding: 24, gap: 16 }}>
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: BASE_C.ink }}>Delete account</Text>
+              <Text style={{ fontSize: 13.5, color: BASE_C.inkMute, lineHeight: 20 }}>
+                This will permanently delete all your visits, posts, badges, and account data.{' '}
+                <Text style={{ fontWeight: '700', color: BASE_C.ink }}>This cannot be undone.</Text>
+              </Text>
+            </View>
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: BASE_C.inkMute, letterSpacing: 0.3 }}>
+                Type <Text style={{ fontFamily: 'JetBrainsMono_700Bold', color: '#C04040' }}>DELETE</Text> to confirm
+              </Text>
+              <TextInput
+                value={deleteInput}
+                onChangeText={setDeleteInput}
+                placeholder="DELETE"
+                placeholderTextColor={BASE_C.inkMute}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                style={{
+                  borderWidth: 1.5,
+                  borderColor: deleteInput === 'DELETE' ? '#C04040' : BASE_C.hairline,
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 11,
+                  fontSize: 15,
+                  fontFamily: 'JetBrainsMono_600SemiBold',
+                  color: '#C04040',
+                  backgroundColor: BASE_C.bg,
+                }}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setDeleteModal(false)}
+                disabled={deleting}
+                style={{ flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: BASE_C.hairline, alignItems: 'center' }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: BASE_C.inkSoft }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmDelete}
+                disabled={deleteInput !== 'DELETE' || deleting}
+                style={{
+                  flex: 1, paddingVertical: 13, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: '#C04040',
+                  opacity: (deleteInput !== 'DELETE' || deleting) ? 0.4 : 1,
+                }}
+              >
+                {deleting
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Delete account</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -403,21 +510,22 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
   return StyleSheet.create({
   scroll: {
     padding: 20,
+    paddingBottom: 32,
     gap: 16,
   },
-  avatarRow: {
+  avatarNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    marginBottom: 4,
   },
   avatarWrap: {
     position: 'relative',
+    alignSelf: 'flex-start',
   },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 92,
+    height: 92,
+    borderRadius: 46,
     borderWidth: 1.5,
     borderColor: C.hairline,
   },
@@ -428,7 +536,7 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
   },
   avatarInitials: {
     fontWeight: '800',
-    fontSize: 24,
+    fontSize: 30,
     color: C.inkMute,
   },
   cameraButton: {
@@ -443,20 +551,6 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     borderColor: C.bg,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarHint: {
-    fontWeight: '600',
-    fontSize: 13,
-    color: C.ink,
-  },
-  avatarSub: {
-    fontSize: 11.5,
-    color: C.inkMute,
-    marginTop: 2,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    gap: 12,
   },
   input: {
     backgroundColor: C.surface,
@@ -501,7 +595,7 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     position: 'absolute',
     bottom: 8,
     right: 10,
-    fontSize: 10,
+    fontSize: 13,
     color: C.inkMute,
     fontVariant: ['tabular-nums'],
   },
@@ -513,7 +607,7 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     borderRadius: 8,
   },
   errorText: {
-    fontSize: 12.5,
+    fontSize: 13,
     color: C.error,
   },
   saveButton: {
@@ -529,21 +623,6 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     fontWeight: '700',
     fontSize: 14,
   },
-  signOutBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    marginTop: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#DC2626',
-  },
-  signOutText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#DC2626',
-  },
   paletteGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -554,24 +633,37 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     alignItems: 'center',
     gap: 7,
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical: 9,
     borderRadius: 8,
-    borderWidth: 0.5,
+    borderWidth: 2,
     borderColor: C.hairline,
     backgroundColor: C.surfaceAlt,
     minWidth: '46%',
     flex: 1,
   },
   paletteSwatch: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 28,
+    height: 20,
+    borderRadius: 5,
     flexShrink: 0,
   },
   paletteLabel: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '500',
     color: C.inkSoft,
+  },
+  deleteBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderTopWidth: 0.5,
+    borderTopColor: BASE_C.hairline,
+    backgroundColor: BASE_C.bg,
+  },
+  deleteBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#C04040',
   },
   });
 }

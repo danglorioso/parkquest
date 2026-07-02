@@ -260,7 +260,7 @@ function Lightbox({ images, initialIndex, onClose }: {
           <Text style={styles.lightboxCaption}>{images[idx].title}</Text>
         ) : null}
         {images.length > 1 && (
-          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 24 }}>
+          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 24 }}>
             {idx + 1} / {images.length}
           </Text>
         )}
@@ -978,7 +978,7 @@ const styles = StyleSheet.create({
     paddingBottom: 22,
   },
   heroDesignation: {
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.65)',
     letterSpacing: 1.4,
@@ -1024,7 +1024,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   statLabel: {
-    fontSize: 9.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.inkMute,
     letterSpacing: 0.5,
@@ -1148,7 +1148,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceAlt,
   },
   chipText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: C.inkSoft,
   },
@@ -1161,7 +1161,7 @@ const styles = StyleSheet.create({
     borderColor: C.primary,
   },
   chipExpandText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: C.primary,
   },
@@ -1176,7 +1176,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   hoursName: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     marginBottom: 10,
@@ -1218,7 +1218,7 @@ const styles = StyleSheet.create({
     color: C.primary,
   },
   feeDesc: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.inkMute,
     lineHeight: 17,
     marginTop: 4,
@@ -1258,7 +1258,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   weatherDay: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     letterSpacing: 0.3,
@@ -1275,13 +1275,13 @@ const styles = StyleSheet.create({
     color: C.ink,
   },
   weatherLow: {
-    fontSize: 10,
+    fontSize: 13,
     color: C.inkMute,
     marginTop: 1,
     marginBottom: 6,
   },
   weatherDesc: {
-    fontSize: 10,
+    fontSize: 13,
     color: C.inkMute,
     textAlign: 'center',
     lineHeight: 13,
@@ -1316,7 +1316,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   visitDate: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
     color: C.inkMute,
     letterSpacing: 0.2,
@@ -1358,7 +1358,7 @@ const styles = StyleSheet.create({
   },
   lightboxCaption: {
     color: 'rgba(255,255,255,0.6)',
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
     paddingHorizontal: 24,
     marginTop: 12,
@@ -1382,7 +1382,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   attributionText: {
-    fontSize: 11,
+    fontSize: 13,
     color: C.inkMute,
     lineHeight: 16,
     textAlign: 'center',
@@ -1415,7 +1415,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(27,26,22,0.10)',
   },
   viewOnMapBtnText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '600',
     color: '#1F3D2E',
   },

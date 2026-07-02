@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   kicker: {
-    fontSize: 10, fontWeight: '700', letterSpacing: 1.4,
+    fontSize: 13, fontWeight: '700', letterSpacing: 1.4,
     color: C.inkMute, marginBottom: 4,
   },
   title: {
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.primary, borderColor: C.primary,
   },
   chipText: {
-    fontSize: 12, fontWeight: '600', color: C.inkSoft,
+    fontSize: 13, fontWeight: '600', color: C.inkSoft,
   },
   chipTextActive: {
     color: '#FFFBF1',
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
   // Footer
   endOfFeed: {
     textAlign: 'center', paddingVertical: 20,
-    fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: C.inkMute,
+    fontSize: 13, fontWeight: '700', letterSpacing: 1.5, color: C.inkMute,
   },
 
   // Empty state

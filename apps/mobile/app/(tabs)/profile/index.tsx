@@ -1,19 +1,20 @@
 import {
-  ActivityIndicator, Image, Modal, ScrollView, StyleSheet,
+  ActivityIndicator, Image, Modal, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { BADGE_MAP } from '@/lib/badges';
-import { setParkFilterIntent } from '@/lib/parkFilterIntent';
 import { Wordmark } from '@/components/Wordmark';
+import { ParkStamp } from '@/components/ParkStamp';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { useColors } from '@/lib/palette';
-import Svg, { Circle, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
+import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -49,6 +50,19 @@ interface BadgeSummary {
   tier: string;
   earned: boolean;
   earned_at: string | null;
+}
+
+interface Park {
+  park_code: string;
+  name: string;
+  states: string;
+}
+
+interface StampPreview {
+  park_code: string;
+  name: string;
+  states: string;
+  colorIdx: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -118,30 +132,6 @@ function BadgeInfoModal({ badge, onClose }: { badge: BadgeSummary; onClose: () =
   );
 }
 
-// ── Stat cell ─────────────────────────────────────────────────────────────────
-
-function StatCell({ value, sub, label, onPress }: {
-  value: number; sub?: string; label: string; onPress?: () => void;
-}) {
-  const inner = (
-    <>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 1 }}>
-        <Text style={styles.statValue}>{value}</Text>
-        {sub ? <Text style={styles.statSub}>{sub}</Text> : null}
-      </View>
-      <Text style={styles.statLabel}>{label}</Text>
-    </>
-  );
-  if (onPress) {
-    return (
-      <TouchableOpacity style={styles.statCell} onPress={onPress} activeOpacity={0.6}>
-        {inner}
-      </TouchableOpacity>
-    );
-  }
-  return <View style={styles.statCell}>{inner}</View>;
-}
-
 // ── Nav row ───────────────────────────────────────────────────────────────────
 
 function NavRow({
@@ -187,6 +177,7 @@ export default function ProfileScreen() {
   const [friendCount,  setFriendCount]  = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<BadgeSummary[]>([]);
   const [selectedBadge, setSelectedBadge] = useState<BadgeSummary | null>(null);
+  const [rawVisits, setRawVisits] = useState<any[]>([]);
   const [searchOpen,   setSearchOpen]   = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
@@ -219,6 +210,7 @@ export default function ProfileScreen() {
         const visited = [...new Set(vs.filter((v: any) => !v.is_bucket_list && v.visited_date).map((v: any) => v.park_code))];
         setParksVisited(visited.length);
         setBucketList(vs.filter((v: any) => v.is_bucket_list).length);
+        setRawVisits(vs);
       }
       if (badgesRes.status === 'fulfilled') {
         const all = badgesRes.value.badges ?? [];
@@ -248,6 +240,68 @@ export default function ProfileScreen() {
     : null;
   const rank = explorerRank(parksVisited);
 
+  const mapParks = useMemo(() => {
+    const seen = new Set<string>();
+    return rawVisits
+      .filter((v: any) => {
+        if (!v.latitude || !v.longitude || v.is_bucket_list || !v.visited_date) return false;
+        if (seen.has(v.park_code)) return false;
+        seen.add(v.park_code);
+        return true;
+      })
+      .map((v: any) => ({
+        park_code: v.park_code,
+        name: v.park_name,
+        lat: parseFloat(v.latitude),
+        lng: parseFloat(v.longitude),
+      }))
+      .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  }, [rawVisits]);
+
+  const mapRegion = useMemo(() => {
+    if (mapParks.length === 0) return undefined;
+    const lats = mapParks.map(p => p.lat);
+    const lngs = mapParks.map(p => p.lng);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.5, 4),
+      longitudeDelta: Math.max((maxLng - minLng) * 1.5, 6),
+    };
+  }, [mapParks]);
+
+  // Most recent stamps first; colorIdx = chronological index so colors match the passport screen
+  const recentStamps = useMemo((): StampPreview[] => {
+    const byPark = new Map<string, any>();
+    rawVisits.forEach((v: any) => {
+      if (!v.is_bucket_list && v.visited_date) byPark.set(v.park_code, v);
+    });
+    return [...byPark.values()]
+      .sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''))
+      .map((v, idx) => ({
+        park_code: v.park_code,
+        name: v.park_name ?? v.park_code,
+        states: v.states ?? '',
+        colorIdx: idx,
+      }))
+      .slice(-5)
+      .reverse();
+  }, [rawVisits]);
+
+  const handleShare = async () => {
+    if (!user?.id) return;
+    const url = `parkquest://user/${user.id}`;
+    try {
+      await Share.share({
+        message: `Follow ${displayName} on ParkQuest and explore national parks together! ${url}`,
+      });
+    } catch {
+      // user dismissed the share sheet
+    }
+  };
+
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -273,6 +327,13 @@ export default function ProfileScreen() {
           onPress={() => setSearchOpen(true)}
         >
           <Ionicons name="search" size={17} color={C.inkSoft} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.iconBtn}
+          activeOpacity={0.7}
+          onPress={handleShare}
+        >
+          <Ionicons name="share-outline" size={17} color={C.inkSoft} />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.iconBtn}
@@ -319,86 +380,135 @@ export default function ProfileScreen() {
       {topBar}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
-        {/* ── Hero header ──────────────────────────────────────────────────── */}
-        <View style={styles.hero}>
-          {/* Avatar */}
-          <View style={styles.avatarWrap}>
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: C.primary }]}>
-                <Text style={styles.avatarInitial}>{(displayName[0] ?? 'E').toUpperCase()}</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Name + handle + join date */}
-          <View style={{ marginTop: 14, alignItems: 'center' }}>
-            <Text style={styles.heroName}>{displayName}</Text>
-            {username ? (
-              <Text style={styles.heroHandle}>@{username}</Text>
-            ) : null}
-            <View style={styles.heroMeta}>
-              {joinDate ? (
-                <Text style={styles.heroMetaText}>Joined {joinDate}</Text>
-              ) : null}
-              <View style={[styles.rankBadge, { backgroundColor: C.primary + '18' }]}>
-                <Text style={[styles.rankText, { color: C.primary }]}>{rank}</Text>
-              </View>
-            </View>
-            {profile?.bio ? (
-              <Text style={styles.heroBio}>{profile.bio}</Text>
-            ) : null}
-          </View>
-        </View>
-
-        {/* ── Stats strip ──────────────────────────────────────────────────── */}
-        <View style={styles.statsStrip}>
-          <StatCell
-            value={parksVisited} sub="/63" label="PARKS"
-            onPress={() => { setParkFilterIntent('visited'); router.push('/(tabs)/parks' as never); }}
-          />
-          <View style={styles.statDivider} />
-          <StatCell
-            value={bucketList} label="BUCKET"
-            onPress={() => { setParkFilterIntent('bucketList'); router.push('/(tabs)/parks' as never); }}
-          />
-          <View style={styles.statDivider} />
-          <StatCell value={badgesEarned} label="BADGES" onPress={() => router.push('/profile/badges' as never)} />
-          <View style={styles.statDivider} />
-          <StatCell value={friendCount}  label="FRIENDS" onPress={() => router.push('/profile/friends' as never)} />
-        </View>
-
-        {/* ── Mini passport card ───────────────────────────────────────────── */}
+        {/* ── Passport hero card ───────────────────────────────────────────── */}
         <TouchableOpacity
           style={[styles.passportCard, { backgroundColor: C.primaryDeep, shadowColor: C.primaryDeep }]}
           onPress={() => router.push('/profile/passport' as never)}
           activeOpacity={0.88}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.passportKicker}>PARKQUEST · PASSPORT</Text>
-            <Text style={styles.passportName} numberOfLines={1}>
-              {displayName.toUpperCase()}
-            </Text>
-            {username ? <Text style={styles.passportHandle}>@{username}</Text> : null}
-            <View style={styles.passportStats}>
-              {[
-                { label: 'VISITED', value: `${parksVisited}/63` },
-                { label: 'BUCKET',  value: String(bucketList) },
-                { label: 'CLASS',   value: rank },
-                { label: 'BADGES',  value: String(badgesEarned) },
-              ].map(s => (
-                <View key={s.label} style={styles.passportStatItem}>
-                  <Text style={styles.passportStatLabel}>{s.label}</Text>
-                  <Text style={styles.passportStatVal}>{s.value}</Text>
+          {/* Wavy background texture */}
+          <Svg
+            width="100%"
+            height="100%"
+            viewBox="0 0 360 180"
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            preserveAspectRatio="xMidYMid slice"
+          >
+            {[0, 22, 44, 66, 88, 110, 132, 154, 176].map((y, i) => (
+              <Path
+                key={i}
+                d={`M-20 ${y} C 40 ${y - 12}, 80 ${y + 12}, 120 ${y} S 200 ${y - 12}, 240 ${y} S 320 ${y + 12}, 380 ${y}`}
+                stroke="rgba(201,169,74,0.07)"
+                strokeWidth={1.5}
+                fill="none"
+              />
+            ))}
+          </Svg>
+
+          <View style={styles.passportHeader}>
+            <View style={styles.avatarWrap}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: C.primary }]}>
+                  <Text style={styles.avatarInitial}>{(displayName[0] ?? 'E').toUpperCase()}</Text>
                 </View>
-              ))}
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.passportName} numberOfLines={1} adjustsFontSizeToFit>
+                {displayName}
+              </Text>
+              {username ? <Text style={styles.passportHandle}>@{username}</Text> : null}
+              {joinDate ? <Text style={styles.passportJoined}>Joined {joinDate}</Text> : null}
             </View>
           </View>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.passportAvatar} />
+
+          {profile?.bio ? (
+            <Text style={styles.passportBio}>{profile.bio}</Text>
           ) : null}
+
+          <View style={styles.passportStats}>
+            {([
+              { label: 'VISITED', value: `${parksVisited}/63` },
+              { label: 'BUCKET',  value: String(bucketList) },
+              { label: 'BADGES',  value: String(badgesEarned) },
+              { label: 'FRIENDS', value: String(friendCount) },
+              { label: 'CLASS',   value: rank, full: true },
+            ] as { label: string; value: string; full?: boolean }[]).map(s => (
+              <View key={s.label} style={[styles.passportStatItem, s.full && { width: '100%' }]}>
+                <Text style={styles.passportStatLabel}>{s.label}</Text>
+                <Text style={styles.passportStatVal}>{s.value}</Text>
+              </View>
+            ))}
+          </View>
         </TouchableOpacity>
+
+        {/* ── Recent stamps preview ────────────────────────────────────────── */}
+        {recentStamps.length > 0 && (
+          <View style={styles.badgesPreview}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="book-outline" size={13} color={C.inkMute} />
+              <Text style={styles.sectionKicker}>STAMPS</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
+              {recentStamps.map(s => (
+                <TouchableOpacity
+                  key={s.park_code}
+                  onPress={() => router.push(`/parks/${s.park_code}` as never)}
+                  activeOpacity={0.7}
+                  style={styles.badgePreviewItem}
+                >
+                  <View style={{ marginBottom: 6 }}>
+                    <ParkStamp
+                      parkCode={s.park_code}
+                      name={s.name}
+                      states={s.states}
+                      colorIdx={s.colorIdx}
+                      size={52}
+                      idSuffix="-profile"
+                    />
+                  </View>
+                  <Text style={styles.badgePreviewName} numberOfLines={2}>{s.name}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                onPress={() => router.push('/profile/passport' as never)}
+                style={styles.badgePreviewItem}
+                activeOpacity={0.7}
+              >
+                <Svg width={52} height={52} viewBox="0 0 52 52" style={{ marginBottom: 6 }}>
+                  <Circle
+                    cx={26} cy={26} r={23}
+                    fill="none"
+                    stroke={C.primary}
+                    strokeWidth={1}
+                    strokeDasharray="3 2.5"
+                  />
+                  <SvgText
+                    x={26} y={19.5}
+                    textAnchor="middle"
+                    alignmentBaseline="central"
+                    fill={C.primary}
+                    fontSize={9.5}
+                    fontWeight="800"
+                    letterSpacing={0.6}
+                  >SEE</SvgText>
+                  <SvgText
+                    x={26} y={32.5}
+                    textAnchor="middle"
+                    alignmentBaseline="central"
+                    fill={C.primary}
+                    fontSize={9.5}
+                    fontWeight="800"
+                    letterSpacing={0.6}
+                  >ALL</SvgText>
+                </Svg>
+                <Text style={[styles.badgePreviewName, { color: C.primary }]} numberOfLines={2}>All Stamps</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        )}
 
         {/* ── Earned badges preview ────────────────────────────────────────── */}
         {earnedBadges.length > 0 && (
@@ -458,6 +568,48 @@ export default function ProfileScreen() {
             </ScrollView>
           </View>
         )}
+
+        {/* ── Visited parks map ────────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="map-outline" size={13} color={C.inkMute} />
+            <Text style={styles.sectionKicker}>VISITED PARKS</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.mapCard}
+            activeOpacity={0.85}
+            onPress={() => router.push('/(tabs)/map' as never)}
+          >
+            {mapParks.length > 0 ? (
+              <MapView
+                style={{ width: '100%', height: 200 }}
+                provider={PROVIDER_DEFAULT}
+                initialRegion={mapRegion}
+                rotateEnabled={false}
+                pitchEnabled={false}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                toolbarEnabled={false}
+                pointerEvents="none"
+              >
+                {mapParks.map(p => (
+                  <Marker
+                    key={p.park_code}
+                    coordinate={{ latitude: p.lat, longitude: p.lng }}
+                    tracksViewChanges={false}
+                  >
+                    <View style={styles.markerDot} />
+                  </Marker>
+                ))}
+              </MapView>
+            ) : (
+              <View style={styles.mapEmpty}>
+                <Ionicons name="map-outline" size={22} color={C.inkMute} />
+                <Text style={styles.mapEmptyText}>No park visits yet</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* ── My collection nav rows ───────────────────────────────────────── */}
         <View style={styles.section}>
@@ -540,19 +692,18 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
-  // Hero
-  hero: {
-    alignItems: 'center',
-    paddingTop: 28,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-  },
+  // Avatar
   avatarWrap: {
-    padding: 3,
+    padding: 1.5,
     borderRadius: 50,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: C.hairline,
     backgroundColor: C.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
   },
   avatar: {
     width: 84, height: 84, borderRadius: 42,
@@ -565,83 +716,40 @@ const styles = StyleSheet.create({
   avatarInitial: {
     fontSize: 30, fontWeight: '900', color: '#FFFBF1',
   },
-  heroName: {
-    fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.5, textAlign: 'center',
-  },
-  heroHandle: {
-    fontSize: 12, fontWeight: '600', color: C.inkMute, letterSpacing: 0.8, marginTop: 2,
-  },
-  heroMeta: {
-    flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 6,
-  },
-  heroMetaText: {
-    fontSize: 11, color: C.inkMute,
-  },
-  rankBadge: {
-    backgroundColor: C.primary + '18',
-    borderRadius: 100,
-    paddingHorizontal: 8, paddingVertical: 3,
-  },
-  rankText: {
-    fontSize: 9, fontWeight: '800', color: C.primary, letterSpacing: 1.2,
-  },
-  heroBio: {
-    fontSize: 13.5, color: C.inkSoft, lineHeight: 19, textAlign: 'center', marginTop: 10, maxWidth: 300,
-  },
-
-  // Stats strip
-  statsStrip: {
-    flexDirection: 'row', marginHorizontal: 16, marginBottom: 20,
-    backgroundColor: C.surface, borderRadius: 14,
-    borderWidth: 0.5, borderColor: C.hairline, overflow: 'hidden',
-  },
-  statCell: {
-    flex: 1, alignItems: 'center', paddingVertical: 18,
-  },
-  statValue: {
-    fontSize: 28, fontWeight: '900', color: C.ink, letterSpacing: -0.8, lineHeight: 30,
-  },
-  statSub: {
-    fontSize: 14, fontWeight: '600', color: C.inkMute, marginLeft: 1,
-  },
-  statLabel: {
-    fontSize: 9.5, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4,
-    textTransform: 'uppercase', marginTop: 4,
-  },
-  statDivider: {
-    width: 0.5, backgroundColor: C.hairline, marginVertical: 10,
-  },
 
   // Passport card
   passportCard: {
     marginHorizontal: 16,
+    marginTop: 20,
     marginBottom: 20,
     borderRadius: 14,
-    padding: '20px' as any,
     paddingHorizontal: 20,
     paddingVertical: 18,
     backgroundColor: C.primaryDeep,
     borderWidth: 0.5,
     borderColor: 'rgba(0,0,0,0.3)',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    // Topo-like inner pattern using shadow
     shadowColor: C.primaryDeep,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 6,
+    overflow: 'hidden',
   },
-  passportKicker: {
-    fontSize: 8, fontWeight: '600', color: 'rgba(201,169,74,0.7)',
-    letterSpacing: 2, marginBottom: 6,
+  passportHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 16,
   },
   passportName: {
-    fontSize: 20, fontWeight: '900', color: C.gold, letterSpacing: 2.5, lineHeight: 22,
+    fontSize: 26, fontWeight: '800', color: C.gold, letterSpacing: -0.5,
+    textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
   },
   passportHandle: {
-    fontSize: 9, fontWeight: '600', color: 'rgba(201,169,74,0.6)', letterSpacing: 0.8, marginTop: 2,
+    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.85)', letterSpacing: 0.8, marginTop: 2,
+  },
+  passportJoined: {
+    fontSize: 13, color: 'rgba(201,169,74,0.8)', marginTop: 4,
+  },
+  passportBio: {
+    fontSize: 13.5, color: 'rgba(255,251,241,0.75)', lineHeight: 19, marginTop: 12,
   },
   passportStats: {
     flexDirection: 'row', flexWrap: 'wrap', marginTop: 14, paddingTop: 12,
@@ -651,15 +759,11 @@ const styles = StyleSheet.create({
     width: '50%', marginBottom: 10,
   },
   passportStatLabel: {
-    fontSize: 7, fontWeight: '600', color: 'rgba(201,169,74,0.55)', letterSpacing: 1.2,
+    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.8)', letterSpacing: 1.2,
   },
   passportStatVal: {
-    fontSize: 11, fontWeight: '700', color: C.gold, marginTop: 2, letterSpacing: 0.2,
-  },
-  passportAvatar: {
-    width: 44, height: 44, borderRadius: 6,
-    borderWidth: 1.5, borderColor: 'rgba(201,169,74,0.4)',
-    marginTop: 4,
+    fontSize: 13, fontWeight: '700', color: C.gold, marginTop: 2, letterSpacing: 0.2,
+    textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
 
   // Badges preview
@@ -676,7 +780,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, marginBottom: 6,
   },
   badgePreviewName: {
-    fontSize: 10, fontWeight: '600', color: C.ink, textAlign: 'center', lineHeight: 13,
+    fontSize: 13, fontWeight: '600', color: C.ink, textAlign: 'center', lineHeight: 13,
   },
 
   // Sections
@@ -687,7 +791,7 @@ const styles = StyleSheet.create({
     marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 6,
   },
   sectionKicker: {
-    fontSize: 10, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4, textTransform: 'uppercase',
+    fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4, textTransform: 'uppercase',
   },
   sectionTitle: {
     fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.2, marginTop: 2,
@@ -711,22 +815,50 @@ const styles = StyleSheet.create({
     fontSize: 14, fontWeight: '700', color: C.ink, marginBottom: 1,
   },
   navSub: {
-    fontSize: 11.5, color: C.inkMute,
+    fontSize: 13, color: C.inkMute,
   },
   navCount: {
     backgroundColor: C.surfaceAlt, borderRadius: 100,
     paddingHorizontal: 8, paddingVertical: 3,
   },
   navCountText: {
-    fontSize: 11, fontWeight: '700', color: C.inkSoft,
+    fontSize: 13, fontWeight: '700', color: C.inkSoft,
   },
   rowDivider: {
     height: 0.5, backgroundColor: C.hairline, marginLeft: 66,
   },
 
+  // Map
+  mapCard: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    backgroundColor: '#CECDBC',
+  },
+  mapEmpty: {
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: C.surface,
+  },
+  mapEmptyText: {
+    fontSize: 13,
+    color: C.inkMute,
+  },
+  markerDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#2F7A4A',
+    borderWidth: 2,
+    borderColor: '#FFFBF1',
+  },
+
   // Attribution
   attribution: {
-    textAlign: 'center', fontSize: 11, color: C.inkMute,
+    textAlign: 'center', fontSize: 13, color: C.inkMute,
     marginTop: 24, marginHorizontal: 16,
   },
 
@@ -783,7 +915,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3, textAlign: 'center',
   },
   badgeModalTier: {
-    fontSize: 9, fontWeight: '700', letterSpacing: 1.6,
+    fontSize: 13, fontWeight: '700', letterSpacing: 1.6,
     textTransform: 'uppercase', marginTop: 5, marginBottom: 20,
   },
   badgeModalHow: {
@@ -792,13 +924,13 @@ const styles = StyleSheet.create({
     marginBottom: 16, alignSelf: 'stretch',
   },
   badgeModalHowKicker: {
-    fontSize: 8.5, fontWeight: '600', letterSpacing: 1.2,
+    fontSize: 13, fontWeight: '600', letterSpacing: 1.2,
     color: C.inkMute, marginBottom: 6,
   },
   badgeModalHowText: {
     fontSize: 13.5, color: C.inkSoft, lineHeight: 21,
   },
   badgeModalEarned: {
-    fontSize: 12, color: C.inkMute, textAlign: 'center',
+    fontSize: 13, color: C.inkMute, textAlign: 'center',
   },
 });

@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
     borderBottomColor: C.hairlineSoft,
   },
   kicker: {
-    fontSize: 9.5,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 1.5,
     color: C.inkMute,
@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   tabLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: C.inkSoft,
   },
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     letterSpacing: 1,
@@ -582,7 +582,7 @@ const styles = StyleSheet.create({
     color: C.ink,
   },
   rowSub: {
-    fontSize: 11.5,
+    fontSize: 13,
     color: C.inkMute,
     marginTop: 1,
   },

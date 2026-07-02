@@ -622,7 +622,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   joinText: {
-    fontSize: 11,
+    fontSize: 13,
     color: C.inkMute,
   },
   rankBadge: {
@@ -632,7 +632,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   rankText: {
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: '800',
     color: C.primary,
     letterSpacing: 1.2,
@@ -665,12 +665,12 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   statSub: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.inkMute,
     fontWeight: '600',
   },
   statLabel: {
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     letterSpacing: 1.1,
@@ -716,7 +716,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   sectionHeaderText: {
-    fontSize: 9.5,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     letterSpacing: 1.4,
@@ -766,13 +766,13 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   badgeChipName: {
-    fontSize: 11.5,
+    fontSize: 13,
     fontWeight: '700',
     color: C.ink,
     lineHeight: 14,
   },
   badgeChipTier: {
-    fontSize: 8.5,
+    fontSize: 13,
     fontWeight: '600',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
@@ -821,7 +821,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   badgeModalTier: {
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 1.6,
     textTransform: 'uppercase',
@@ -839,7 +839,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   badgeModalHowKicker: {
-    fontSize: 8.5,
+    fontSize: 13,
     fontWeight: '600',
     letterSpacing: 1.2,
     color: C.inkMute,
@@ -851,7 +851,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   badgeModalEarned: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.inkMute,
     textAlign: 'center',
   },
@@ -918,7 +918,7 @@ const styles = StyleSheet.create({
     color: C.ink,
   },
   friendRowHandle: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.inkMute,
     marginTop: 1,
   },

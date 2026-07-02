@@ -195,11 +195,13 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%", maxWidth: 440,
+          maxHeight: "90vh",
           background: "var(--bg)",
           border: "0.5px solid var(--hairline)",
           borderRadius: 16,
           boxShadow: "0 24px 60px rgba(0,0,0,0.22)",
           overflow: "hidden",
+          display: "flex", flexDirection: "column",
           animation: "pqEditProfile 200ms cubic-bezier(.2,.7,.3,1)",
         }}
       >
@@ -220,7 +222,7 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
         </div>
 
         {/* Body */}
-        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 18, overflowY: "auto", flex: 1 }}>
 
           {/* Avatar */}
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>

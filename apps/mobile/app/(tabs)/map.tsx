@@ -1576,7 +1576,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   searchSectionTitle: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     letterSpacing: 0.8,
@@ -1610,7 +1610,7 @@ const styles = StyleSheet.create({
     color: C.ink,
   },
   searchRowSub: {
-    fontSize: 11.5,
+    fontSize: 13,
     color: C.inkMute,
     marginTop: 1,
   },
@@ -1695,7 +1695,7 @@ const styles = StyleSheet.create({
     borderRadius: 3.5,
   },
   pillCount: {
-    fontSize: 10.5,
+    fontSize: 13,
     fontWeight: '700',
     color: C.ink,
     minWidth: 14,
@@ -1705,7 +1705,7 @@ const styles = StyleSheet.create({
     color: C.ink,
   },
   pillLabel: {
-    fontSize: 10.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.inkSoft,
     letterSpacing: 0.5,
@@ -1805,7 +1805,7 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   heroDesignation: {
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.65)',
     letterSpacing: 1.4,
@@ -1861,7 +1861,7 @@ const styles = StyleSheet.create({
     borderBottomColor: C.hairline,
   },
   titleBarState: {
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     letterSpacing: 1.4,
@@ -1911,7 +1911,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   statLabel: {
-    fontSize: 9.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.inkMute,
     letterSpacing: 0.5,
@@ -1966,7 +1966,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceAlt,
   },
   activityChipText: {
-    fontSize: 10.5,
+    fontSize: 13,
     fontWeight: '500',
     color: C.inkSoft,
   },
@@ -1975,7 +1975,7 @@ const styles = StyleSheet.create({
     borderColor: C.primary,
   },
   chipExpandText: {
-    fontSize: 10.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.primary,
   },
@@ -1990,7 +1990,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   hoursName: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     marginBottom: 10,
@@ -2003,12 +2003,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   hoursDay: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
     color: C.inkSoft,
   },
   hoursVal: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.inkMute,
   },
 
@@ -2021,19 +2021,19 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
   },
   feeName: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '700',
     color: C.ink,
     flex: 1,
     marginRight: 8,
   },
   feeCost: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '700',
     color: C.primary,
   },
   feeDesc: {
-    fontSize: 11,
+    fontSize: 13,
     color: C.inkMute,
     lineHeight: 15,
   },
@@ -2046,7 +2046,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   linkBtnText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.primary,
   },
@@ -2056,7 +2056,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   contactText: {
-    fontSize: 12.5,
+    fontSize: 13,
     color: C.ink,
     flex: 1,
   },
@@ -2072,7 +2072,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   weatherDay: {
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: '700',
     color: C.inkMute,
     letterSpacing: 0.2,
@@ -2089,16 +2089,16 @@ const styles = StyleSheet.create({
     color: C.ink,
   },
   weatherLow: {
-    fontSize: 9,
+    fontSize: 13,
     color: C.inkMute,
     marginTop: 1,
     marginBottom: 4,
   },
   weatherDesc: {
-    fontSize: 9,
+    fontSize: 13,
     color: C.inkMute,
     textAlign: 'center',
-    lineHeight: 12,
+    lineHeight: 17,
     marginTop: 3,
   },
 
@@ -2124,17 +2124,17 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceAlt,
   },
   visitDate: {
-    fontSize: 11.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.ink,
   },
   visitTitle: {
-    fontSize: 11,
+    fontSize: 13,
     color: C.inkSoft,
     marginTop: 1,
   },
   visitNotes: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.inkSoft,
     lineHeight: 18,
   },
@@ -2150,7 +2150,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   visitEditBtnText: {
-    fontSize: 11.5,
+    fontSize: 13,
     fontWeight: '600',
     color: C.primary,
   },
@@ -2164,7 +2164,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   attributionText: {
-    fontSize: 10,
+    fontSize: 13,
     color: C.inkMute,
     lineHeight: 14,
     textAlign: 'center',

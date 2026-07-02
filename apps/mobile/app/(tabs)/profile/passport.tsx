@@ -2,8 +2,8 @@ import {
   Dimensions, FlatList, Image, Platform, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
-import Svg, { Circle, Defs, Line, Path as SvgPath, Text as SvgText, TextPath } from 'react-native-svg';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { ParkStamp } from '@/components/ParkStamp';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -30,7 +30,6 @@ const P_FAINT = 'rgba(58,46,28,0.22)';
 const FOIL    = '#A87E2C';
 const COVER_FOIL = '#C9A94A';
 
-const STAMP_COLORS = ['#5A2418', '#1F3D2E', '#2D4F66', '#3A2E5C', '#7B3A1F'];
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const W    = Dimensions.get('window').width;
 
@@ -80,33 +79,9 @@ function explorerRank(n: number): string {
   return 'TRAILHEAD';
 }
 
-function stampColor(idx: number): string {
-  return STAMP_COLORS[idx % STAMP_COLORS.length];
-}
-
 function passportNo(username: string): string {
   const n = ((username.length * 73291 + 41023) % 9999999).toString().padStart(7, '0');
   return `PQ${n}`;
-}
-
-const STATE_ABBR: Record<string, string> = {
-  Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA',
-  Colorado: 'CO', Connecticut: 'CT', Delaware: 'DE', Florida: 'FL', Georgia: 'GA',
-  Hawaii: 'HI', Idaho: 'ID', Illinois: 'IL', Indiana: 'IN', Iowa: 'IA',
-  Kansas: 'KS', Kentucky: 'KY', Louisiana: 'LA', Maine: 'ME', Maryland: 'MD',
-  Massachusetts: 'MA', Michigan: 'MI', Minnesota: 'MN', Mississippi: 'MS',
-  Missouri: 'MO', Montana: 'MT', Nebraska: 'NE', Nevada: 'NV', 'New Hampshire': 'NH',
-  'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC',
-  'North Dakota': 'ND', Ohio: 'OH', Oklahoma: 'OK', Oregon: 'OR', Pennsylvania: 'PA',
-  'Rhode Island': 'RI', 'South Carolina': 'SC', 'South Dakota': 'SD',
-  Tennessee: 'TN', Texas: 'TX', Utah: 'UT', Vermont: 'VT', Virginia: 'VA',
-  Washington: 'WA', 'West Virginia': 'WV', Wisconsin: 'WI', Wyoming: 'WY',
-};
-
-function stateCode(states: string): string {
-  const first = states.split(',')[0]?.trim() ?? states;
-  if (first.length <= 3) return first.toUpperCase();
-  return STATE_ABBR[first] ?? first.slice(0, 2).toUpperCase();
 }
 
 function stampDateStr(iso: string): string {
@@ -255,7 +230,7 @@ function PassportDataPage({
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={st.dataMetaLabel}>STATUS</Text>
           <View style={{ borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2, backgroundColor: visitedCount > 0 ? 'rgba(31,92,46,0.12)' : 'transparent' }}>
-            <Text style={{ fontSize: 9, fontWeight: '800', letterSpacing: 1.2, color: visitedCount > 0 ? '#1F5C2E' : P_MUTE }}>
+            <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: visitedCount > 0 ? '#1F5C2E' : P_MUTE }}>
               {visitedCount > 0 ? '● ACTIVE' : '○ INACTIVE'}
             </Text>
           </View>
@@ -277,15 +252,7 @@ function PassportDataPage({
 // ── Stamp cell (visited) ──────────────────────────────────────────────────────
 
 function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) {
-  const c         = stampColor(item.colorIdx);
-  const sc        = stateCode(item.states);
-  const date      = item.visited_date ? stampDateStr(item.visited_date) : '';
-  const raw       = item.name.toUpperCase();
-  const shortName = raw.length > 18 ? raw.slice(0, 16) + '…' : raw;
-  const nameFontSize = shortName.length > 16 ? 7 : shortName.length > 13 ? 7.5 : shortName.length > 10 ? 8 : 9;
-  const rotate    = `${((item.colorIdx * 37) % 16) - 8}deg`;
-  const topId     = `top-${item.park_code}`;
-  const botId     = `bot-${item.park_code}`;
+  const date = item.visited_date ? stampDateStr(item.visited_date) : '';
 
   return (
     <TouchableOpacity
@@ -293,73 +260,23 @@ function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) 
       activeOpacity={0.75}
       style={{ width: CELL_W, alignItems: 'center', paddingVertical: 12 }}
     >
-      <View style={{ transform: [{ rotate }] }}>
-        <Svg width={STAMP_D} height={STAMP_D} viewBox="0 0 100 100" overflow="visible">
-          <Defs>
-            <SvgPath id={topId} d="M 14 50 A 36 36 0 0 1 86 50" />
-            <SvgPath id={botId} d="M 14 50 A 36 36 0 0 0 86 50" />
-          </Defs>
-
-          {/* Outer thick ring — matches real stamp border weight */}
-          <Circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" />
-          {/* Inner ring */}
-          <Circle cx="50" cy="50" r="37" fill="none" stroke={c} strokeWidth="1.1" opacity="0.85" />
-
-          {/* Tick marks between rings at 8 positions (cardinal + diagonal) */}
-          <Line x1="88.5" y1="50"   x2="93"   y2="50"   stroke={c} strokeWidth="1.4" opacity="0.85" />
-          <Line x1="11.5" y1="50"   x2="7"    y2="50"   stroke={c} strokeWidth="1.4" opacity="0.85" />
-          <Line x1="50"   y1="88.5" x2="50"   y2="93"   stroke={c} strokeWidth="1.4" opacity="0.85" />
-          <Line x1="50"   y1="11.5" x2="50"   y2="7"    stroke={c} strokeWidth="1.4" opacity="0.85" />
-          <Line x1="77.2" y1="77.2" x2="80.4" y2="80.4" stroke={c} strokeWidth="1.4" opacity="0.85" />
-          <Line x1="22.8" y1="77.2" x2="19.6" y2="80.4" stroke={c} strokeWidth="1.4" opacity="0.85" />
-          <Line x1="22.8" y1="22.8" x2="19.6" y2="19.6" stroke={c} strokeWidth="1.4" opacity="0.85" />
-          <Line x1="77.2" y1="22.8" x2="80.4" y2="19.6" stroke={c} strokeWidth="1.4" opacity="0.85" />
-
-          {/* Horizontal band dividers — create 3-section stamp layout */}
-          <Line x1="17"   y1="34"   x2="83"   y2="34"   stroke={c} strokeWidth="0.9" opacity="0.8" />
-          <Line x1="17"   y1="66"   x2="83"   y2="66"   stroke={c} strokeWidth="0.9" opacity="0.8" />
-
-          {/* Park name on top arc */}
-          <SvgText fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.92">
-            <TextPath href={`#${topId}`} startOffset="50%" textAnchor="middle">
-              {shortName}
-            </TextPath>
-          </SvgText>
-
-          {/* State code on bottom arc */}
-          <SvgText fill={c} fontWeight="700" fontSize="6.5" letterSpacing="1.8" opacity="0.88">
-            <TextPath href={`#${botId}`} startOffset="50%" textAnchor="middle">
-              ★ {sc} ★
-            </TextPath>
-          </SvgText>
-
-          {/* Center scene ─────────────────────────────────────────── */}
-          {/* Back mountain (left, lighter for depth) */}
-          <SvgPath d="M 18 63 L 36 44 L 54 63 Z" fill={c} opacity="0.38" />
-          {/* Front mountain (center, taller) */}
-          <SvgPath d="M 33 63 L 53 37 L 73 63 Z" fill={c} opacity="0.88" />
-          {/* Snow cap on front peak */}
-          <SvgPath d="M 53 37 L 47 48 L 59 48 Z" fill="white" opacity="0.28" />
-          {/* Pine trees — left */}
-          <SvgPath d="M 18 63 L 21 56 L 24 63 Z" fill={c} opacity="0.9" />
-          <SvgPath d="M 23 63 L 27 55 L 31 63 Z" fill={c} opacity="0.9" />
-          {/* Pine trees — right */}
-          <SvgPath d="M 72 63 L 75 56 L 78 63 Z" fill={c} opacity="0.9" />
-          <SvgPath d="M 77 63 L 80 55 L 83 63 Z" fill={c} opacity="0.88" />
-          {/* Sun */}
-          <Circle cx="72" cy="43" r="2.8" fill={c} opacity="0.88" />
-        </Svg>
-      </View>
+      <ParkStamp
+        parkCode={item.park_code}
+        name={item.name}
+        states={item.states}
+        colorIdx={item.colorIdx}
+        size={STAMP_D}
+      />
 
       {/* Park name label below stamp (not rotated) */}
       <Text
         numberOfLines={2}
-        style={{ fontSize: 9, fontWeight: '600', color: C.inkSoft, textAlign: 'center', marginTop: 6, lineHeight: 12, maxWidth: CELL_W - 8 }}
+        style={{ fontSize: 13, fontWeight: '600', color: C.inkSoft, textAlign: 'center', marginTop: 6, lineHeight: 16, maxWidth: CELL_W - 8 }}
       >
         {item.name}
       </Text>
       {date ? (
-        <Text style={{ fontSize: 7.5, color: C.inkMute, textAlign: 'center', marginTop: 1 }}>
+        <Text style={{ fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 1 }}>
           {date}
         </Text>
       ) : null}
@@ -382,7 +299,7 @@ function StampPlaceholder({ item }: { item: StampItem }) {
       </View>
       <Text
         numberOfLines={2}
-        style={{ fontSize: 9, fontWeight: '500', color: C.inkMute, textAlign: 'center', marginTop: 6, lineHeight: 12, maxWidth: CELL_W - 8 }}
+        style={{ fontSize: 13, fontWeight: '500', color: C.inkMute, textAlign: 'center', marginTop: 6, lineHeight: 16, maxWidth: CELL_W - 8 }}
       >
         {item.name}
       </Text>
@@ -629,7 +546,7 @@ const st = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 20, paddingBottom: 20,
   },
   kicker: {
-    fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 5,
+    fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 5,
   },
   pageTitle: {
     fontSize: 30, fontWeight: '800', color: C.ink, letterSpacing: -0.6,
@@ -643,7 +560,7 @@ const st = StyleSheet.create({
     gap: 6, marginTop: 14, paddingVertical: 10,
   },
   toggleBtnText: {
-    fontSize: 11, fontWeight: '700', color: C.primary, letterSpacing: 1.5,
+    fontSize: 13, fontWeight: '700', color: C.primary, letterSpacing: 1.5,
   },
 
   stampsHeader: {
@@ -694,7 +611,7 @@ const st = StyleSheet.create({
     borderWidth: 0.5, borderColor: COVER_FOIL + '44',
   },
   coverCountry: {
-    fontSize: 9, fontWeight: '600', color: COVER_FOIL, letterSpacing: 2.5, textAlign: 'center',
+    fontSize: 13, fontWeight: '600', color: COVER_FOIL, letterSpacing: 2.5, textAlign: 'center',
   },
   coverTitle: {
     fontSize: 24, fontWeight: '900', color: COVER_FOIL, letterSpacing: 5,
@@ -704,7 +621,7 @@ const st = StyleSheet.create({
     fontSize: 13, fontWeight: '700', color: COVER_FOIL, letterSpacing: 4, marginTop: 3, opacity: 0.85,
   },
   coverTagline: {
-    fontSize: 9, fontWeight: '500', color: COVER_FOIL, letterSpacing: 2.5, opacity: 0.55, marginTop: 14,
+    fontSize: 13, fontWeight: '500', color: COVER_FOIL, letterSpacing: 2.5, opacity: 0.55, marginTop: 14,
   },
 
   // Data page
@@ -720,26 +637,26 @@ const st = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   dataOrgTitle: {
-    fontSize: 11, fontWeight: '900', letterSpacing: 2, color: FOIL,
+    fontSize: 13, fontWeight: '900', letterSpacing: 2, color: FOIL,
   },
   dataOrgSub: {
-    fontSize: 7.5, fontWeight: '500', letterSpacing: 1.2, color: FOIL, opacity: 0.75,
+    fontSize: 13, fontWeight: '500', letterSpacing: 1.2, color: FOIL, opacity: 0.75,
   },
   dataPassportNo: {
-    fontSize: 9, fontWeight: '600', color: FOIL, letterSpacing: 1.2,
+    fontSize: 13, fontWeight: '600', color: FOIL, letterSpacing: 1.2,
   },
   dataPhoto: {
     width: 108, height: 130, borderWidth: 0.5, borderColor: P_MUTE,
     backgroundColor: C.surfaceAlt, overflow: 'hidden', flexShrink: 0,
   },
   dataBearer: {
-    fontSize: 8.5, fontWeight: '600', color: P_MUTE, letterSpacing: 1.6, textTransform: 'uppercase',
+    fontSize: 13, fontWeight: '600', color: P_MUTE, letterSpacing: 1.6, textTransform: 'uppercase',
   },
   dataName: {
     fontSize: 26, fontWeight: '900', color: P_INK, letterSpacing: -0.6, lineHeight: 28, marginTop: 4,
   },
   dataUsername: {
-    fontSize: 11, fontWeight: '600', color: P_INK, letterSpacing: 0.4, marginTop: 4,
+    fontSize: 13, fontWeight: '600', color: P_INK, letterSpacing: 0.4, marginTop: 4,
   },
   dataBio: {
     fontSize: 13, color: P_INK, lineHeight: 19, fontStyle: 'italic', opacity: 0.85, marginTop: 10,
@@ -748,25 +665,25 @@ const st = StyleSheet.create({
     flex: 1, paddingHorizontal: 8,
   },
   dataStatLabel: {
-    fontSize: 8, fontWeight: '600', color: P_MUTE, letterSpacing: 1.5, textTransform: 'uppercase',
+    fontSize: 13, fontWeight: '600', color: P_MUTE, letterSpacing: 1.5, textTransform: 'uppercase',
   },
   dataStatVal: {
     fontSize: 24, fontWeight: '900', color: P_INK, letterSpacing: -1,
   },
   dataStatSuf: {
-    fontSize: 9, fontWeight: '600', color: P_MUTE,
+    fontSize: 13, fontWeight: '600', color: P_MUTE,
   },
   dataMetaLabel: {
-    fontSize: 7.5, fontWeight: '600', color: P_MUTE, letterSpacing: 1.5, textTransform: 'uppercase',
+    fontSize: 13, fontWeight: '600', color: P_MUTE, letterSpacing: 1.5, textTransform: 'uppercase',
   },
   dataMetaVal: {
-    fontSize: 11.5, fontWeight: '700', color: P_INK, marginTop: 2, letterSpacing: 0.3,
+    fontSize: 13, fontWeight: '700', color: P_INK, marginTop: 2, letterSpacing: 0.3,
   },
   dataSignature: {
     fontStyle: 'italic', fontSize: 17, color: P_INK, marginTop: 3, letterSpacing: 0.5,
   },
   mrz: {
-    marginTop: 10, fontSize: 9, letterSpacing: 1.2, color: P_MUTE,
+    marginTop: 10, fontSize: 13, letterSpacing: 1.2, color: P_MUTE,
     lineHeight: 14, borderTopWidth: 0.5, borderTopColor: P_FAINT, paddingTop: 8,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },

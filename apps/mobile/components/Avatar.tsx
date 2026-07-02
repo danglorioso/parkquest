@@ -33,7 +33,7 @@ export function Avatar({ url, name, size = 40, style }: AvatarProps) {
         />
       ) : (
         <View style={[st.fallback, { borderRadius: r }]}>
-          <Text style={[st.initials, { fontSize: size * 0.33 }]}>{initials}</Text>
+          <Text style={[st.initials, { fontSize: Math.max(13, size * 0.33) }]}>{initials}</Text>
         </View>
       )}
     </View>

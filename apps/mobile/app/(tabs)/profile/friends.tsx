@@ -100,7 +100,7 @@ function Avatar({ url, name, size = 44 }: { url: string | null; name: string; si
         <Image source={{ uri: url }} style={{ width: size, height: size, borderRadius: r }} resizeMode="cover" />
       ) : (
         <View style={{ flex: 1, borderRadius: r, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-          <Text style={{ fontSize: size * 0.33, fontWeight: '900', color: '#FFFBF1' }}>
+          <Text style={{ fontSize: Math.max(13, size * 0.33), fontWeight: '900', color: '#FFFBF1' }}>
             {initials(name)}
           </Text>
         </View>
@@ -745,7 +745,7 @@ const st = StyleSheet.create({
   dragHandle:    { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(27,26,22,0.18)', alignSelf: 'center', marginBottom: 20 },
   sheetTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 },
   closeBtn:      { width: 32, height: 32, borderRadius: 16, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: C.hairline },
-  kicker:    { fontSize: 9.5, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4, marginBottom: 3 },
+  kicker:    { fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4, marginBottom: 3 },
   pageTitle: { fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
   pageSub:   { fontSize: 13.5, color: C.inkMute, marginTop: 4 },
 
@@ -762,13 +762,13 @@ const st = StyleSheet.create({
     marginBottom: 6,
   },
   sectionLabel: {
-    fontSize: 10, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4,
+    fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4,
   },
   badge: {
     backgroundColor: C.inkMute, borderRadius: 10,
     paddingHorizontal: 5, paddingVertical: 1,
   },
-  badgeText: { fontSize: 9, fontWeight: '700', color: '#FFFBF1' },
+  badgeText: { fontSize: 13, fontWeight: '700', color: '#FFFBF1' },
 
   card: {
     backgroundColor: C.surface, borderRadius: 12,
@@ -788,8 +788,8 @@ const st = StyleSheet.create({
     padding: 12, paddingHorizontal: 16,
   },
   rowName:   { fontSize: 14, fontWeight: '700', color: C.ink },
-  rowHandle: { fontSize: 11, color: C.inkMute, marginTop: 1 },
-  rowSub:    { fontSize: 11, color: C.inkMute },
+  rowHandle: { fontSize: 13, color: C.inkMute, marginTop: 1 },
+  rowSub:    { fontSize: 13, color: C.inkMute },
 
   btn: {
     flexDirection: 'row', alignItems: 'center',
@@ -797,9 +797,9 @@ const st = StyleSheet.create({
     flexShrink: 0, minHeight: 32,
   },
   btnPrimary:       { backgroundColor: C.primary },
-  btnPrimaryText:   { fontSize: 12.5, fontWeight: '700', color: '#FFFBF1' },
+  btnPrimaryText:   { fontSize: 13, fontWeight: '700', color: '#FFFBF1' },
   btnSecondary:     { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline },
-  btnSecondaryText: { fontSize: 12.5, fontWeight: '600', color: C.inkSoft },
+  btnSecondaryText: { fontSize: 13, fontWeight: '600', color: C.inkSoft },
 
   statusChip: {
     flexDirection: 'row', alignItems: 'center',
@@ -807,5 +807,5 @@ const st = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5,
     borderWidth: 0.5, borderColor: C.hairline,
   },
-  statusChipText: { fontSize: 11.5, fontWeight: '600', color: C.inkMute },
+  statusChipText: { fontSize: 13, fontWeight: '600', color: C.inkMute },
 });

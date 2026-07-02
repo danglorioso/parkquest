@@ -155,7 +155,7 @@ export function Avatar({
           cachePolicy="memory-disk"
         />
       ) : (
-        <Text style={[styles.avatarInitials, { fontSize: size * 0.32 }]}>{initials}</Text>
+        <Text style={[styles.avatarInitials, { fontSize: Math.max(13, size * 0.32) }]}>{initials}</Text>
       )}
     </View>
   );
@@ -806,10 +806,10 @@ function CommentsSheet({
                             />
                             <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
                               <TouchableOpacity onPress={() => editComment(c.id, editingComment.text)}>
-                                <Text style={{ fontSize: 12, fontWeight: '700', color: C.primary }}>Save</Text>
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: C.primary }}>Save</Text>
                               </TouchableOpacity>
                               <TouchableOpacity onPress={() => setEditingComment(null)}>
-                                <Text style={{ fontSize: 12, color: C.inkMute }}>Cancel</Text>
+                                <Text style={{ fontSize: 13, color: C.inkMute }}>Cancel</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -1349,7 +1349,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   lightboxCounterText: {
-    color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '600',
+    color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: '600',
   },
   lightboxImage: {
     width: '90%', height: '75%',
@@ -1376,7 +1376,7 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
   carouselCounterText: {
-    color: '#FFFBF1', fontSize: 11, fontWeight: '500',
+    color: '#FFFBF1', fontSize: 13, fontWeight: '500',
   },
   carouselDots: {
     position: 'absolute', bottom: 14,
@@ -1405,7 +1405,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.hairline, marginBottom: 10,
   },
   sheetTitle: {
-    textAlign: 'center', fontSize: 11, fontWeight: '700',
+    textAlign: 'center', fontSize: 13, fontWeight: '700',
     color: C.inkMute, letterSpacing: 1.2,
     paddingBottom: 10, borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
   },
@@ -1417,7 +1417,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingVertical: 10,
   },
   likerName: { fontSize: 14, fontWeight: '600', color: C.ink },
-  likerSub: { fontSize: 12, color: C.inkMute, marginTop: 1 },
+  likerSub: { fontSize: 13, color: C.inkMute, marginTop: 1 },
 
   // Badge post body
   parkHero: {
@@ -1429,7 +1429,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   parkHeroLabel: {
-    fontSize: 9, letterSpacing: 2, fontWeight: '700',
+    fontSize: 13, letterSpacing: 2, fontWeight: '700',
     color: 'rgba(255,251,241,0.65)', marginBottom: 4,
   },
   parkHeroName: {
@@ -1437,7 +1437,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4, lineHeight: 26,
   },
   parkHeroDate: {
-    fontSize: 11, color: 'rgba(255,251,241,0.70)',
+    fontSize: 13, color: 'rgba(255,251,241,0.70)',
     marginTop: 4, fontWeight: '500', letterSpacing: 0.2,
   },
 
@@ -1456,13 +1456,13 @@ const styles = StyleSheet.create({
   badgeEmoji: { fontSize: 30 },
   badgeText: { flex: 1, minWidth: 0 },
   badgeTierLabel: {
-    fontSize: 9, letterSpacing: 1.4, fontWeight: '700', marginBottom: 3,
+    fontSize: 13, letterSpacing: 1.4, fontWeight: '700', marginBottom: 3,
   },
   badgeName: {
     fontWeight: '800', fontSize: 18, color: C.ink, letterSpacing: -0.3, lineHeight: 22,
   },
   badgeDesc: {
-    fontSize: 12.5, color: C.inkMute, marginTop: 4, lineHeight: 18,
+    fontSize: 13, color: C.inkMute, marginTop: 4, lineHeight: 18,
   },
 
   // Chips
@@ -1471,7 +1471,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline,
     borderRadius: 100, paddingHorizontal: 10, paddingVertical: 4,
   },
-  chipText: { fontSize: 11.5, fontWeight: '600', color: C.inkSoft },
+  chipText: { fontSize: 13, fontWeight: '600', color: C.inkSoft },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 
   // Visit meta
@@ -1489,16 +1489,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingTop: 8, paddingBottom: 2,
   },
   viewAllText: {
-    fontSize: 12, fontWeight: '600', color: C.inkMute,
+    fontSize: 13, fontWeight: '600', color: C.inkMute,
   },
   previewCommentRow: {
     paddingHorizontal: 18, paddingTop: 10, paddingBottom: 0,
   },
   previewCommentText: {
-    fontSize: 12.5, color: C.ink, lineHeight: 18,
+    fontSize: 13, color: C.ink, lineHeight: 18,
   },
   previewCommentAuthor: {
-    fontWeight: '700', fontSize: 12.5, color: C.ink,
+    fontWeight: '700', fontSize: 13, color: C.ink,
   },
   commentsSheet: {
     backgroundColor: C.surface,
@@ -1510,7 +1510,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingTop: 4, paddingBottom: 12,
   },
   commentsSheetTitle: {
-    fontSize: 11, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4,
+    fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 1.4,
   },
   commentRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
@@ -1522,7 +1522,7 @@ const styles = StyleSheet.create({
   commentAuthor: { fontWeight: '700', fontSize: 13.5, color: C.ink },
   commentMore: { fontSize: 13.5, color: C.inkMute, fontWeight: '600' },
   commentTime: {
-    fontSize: 9.5, color: C.inkMute, letterSpacing: 0.3,
+    fontSize: 13, color: C.inkMute, letterSpacing: 0.3,
   },
   commentInput: {
     flexDirection: 'row', alignItems: 'center',
@@ -1542,7 +1542,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   commentCharCount: {
-    fontSize: 10, color: C.inkMute, paddingHorizontal: 4,
+    fontSize: 13, color: C.inkMute, paddingHorizontal: 4,
   },
   commentMenu: {
     position: 'absolute', top: 22, right: 0, zIndex: 200,
@@ -1570,7 +1570,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: C.primary + '60',
   },
   badgeBannerText: {
-    fontSize: 10, letterSpacing: 1.2, fontWeight: '700', color: C.primary,
+    fontSize: 13, letterSpacing: 1.2, fontWeight: '700', color: C.primary,
   },
   cardHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -1578,7 +1578,7 @@ const styles = StyleSheet.create({
   },
   cardHeaderMeta: { flex: 1 },
   authorName: { fontWeight: '700', fontSize: 14, color: C.ink },
-  authorSub: { fontSize: 12, color: C.inkMute, marginTop: 1 },
+  authorSub: { fontSize: 13, color: C.inkMute, marginTop: 1 },
   menuBtn: { padding: 6, borderRadius: 6 },
   menu: {
     position: 'absolute', top: 30, right: 0, zIndex: 100,
@@ -1598,7 +1598,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingBottom: 10,
   },
   parkChipText: {
-    fontSize: 10.5, fontWeight: '700', color: C.primary, letterSpacing: 0.4,
+    fontSize: 13, fontWeight: '700', color: C.primary, letterSpacing: 0.4,
   },
   caption: {
     paddingHorizontal: 18, paddingBottom: 12,
@@ -1648,6 +1648,6 @@ const styles = StyleSheet.create({
   // button (18 row padding + 12 chip padding)
   footerDate: {
     paddingLeft: 18, paddingRight: 18, paddingBottom: 14, paddingTop: 4,
-    fontSize: 11, color: C.inkMute, letterSpacing: 0.3,
+    fontSize: 13, color: C.inkMute, letterSpacing: 0.3,
   },
 });

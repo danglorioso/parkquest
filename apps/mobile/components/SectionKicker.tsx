@@ -13,7 +13,7 @@ export function SectionKicker({ children, style }: SectionKickerProps) {
 
 const s = StyleSheet.create({
   kicker: {
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: '700',
     color: '#7A746A',
     letterSpacing: 1.2,

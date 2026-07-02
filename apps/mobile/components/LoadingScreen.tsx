@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
     bottom: 90,
     alignSelf: 'center',
     color: 'rgba(255,251,241,0.28)',
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '400',
     letterSpacing: 0.5,
   },
@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
   },
   taglineText: {
     color: 'rgba(255,251,241,0.60)',
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '600',
     letterSpacing: 3,
   },

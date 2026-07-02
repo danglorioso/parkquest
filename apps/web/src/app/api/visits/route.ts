@@ -42,6 +42,8 @@ export async function GET() {
         park_code: visits.park_code,
         park_name: parks.name,
         states: parks.states,
+        latitude: parks.latitude,
+        longitude: parks.longitude,
         visited_date: visits.visited_date,
         end_date: visits.end_date,
         is_bucket_list: visits.is_bucket_list,

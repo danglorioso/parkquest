@@ -127,7 +127,14 @@ export default function RootLayout() {
                 />
                 <Stack.Screen
                   name="profile/edit"
-                  options={{ headerShown: false }}
+                  options={{
+                    headerShown: true,
+                    title: 'Edit Profile',
+                    headerStyle: { backgroundColor: '#F2EBDB' },
+                    headerTintColor: '#1F3D2E',
+                    headerShadowVisible: false,
+                    headerBackTitle: 'Profile',
+                  }}
                 />
                 <Stack.Screen
                   name="user/[id]"
