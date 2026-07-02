@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Image, Modal, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Dimensions, Image, Modal, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -238,8 +238,6 @@ export default function ProfileScreen() {
   const joinDate    = user?.createdAt
     ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : null;
-  const rank = explorerRank(parksVisited);
-
   const mapParks = useMemo(() => {
     const seen = new Set<string>();
     return rawVisits
@@ -315,6 +313,28 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const CARD_W = Dimensions.get('window').width - 32; // card = screen - 2×16 margin
+
+  // MRZ-style bottom strip — encodes real user data in passport MRZ format
+  const mrzLine1 = (() => {
+    const parts = displayName.toUpperCase().replace(/[^A-Z ]/g, '').split(' ');
+    const surname = (parts[0] ?? 'UNKNOWN').slice(0, 12);
+    const given = (parts.slice(1).join('<') || 'EXPLORER').slice(0, 10);
+    const raw = `P<USA<<${surname}<<${given}`;
+    return raw.padEnd(44, '<').slice(0, 44);
+  })();
+
+  const mrzLine2 = (() => {
+    const uid = user?.id?.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(-7).padStart(7, '0') ?? '0000000';
+    const joined = user?.createdAt
+      ? new Date(user.createdAt).toISOString().slice(2, 10).replace(/-/g, '')
+      : '000000';
+    const parks3 = String(parksVisited).padStart(3, '0');
+    const uname = username.toUpperCase().slice(0, 9).padEnd(9, '<');
+    const raw = `${uid}<USA${joined}${parks3}${uname}`;
+    return raw.padEnd(44, '<').slice(0, 44);
+  })();
+
   // Top bar — wordmark + actions, matches feed
   const topBar = (
     <View style={styles.topBar}>
@@ -327,13 +347,6 @@ export default function ProfileScreen() {
           onPress={() => setSearchOpen(true)}
         >
           <Ionicons name="search" size={17} color={C.inkSoft} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          activeOpacity={0.7}
-          onPress={handleShare}
-        >
-          <Ionicons name="share-outline" size={17} color={C.inkSoft} />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.iconBtn}
@@ -388,22 +401,34 @@ export default function ProfileScreen() {
         >
           {/* Wavy background texture */}
           <Svg
-            width="100%"
-            height="100%"
-            viewBox="0 0 360 180"
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            preserveAspectRatio="xMidYMid slice"
+            width={CARD_W}
+            height={400}
+            viewBox={`0 0 ${CARD_W} 400`}
+            style={{ position: 'absolute', top: 0, left: 0 }}
           >
-            {[0, 22, 44, 66, 88, 110, 132, 154, 176].map((y, i) => (
-              <Path
-                key={i}
-                d={`M-20 ${y} C 40 ${y - 12}, 80 ${y + 12}, 120 ${y} S 200 ${y - 12}, 240 ${y} S 320 ${y + 12}, 380 ${y}`}
-                stroke="rgba(201,169,74,0.07)"
-                strokeWidth={1.5}
-                fill="none"
-              />
-            ))}
+            {[0, 22, 44, 66, 88, 110, 132, 154, 176, 198, 220, 242, 264, 286, 308, 330, 352, 374, 396].map((y, i) => {
+              const W = CARD_W;
+              return (
+                <Path
+                  key={i}
+                  d={`M0 ${y} C ${W * 0.18} ${y - 13}, ${W * 0.38} ${y + 13}, ${W * 0.5} ${y} S ${W * 0.82} ${y - 13}, ${W} ${y}`}
+                  stroke="rgba(201,169,74,0.07)"
+                  strokeWidth={1.5}
+                  fill="none"
+                />
+              );
+            })}
           </Svg>
+
+          {/* Share profile — top-right corner */}
+          <TouchableOpacity
+            style={styles.shareBtn}
+            activeOpacity={0.7}
+            onPress={handleShare}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="share-outline" size={15} color="#C9A94A" />
+          </TouchableOpacity>
 
           <View style={styles.passportHeader}>
             <View style={styles.avatarWrap}>
@@ -415,7 +440,7 @@ export default function ProfileScreen() {
                 </View>
               )}
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, paddingRight: 30 }}>
               <Text style={styles.passportName} numberOfLines={1} adjustsFontSizeToFit>
                 {displayName}
               </Text>
@@ -434,13 +459,18 @@ export default function ProfileScreen() {
               { label: 'BUCKET',  value: String(bucketList) },
               { label: 'BADGES',  value: String(badgesEarned) },
               { label: 'FRIENDS', value: String(friendCount) },
-              { label: 'CLASS',   value: rank, full: true },
-            ] as { label: string; value: string; full?: boolean }[]).map(s => (
-              <View key={s.label} style={[styles.passportStatItem, s.full && { width: '100%' }]}>
+            ] as { label: string; value: string }[]).map(s => (
+              <View key={s.label} style={styles.passportStatItem}>
                 <Text style={styles.passportStatLabel}>{s.label}</Text>
                 <Text style={styles.passportStatVal}>{s.value}</Text>
               </View>
             ))}
+          </View>
+
+          {/* MRZ strip */}
+          <View style={{ marginTop: 14, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.15)' }}>
+            <Text style={styles.mrzText} numberOfLines={1}>{mrzLine1}</Text>
+            <Text style={styles.mrzText} numberOfLines={1}>{mrzLine2}</Text>
           </View>
         </TouchableOpacity>
 
@@ -449,7 +479,7 @@ export default function ProfileScreen() {
           <View style={styles.badgesPreview}>
             <View style={styles.sectionHeader}>
               <Ionicons name="book-outline" size={13} color={C.inkMute} />
-              <Text style={styles.sectionKicker}>STAMPS</Text>
+              <Text style={styles.sectionKicker}>RECENT STAMPS</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
               {recentStamps.map(s => (
@@ -738,6 +768,13 @@ const styles = StyleSheet.create({
   passportHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 16,
   },
+  shareBtn: {
+    position: 'absolute', top: 12, right: 12, zIndex: 2,
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(201,169,74,0.12)',
+    borderWidth: 1, borderColor: 'rgba(201,169,74,0.35)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   passportName: {
     fontSize: 26, fontWeight: '800', color: C.gold, letterSpacing: -0.5,
     textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
@@ -765,6 +802,13 @@ const styles = StyleSheet.create({
     fontSize: 13, fontWeight: '700', color: C.gold, marginTop: 2, letterSpacing: 0.2,
     textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
+  mrzText: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 9,
+    color: 'rgba(201,169,74,0.35)',
+    letterSpacing: 1.5,
+    lineHeight: 14,
+  },
 
   // Badges preview
   badgesPreview: {
@@ -785,7 +829,7 @@ const styles = StyleSheet.create({
 
   // Sections
   section: {
-    marginHorizontal: 16, marginBottom: 16,
+    marginHorizontal: 16, marginBottom: 20,
   },
   sectionHeader: {
     marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 6,

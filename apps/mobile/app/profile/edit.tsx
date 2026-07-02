@@ -278,6 +278,7 @@ export default function EditProfileScreen() {
                   <Ionicons name="camera" size={13} color="#FFFBF1" />
                 </View>
               </View>
+              <Text style={styles.avatarHint}>Edit photo</Text>
             </TouchableOpacity>
             <View style={{ flex: 1, gap: 10 }}>
               <Field label="First name">
@@ -520,7 +521,14 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
   },
   avatarWrap: {
     position: 'relative',
-    alignSelf: 'flex-start',
+    alignItems: 'center',
+  },
+  avatarHint: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: C.inkMute,
+    marginTop: 6,
+    textAlign: 'center',
   },
   avatar: {
     width: 92,

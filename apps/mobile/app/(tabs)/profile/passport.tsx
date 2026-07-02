@@ -3,6 +3,7 @@ import {
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import Svg, { Path } from 'react-native-svg';
 import { ParkStamp } from '@/components/ParkStamp';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -23,19 +24,17 @@ const C = {
   primaryDeep: '#152A20',
 };
 
-const PAPER   = '#FAF3E0';
-const P_INK   = '#3A2E1C';
-const P_MUTE  = 'rgba(58,46,28,0.55)';
-const P_FAINT = 'rgba(58,46,28,0.22)';
-const FOIL    = '#A87E2C';
-const COVER_FOIL = '#C9A94A';
+const PAPER  = '#FAF3E0';
+const GOLD   = '#C9A94A';
+const P_INK  = '#3A2E1C';
+const P_MUTE = 'rgba(58,46,28,0.45)';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const W    = Dimensions.get('window').width;
 
-// Column math: 16px padding each side, 8px gap between 3 columns
 const CELL_W  = Math.floor((W - 32 - 16) / 3);
-const STAMP_D = Math.min(96, CELL_W - 8);  // diameter, max 96px
+const STAMP_D = Math.min(88, CELL_W - 8);
+const ROWS_PER_PAGE = 4; // 12 stamps = one "book page"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,16 +68,6 @@ interface StampItem {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function explorerRank(n: number): string {
-  if (n >= 63) return 'NATIONAL LEGEND';
-  if (n >= 50) return 'PIONEER';
-  if (n >= 30) return 'TRAILBLAZER';
-  if (n >= 15) return 'RANGER';
-  if (n >= 5)  return 'EXPLORER';
-  if (n >= 1)  return 'INITIATE';
-  return 'TRAILHEAD';
-}
-
 function passportNo(username: string): string {
   const n = ((username.length * 73291 + 41023) % 9999999).toString().padStart(7, '0');
   return `PQ${n}`;
@@ -90,175 +79,23 @@ function stampDateStr(iso: string): string {
   return `${M[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
-// ── Passport cover ────────────────────────────────────────────────────────────
+// ── Row types for FlatList ────────────────────────────────────────────────────
 
-function PassportCover({ onOpen }: { onOpen: () => void }) {
-  return (
-    <TouchableOpacity onPress={onOpen} activeOpacity={0.88} style={st.cover}>
-      {/* Corner brackets — TL, TR, BL, BR */}
-      {(['tl','tr','bl','br'] as const).map(pos => (
-        <View key={pos} style={[st.corner, {
-          top:    pos[0] === 't' ? 12 : undefined,
-          bottom: pos[0] === 'b' ? 12 : undefined,
-          left:   pos[1] === 'l' ? 12 : undefined,
-          right:  pos[1] === 'r' ? 12 : undefined,
-          transform: [{
-            rotate: pos === 'tr' ? '90deg' : pos === 'bl' ? '-90deg' : pos === 'br' ? '180deg' : '0deg',
-          }],
-        }]}>
-          <View style={{ width: 2, height: 16, backgroundColor: COVER_FOIL + 'CC', position: 'absolute', top: 0, left: 0 }} />
-          <View style={{ width: 14, height: 2, backgroundColor: COVER_FOIL + 'CC', position: 'absolute', top: 0, left: 0 }} />
-        </View>
-      ))}
+type RowItem =
+  | { type: 'header' }
+  | { type: 'stamps'; rowIdx: number; items: StampItem[] }
+  | { type: 'divider'; pageNum: number }
+  | { type: 'empty' };
 
-      <View style={{ alignItems: 'center' }}>
-        <Text style={st.coverCountry}>UNITED STATES OF AMERICA</Text>
-        <Text style={[st.coverCountry, { opacity: 0.65, marginTop: 2 }]}>NATIONAL PARK SERVICE</Text>
-
-        {/* Seal */}
-        <View style={st.seal}>
-          <View style={st.sealOuter} />
-          <View style={st.sealInner} />
-          <View style={st.sealInner2} />
-          <Text style={{ fontSize: 26, position: 'absolute' }}>🏔</Text>
-        </View>
-
-        <Text style={st.coverTitle}>PARKQUEST</Text>
-        <Text style={st.coverSubtitle}>PASSPORT</Text>
-        <Text style={st.coverTagline}>63 PARKS · 8 REGIONS · ONE QUEST</Text>
-      </View>
-
-      <Text style={[st.coverCountry, { marginTop: 24, opacity: 0.55 }]}>TAP TO OPEN ›</Text>
-    </TouchableOpacity>
-  );
-}
-
-// ── Passport data page ────────────────────────────────────────────────────────
-
-function PassportDataPage({
-  profile, avatarUrl, visitedCount, statesCount,
-  bucketCount, badgeCount, totalBadges, pNo,
-}: {
-  profile:      ProfileInfo | null;
-  avatarUrl:    string | null;
-  visitedCount: number;
-  statesCount:  number;
-  bucketCount:  number;
-  badgeCount:   number;
-  totalBadges:  number;
-  pNo:          string;
-}) {
-  const name = profile?.display_name ?? profile?.username ?? 'Explorer';
-  const rank = explorerRank(visitedCount);
-
-  return (
-    <View style={st.dataPage}>
-      {/* Header row */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 0.5, borderBottomColor: P_FAINT, paddingBottom: 10, marginBottom: 14 }}>
-        <View style={st.dataSeal}>
-          <Text style={{ fontSize: 14 }}>⛰</Text>
-        </View>
-        <View>
-          <Text style={st.dataOrgTitle}>PARKQUEST</Text>
-          <Text style={st.dataOrgSub}>NATIONAL PARK PASSPORT</Text>
-        </View>
-        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-          <Text style={st.dataPassportNo}>NO · {pNo}</Text>
-        </View>
-      </View>
-
-      {/* Photo + bearer info */}
-      <View style={{ flexDirection: 'row', gap: 14, marginBottom: 16 }}>
-        <View style={st.dataPhoto}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          ) : (
-            <View style={{ flex: 1, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 28, fontWeight: '900', color: '#FFFBF1' }}>
-                {name.slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={{ flex: 1, paddingTop: 2 }}>
-          <Text style={st.dataBearer}>BEARER</Text>
-          <Text style={st.dataName} numberOfLines={2}>{name}</Text>
-          {profile?.username ? <Text style={st.dataUsername}>@{profile.username}</Text> : null}
-          {profile?.bio ? <Text style={st.dataBio} numberOfLines={3}>&ldquo;{profile.bio}&rdquo;</Text> : null}
-        </View>
-      </View>
-
-      {/* Stats */}
-      <View style={{ flexDirection: 'row', borderTopWidth: 0.5, borderTopColor: P_FAINT, borderBottomWidth: 0.5, borderBottomColor: P_FAINT, paddingVertical: 14, marginTop: 26, marginBottom: 12 }}>
-        {[
-          { label: 'VISITED', value: visitedCount, suf: '/63' },
-          { label: 'STATES',  value: statesCount,  suf: '/50' },
-          { label: 'BUCKET',  value: bucketCount,  suf: null  },
-          { label: 'BADGES',  value: badgeCount,   suf: `/${totalBadges}` },
-        ].map((s, i) => (
-          <View key={s.label} style={[st.dataStat, i > 0 && { borderLeftWidth: 0.5, borderLeftColor: P_MUTE }]}>
-            <Text style={st.dataStatLabel}>{s.label}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 1, marginTop: 3 }}>
-              <Text style={st.dataStatVal}>{s.value}</Text>
-              {s.suf ? <Text style={st.dataStatSuf}>{s.suf}</Text> : null}
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {/* Meta grid */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-        {[
-          { label: 'EXPLORER CLASS', value: rank },
-          { label: 'VALID THRU',     value: 'LIFETIME' },
-          { label: 'ISSUED',         value: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase() },
-          { label: 'TYPE · CODE',    value: 'E · USA/NPS' },
-        ].map(s => (
-          <View key={s.label} style={{ width: '46%' }}>
-            <Text style={st.dataMetaLabel}>{s.label}</Text>
-            <Text style={st.dataMetaVal}>{s.value}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Signature + status */}
-      <View style={{ borderTopWidth: 0.5, borderTopColor: P_FAINT, paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <View>
-          <Text style={st.dataMetaLabel}>BEARER SIGNATURE</Text>
-          <Text style={st.dataSignature}>{name}</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={st.dataMetaLabel}>STATUS</Text>
-          <View style={{ borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2, backgroundColor: visitedCount > 0 ? 'rgba(31,92,46,0.12)' : 'transparent' }}>
-            <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: visitedCount > 0 ? '#1F5C2E' : P_MUTE }}>
-              {visitedCount > 0 ? '● ACTIVE' : '○ INACTIVE'}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* MRZ */}
-      <Text style={st.mrz} numberOfLines={2}>
-        {'P<USA'}{(name.split(' ')[1] ?? 'EXPLORER').toUpperCase()}
-        {'<<'}{(name.split(' ')[0] ?? '').toUpperCase()}
-        {'<<'}{pNo}{'USA'}
-        {visitedCount.toString().padStart(2, '0')}{'63'}
-        {badgeCount.toString().padStart(2, '0')}{'<<<<'}
-      </Text>
-    </View>
-  );
-}
-
-// ── Stamp cell (visited) ──────────────────────────────────────────────────────
+// ── Stamp cell ────────────────────────────────────────────────────────────────
 
 function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) {
   const date = item.visited_date ? stampDateStr(item.visited_date) : '';
-
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.75}
-      style={{ width: CELL_W, alignItems: 'center', paddingVertical: 12 }}
+      style={st.stampCell}
     >
       <ParkStamp
         parkCode={item.park_code}
@@ -267,54 +104,34 @@ function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) 
         colorIdx={item.colorIdx}
         size={STAMP_D}
       />
-
-      {/* Park name label below stamp (not rotated) */}
-      <Text
-        numberOfLines={2}
-        style={{ fontSize: 13, fontWeight: '600', color: C.inkSoft, textAlign: 'center', marginTop: 6, lineHeight: 16, maxWidth: CELL_W - 8 }}
-      >
-        {item.name}
-      </Text>
-      {date ? (
-        <Text style={{ fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 1 }}>
-          {date}
-        </Text>
-      ) : null}
+      <Text numberOfLines={2} style={st.stampName}>{item.name}</Text>
+      {date ? <Text style={st.stampDate}>{date}</Text> : null}
     </TouchableOpacity>
   );
 }
 
-// ── Stamp placeholder (unvisited) ─────────────────────────────────────────────
-
 function StampPlaceholder({ item }: { item: StampItem }) {
-  const R = STAMP_D / 2;
   return (
-    <View style={{ width: CELL_W, alignItems: 'center', paddingVertical: 12, opacity: 0.28 }}>
-      <View style={{
-        width: STAMP_D, height: STAMP_D, borderRadius: R,
-        borderWidth: 1.5, borderColor: C.inkMute, borderStyle: 'dashed',
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Ionicons name="add" size={20} color={C.inkMute} />
+    <View style={[st.stampCell, { opacity: 0.22 }]}>
+      <View style={[st.placeholderCircle, { width: STAMP_D, height: STAMP_D, borderRadius: STAMP_D / 2 }]}>
+        <Ionicons name="add" size={18} color={P_INK} />
       </View>
-      <Text
-        numberOfLines={2}
-        style={{ fontSize: 13, fontWeight: '500', color: C.inkMute, textAlign: 'center', marginTop: 6, lineHeight: 16, maxWidth: CELL_W - 8 }}
-      >
-        {item.name}
-      </Text>
+      <Text numberOfLines={2} style={[st.stampName, { color: P_INK }]}>{item.name}</Text>
     </View>
   );
 }
 
-// ── Skeleton row ──────────────────────────────────────────────────────────────
+// ── Skeleton ──────────────────────────────────────────────────────────────────
 
-function SkeletonStamp() {
-  const R = STAMP_D / 2;
+function SkeletonRow() {
   return (
-    <View style={{ width: CELL_W, alignItems: 'center', paddingVertical: 12 }}>
-      <View style={{ width: STAMP_D, height: STAMP_D, borderRadius: R, backgroundColor: C.surfaceAlt }} />
-      <View style={{ width: CELL_W - 20, height: 9, borderRadius: 4, backgroundColor: C.surfaceAlt, marginTop: 8 }} />
+    <View style={st.stampRow}>
+      {[0,1,2].map(i => (
+        <View key={i} style={st.stampCell}>
+          <View style={{ width: STAMP_D, height: STAMP_D, borderRadius: STAMP_D / 2, backgroundColor: 'rgba(58,46,28,0.08)' }} />
+          <View style={{ width: CELL_W - 12, height: 8, borderRadius: 4, backgroundColor: 'rgba(58,46,28,0.06)', marginTop: 8 }} />
+        </View>
+      ))}
     </View>
   );
 }
@@ -333,7 +150,6 @@ export default function PassportScreen() {
   const [totalBadges, setTotalBadges] = useState(0);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(false);
-  const [open,        setOpen]        = useState(false);
 
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -371,107 +187,65 @@ export default function PassportScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Only visited parks, sorted chronologically oldest → newest (order you earned them)
-  const stampItems = useMemo((): StampItem[] => {
+  // All parks: visited (chrono) first, then unvisited
+  const allStampItems = useMemo((): StampItem[] => {
     const visitedMap = new Map<string, string>();
     visits.forEach(v => {
       if (!v.is_bucket_list && v.visited_date) visitedMap.set(v.park_code, v.visited_date);
     });
-
-    const parkMap = new Map(allParks.map(p => [p.park_code, p]));
     const visited: StampItem[] = [];
-
-    visitedMap.forEach((vDate, park_code) => {
-      const p = parkMap.get(park_code);
-      if (!p) return;
-      visited.push({ park_code, name: p.name, states: p.states, visited: true, visited_date: vDate, colorIdx: 0 });
+    const unvisited: StampItem[] = [];
+    allParks.forEach((p, idx) => {
+      const date = visitedMap.get(p.park_code) ?? null;
+      const entry: StampItem = {
+        park_code: p.park_code, name: p.name, states: p.states,
+        visited: !!date, visited_date: date, colorIdx: idx,
+      };
+      if (date) visited.push(entry);
+      else unvisited.push(entry);
     });
-
     visited.sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
-
-    return visited.map((item, idx) => ({ ...item, colorIdx: idx }));
+    return [...visited, ...unvisited];
   }, [allParks, visits]);
 
-  const visitedCount = useMemo(() => stampItems.filter(s => s.visited).length, [stampItems]);
+  const visitedCount = useMemo(() => allStampItems.filter(s => s.visited).length, [allStampItems]);
   const bucketCount  = useMemo(() => visits.filter(v => v.is_bucket_list).length, [visits]);
   const statesCount  = useMemo(() => {
     const s = new Set<string>();
-    stampItems.filter(si => si.visited).forEach(si => si.states.split(',').forEach(st => s.add(st.trim())));
+    allStampItems.filter(si => si.visited).forEach(si => si.states.split(',').forEach(st => s.add(st.trim())));
     return s.size;
-  }, [stampItems]);
+  }, [allStampItems]);
 
   const avatarUrl = profile?.avatar_url || user?.imageUrl || null;
-  const pNo       = passportNo(profile?.username ?? user?.username ?? 'explorer');
+  const name = profile?.display_name ?? profile?.username ?? 'Explorer';
+  const pNo  = passportNo(profile?.username ?? user?.username ?? 'explorer');
 
-  // Skeleton items for loading state
-  const skeletonItems = useMemo(
-    () => Array.from({ length: 21 }, (_, i) => ({ id: `sk${i}` })),
-    [],
-  );
+  // Build FlatList rows: header + stamp rows (with page dividers)
+  const listData = useMemo((): RowItem[] => {
+    if (loading) return [{ type: 'header' }];
 
-  const ListHeader = (
-    <View>
-      {/* Page header */}
-      <View style={st.pageHeader}>
-        <Text style={st.kicker}>OFFICIAL ISSUE · NATIONAL PARK PASSPORT</Text>
-        <Text style={st.pageTitle}>Your Passport</Text>
-        <Text style={st.pageSub}>
-          {loading ? 'Loading…' : `${visitedCount} of 63 parks stamped.`}
-        </Text>
-      </View>
+    const rows: RowItem[] = [{ type: 'header' }];
 
-      {/* Cover / data page toggle */}
-      <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
-        {!open ? (
-          <PassportCover onOpen={() => setOpen(true)} />
-        ) : (
-          <PassportDataPage
-            profile={profile}
-            avatarUrl={avatarUrl}
-            visitedCount={visitedCount}
-            statesCount={statesCount}
-            bucketCount={bucketCount}
-            badgeCount={badgeCount}
-            totalBadges={totalBadges}
-            pNo={pNo}
-          />
-        )}
-        <TouchableOpacity
-          style={st.toggleBtn}
-          onPress={() => setOpen(o => !o)}
-        >
-          {open ? (
-            <>
-              <Ionicons name="chevron-back" size={12} color={C.primary} />
-              <Text style={st.toggleBtnText}>CLOSE PASSPORT</Text>
-            </>
-          ) : (
-            <>
-              <Text style={st.toggleBtnText}>OPEN PASSPORT</Text>
-              <Ionicons name="chevron-forward" size={12} color={C.primary} />
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
+    if (allStampItems.length === 0) {
+      rows.push({ type: 'empty' });
+      return rows;
+    }
 
-      {/* All stamps header */}
-      <View style={[st.stampsHeader, { marginHorizontal: 16 }]}>
-        <View>
-          <Text style={st.kicker}>
-            {loading ? 'LOADING…' : `${visitedCount} STAMPS · CHRONOLOGICAL ORDER`}
-          </Text>
-          <Text style={st.stampsSectionTitle}>Your stamp collection</Text>
-        </View>
-        <View style={st.progressPill}>
-          <Text style={st.progressText}>{visitedCount}<Text style={{ opacity: 0.6 }}>/63</Text></Text>
-        </View>
-      </View>
-    </View>
-  );
+    for (let i = 0; i < allStampItems.length; i += 3) {
+      const rowIdx = i / 3;
+      // Page divider before each new page (except the first)
+      if (rowIdx > 0 && rowIdx % ROWS_PER_PAGE === 0) {
+        rows.push({ type: 'divider', pageNum: Math.floor(rowIdx / ROWS_PER_PAGE) + 1 });
+      }
+      rows.push({ type: 'stamps', rowIdx, items: allStampItems.slice(i, i + 3) });
+    }
+
+    return rows;
+  }, [loading, allStampItems]);
 
   if (error && allParks.length === 0) {
     return (
-      <SafeAreaView style={st.screen} edges={['bottom']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: PAPER }} edges={['bottom']}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
@@ -487,47 +261,135 @@ export default function PassportScreen() {
   }
 
   return (
-    <SafeAreaView style={st.screen} edges={['bottom']}>
-      {loading ? (
-        <FlatList
-          data={skeletonItems}
-          keyExtractor={item => item.id}
-          numColumns={3}
-          ListHeaderComponent={ListHeader}
-          columnWrapperStyle={st.colWrapper}
-          renderItem={() => <SkeletonStamp />}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 40 }}
-          scrollEnabled={false}
-        />
-      ) : (
-        <FlatList
-          data={stampItems}
-          keyExtractor={item => item.park_code}
-          numColumns={3}
-          ListHeaderComponent={ListHeader}
-          columnWrapperStyle={st.colWrapper}
-          ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingTop: 32, paddingHorizontal: 32, gap: 10 }}>
-              <Text style={{ fontSize: 32 }}>🏕</Text>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink, textAlign: 'center' }}>No stamps yet</Text>
-              <Text style={{ fontSize: 13, color: C.inkMute, textAlign: 'center', lineHeight: 19 }}>
-                Log your first park visit to earn your first stamp.
-              </Text>
-            </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: PAPER }} edges={['bottom']}>
+      <FlatList
+        data={listData}
+        keyExtractor={(item, idx) => {
+          if (item.type === 'header') return 'header';
+          if (item.type === 'divider') return `div-${item.pageNum}`;
+          if (item.type === 'empty') return 'empty';
+          return `row-${item.rowIdx}`;
+        }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        renderItem={({ item }) => {
+          if (item.type === 'header') {
+            return (
+              <View style={st.header}>
+                {/* Wavy background */}
+                <Svg
+                  width="100%"
+                  height="100%"
+                  viewBox="0 0 360 240"
+                  style={StyleSheet.absoluteFillObject}
+                  preserveAspectRatio="xMidYMid slice"
+                  pointerEvents="none"
+                >
+                  {[0, 24, 48, 72, 96, 120, 144, 168, 192, 216, 240].map((y, i) => (
+                    <Path
+                      key={i}
+                      d={`M-20 ${y} C 40 ${y-14}, 80 ${y+14}, 120 ${y} S 200 ${y-14}, 240 ${y} S 320 ${y+14}, 380 ${y}`}
+                      stroke={`rgba(201,169,74,0.07)`}
+                      strokeWidth={1.5}
+                      fill="none"
+                    />
+                  ))}
+                </Svg>
+
+                {/* Top meta */}
+                <View style={st.headerMeta}>
+                  <Text style={st.headerKicker}>PARKQUEST · NATIONAL PARK PASSPORT</Text>
+                  <Text style={st.headerPNo}>NO · {pNo}</Text>
+                </View>
+
+                {/* Avatar + identity */}
+                <View style={st.headerIdentity}>
+                  <View style={st.headerAvatar}>
+                    {avatarUrl ? (
+                      <Image source={{ uri: avatarUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                    ) : (
+                      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 28, fontWeight: '900', color: GOLD }}>{name.slice(0,2).toUpperCase()}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.headerName} numberOfLines={2} adjustsFontSizeToFit>{name}</Text>
+                    {profile?.username ? (
+                      <Text style={st.headerHandle}>@{profile.username}</Text>
+                    ) : null}
+                    {profile?.bio ? (
+                      <Text style={st.headerBio} numberOfLines={3}>{profile.bio}</Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                {/* Stats */}
+                <View style={st.headerStats}>
+                  {[
+                    { label: 'PARKS',  value: `${visitedCount}/63` },
+                    { label: 'STATES', value: `${statesCount}/50` },
+                    { label: 'BUCKET', value: String(bucketCount) },
+                    { label: 'BADGES', value: `${badgeCount}/${totalBadges}` },
+                  ].map((s, i) => (
+                    <View key={s.label} style={[st.headerStat, i > 0 && st.headerStatBorder]}>
+                      <Text style={st.headerStatLabel}>{s.label}</Text>
+                      <Text style={st.headerStatVal}>{s.value}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Stamp count progress line */}
+                <View style={st.headerProgress}>
+                  <Text style={st.headerProgressText}>
+                    {loading ? 'Loading…' : `${visitedCount} of 63 parks stamped`}
+                  </Text>
+                  <View style={st.progressTrack}>
+                    <View style={[st.progressFill, { width: `${(visitedCount / 63) * 100}%` as `${number}%` }]} />
+                  </View>
+                </View>
+              </View>
+            );
           }
-          renderItem={({ item }) => (
-            <StampCell item={item} onPress={() => router.push(`/parks/${item.park_code}` as never)} />
-          )}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 40 }}
-          getItemLayout={(_, index) => ({
-            length: STAMP_D + 36,
-            offset: (STAMP_D + 36) * Math.floor(index / 3),
-            index,
-          })}
-        />
-      )}
+
+          if (item.type === 'divider') {
+            return (
+              <View style={st.pageDivider}>
+                <View style={st.pageDividerLine} />
+                <Text style={st.pageDividerText}>· {item.pageNum} ·</Text>
+                <View style={st.pageDividerLine} />
+              </View>
+            );
+          }
+
+          if (item.type === 'empty') {
+            return (
+              <View style={{ alignItems: 'center', paddingTop: 48, paddingHorizontal: 32, gap: 10 }}>
+                <Text style={{ fontSize: 32 }}>🏕</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: P_INK, textAlign: 'center' }}>No stamps yet</Text>
+                <Text style={{ fontSize: 13, color: P_MUTE, textAlign: 'center', lineHeight: 19 }}>
+                  Log your first park visit to earn your first stamp.
+                </Text>
+              </View>
+            );
+          }
+
+          // stamps row
+          return (
+            <View style={st.stampRow}>
+              {item.items.map(s => s.visited ? (
+                <StampCell key={s.park_code} item={s} onPress={() => router.push(`/parks/${s.park_code}` as never)} />
+              ) : (
+                <StampPlaceholder key={s.park_code} item={s} />
+              ))}
+              {/* Pad short last row */}
+              {item.items.length < 3 && Array.from({ length: 3 - item.items.length }).map((_, i) => (
+                <View key={`pad-${i}`} style={{ width: CELL_W }} />
+              ))}
+            </View>
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -535,156 +397,186 @@ export default function PassportScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const st = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.bg },
+  // ── Header (green passport card) ──
+  header: {
+    backgroundColor: C.primaryDeep,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 20,
+    overflow: 'hidden',
+    borderBottomWidth: 3,
+    borderBottomColor: GOLD + '44',
+  },
+  headerMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  headerKicker: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: GOLD,
+    letterSpacing: 1.8,
+    opacity: 0.8,
+  },
+  headerPNo: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: GOLD,
+    letterSpacing: 1.2,
+    opacity: 0.7,
+  },
+  headerIdentity: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+    marginBottom: 20,
+  },
+  headerAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 2,
+    borderColor: GOLD + '66',
+    overflow: 'hidden',
+    backgroundColor: C.primary,
+    flexShrink: 0,
+  },
+  headerName: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: GOLD,
+    letterSpacing: -0.5,
+    lineHeight: 28,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  headerHandle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: GOLD,
+    opacity: 0.75,
+    letterSpacing: 0.5,
+    marginTop: 4,
+  },
+  headerBio: {
+    fontSize: 13,
+    color: '#FFFBF1',
+    opacity: 0.65,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  headerStats: {
+    flexDirection: 'row',
+    borderTopWidth: 0.5,
+    borderTopColor: GOLD + '33',
+    paddingTop: 14,
+    marginBottom: 16,
+  },
+  headerStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerStatBorder: {
+    borderLeftWidth: 0.5,
+    borderLeftColor: GOLD + '33',
+  },
+  headerStatLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: GOLD,
+    letterSpacing: 1.5,
+    opacity: 0.7,
+  },
+  headerStatVal: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: GOLD,
+    letterSpacing: -0.3,
+    marginTop: 2,
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  headerProgress: {
+    gap: 6,
+  },
+  headerProgressText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: GOLD,
+    opacity: 0.7,
+    letterSpacing: 0.5,
+  },
+  progressTrack: {
+    height: 3,
+    backgroundColor: GOLD + '22',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 3,
+    backgroundColor: GOLD,
+    borderRadius: 2,
+    opacity: 0.85,
+  },
 
-  colWrapper: {
+  // ── Book stamp rows ──
+  stampRow: {
+    flexDirection: 'row',
     paddingHorizontal: 16,
     gap: 8,
-  },
-
-  pageHeader: {
-    paddingHorizontal: 16, paddingTop: 20, paddingBottom: 20,
-  },
-  kicker: {
-    fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 5,
-  },
-  pageTitle: {
-    fontSize: 30, fontWeight: '800', color: C.ink, letterSpacing: -0.6,
-  },
-  pageSub: {
-    fontSize: 14, color: C.inkMute, marginTop: 6,
-  },
-
-  toggleBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, marginTop: 14, paddingVertical: 10,
-  },
-  toggleBtnText: {
-    fontSize: 13, fontWeight: '700', color: C.primary, letterSpacing: 1.5,
-  },
-
-  stampsHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 14, paddingHorizontal: 16,
-    backgroundColor: PAPER, borderTopLeftRadius: 14, borderTopRightRadius: 14,
-    borderWidth: 0.5, borderColor: C.hairline, marginTop: 8,
-  },
-  stampsSectionTitle: {
-    fontSize: 20, fontWeight: '800', color: P_INK, letterSpacing: -0.3, marginTop: 2,
-  },
-  progressPill: {
-    backgroundColor: C.surfaceAlt, borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderWidth: 0.5, borderColor: C.hairline,
-  },
-  progressText: {
-    fontSize: 14, fontWeight: '800', color: C.ink, letterSpacing: -0.3,
-  },
-
-  // Cover card
-  cover: {
-    backgroundColor: C.primaryDeep,
-    borderRadius: 14, padding: 28,
-    alignItems: 'center',
-    borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.3)',
-    shadowColor: C.primaryDeep,
-    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16,
-    elevation: 8,
-  },
-  corner: {
-    position: 'absolute', width: 16, height: 16, zIndex: 1,
-  },
-  seal: {
-    width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center',
-    marginTop: 16, marginBottom: 16, position: 'relative',
-  },
-  sealOuter: {
-    position: 'absolute', width: 68, height: 68, borderRadius: 34,
-    borderWidth: 1.5, borderColor: COVER_FOIL + 'AA',
-  },
-  sealInner: {
-    position: 'absolute', width: 56, height: 56, borderRadius: 28,
-    borderWidth: 0.5, borderColor: COVER_FOIL + '77', borderStyle: 'dashed',
-  },
-  sealInner2: {
-    position: 'absolute', width: 44, height: 44, borderRadius: 22,
-    borderWidth: 0.5, borderColor: COVER_FOIL + '44',
-  },
-  coverCountry: {
-    fontSize: 13, fontWeight: '600', color: COVER_FOIL, letterSpacing: 2.5, textAlign: 'center',
-  },
-  coverTitle: {
-    fontSize: 24, fontWeight: '900', color: COVER_FOIL, letterSpacing: 5,
-    textShadowColor: '#8A5E18', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 0,
-  },
-  coverSubtitle: {
-    fontSize: 13, fontWeight: '700', color: COVER_FOIL, letterSpacing: 4, marginTop: 3, opacity: 0.85,
-  },
-  coverTagline: {
-    fontSize: 13, fontWeight: '500', color: COVER_FOIL, letterSpacing: 2.5, opacity: 0.55, marginTop: 14,
-  },
-
-  // Data page
-  dataPage: {
     backgroundColor: PAPER,
-    borderRadius: 18, borderWidth: 0.5, borderColor: C.hairline,
-    padding: 16,
-    shadowColor: 'rgba(58,42,18,0.1)', shadowOffset: { width: 0, height: 8 }, shadowRadius: 22, shadowOpacity: 1,
-    elevation: 4,
   },
-  dataSeal: {
-    width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: FOIL,
-    alignItems: 'center', justifyContent: 'center',
+  stampCell: {
+    width: CELL_W,
+    alignItems: 'center',
+    paddingVertical: 14,
   },
-  dataOrgTitle: {
-    fontSize: 13, fontWeight: '900', letterSpacing: 2, color: FOIL,
+  stampName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: P_INK,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 14,
+    maxWidth: CELL_W - 8,
   },
-  dataOrgSub: {
-    fontSize: 13, fontWeight: '500', letterSpacing: 1.2, color: FOIL, opacity: 0.75,
-  },
-  dataPassportNo: {
-    fontSize: 13, fontWeight: '600', color: FOIL, letterSpacing: 1.2,
-  },
-  dataPhoto: {
-    width: 108, height: 130, borderWidth: 0.5, borderColor: P_MUTE,
-    backgroundColor: C.surfaceAlt, overflow: 'hidden', flexShrink: 0,
-  },
-  dataBearer: {
-    fontSize: 13, fontWeight: '600', color: P_MUTE, letterSpacing: 1.6, textTransform: 'uppercase',
-  },
-  dataName: {
-    fontSize: 26, fontWeight: '900', color: P_INK, letterSpacing: -0.6, lineHeight: 28, marginTop: 4,
-  },
-  dataUsername: {
-    fontSize: 13, fontWeight: '600', color: P_INK, letterSpacing: 0.4, marginTop: 4,
-  },
-  dataBio: {
-    fontSize: 13, color: P_INK, lineHeight: 19, fontStyle: 'italic', opacity: 0.85, marginTop: 10,
-  },
-  dataStat: {
-    flex: 1, paddingHorizontal: 8,
-  },
-  dataStatLabel: {
-    fontSize: 13, fontWeight: '600', color: P_MUTE, letterSpacing: 1.5, textTransform: 'uppercase',
-  },
-  dataStatVal: {
-    fontSize: 24, fontWeight: '900', color: P_INK, letterSpacing: -1,
-  },
-  dataStatSuf: {
-    fontSize: 13, fontWeight: '600', color: P_MUTE,
-  },
-  dataMetaLabel: {
-    fontSize: 13, fontWeight: '600', color: P_MUTE, letterSpacing: 1.5, textTransform: 'uppercase',
-  },
-  dataMetaVal: {
-    fontSize: 13, fontWeight: '700', color: P_INK, marginTop: 2, letterSpacing: 0.3,
-  },
-  dataSignature: {
-    fontStyle: 'italic', fontSize: 17, color: P_INK, marginTop: 3, letterSpacing: 0.5,
-  },
-  mrz: {
-    marginTop: 10, fontSize: 13, letterSpacing: 1.2, color: P_MUTE,
-    lineHeight: 14, borderTopWidth: 0.5, borderTopColor: P_FAINT, paddingTop: 8,
+  stampDate: {
+    fontSize: 10,
+    color: P_MUTE,
+    textAlign: 'center',
+    marginTop: 2,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  placeholderCircle: {
+    borderWidth: 1.5,
+    borderColor: P_INK,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Page divider ──
+  pageDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 10,
+    backgroundColor: PAPER,
+  },
+  pageDividerLine: {
+    flex: 1,
+    height: 0.5,
+    backgroundColor: GOLD + '55',
+  },
+  pageDividerText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: GOLD + 'AA',
+    letterSpacing: 2,
   },
 });
