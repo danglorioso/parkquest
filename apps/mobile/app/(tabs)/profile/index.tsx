@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Dimensions, Image, Modal, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Dimensions, Image, Linking, Modal, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -420,6 +420,11 @@ export default function ProfileScreen() {
             })}
           </Svg>
 
+          {/* Watermark strip */}
+          <Text style={styles.passportWatermark} numberOfLines={1} ellipsizeMode="clip" pointerEvents="none">
+            {'PARKQUEST • '.repeat(16)}
+          </Text>
+
           {/* Share profile — top-right corner */}
           <TouchableOpacity
             style={styles.shareBtn}
@@ -468,7 +473,7 @@ export default function ProfileScreen() {
           </View>
 
           {/* MRZ strip */}
-          <View style={{ marginTop: 14, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.15)' }}>
+          <View style={{ marginTop: 2, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.15)' }}>
             <Text style={styles.mrzText} numberOfLines={1}>{mrzLine1}</Text>
             <Text style={styles.mrzText} numberOfLines={1}>{mrzLine2}</Text>
           </View>
@@ -705,7 +710,17 @@ export default function ProfileScreen() {
         </View>
 
         {/* Attribution */}
-        <Text style={styles.attribution}>© {new Date().getFullYear()} ParkQuest · Track your national park adventures</Text>
+        <Text style={styles.attribution}>
+          © {new Date().getFullYear()}{' '}
+          <Text
+            style={{ fontWeight: '600' }}
+            onPress={() => Linking.openURL('https://parkquest.me')}
+            suppressHighlighting
+          >
+            ParkQuest
+          </Text>
+          {' '}· Track your national park adventures
+        </Text>
       </ScrollView>
 
       {selectedBadge ? (
@@ -765,11 +780,20 @@ const styles = StyleSheet.create({
     elevation: 6,
     overflow: 'hidden',
   },
+  passportWatermark: {
+    marginTop: -8,
+    marginHorizontal: -20,
+    marginBottom: 12,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 2.2,
+    color: 'rgba(201,169,74,0.28)',
+  },
   passportHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 16,
   },
   shareBtn: {
-    position: 'absolute', top: 12, right: 12, zIndex: 2,
+    position: 'absolute', top: 28, right: 12, zIndex: 2,
     width: 30, height: 30, borderRadius: 15,
     backgroundColor: 'rgba(201,169,74,0.12)',
     borderWidth: 1, borderColor: 'rgba(201,169,74,0.35)',

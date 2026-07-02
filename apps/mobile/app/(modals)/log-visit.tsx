@@ -1882,7 +1882,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10,
   },
   modalTitle: {
-    fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.3,
+    fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.5, lineHeight: 30,
   },
   modalClose: {
     flexShrink: 0,

@@ -96,6 +96,11 @@ export default function EditProfileScreen() {
           if (data) {
             setBio(data.bio ?? '');
             original.current.bio = data.bio ?? '';
+            // Profile DB is the source of truth for username — Clerk's copy can drift
+            if (data.username) {
+              setUsername(data.username);
+              original.current.username = data.username;
+            }
           }
         })
         .catch(() => {})
@@ -621,8 +626,8 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
   saveButton: {
     backgroundColor: C.primary,
     borderRadius: 10,
-    paddingVertical: 13,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 16,
     minHeight: 46,
   },

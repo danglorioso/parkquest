@@ -539,17 +539,9 @@ export default function FriendsScreen() {
     switch (item._t) {
       case 'header':
         return (
-          <View style={[st.pageHeader, { paddingTop: insets.top + 8 }]}>
-            <View style={st.dragHandle} />
-            <View style={st.sheetTitleRow}>
-              <View>
-                <Text style={st.kicker}>CONNECTIONS</Text>
-                <Text style={st.pageTitle}>Friends</Text>
-              </View>
-              <TouchableOpacity onPress={() => router.back()} style={st.closeBtn} hitSlop={8}>
-                <Ionicons name="close" size={18} color={C.inkSoft} />
-              </TouchableOpacity>
-            </View>
+          <View style={st.pageHeader}>
+            <Text style={st.kicker}>CONNECTIONS</Text>
+            <Text style={st.pageTitle}>Friends</Text>
             <Text style={st.pageSub}>
               {loading
                 ? 'Loading…'
@@ -560,7 +552,7 @@ export default function FriendsScreen() {
 
       case 'searchbar':
         return (
-          <View style={{ paddingHorizontal: 16, marginBottom: 36 }}>
+          <View style={{ paddingHorizontal: 16, marginBottom: 2 }}>
             <View style={st.searchBox}>
               <Ionicons name="search" size={14} color={C.inkMute} />
               <TextInput
@@ -580,7 +572,7 @@ export default function FriendsScreen() {
       case 'search_results': {
         const { results: res } = item;
         return (
-          <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+          <View style={{ paddingHorizontal: 16, marginTop: 22, marginBottom: 24 }}>
             {res.length === 0 && !searching ? (
               <View style={[st.card, { padding: 20, alignItems: 'center' }]}>
                 <Text style={{ fontSize: 13, color: C.inkMute }}>No users found for "{searchQ}"</Text>
@@ -607,7 +599,7 @@ export default function FriendsScreen() {
 
       case 'section':
         return (
-          <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+          <View style={{ paddingHorizontal: 16, marginTop: 28, marginBottom: 8 }}>
             <SectionHead label={item.label} icon={item.icon} count={item.count} accent={item.accent} />
           </View>
         );
@@ -623,7 +615,7 @@ export default function FriendsScreen() {
 
       case 'empty':
         return (
-          <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+          <View style={{ paddingHorizontal: 16, marginBottom: 2 }}>
             <View style={[st.card, st.emptyCard]}>
               <Ionicons name="people-outline" size={28} color={C.inkMute} />
               <Text style={st.emptyText}>{item.message}</Text>
@@ -741,10 +733,7 @@ export default function FriendsScreen() {
 const st = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
-  pageHeader:    { paddingHorizontal: 16, paddingBottom: 28 },
-  dragHandle:    { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(27,26,22,0.18)', alignSelf: 'center', marginBottom: 20 },
-  sheetTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 },
-  closeBtn:      { width: 32, height: 32, borderRadius: 16, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: C.hairline },
+  pageHeader:    { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 28 },
   kicker:    { fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.4, marginBottom: 3 },
   pageTitle: { fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
   pageSub:   { fontSize: 13.5, color: C.inkMute, marginTop: 4 },
@@ -786,6 +775,7 @@ const st = StyleSheet.create({
   row: {
     flexDirection: 'row', alignItems: 'center',
     padding: 12, paddingHorizontal: 16,
+    gap: 10,
   },
   rowName:   { fontSize: 14, fontWeight: '700', color: C.ink },
   rowHandle: { fontSize: 13, color: C.inkMute, marginTop: 1 },

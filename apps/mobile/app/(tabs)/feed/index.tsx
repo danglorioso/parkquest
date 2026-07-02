@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DeviceEventEmitter, View, Text, FlatList, TouchableOpacity,
-  ActivityIndicator, StyleSheet,
+  ActivityIndicator, RefreshControl, StyleSheet,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -231,8 +231,14 @@ export default function FeedScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
         scrollEventThrottle={16}
-        refreshing={refreshing}
-        onRefresh={() => loadFeed(true)}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadFeed(true)}
+            progressViewOffset={TOP_BAR_H}
+            tintColor={C.inkMute}
+          />
+        }
         removeClippedSubviews
         windowSize={5}
         maxToRenderPerBatch={3}
