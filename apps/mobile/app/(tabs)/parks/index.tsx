@@ -1,6 +1,6 @@
 import {
-  Dimensions, FlatList, Image, Linking, Pressable, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  Dimensions, FlatList, Image, LayoutAnimation, Linking, Platform, Pressable,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, UIManager, View,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScrollToTop } from '@react-navigation/native';
@@ -269,16 +269,24 @@ function ActiveChip({ label, onRemove }: { label: string; onRemove: () => void }
   );
 }
 
+// LayoutAnimation needs an explicit opt-in on Android's old architecture
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const animatePanel = () =>
+  LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+
 function FilterPanel({
   statusFilter, onStatusFilter,
-  regionFilter, onRegionFilter,
+  regionFilters, onRegionToggle, onClearRegions,
   activityFilters, onActivityToggle, onClearActivities,
   topicFilters, onTopicToggle, onClearTopics,
   allActivities, allTopics, filtersLoading,
   hasFilter, onReset,
 }: {
   statusFilter: StatusFilter; onStatusFilter: (s: StatusFilter) => void;
-  regionFilter: string; onRegionFilter: (r: string) => void;
+  regionFilters: string[]; onRegionToggle: (r: string) => void; onClearRegions: () => void;
   activityFilters: string[]; onActivityToggle: (a: string) => void; onClearActivities: () => void;
   topicFilters: string[]; onTopicToggle: (t: string) => void; onClearTopics: () => void;
   allActivities: string[]; allTopics: string[]; filtersLoading: boolean;
@@ -290,12 +298,20 @@ function FilterPanel({
 
   const activeCount =
     (statusFilter !== 'all' ? 1 : 0) +
-    (regionFilter !== 'all' ? 1 : 0) +
+    regionFilters.length +
     activityFilters.length +
     topicFilters.length;
 
-  const toggleSection = (s: FilterSection) =>
+  const togglePanel = () => {
+    animatePanel();
+    setOpen(o => !o);
+    if (open) setSection(null);
+  };
+
+  const toggleSection = (s: FilterSection) => {
+    animatePanel();
     setSection(prev => (prev === s ? null : s));
+  };
 
   const statusLabel = STATUS_FILTERS.find(f => f.key === statusFilter)?.label ?? 'All';
 
@@ -306,7 +322,7 @@ function FilterPanel({
     hasSelection: boolean;
   }> = [
     { key: 'status',     title: 'Status',     summary: statusLabel, hasSelection: statusFilter !== 'all' },
-    { key: 'location',   title: 'Location',   summary: regionFilter === 'all' ? 'All regions' : regionFilter, hasSelection: regionFilter !== 'all' },
+    { key: 'location',   title: 'Location',   summary: regionFilters.length > 0 ? `${regionFilters.length} selected` : 'All regions', hasSelection: regionFilters.length > 0 },
     { key: 'activities', title: 'Activities', summary: activityFilters.length > 0 ? `${activityFilters.length} selected` : 'Any', hasSelection: activityFilters.length > 0 },
     { key: 'topics',     title: 'Topics',     summary: topicFilters.length > 0 ? `${topicFilters.length} selected` : 'Any', hasSelection: topicFilters.length > 0 },
   ];
@@ -317,7 +333,7 @@ function FilterPanel({
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <TouchableOpacity
           style={[styles.filterToggle, (open || activeCount > 0) && [styles.filterToggleActive, { backgroundColor: primary, borderColor: primary }]]}
-          onPress={() => { setOpen(o => !o); if (open) setSection(null); }}
+          onPress={togglePanel}
           activeOpacity={0.75}
         >
           <Ionicons
@@ -360,9 +376,9 @@ function FilterPanel({
               onRemove={() => onStatusFilter('all')}
             />
           )}
-          {regionFilter !== 'all' && (
-            <ActiveChip label={regionFilter} onRemove={() => onRegionFilter('all')} />
-          )}
+          {regionFilters.map(r => (
+            <ActiveChip key={r} label={r} onRemove={() => onRegionToggle(r)} />
+          ))}
           {activityFilters.map(a => (
             <ActiveChip key={a} label={a} onRemove={() => onActivityToggle(a)} />
           ))}
@@ -408,9 +424,9 @@ function FilterPanel({
 
                   {s.key === 'location' && (
                     <>
-                      <Chip label="All regions" active={regionFilter === 'all'} onPress={() => onRegionFilter('all')} />
+                      <Chip label="All regions" active={regionFilters.length === 0} onPress={onClearRegions} />
                       {REGIONS.map(r => (
-                        <Chip key={r.label} label={r.label} active={regionFilter === r.label} onPress={() => onRegionFilter(r.label)} />
+                        <Chip key={r.label} label={r.label} active={regionFilters.includes(r.label)} onPress={() => onRegionToggle(r.label)} />
                       ))}
                     </>
                   )}
@@ -463,7 +479,7 @@ export default function ParksScreen() {
   const [error,   setError]   = useState(false);
   const [query,   setQuery]   = useState('');
   const [statusFilter,  setStatusFilter]  = useState<StatusFilter>('all');
-  const [regionFilter,  setRegionFilter]  = useState('all');
+  const [regionFilters, setRegionFilters] = useState<string[]>([]);
   const [activityFilters, setActivityFilters] = useState<string[]>([]);
   const [topicFilters,    setTopicFilters]    = useState<string[]>([]);
   const [activitiesMap, setActivitiesMap] = useState<Record<string, string[]>>({});
@@ -525,10 +541,13 @@ export default function ParksScreen() {
     return parks.filter(p => {
       const status = parkStatus(p.park_code, visits);
       if (statusFilter !== 'all' && status !== statusFilter) return false;
-      if (regionFilter !== 'all') {
-        const region = REGIONS.find(r => r.label === regionFilter);
+      if (regionFilters.length > 0) {
         const parkStates = p.states.split(',').map(s => s.trim());
-        if (!region || !parkStates.some(s => region.states.includes(s))) return false;
+        const inAnyRegion = regionFilters.some(label => {
+          const region = REGIONS.find(r => r.label === label);
+          return !!region && parkStates.some(s => region.states.includes(s));
+        });
+        if (!inAnyRegion) return false;
       }
       if (activityFilters.length > 0) {
         const parkActivities = activitiesMap[p.park_code] ?? [];
@@ -546,14 +565,14 @@ export default function ParksScreen() {
       }
       return true;
     }).sort((a, b) => a.name.localeCompare(b.name));
-  }, [parks, visits, query, statusFilter, regionFilter, activityFilters, topicFilters, activitiesMap, topicsMap]);
+  }, [parks, visits, query, statusFilter, regionFilters, activityFilters, topicFilters, activitiesMap, topicsMap]);
 
-  const hasFilter = statusFilter !== 'all' || regionFilter !== 'all'
+  const hasFilter = statusFilter !== 'all' || regionFilters.length > 0
     || activityFilters.length > 0 || topicFilters.length > 0;
 
   const handleReset = useCallback(() => {
     setStatusFilter('all');
-    setRegionFilter('all');
+    setRegionFilters([]);
     setActivityFilters([]);
     setTopicFilters([]);
   }, []);
@@ -665,7 +684,9 @@ export default function ParksScreen() {
       {/* Filters */}
       <FilterPanel
         statusFilter={statusFilter} onStatusFilter={setStatusFilter}
-        regionFilter={regionFilter} onRegionFilter={setRegionFilter}
+        regionFilters={regionFilters}
+        onRegionToggle={r => setRegionFilters(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r])}
+        onClearRegions={() => setRegionFilters([])}
         activityFilters={activityFilters}
         onActivityToggle={a => setActivityFilters(prev => prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a])}
         onClearActivities={() => setActivityFilters([])}

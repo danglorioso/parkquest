@@ -84,6 +84,7 @@ export default function FeedScreen() {
   const [posts, setPosts]         = useState<FeedPost[]>([]);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
   const [filter, setFilter]       = useState<Filter>('all');
   const [error, setError]         = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -95,14 +96,17 @@ export default function FeedScreen() {
   const scrollToTop = () => flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
 
   const loadFeed = useCallback(async (isRefresh = false) => {
-    const tok = await getToken();
-    if (!tok) { setLoading(false); return; }
-    setToken(tok);
+    // RefreshControl ends the native spinner unless `refreshing` flips true
+    // synchronously inside onRefresh — set it before any await.
     if (isRefresh) {
       setRefreshing(true);
+      refreshingRef.current = true;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    else setPosts(prev => { if (prev.length === 0) setLoading(true); return prev; });
+    const tok = await getToken();
+    if (!tok) { setLoading(false); setRefreshing(false); refreshingRef.current = false; return; }
+    setToken(tok);
+    if (!isRefresh) setPosts(prev => { if (prev.length === 0) setLoading(true); return prev; });
     setError(false);
     try {
       const [res] = await Promise.all([
@@ -120,6 +124,7 @@ export default function FeedScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      refreshingRef.current = false;
     }
   }, [getToken]);
 
@@ -128,13 +133,25 @@ export default function FeedScreen() {
 
   useFocusEffect(useCallback(() => { loadFeedRef.current(); }, []));
 
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('feedTabPress', () => {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  // Programmatic refresh (tab re-press / wordmark tap). Fabric's begin-refresh
+  // jumps the content offset without animation, so animate the pull-down reveal
+  // ourselves before flipping `refreshing`, then settle at the spinner's rest
+  // position once the native side has applied its own offset.
+  const triggerRefresh = useCallback(() => {
+    if (refreshingRef.current) return;
+    const list = flatListRef.current;
+    list?.scrollToOffset({ offset: 0, animated: false });
+    list?.scrollToOffset({ offset: -70, animated: true });
+    setTimeout(() => {
       loadFeedRef.current(true);
-    });
-    return () => sub.remove();
+      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: -60, animated: true }), 120);
+    }, 260);
   }, []);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('feedTabPress', triggerRefresh);
+    return () => sub.remove();
+  }, [triggerRefresh]);
 
   const handleDelete = useCallback((id: number) => {
     setPosts(prev => prev.filter(p => p.id !== id));
@@ -233,7 +250,8 @@ export default function FeedScreen() {
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         ListEmptyComponent={ListEmpty}
-        contentContainerStyle={[styles.listContent, { paddingTop: TOP_BAR_H + 8, paddingBottom: tabBarSpace + 8 }]}
+        style={{ marginTop: TOP_BAR_H }}
+        contentContainerStyle={[styles.listContent, { paddingTop: 8, paddingBottom: tabBarSpace + 8 }]}
         showsVerticalScrollIndicator={false}
         onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
         scrollEventThrottle={16}
@@ -241,8 +259,7 @@ export default function FeedScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => loadFeed(true)}
-            progressViewOffset={TOP_BAR_H}
-            tintColor={C.inkMute}
+            tintColor={C.primary}
           />
         }
         removeClippedSubviews
@@ -253,10 +270,7 @@ export default function FeedScreen() {
       {/* Floating glass top bar */}
       <View style={[styles.topBar, { paddingTop: insets.top, height: TOP_BAR_H }]}>
         <View style={styles.topBarInner}>
-          <Wordmark onPress={() => {
-            flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
-            loadFeed(true);
-          }} />
+          <Wordmark onPress={triggerRefresh} />
           <View style={styles.topBarActions}>
             <NotificationBell style={styles.iconBtn} />
             <TouchableOpacity

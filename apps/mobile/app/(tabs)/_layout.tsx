@@ -142,8 +142,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
     borderWidth: 0.75,
-    borderColor: 'rgba(255,255,255,0.22)',
-    boxShadow:
-      'inset 0 3 5 rgba(255,255,255,0.45), inset 0 -4 6 rgba(0,0,0,0.35)',
+    borderColor: 'rgba(255,255,255,0.28)',
+    // macOS-style convex glass: crisp rim light hugging the top edge, a broad
+    // soft sheen below it, then a crisp dark inner edge and deep falloff at
+    // the bottom — tight blurs read as a curved surface, big blurs as a wash
+    boxShadow: [
+      'inset 0 1.5 1 rgba(255,255,255,0.6)',
+      'inset 0 8 12 rgba(255,255,255,0.16)',
+      'inset 0 -1.5 1 rgba(0,0,0,0.35)',
+      'inset 0 -8 12 rgba(0,0,0,0.2)',
+    ].join(', '),
   },
 });
