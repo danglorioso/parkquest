@@ -12,19 +12,7 @@ import {
   getNotifications, getUnreadNotificationCount, markNotificationsRead,
   respondFriendRequest, dismissNotification, type NotificationItem, type NotificationType,
 } from '@/lib/api';
-
-const C = {
-  bg:           '#F2EBDB',
-  surface:      '#FFFBF1',
-  surfaceAlt:   '#F7F0DE',
-  ink:          '#1B1A16',
-  inkSoft:      '#3C3A33',
-  inkMute:      '#7A746A',
-  hairline:     'rgba(27,26,22,0.10)',
-  hairlineSoft: 'rgba(27,26,22,0.06)',
-  primary:      '#1F3D2E',
-  unreadAccent: '#1F3D2E',
-};
+import { STATIC as C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
 
 const TYPE_CONFIG: Record<NotificationType, { icon: keyof typeof Ionicons.glyphMap; bg: string; color: string }> = {
   friend_request:  { icon: 'person-add', bg: '#EDE9FE', color: '#7C3AED' },
@@ -73,6 +61,7 @@ function buildText(n: NotificationItem): { actorName: string | null; rest: strin
 const SWIPE_THRESHOLD = -80;
 
 function SwipeableRow({ children, onDismiss }: { children: React.ReactNode; onDismiss: () => void }) {
+  const styles = useThemedStyles(makeStyles);
   const translateX = useRef(new Animated.Value(0)).current;
 
   const panResponder = useRef(PanResponder.create({
@@ -106,6 +95,7 @@ function NotificationRow({
   onRespond: (friendshipId: number, action: 'accept' | 'reject') => Promise<void>;
   onNavigateToUser: (userId: string) => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.system;
   const [busy, setBusy] = useState(false);
   const { actorName, rest } = buildText(n);
@@ -223,6 +213,8 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const T = useColors();
+  const styles = useThemedStyles(makeStyles);
 
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
@@ -364,7 +356,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   return (
     <>
       <TouchableOpacity style={[style, open && styles.bellActive]} activeOpacity={0.7} onPress={() => { dragY.setValue(800); backdropOpacity.setValue(0); setOpen(true); }}>
-        <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? C.primary : C.inkSoft} />
+        <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? T.primary : C.inkSoft} />
         {displayCount > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{displayCount > 99 ? '99+' : displayCount}</Text>
@@ -463,11 +455,11 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                 <Ionicons
                   name={pushStatus === 'granted' ? 'notifications' : 'notifications-off-outline'}
                   size={12}
-                  color={pushStatus === 'granted' ? C.primary : C.inkMute}
+                  color={pushStatus === 'granted' ? T.primary : C.inkMute}
                 />
                 <Text style={styles.permFooterLabel}>
                   Push notifications:{' '}
-                  <Text style={{ color: pushStatus === 'granted' ? C.primary : C.inkMute, fontWeight: '600' }}>
+                  <Text style={{ color: pushStatus === 'granted' ? T.primary : C.inkMute, fontWeight: '600' }}>
                     {pushStatus === 'granted' ? 'On' : pushStatus === 'denied' ? 'Off' : 'Not set'}
                   </Text>
                 </Text>
@@ -481,9 +473,9 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Colors) => StyleSheet.create({
   bellActive: {
-    backgroundColor: 'rgba(31,61,46,0.07)',
+    backgroundColor: `${T.primary}12`,
     borderColor: C.hairline,
   },
   badge: {
@@ -500,7 +492,7 @@ const styles = StyleSheet.create({
 
   swipeBg: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#D45040',
+    backgroundColor: C.liked,
   },
 
   overlayContainer: {
@@ -536,11 +528,11 @@ const styles = StyleSheet.create({
     fontWeight: '800', fontSize: 20, color: C.ink, letterSpacing: -0.3,
   },
   newChip: {
-    backgroundColor: C.primary, borderRadius: 100,
+    backgroundColor: T.primary, borderRadius: 100,
     paddingHorizontal: 8, paddingVertical: 3,
   },
   newChipText: {
-    fontSize: 13, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.3,
+    fontSize: 13, fontWeight: '700', color: C.onPrimary, letterSpacing: 0.3,
   },
   closeBtn: {
     width: 30, height: 30, borderRadius: 15,
@@ -557,13 +549,13 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface,
   },
   rowUnread: {
-    backgroundColor: '#EEF4EE',
+    backgroundColor: `${T.primary}0F`,
   },
   unreadBar: {
     position: 'absolute',
     left: 0, top: 10, bottom: 10,
     width: 3, borderRadius: 2,
-    backgroundColor: C.unreadAccent,
+    backgroundColor: T.primary,
   },
   typeCircle: {
     width: 40, height: 40, borderRadius: 20,
@@ -590,10 +582,10 @@ const styles = StyleSheet.create({
   // Friend request
   actionRow: { flexDirection: 'row', gap: 7, marginTop: 8 },
   acceptBtn: {
-    backgroundColor: C.primary, borderRadius: 100,
+    backgroundColor: T.primary, borderRadius: 100,
     paddingHorizontal: 16, paddingVertical: 6,
   },
-  acceptText: { color: '#FFFBF1', fontSize: 13, fontWeight: '700' },
+  acceptText: { color: C.onPrimary, fontSize: 13, fontWeight: '700' },
   declineBtn: {
     backgroundColor: C.surfaceAlt, borderRadius: 100,
     borderWidth: 0.5, borderColor: C.hairline,

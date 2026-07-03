@@ -14,6 +14,7 @@ export const STATE_NAMES: Record<string, string> = {
   VT: 'Vermont',       VA: 'Virginia',      WA: 'Washington',    WV: 'West Virginia',
   WI: 'Wisconsin',     WY: 'Wyoming',
   AS: 'American Samoa', VI: 'Virgin Islands',
+  DC: 'D.C.',           MP: 'N. Mariana Is.', GU: 'Guam',
 };
 
 export function fullStateName(code: string | null | undefined): string {

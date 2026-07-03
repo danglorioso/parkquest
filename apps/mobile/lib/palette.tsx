@@ -1,6 +1,24 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Neutral tokens that are identical in every palette. Safe to use at module
+// scope (e.g. inside StyleSheet.create); theme-dependent colors are not.
+export const STATIC = {
+  bg:           '#F2EBDB',
+  surface:      '#FFFBF1',
+  surfaceAlt:   '#F7F0DE',
+  ink:          '#1B1A16',
+  inkSoft:      '#3C3A33',
+  inkMute:      '#7A746A',
+  hairline:     'rgba(27,26,22,0.10)',
+  hairlineSoft: 'rgba(27,26,22,0.06)',
+  visited:      '#2F7A4A',
+  bucket:       '#C48A20',
+  liked:        '#D45040',
+  // Text/icon color on primary- or accent-filled surfaces (all palettes are dark enough).
+  onPrimary:    '#FFFBF1',
+} as const;
+
 export type PaletteId = 'forest' | 'canyon' | 'glacier' | 'dusk';
 
 export interface PaletteColors {
@@ -56,22 +74,36 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
 
 export const usePalette = () => useContext(PaletteContext);
 
-export function useColors() {
-  const { colors } = useContext(PaletteContext);
-  return {
-    bg:           '#F2EBDB',
-    surface:      '#FFFBF1',
-    surfaceAlt:   '#F7F0DE',
-    ink:          '#1B1A16',
-    inkSoft:      '#3C3A33',
-    inkMute:      '#7A746A',
-    hairline:     'rgba(27,26,22,0.10)',
-    hairlineSoft: 'rgba(27,26,22,0.06)',
-    visited:      '#2F7A4A',
-    bucket:       '#C48A20',
-    liked:        '#D45040',
-    primary:      colors.primary,
-    primaryDeep:  colors.primaryDeep,
-    accent:       colors.accent,
-  };
+export type Colors = typeof STATIC & PaletteColors;
+
+// Per-palette color sets, built once — stable references so hook consumers
+// and the useThemedStyles cache can key off identity.
+const COLOR_SETS: Record<PaletteId, Colors> = Object.fromEntries(
+  PALETTES.map(p => [p.id, { ...STATIC, ...p.colors }]),
+) as Record<PaletteId, Colors>;
+
+export function useColors(): Colors {
+  const { paletteId } = useContext(PaletteContext);
+  return COLOR_SETS[paletteId];
+}
+
+// Theme-aware replacement for a module-level `StyleSheet.create`.
+// Usage:
+//   const makeStyles = (C: Colors) => StyleSheet.create({ ... });
+//   ...inside a component: const styles = useThemedStyles(makeStyles);
+// The factory runs once per palette (cached), so this costs a map lookup
+// per render and every component in the file shares the same sheet.
+const styleCache = new WeakMap<(c: Colors) => unknown, Map<PaletteId, unknown>>();
+
+export function useThemedStyles<T>(factory: (c: Colors) => T): T {
+  const { paletteId } = useContext(PaletteContext);
+  let byPalette = styleCache.get(factory);
+  if (!byPalette) {
+    byPalette = new Map();
+    styleCache.set(factory, byPalette);
+  }
+  if (!byPalette.has(paletteId)) {
+    byPalette.set(paletteId, factory(COLOR_SETS[paletteId]));
+  }
+  return byPalette.get(paletteId) as T;
 }

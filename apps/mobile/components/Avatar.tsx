@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { STATIC, useColors } from '@/lib/palette';
 
 // Matches web PostCard.tsx `Avatar` and friends/page.tsx `Avatar` exactly.
 // Props intentionally identical to both web variants (url/name/size).
@@ -12,6 +13,7 @@ export interface AvatarProps {
 }
 
 export function Avatar({ url, name, size = 40, style }: AvatarProps) {
+  const T = useColors();
   const r = size / 2;
   const initials = (name ?? '?')
     .trim()
@@ -32,7 +34,7 @@ export function Avatar({ url, name, size = 40, style }: AvatarProps) {
           cachePolicy="memory-disk"
         />
       ) : (
-        <View style={[st.fallback, { borderRadius: r }]}>
+        <View style={[st.fallback, { borderRadius: r, backgroundColor: T.primary }]}>
           <Text style={[st.initials, { fontSize: Math.max(13, size * 0.33) }]}>{initials}</Text>
         </View>
       )}
@@ -42,8 +44,8 @@ export function Avatar({ url, name, size = 40, style }: AvatarProps) {
 
 const st = StyleSheet.create({
   fallback: {
-    flex: 1, backgroundColor: '#1F3D2E',
+    flex: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  initials: { fontWeight: '800', color: '#FFFBF1', letterSpacing: 0.5 },
+  initials: { fontWeight: '800', color: STATIC.onPrimary, letterSpacing: 0.5 },
 });

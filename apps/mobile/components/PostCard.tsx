@@ -5,29 +5,14 @@ import {
   StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder,
 } from 'react-native';
 import { ImageLightbox } from '@/components/ImageLightbox';
+import { Avatar } from '@/components/Avatar';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BADGE_MAP, BADGE_TIER_COLORS } from '@/lib/badges';
-import { useColors } from '@/lib/palette';
+import { STATIC as C, useColors } from '@/lib/palette';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:          '#F2EBDB',
-  surface:     '#FFFBF1',
-  surfaceAlt:  '#F7F0DE',
-  ink:         '#1B1A16',
-  inkSoft:     '#3C3A33',
-  inkMute:     '#7A746A',
-  hairline:    'rgba(27,26,22,0.10)',
-  hairlineSoft:'rgba(27,26,22,0.06)',
-  primary:     '#1F3D2E',
-  accent:      '#C56B3D',
-  liked:       '#D45040',
-};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,34 +117,6 @@ async function apiReq(path: string, token: string, options: RequestInit = {}) {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
-}
-
-// ── Avatar ────────────────────────────────────────────────────────────────────
-
-export function Avatar({
-  url, name, size = 40,
-}: { url?: string | null; name?: string | null; size?: number }) {
-  const initials = (name ?? '?')
-    .split(' ')
-    .map(w => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
-  return (
-    <View style={[styles.avatarWrap, { width: size, height: size, borderRadius: size / 2 }]}>
-      {url ? (
-        <Image
-          source={{ uri: url }}
-          style={{ width: size, height: size, borderRadius: size / 2 }}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-        />
-      ) : (
-        <Text style={[styles.avatarInitials, { fontSize: Math.max(13, size * 0.32) }]}>{initials}</Text>
-      )}
-    </View>
-  );
 }
 
 // ── LikersSheet ───────────────────────────────────────────────────────────────
@@ -387,7 +344,6 @@ function BadgePostBody({ badgeId }: { badgeId: string }) {
 
 function ParkHeroBanner({ post, onPress }: { post: FeedPost; onPress?: () => void }) {
   const parkCol = parkColor(post.park_code ?? 'ZZZZ');
-  const isFirst = Number(post.visit_ordinal) === 1;
   const [npsImageUrl, setNpsImageUrl] = useState<string | null>(null);
   const imageUrl = post.park_image_url ?? npsImageUrl;
 
@@ -421,9 +377,6 @@ function ParkHeroBanner({ post, onPress }: { post: FeedPost; onPress?: () => voi
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.parkHeroContent}>
-          {isFirst && (
-            <Text style={styles.parkHeroLabel}>FIRST VISIT</Text>
-          )}
           <Text style={styles.parkHeroName} numberOfLines={2}>
             {post.park_name ?? 'National Park'}
           </Text>
@@ -796,7 +749,7 @@ function CommentsSheet({
                               </TouchableOpacity>
                               <View style={styles.menuDivider} />
                               <TouchableOpacity style={styles.menuItem} onPress={() => deleteComment(c.id)}>
-                                <Text style={[styles.menuItemText, { color: '#D45040' }]}>Delete</Text>
+                                <Text style={[styles.menuItemText, { color: C.liked }]}>Delete</Text>
                               </TouchableOpacity>
                             </View>
                           )}
@@ -832,8 +785,8 @@ function CommentsSheet({
                   style={[styles.commentSend, { backgroundColor: draft.trim() ? C.primary : 'transparent' }]}
                 >
                   {submitting
-                    ? <ActivityIndicator size="small" color={draft.trim() ? '#FFFBF1' : C.inkMute} />
-                    : <Ionicons name="send" size={13} color={draft.trim() ? '#FFFBF1' : C.inkMute} />}
+                    ? <ActivityIndicator size="small" color={draft.trim() ? C.onPrimary : C.inkMute} />
+                    : <Ionicons name="send" size={13} color={draft.trim() ? C.onPrimary : C.inkMute} />}
                 </TouchableOpacity>
               </View>
             </View>
@@ -979,7 +932,7 @@ export function PostCard({
     <View style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}>
       {/* Badge banner */}
       {isBadge && (
-        <View style={styles.badgeBanner}>
+        <View style={[styles.badgeBanner, { borderBottomColor: C.primary + '60' }]}>
           <Ionicons name="ribbon" size={14} color={C.primary} />
           <Text style={[styles.badgeBannerText, { color: C.primary }]}>BADGE EARNED</Text>
         </View>
@@ -1027,7 +980,7 @@ export function PostCard({
             <TouchableOpacity
               onPress={() => setShowMenu(v => !v)}
               hitSlop={8}
-              style={[styles.menuBtn, showMenu && styles.menuBtnActive]}
+              style={[styles.menuBtn, showMenu && [styles.menuBtnActive, { backgroundColor: C.primary + '14' }]]}
             >
               <Ionicons name="ellipsis-horizontal" size={18} color={showMenu ? C.primary : C.inkMute} />
             </TouchableOpacity>
@@ -1055,7 +1008,7 @@ export function PostCard({
                 </TouchableOpacity>
                 <View style={styles.menuDivider} />
                 <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
-                  <Text style={[styles.menuItemText, { color: '#D45040' }]}>Delete post</Text>
+                  <Text style={[styles.menuItemText, { color: C.liked }]}>Delete post</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1094,7 +1047,7 @@ export function PostCard({
               onPress={handleSaveCaption}
               style={[styles.captionBtn, { backgroundColor: C.primary }]}
             >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFBF1' }}>Save</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: C.onPrimary }}>Save</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setEditingCaption(false)}
@@ -1110,7 +1063,7 @@ export function PostCard({
                     key={v}
                     onPress={() => setVisDraft(v)}
                     hitSlop={4}
-                    style={[styles.visPickerBtn, active && styles.visPickerBtnActive]}
+                    style={[styles.visPickerBtn, active && [styles.visPickerBtnActive, { borderColor: C.primary + '40' }]]}
                   >
                     <Ionicons name={VIS_ICONS[v]} size={13} color={active ? C.primary : C.inkMute} />
                   </TouchableOpacity>
@@ -1270,16 +1223,6 @@ export function PostCard({
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // Avatar
-  avatarWrap: {
-    overflow: 'hidden', backgroundColor: C.surfaceAlt,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarInitials: {
-    fontWeight: '700', color: C.inkMute,
-  },
-
-
   // Carousel
   carouselCounter: {
     position: 'absolute', top: 10, right: 10,
@@ -1339,10 +1282,6 @@ const styles = StyleSheet.create({
   },
   parkHeroContent: {
     padding: 16,
-  },
-  parkHeroLabel: {
-    fontSize: 13, letterSpacing: 2, fontWeight: '700',
-    color: 'rgba(255,251,241,0.65)', marginBottom: 4,
   },
   parkHeroName: {
     fontSize: 22, fontWeight: '800', color: '#FFFBF1',
@@ -1479,10 +1418,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 18, paddingVertical: 10,
     backgroundColor: C.surfaceAlt,
-    borderBottomWidth: 1, borderBottomColor: C.primary + '60',
+    borderBottomWidth: 1,
   },
   badgeBannerText: {
-    fontSize: 13, letterSpacing: 1.2, fontWeight: '700', color: C.primary,
+    fontSize: 13, letterSpacing: 1.2, fontWeight: '700',
   },
   cardHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -1500,7 +1439,7 @@ const styles = StyleSheet.create({
     minWidth: 160, overflow: 'hidden',
   },
   menuBtnActive: {
-    backgroundColor: C.primary + '14', borderRadius: 6,
+    borderRadius: 6,
   },
   menuItem: { paddingHorizontal: 14, paddingVertical: 11 },
   menuItemText: { fontSize: 14, color: C.ink },
@@ -1510,7 +1449,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingBottom: 10,
   },
   parkChipText: {
-    fontSize: 13, fontWeight: '700', color: C.primary, letterSpacing: 0.4,
+    fontSize: 13, fontWeight: '700', letterSpacing: 0.4,
   },
   caption: {
     paddingHorizontal: 18, paddingBottom: 12,
@@ -1538,12 +1477,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   visPickerBtnActive: {
-    backgroundColor: '#FFFBF1',
-    borderWidth: 0.5, borderColor: 'rgba(31,61,46,0.25)',
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
   },
   padH: { paddingHorizontal: 18 },
   actionRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 22,
     paddingHorizontal: 18, paddingVertical: 6,
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
   },

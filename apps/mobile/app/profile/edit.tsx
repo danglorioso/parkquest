@@ -220,6 +220,20 @@ export default function EditProfileScreen() {
     }
   };
 
+  const handleSignOut = () => {
+    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+          router.replace('/(auth)/sign-in' as never);
+        },
+      },
+    ]);
+  };
+
   const handleDeleteAccount = () => {
     setDeleteInput('');
     setDeleteModal(true);
@@ -410,6 +424,15 @@ export default function EditProfileScreen() {
               ? <ActivityIndicator color="#FFFBF1" size="small" />
               : <Text style={styles.saveText}>Save changes</Text>
             }
+          </TouchableOpacity>
+
+          {/* Sign out — quiet text button */}
+          <TouchableOpacity
+            style={styles.signOutBtn}
+            onPress={handleSignOut}
+            activeOpacity={0.5}
+          >
+            <Text style={styles.signOutText}>Sign out</Text>
           </TouchableOpacity>
 
         </ScrollView>
@@ -664,6 +687,16 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     fontSize: 13,
     fontWeight: '500',
     color: C.inkSoft,
+  },
+  signOutBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+  },
+  signOutText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.inkMute,
   },
   deleteBtn: {
     alignItems: 'center',

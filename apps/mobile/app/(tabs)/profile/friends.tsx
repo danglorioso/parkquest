@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Alert, FlatList, Image,
+  ActivityIndicator, Alert, FlatList,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -8,20 +8,10 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
+import { Avatar } from '@/components/Avatar';
+import { STATIC as C, useColors } from '@/lib/palette';
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:         '#F2EBDB',
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkSoft:    '#3C3A33',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  primary:    '#1F3D2E',
-  danger:     '#DC2626',
-};
+const DANGER = '#DC2626';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -85,31 +75,6 @@ function displayName(u: { display_name: string | null; username: string | null |
   return u.display_name ?? u.username ?? 'Explorer';
 }
 
-function initials(name: string): string {
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
-
-// ── Avatar ────────────────────────────────────────────────────────────────────
-
-function Avatar({ url, name, size = 44 }: { url: string | null; name: string; size?: number }) {
-  const r = size / 2;
-  return (
-    <View style={{ width: size, height: size, borderRadius: r, flexShrink: 0, borderWidth: 1, borderColor: C.hairline }}>
-      {url ? (
-        <Image source={{ uri: url }} style={{ width: size, height: size, borderRadius: r }} resizeMode="cover" />
-      ) : (
-        <View style={{ flex: 1, borderRadius: r, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-          <Text style={{ fontSize: Math.max(13, size * 0.33), fontWeight: '900', color: '#FFFBF1' }}>
-            {initials(name)}
-          </Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
 // ── Skeleton row ──────────────────────────────────────────────────────────────
 
 function SkeletonRow() {
@@ -133,7 +98,7 @@ function SectionHead({ label, icon, count, accent }: { label: string; icon: stri
       <Ionicons name={icon as any} size={13} color={C.inkMute} />
       <Text style={st.sectionLabel}>{label}</Text>
       {count != null && count > 0 && (
-        <View style={[st.badge, accent && { backgroundColor: C.danger }]}>
+        <View style={[st.badge, accent && { backgroundColor: DANGER }]}>
           <Text style={st.badgeText}>{count}</Text>
         </View>
       )}
@@ -157,7 +122,7 @@ function FriendRow({
   return (
     <View style={st.row}>
       <TouchableOpacity onPress={onPressUser} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-        <Avatar url={avatarUrl} name={name} />
+        <Avatar url={avatarUrl} name={name} size={44} />
         <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
           <Text style={st.rowName} numberOfLines={1}>{name}</Text>
           <Text style={st.rowHandle}>@{username}</Text>
@@ -181,10 +146,11 @@ function IncomingRow({
   avatarUrl: string | null; name: string; username: string;
   busy: boolean; onAccept: () => void; onDecline: () => void; onPressUser: () => void;
 }) {
+  const T = useColors();
   return (
     <View style={st.row}>
       <TouchableOpacity onPress={onPressUser} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-        <Avatar url={avatarUrl} name={name} />
+        <Avatar url={avatarUrl} name={name} size={44} />
         <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
           <Text style={st.rowName} numberOfLines={1}>{name}</Text>
           <Text style={st.rowHandle}>@{username}</Text>
@@ -194,9 +160,9 @@ function IncomingRow({
         <TouchableOpacity onPress={onDecline} disabled={busy} style={[st.btn, st.btnSecondary, busy && { opacity: 0.5 }]}>
           <Text style={st.btnSecondaryText}>Decline</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onAccept} disabled={busy} style={[st.btn, st.btnPrimary, busy && { opacity: 0.7 }]}>
+        <TouchableOpacity onPress={onAccept} disabled={busy} style={[st.btn, { backgroundColor: T.primary }, busy && { opacity: 0.7 }]}>
           {busy
-            ? <ActivityIndicator size="small" color="#FFFBF1" />
+            ? <ActivityIndicator size="small" color={C.onPrimary} />
             : <Text style={st.btnPrimaryText}>Accept</Text>}
         </TouchableOpacity>
       </View>
@@ -213,7 +179,7 @@ function OutgoingRow({
   return (
     <View style={st.row}>
       <TouchableOpacity onPress={onPressUser} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-        <Avatar url={avatarUrl} name={name} />
+        <Avatar url={avatarUrl} name={name} size={44} />
         <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
           <Text style={st.rowName} numberOfLines={1}>{name}</Text>
           <Text style={st.rowHandle}>@{username}</Text>
@@ -233,10 +199,11 @@ function SuggestedRow({
   avatarUrl: string | null; name: string; username: string | null; subtext: string;
   state: ActionState; onAdd: () => void; onPressUser: () => void;
 }) {
+  const T = useColors();
   return (
     <View style={st.row}>
       <TouchableOpacity onPress={onPressUser} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-        <Avatar url={avatarUrl} name={name} />
+        <Avatar url={avatarUrl} name={name} size={44} />
         <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
           <Text style={st.rowName} numberOfLines={1}>{name}</Text>
           <Text style={st.rowHandle} numberOfLines={1}>
@@ -249,12 +216,12 @@ function SuggestedRow({
         disabled={state.sent || state.busy}
         style={[
           st.btn,
-          state.sent ? st.btnSecondary : st.btnPrimary,
+          state.sent ? st.btnSecondary : { backgroundColor: T.primary },
           (state.busy || state.sent) && { opacity: state.busy ? 0.6 : 1 },
         ]}
       >
         {state.busy ? (
-          <ActivityIndicator size="small" color={state.sent ? C.inkMute : '#FFFBF1'} />
+          <ActivityIndicator size="small" color={state.sent ? C.inkMute : C.onPrimary} />
         ) : state.sent ? (
           <>
             <Ionicons name="checkmark" size={12} color={C.inkMute} style={{ marginRight: 3 }} />
@@ -262,7 +229,7 @@ function SuggestedRow({
           </>
         ) : (
           <>
-            <Ionicons name="person-add-outline" size={12} color="#FFFBF1" style={{ marginRight: 3 }} />
+            <Ionicons name="person-add-outline" size={12} color={C.onPrimary} style={{ marginRight: 3 }} />
             <Text style={st.btnPrimaryText}>Add Friend</Text>
           </>
         )}
@@ -280,6 +247,7 @@ function SearchResultRow({
   isFriend: boolean; isIncoming: boolean; isSent: boolean;
   busy: boolean; onAdd: () => void; onPressUser: () => void;
 }) {
+  const T = useColors();
   const name = displayName(user);
   return (
     <View style={[st.row, { borderBottomWidth: 0.5, borderBottomColor: C.hairline }]}>
@@ -292,8 +260,8 @@ function SearchResultRow({
       </TouchableOpacity>
       {isFriend ? (
         <View style={st.statusChip}>
-          <Ionicons name="people-outline" size={11} color={C.primary} style={{ marginRight: 3 }} />
-          <Text style={[st.statusChipText, { color: C.primary }]}>Friends</Text>
+          <Ionicons name="people-outline" size={11} color={T.primary} style={{ marginRight: 3 }} />
+          <Text style={[st.statusChipText, { color: T.primary }]}>Friends</Text>
         </View>
       ) : isIncoming ? (
         <View style={st.statusChip}>
@@ -305,10 +273,10 @@ function SearchResultRow({
           <Text style={st.statusChipText}>Pending</Text>
         </View>
       ) : (
-        <TouchableOpacity onPress={onAdd} disabled={busy} style={[st.btn, st.btnPrimary, busy && { opacity: 0.6 }]}>
+        <TouchableOpacity onPress={onAdd} disabled={busy} style={[st.btn, { backgroundColor: T.primary }, busy && { opacity: 0.6 }]}>
           {busy
-            ? <ActivityIndicator size="small" color="#FFFBF1" />
-            : <><Ionicons name="person-add-outline" size={12} color="#FFFBF1" style={{ marginRight: 3 }} /><Text style={st.btnPrimaryText}>Add</Text></>}
+            ? <ActivityIndicator size="small" color={C.onPrimary} />
+            : <><Ionicons name="person-add-outline" size={12} color={C.onPrimary} style={{ marginRight: 3 }} /><Text style={st.btnPrimaryText}>Add</Text></>}
         </TouchableOpacity>
       )}
     </View>
@@ -759,7 +727,7 @@ const st = StyleSheet.create({
     backgroundColor: C.inkMute, borderRadius: 10,
     paddingHorizontal: 5, paddingVertical: 1,
   },
-  badgeText: { fontSize: 13, fontWeight: '700', color: '#FFFBF1' },
+  badgeText: { fontSize: 13, fontWeight: '700', color: C.onPrimary },
 
   card: {
     backgroundColor: C.surface, borderRadius: 12,
@@ -788,8 +756,7 @@ const st = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6,
     flexShrink: 0, minHeight: 32,
   },
-  btnPrimary:       { backgroundColor: C.primary },
-  btnPrimaryText:   { fontSize: 13, fontWeight: '700', color: '#FFFBF1' },
+  btnPrimaryText:   { fontSize: 13, fontWeight: '700', color: C.onPrimary },
   btnSecondary:     { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline },
   btnSecondaryText: { fontSize: 13, fontWeight: '600', color: C.inkSoft },
 

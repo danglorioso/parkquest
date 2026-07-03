@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 
 import { PostCard, type FeedPost } from '@/components/PostCard';
+import { EmptyState } from '@/components/EmptyState';
+import { STATIC, useColors } from '@/lib/palette';
 
 // Universal Link entry point: https://parkquest.me/p/<id> opens here when the
 // app is installed. Fetches the post (API enforces visibility) and renders
@@ -12,18 +14,12 @@ import { PostCard, type FeedPost } from '@/components/PostCard';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
-const C = {
-  bg:      '#F2EBDB',
-  ink:     '#1B1A16',
-  inkMute: '#7A746A',
-  primary: '#1F3D2E',
-};
-
 export default function SharedPostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getToken } = useAuth();
   const { user: me } = useUser();
   const router = useRouter();
+  const T = useColors();
 
   const [post, setPost] = useState<FeedPost | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -52,18 +48,19 @@ export default function SharedPostScreen() {
       <Stack.Screen
         options={{
           title: 'Post',
-          headerStyle: { backgroundColor: C.bg },
-          headerTintColor: C.primary,
+          headerStyle: { backgroundColor: STATIC.bg },
+          headerTintColor: T.primary,
           headerShadowVisible: false,
         }}
       />
       {failed ? (
         <View style={styles.center}>
-          <Text style={styles.title}>Post not found</Text>
-          <Text style={styles.body}>It may have been deleted, or it isn't visible to you.</Text>
-          <Text style={styles.link} onPress={() => router.replace('/(tabs)/feed' as never)}>
-            Go to feed
-          </Text>
+          <EmptyState
+            icon="newspaper-outline"
+            title="Post not found"
+            subtitle="It may have been deleted, or it isn't visible to you."
+            action={{ label: 'Go to feed', onPress: () => router.replace('/(tabs)/feed' as never) }}
+          />
         </View>
       ) : post && token ? (
         <ScrollView contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator={false}>
@@ -79,7 +76,7 @@ export default function SharedPostScreen() {
         </ScrollView>
       ) : (
         <View style={styles.center}>
-          <ActivityIndicator color={C.primary} />
+          <ActivityIndicator color={T.primary} />
         </View>
       )}
     </SafeAreaView>
@@ -87,15 +84,10 @@ export default function SharedPostScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.bg },
+  screen: { flex: 1, backgroundColor: STATIC.bg },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 32,
-    gap: 8,
   },
-  title: { fontSize: 17, fontWeight: '700', color: C.ink },
-  body:  { fontSize: 13.5, color: C.inkMute, textAlign: 'center' },
-  link:  { fontSize: 14, fontWeight: '700', color: C.primary, marginTop: 8, padding: 8 },
 });

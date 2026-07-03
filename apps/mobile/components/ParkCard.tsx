@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Image } from 'expo-image';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { STATIC as C } from '@/lib/palette';
+import { STATE_NAMES } from '@/lib/stateNames';
 
 // Matches web parks/page.tsx `ParkCard` + `CardSkeleton` exactly.
 // Park interface is intentionally minimal so it composes with any API shape.
@@ -25,18 +27,6 @@ export interface ParkCardProps {
   onPress?:    () => void;
 }
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  visited:    '#2F7A4A',
-  bucket:     '#C48A20',
-};
-
 // ── Gradient palette (deterministic by park_code) ─────────────────────────────
 // Matches web PostCard.tsx `parkGradient` exactly.
 
@@ -53,23 +43,6 @@ export function parkGradientColor(code: string): string {
   return GRADIENTS[idx][0];
 }
 
-// ── State names ───────────────────────────────────────────────────────────────
-
-const STATE_NAMES: Record<string, string> = {
-  AL:'Alabama', AK:'Alaska', AZ:'Arizona', AR:'Arkansas', CA:'California',
-  CO:'Colorado', CT:'Connecticut', DE:'Delaware', FL:'Florida', GA:'Georgia',
-  HI:'Hawaii', ID:'Idaho', IL:'Illinois', IN:'Indiana', IA:'Iowa',
-  KS:'Kansas', KY:'Kentucky', LA:'Louisiana', ME:'Maine', MD:'Maryland',
-  MA:'Massachusetts', MI:'Michigan', MN:'Minnesota', MS:'Mississippi',
-  MO:'Missouri', MT:'Montana', NE:'Nebraska', NV:'Nevada', NH:'New Hampshire',
-  NJ:'New Jersey', NM:'New Mexico', NY:'New York', NC:'North Carolina',
-  ND:'North Dakota', OH:'Ohio', OK:'Oklahoma', OR:'Oregon', PA:'Pennsylvania',
-  RI:'Rhode Island', SC:'South Carolina', SD:'South Dakota',
-  TN:'Tennessee', TX:'Texas', UT:'Utah', VT:'Vermont', VA:'Virginia',
-  WA:'Washington', WV:'West Virginia', WI:'Wisconsin', WY:'Wyoming',
-  DC:'D.C.', VI:'Virgin Islands', MP:'N. Mariana Is.', GU:'Guam', AS:'Amer. Samoa',
-};
-
 function stateName(abbr: string): string {
   return STATE_NAMES[abbr] ?? abbr;
 }
@@ -83,7 +56,7 @@ function StatusBadge({ status }: { status: ParkStatus }) {
   const label = status === 'visited' ? 'Visited' : 'Bucket list';
   return (
     <View style={[s.badge, { backgroundColor: bg }]}>
-      <Ionicons name={icon} size={9} color="#FFFBF1" />
+      <Ionicons name={icon} size={9} color={C.onPrimary} />
       <Text style={s.badgeText}>{label}</Text>
     </View>
   );
@@ -168,7 +141,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderRadius: 100, paddingHorizontal: 9, paddingVertical: 4,
   },
-  badgeText: { fontSize: 13, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.3 },
+  badgeText: { fontSize: 13, fontWeight: '700', color: C.onPrimary, letterSpacing: 0.3 },
   info:  { padding: 10, gap: 3 },
   state: { fontSize: 11, fontWeight: '700', color: C.inkMute, letterSpacing: 1, textTransform: 'uppercase' },
   name:  { fontSize: 14, fontWeight: '800', color: C.ink, lineHeight: 17, letterSpacing: -0.2 },

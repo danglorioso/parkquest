@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, Animated, Dimensions, Easing, KeyboardAvoidingView,
-  Linking, Platform, ScrollView, StyleSheet, Text, TextInput,
+  Linking, Platform, ScrollView, StyleSheet, Text,
   TouchableOpacity, View,
 } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
@@ -9,21 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOAuth, useSignUp, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:          '#F2EBDB',
-  surface:     '#FFFBF1',
-  surfaceAlt:  '#F7F0DE',
-  ink:         '#1B1A16',
-  inkMute:     '#7A746A',
-  hairline:    'rgba(27,26,22,0.10)',
-  primary:     '#1F3D2E',
-  primaryDeep: '#152A20',
-};
-
-const MONO     = 'JetBrainsMono_600SemiBold';
+import { clerkMsg, ErrorBox, FField, MONO, PrimaryBtn } from '@/components/AuthAtoms';
+import { STATIC as C, useColors } from '@/lib/palette';
 const WEB      = process.env.EXPO_PUBLIC_API_URL ?? 'https://www.parkquest.me';
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -98,6 +85,7 @@ function CloudShape({ variant, width }: { variant: number; width: number }) {
 
 function HeroSection() {
   const insets = useSafeAreaInsets();
+  const T = useColors();
   const heroH = 280 + insets.top;
 
   useEffect(() => {
@@ -163,7 +151,7 @@ function HeroSection() {
   }, []);
 
   return (
-    <View style={[styles.hero, { height: heroH }]}>
+    <View style={[styles.hero, { height: heroH, backgroundColor: T.primaryDeep }]}>
 
       {/* Topo watermark — drifting contour lines, same pattern as web hero */}
       <Animated.View
@@ -301,52 +289,11 @@ function AppleIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-// ── Atoms ─────────────────────────────────────────────────────────────────────
-
-function FField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <View style={styles.fField}>
-      <Text style={styles.fFieldLabel}>{label}</Text>
-      <TextInput
-        style={styles.fFieldInput}
-        value={value}
-        onChangeText={onChange}
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoFocus
-      />
-    </View>
-  );
-}
-
-function PrimaryBtn({ label, onPress, loading = false, disabled = false }: {
-  label: string; onPress: () => void; loading?: boolean; disabled?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress} disabled={loading || disabled}
-      style={[styles.primaryBtn, (loading || disabled) && { opacity: 0.65 }]}
-      activeOpacity={0.85}
-    >
-      {loading
-        ? <ActivityIndicator color="#FFFBF1" size="small" />
-        : <Text style={styles.primaryBtnText}>{label}</Text>}
-    </TouchableOpacity>
-  );
-}
-
-function ErrorBox({ msg }: { msg: string }) {
-  return (
-    <View style={styles.errorBox}>
-      <Text style={styles.errorBoxText}>{msg}</Text>
-    </View>
-  );
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function LandingScreen() {
   const router = useRouter();
+  const T = useColors();
   const { user } = useUser();
   const { signUp, setActive } = useSignUp();
   const { startOAuthFlow: googleFlow } = useOAuth({ strategy: 'oauth_google' });
@@ -360,11 +307,6 @@ export default function LandingScreen() {
   // Stores the OAuth sign-up object that needs a username to complete.
   const pendingOAuthSignUpRef = useRef<any>(null);
   const pendingSetActiveRef   = useRef<((params: any) => Promise<void>) | null>(null);
-
-  const clerkMsg = (e: unknown) => {
-    const ce = e as { errors?: { message?: string; longMessage?: string }[] };
-    return ce?.errors?.[0]?.longMessage ?? ce?.errors?.[0]?.message ?? 'Something went wrong.';
-  };
 
   const handleOAuth = async (provider: 'google' | 'apple') => {
     setError('');
@@ -445,7 +387,7 @@ export default function LandingScreen() {
                 <Text style={styles.headline}>One last thing.</Text>
                 <Text style={styles.sub}>Choose a username for your profile.</Text>
                 <View style={{ marginTop: 24 }}>
-                  <FField label="USERNAME" value={username} onChange={v => setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))} />
+                  <FField label="USERNAME" value={username} onChange={v => setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoFocus />
                   <Text style={styles.helperText}>Lowercase letters, numbers, underscores · min 3 chars</Text>
                   {error ? <ErrorBox msg={error} /> : null}
                   <PrimaryBtn label="Enter ParkQuest" onPress={handleUsername} loading={busy} disabled={username.length < 3} />
@@ -488,27 +430,21 @@ export default function LandingScreen() {
                   <View style={styles.dividerLine} />
                 </View>
 
-                <TouchableOpacity
-                  style={styles.primaryBtn}
-                  onPress={() => router.push('/(auth)/login' as never)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.primaryBtnText}>Sign In</Text>
-                </TouchableOpacity>
+                <PrimaryBtn label="Sign In" onPress={() => router.push('/(auth)/login' as never)} />
 
                 <TouchableOpacity
-                  style={styles.outlineBtn}
+                  style={[styles.outlineBtn, { borderColor: T.primary }]}
                   onPress={() => router.push('/(auth)/sign-up' as never)}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.outlineBtnText}>Create Account</Text>
+                  <Text style={[styles.outlineBtnText, { color: T.primary }]}>Create Account</Text>
                 </TouchableOpacity>
 
                 <Text style={styles.terms}>
                   By continuing, you agree to the{' '}
-                  <Text style={{ color: C.primary, fontWeight: '600' }} onPress={() => Linking.openURL(`${WEB}/terms`)}>Terms</Text>
+                  <Text style={{ color: T.primary, fontWeight: '600' }} onPress={() => Linking.openURL(`${WEB}/terms`)}>Terms</Text>
                   {' '}and{' '}
-                  <Text style={{ color: C.primary, fontWeight: '600' }} onPress={() => Linking.openURL(`${WEB}/privacy`)}>Privacy Policy</Text>.
+                  <Text style={{ color: T.primary, fontWeight: '600' }} onPress={() => Linking.openURL(`${WEB}/privacy`)}>Privacy Policy</Text>.
                 </Text>
               </>
             )}
@@ -526,7 +462,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
   hero: {
-    backgroundColor: C.primaryDeep,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -559,32 +494,14 @@ const styles = StyleSheet.create({
   dividerLine: { flex: 1, height: 0.5, backgroundColor: C.hairline },
   dividerText: { fontFamily: MONO, fontSize: 13, letterSpacing: 1.5, color: C.inkMute, fontWeight: '600' },
 
-  primaryBtn: {
-    backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15,
-    alignItems: 'center', marginBottom: 10, minHeight: 50,
-  },
-  primaryBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFBF1' },
-
   outlineBtn: {
     backgroundColor: 'transparent', borderRadius: 14, paddingVertical: 14,
     alignItems: 'center', marginBottom: 10,
-    borderWidth: 1.5, borderColor: C.primary,
+    borderWidth: 1.5,
   },
-  outlineBtnText: { fontSize: 15, fontWeight: '700', color: C.primary },
+  outlineBtnText: { fontSize: 15, fontWeight: '700' },
 
   terms: { fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 12, lineHeight: 17 },
 
-  fField: {
-    backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 12, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, marginBottom: 10,
-  },
-  fFieldLabel: { fontFamily: MONO, fontSize: 13, letterSpacing: 1.4, color: C.inkMute, fontWeight: '600' },
-  fFieldInput: { fontSize: 15, color: C.ink, paddingTop: 4 },
   helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
-  errorBox: {
-    backgroundColor: 'rgba(197,107,61,0.10)', borderRadius: 10,
-    borderWidth: 0.5, borderColor: 'rgba(197,107,61,0.30)',
-    padding: 12, marginBottom: 12,
-  },
-  errorBoxText: { fontSize: 13, color: '#C04040' },
 });

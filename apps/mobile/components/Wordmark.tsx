@@ -1,10 +1,11 @@
 import { TouchableOpacity, View, Text } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { useColors } from '@/lib/palette';
 
-const PRIMARY = '#1F3D2E';
 const ACCENT2 = '#D89A3A';
 
 export function Wordmark({ size = 22, onPress }: { size?: number; onPress?: () => void }) {
+  const PRIMARY = useColors().primary;
   const inner = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       <Svg

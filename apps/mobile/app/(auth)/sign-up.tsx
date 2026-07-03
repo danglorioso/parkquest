@@ -1,95 +1,23 @@
 import {
-  ActivityIndicator, KeyboardAvoidingView, Platform,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  KeyboardAvoidingView, Platform,
+  ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSignUp, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:       '#F2EBDB',
-  surface:  '#FFFBF1',
-  ink:      '#1B1A16',
-  inkMute:  '#7A746A',
-  hairline: 'rgba(27,26,22,0.10)',
-  primary:  '#1F3D2E',
-};
-
-const MONO = 'JetBrainsMono_600SemiBold';
+import {
+  clerkMsg, ErrorBox, FField, MONO, PrimaryBtn, SecondaryBtn,
+} from '@/components/AuthAtoms';
+import { STATIC as C, useColors } from '@/lib/palette';
 
 type Step = 'email' | 'password' | 'verify' | 'username';
-
-// ── Atoms ─────────────────────────────────────────────────────────────────────
-
-function FField({
-  label, value, onChange, secureText = false,
-  keyboard, trailing, onTrailing, autoFocus = false,
-}: {
-  label: string; value: string; onChange: (v: string) => void;
-  secureText?: boolean; keyboard?: 'email-address' | 'number-pad' | 'default';
-  trailing?: string; onTrailing?: () => void; autoFocus?: boolean;
-}) {
-  return (
-    <View style={st.fField}>
-      <View style={{ flex: 1 }}>
-        <Text style={st.fFieldLabel}>{label}</Text>
-        <TextInput
-          style={st.fFieldInput}
-          value={value} onChangeText={onChange}
-          secureTextEntry={secureText}
-          keyboardType={keyboard ?? 'default'}
-          autoCapitalize="none" autoCorrect={false}
-          autoFocus={autoFocus}
-        />
-      </View>
-      {trailing ? (
-        <TouchableOpacity onPress={onTrailing} style={{ paddingLeft: 8, paddingBottom: 4 }}>
-          <Text style={st.trailingText}>{trailing}</Text>
-        </TouchableOpacity>
-      ) : null}
-    </View>
-  );
-}
-
-function PrimaryBtn({ label, onPress, loading = false, disabled = false }: {
-  label: string; onPress: () => void; loading?: boolean; disabled?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress} disabled={loading || disabled}
-      style={[st.primaryBtn, (loading || disabled) && { opacity: 0.65 }]}
-      activeOpacity={0.85}
-    >
-      {loading
-        ? <ActivityIndicator color="#FFFBF1" size="small" />
-        : <Text style={st.primaryBtnText}>{label}</Text>}
-    </TouchableOpacity>
-  );
-}
-
-function SecondaryBtn({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={st.secondaryBtn} activeOpacity={0.7}>
-      <Text style={st.secondaryBtnText}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function ErrorBox({ msg }: { msg: string }) {
-  return (
-    <View style={st.errorBox}>
-      <Text style={st.errorBoxText}>{msg}</Text>
-    </View>
-  );
-}
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function SignUpScreen() {
   const router = useRouter();
+  const T = useColors();
   const { signUp, setActive, isLoaded } = useSignUp();
   const { user } = useUser();
 
@@ -101,11 +29,6 @@ export default function SignUpScreen() {
   const [username, setUsername] = useState('');
   const [busy,     setBusy]     = useState(false);
   const [error,    setError]    = useState('');
-
-  const clerkMsg = (e: unknown) => {
-    const ce = e as { errors?: { message?: string; longMessage?: string; code?: string }[] };
-    return ce?.errors?.[0]?.longMessage ?? ce?.errors?.[0]?.message ?? 'Something went wrong.';
-  };
 
   const handleEmailContinue = () => {
     if (!email.trim()) return;
@@ -257,7 +180,7 @@ export default function SignUpScreen() {
             <View style={st.switchRow}>
               <Text style={st.switchText}>Already have an account?</Text>
               <TouchableOpacity onPress={() => router.replace('/(auth)/login' as never)}>
-                <Text style={st.switchLink}> Sign in</Text>
+                <Text style={[st.switchLink, { color: T.primary }]}> Sign in</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -277,25 +200,9 @@ const st = StyleSheet.create({
   headline: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.8, marginTop: 8, lineHeight: 34 },
   sub:      { fontSize: 14, color: C.inkMute, marginTop: 6 },
 
-  fField: {
-    backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 12, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10,
-    marginBottom: 10, flexDirection: 'row', alignItems: 'flex-end', gap: 10,
-  },
-  fFieldLabel:  { fontFamily: MONO, fontSize: 13, letterSpacing: 1.4, color: C.inkMute, fontWeight: '600' },
-  fFieldInput:  { fontSize: 15, color: C.ink, paddingTop: 4 },
-  trailingText: { fontSize: 13, fontWeight: '600', color: C.primary },
-
-  primaryBtn:       { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 10, minHeight: 50 },
-  primaryBtnText:   { fontSize: 15, fontWeight: '700', color: '#FFFBF1' },
-  secondaryBtn:     { paddingVertical: 12, alignItems: 'center' },
-  secondaryBtnText: { fontSize: 13, fontWeight: '600', color: C.inkMute },
-
-  errorBox:     { backgroundColor: 'rgba(192,64,64,0.08)', borderRadius: 10, borderWidth: 0.5, borderColor: 'rgba(192,64,64,0.25)', padding: 12, marginBottom: 12 },
-  errorBoxText: { fontSize: 13, color: '#C04040' },
-  helperText:   { fontSize: 13, color: C.inkMute, marginBottom: 14 },
+  helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
 
   switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
   switchText: { fontSize: 13, color: C.inkMute },
-  switchLink: { fontSize: 13, fontWeight: '700', color: C.primary },
+  switchLink: { fontSize: 13, fontWeight: '700' },
 });

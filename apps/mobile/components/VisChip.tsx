@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { STATIC as C } from '@/lib/palette';
 
 // Matches web `VisibilityChip` component in journal/detail pages.
 // visibility: 'public' | 'friends' | 'private' — null/undefined = private fallback.
@@ -7,12 +8,6 @@ import { Ionicons } from '@expo/vector-icons';
 export interface VisChipProps {
   visibility?: string | null;
 }
-
-const C = {
-  surfaceAlt: '#F7F0DE',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-};
 
 type VisConfig = { icon: keyof typeof Ionicons.glyphMap; label: string };
 

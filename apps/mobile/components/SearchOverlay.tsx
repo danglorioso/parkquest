@@ -10,21 +10,9 @@ import { useAuth } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
+import { STATIC as C, useColors } from '@/lib/palette';
 
-const C = {
-  bg:           '#F2EBDB',
-  surface:      '#FFFBF1',
-  surfaceAlt:   '#F7F0DE',
-  ink:          '#1B1A16',
-  inkSoft:      '#3C3A33',
-  inkMute:      '#7A746A',
-  hairline:     'rgba(27,26,22,0.10)',
-  hairlineSoft: 'rgba(27,26,22,0.06)',
-  primary:      '#1F3D2E',
-  visited:      '#2F7A4A',
-  bucket:       '#D89A3A',
-  unvisited:    '#A8A29A',
-};
+const UNVISITED = '#A8A29A';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -57,14 +45,14 @@ interface ParkWithStatus extends ParkLite {
 const STATUS_DOT: Record<ParkStatus, string> = {
   visited: C.visited,
   bucketList: C.bucket,
-  notVisited: C.unvisited,
+  notVisited: UNVISITED,
 };
 
 const TAB_DEFS: { id: TabFilter; label: string; color: string }[] = [
   { id: 'all',        label: 'All',        color: C.ink },
   { id: 'visited',    label: 'Visited',    color: C.visited },
   { id: 'bucketList', label: 'Bucket',     color: C.bucket },
-  { id: 'notVisited', label: 'Not yet',    color: C.unvisited },
+  { id: 'notVisited', label: 'Not yet',    color: UNVISITED },
 ];
 
 const MAX_LIST = 50;
@@ -95,6 +83,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
   const { getToken } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const T = useColors();
 
   const [query, setQuery]             = useState('');
   const [tab, setTab]                 = useState<TabFilter>('all');
@@ -319,7 +308,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
                 return (
                   <TouchableOpacity
                     key={f.id}
-                    style={[styles.tabChip, active && { backgroundColor: C.primary }]}
+                    style={[styles.tabChip, active && { backgroundColor: T.primary }]}
                     onPress={() => setTab(f.id)}
                     activeOpacity={0.7}
                   >
@@ -532,7 +521,7 @@ const styles = StyleSheet.create({
     color: C.inkSoft,
   },
   tabLabelActive: {
-    color: '#FFFBF1',
+    color: C.onPrimary,
     fontWeight: '700',
   },
 

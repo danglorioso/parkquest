@@ -313,7 +313,9 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
 const styles = StyleSheet.create({
   copyright: {
     position: 'absolute',
-    bottom: 90,
+    // Below the near mountain ridge (which crests around 0.91H) so the text
+    // sits fully on the darkest layer instead of straddling two shades
+    bottom: 44,
     alignSelf: 'center',
     color: 'rgba(255,251,241,0.28)',
     fontSize: 13,

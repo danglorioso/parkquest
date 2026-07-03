@@ -1,14 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-const C = {
-  bg:       '#F2EBDB',
-  surface:  '#FFFBF1',
-  ink:      '#1B1A16',
-  inkSoft:  '#3C3A33',
-  inkMute:  '#7A746A',
-  hairline: 'rgba(27,26,22,0.10)',
-};
+import { STATIC as C } from '@/lib/palette';
 
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
@@ -107,7 +99,7 @@ export function JournalTimeline({ entries }: { entries: JournalEntry[] }) {
                       key={entry.visit_id}
                       style={[styles.entryRow, idx < items.length - 1 && styles.entryRowGap]}
                     >
-                      <View style={[styles.dot, { backgroundColor: entry.redacted ? C.hairline : '#2F7A4A' }]} />
+                      <View style={[styles.dot, { backgroundColor: entry.redacted ? C.hairline : C.visited }]} />
                       {entry.redacted ? (
                         <View style={[styles.card, styles.cardDashed]}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

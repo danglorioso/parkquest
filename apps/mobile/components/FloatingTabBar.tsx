@@ -21,10 +21,16 @@ let GlassView: ComponentType<{
   glassEffectStyle?: string;
   isInteractive?: boolean;
 }> | null = null;
+let GlassContainer: ComponentType<{
+  style?: object;
+  pointerEvents?: 'none' | 'auto' | 'box-none' | 'box-only';
+  children?: React.ReactNode;
+}> | null = null;
 let liquidGlassAvailable = false;
 try {
   const glassEffect = require('expo-glass-effect');
   GlassView = glassEffect.GlassView;
+  GlassContainer = glassEffect.GlassContainer;
   liquidGlassAvailable = glassEffect.isLiquidGlassAvailable();
 } catch {
   // keep fallbacks
@@ -71,7 +77,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   const insets = useSafeAreaInsets();
   const C = useColors();
   const [pillW, setPillW] = useState(0);
-  const glass = liquidGlassAvailable && GlassView != null;
+  const glass = liquidGlassAvailable && GlassView != null && GlassContainer != null;
 
   const routes = state.routes;
   const slotW = pillW > 0 ? (pillW - PILL_PADDING_H * 2) / routes.length : 0;
@@ -203,15 +209,26 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
       style={[styles.wrap, { bottom: bottomOffset(insets.bottom) }]}
     >
       <GestureDetector gesture={pan}>
-        <View style={styles.pill} onLayout={(e) => setPillW(e.nativeEvent.layout.width)}>
-          <View style={[styles.bg, glass && styles.bgGlass]} pointerEvents="none">
-            {glass && GlassView ? (
+        <View
+          style={[styles.pill, glass && styles.pillGlass]}
+          onLayout={(e) => setPillW(e.nativeEvent.layout.width)}
+        >
+          {glass && GlassView && GlassContainer ? (
+            /* Bar material and highlight bubble share one GlassContainer:
+               two stacked GlassViews outside a container can't sample each
+               other and the lower one renders opaque white. The container is
+               also what lets the shapes melt together the way Apple's own
+               tab bar selection does. */
+            <GlassContainer style={StyleSheet.absoluteFill} pointerEvents="none">
               <GlassView
                 style={[StyleSheet.absoluteFill, { borderRadius: PILL_HEIGHT / 2 }]}
                 glassEffectStyle="regular"
               />
-            ) : (
-              <>
+              {bubble}
+            </GlassContainer>
+          ) : (
+            <>
+              <View style={styles.bg} pointerEvents="none">
                 {Platform.OS === 'ios' && (
                   <BlurView
                     intensity={90}
@@ -230,13 +247,10 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
                     },
                   ]}
                 />
-              </>
-            )}
-          </View>
-
-          {/* Fallback bubble tints the slot, so it sits under the icons; real
-              liquid glass refracts them, so it renders on top (after the row) */}
-          {!glass && bubble}
+              </View>
+              {bubble}
+            </>
+          )}
 
           <View style={styles.row}>
             {routes.map((route, index) => {
@@ -285,8 +299,6 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
               );
             })}
           </View>
-
-          {glass && bubble}
         </View>
       </GestureDetector>
     </View>
@@ -309,6 +321,12 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 12,
   },
+  // Liquid glass draws its own material, rim light, and depth; an RN shadow
+  // on an ancestor flattens the live effect into a static snapshot
+  pillGlass: {
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   bg: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: PILL_HEIGHT / 2,
@@ -316,12 +334,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: STATIC.hairline,
     backgroundColor: 'rgba(255,251,241,0.3)',
-  },
-  // Liquid glass draws its own material and rim light; any wash or border
-  // on top of it just mutes the refraction
-  bgGlass: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
   },
   row: {
     flex: 1,
