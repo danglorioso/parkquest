@@ -12,6 +12,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(Number(searchParams.get('limit') ?? '20'), 50);
     const offset = Number(searchParams.get('offset') ?? '0');
+    // Optional: restrict to a single author (profile pages). Same visibility
+    // rules apply, so strangers only ever see the author's public posts.
+    const author = searchParams.get('author');
 
     // Fetch accepted friend IDs
     const friendRows = await db
@@ -67,15 +70,18 @@ export async function GET(request: Request) {
       .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
       .leftJoin(visits, eq(posts.visit_id, visits.id))
       .where(
-        or(
-          // Own posts regardless of visibility
-          eq(posts.clerk_user_id, userId),
-          // Public posts from anyone
-          sql`COALESCE(${visits.visibility}, ${posts.visibility}, 'public') = 'public'`,
-          // Friends-only posts from accepted friends
-          and(
-            inArray(posts.clerk_user_id, allowedIds),
-            sql`COALESCE(${visits.visibility}, ${posts.visibility}, 'public') = 'friends'`
+        and(
+          author ? eq(posts.clerk_user_id, author) : undefined,
+          or(
+            // Own posts regardless of visibility
+            eq(posts.clerk_user_id, userId),
+            // Public posts from anyone
+            sql`COALESCE(${visits.visibility}, ${posts.visibility}, 'public') = 'public'`,
+            // Friends-only posts from accepted friends
+            and(
+              inArray(posts.clerk_user_id, allowedIds),
+              sql`COALESCE(${visits.visibility}, ${posts.visibility}, 'public') = 'friends'`
+            )
           )
         )
       )

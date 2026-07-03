@@ -18,6 +18,7 @@
       "bundleIdentifier": "com.danglorioso.parkquest",
       "buildNumber": "1",
       "developmentTeam": "U8AK9PG243",
+      "associatedDomains": ["applinks:parkquest.me"],
       "infoPlist": {
         "NSCameraUsageDescription": "ParkQuest uses your camera to capture and share photos from your park visits.",
         "ITSAppUsesNonExemptEncryption": false

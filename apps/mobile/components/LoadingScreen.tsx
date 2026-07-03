@@ -73,8 +73,8 @@ export function CompassSpinner({ size = 44, dark = false }: { size?: number; dar
   return (
     <Animated.View style={{ transform: [{ rotate }] }}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <Circle cx={cx} cy={cy} r={r} stroke={ring1} strokeWidth="1" fill="none" />
-        <Circle cx={cx} cy={cy} r={r} stroke={ring2} strokeWidth="1.5" fill="none"
+        <Circle cx={cx} cy={cy} r={r} stroke={ring1} strokeWidth="2" fill="none" />
+        <Circle cx={cx} cy={cy} r={r} stroke={ring2} strokeWidth="2.5" fill="none"
           strokeDasharray="10 20" strokeLinecap="round" />
         {[0, 90, 180, 270].map((deg) => {
           const rad = Math.PI * deg / 180;
@@ -82,7 +82,7 @@ export function CompassSpinner({ size = 44, dark = false }: { size?: number; dar
           const y1 = cy - Math.cos(rad) * r * 0.78;
           const x2 = cx + Math.sin(rad) * r;
           const y2 = cy - Math.cos(rad) * r;
-          return <Line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke={tick} strokeWidth="1.5" strokeLinecap="round" />;
+          return <Line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke={tick} strokeWidth="2" strokeLinecap="round" />;
         })}
         <Path
           d={`M${cx} ${cy - r * 0.68} L${cx - 3} ${cy} L${cx} ${cy - r * 0.10} L${cx + 3} ${cy} Z`}

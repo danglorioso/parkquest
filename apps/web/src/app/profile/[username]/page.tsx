@@ -189,16 +189,6 @@ function BadgeModal({ badge, onClose }: { badge: BadgeData; onClose: () => void 
   );
 }
 
-function explorerRank(n: number) {
-  if (n >= 63) return "NATIONAL LEGEND";
-  if (n >= 50) return "PIONEER";
-  if (n >= 30) return "TRAILBLAZER";
-  if (n >= 15) return "RANGER";
-  if (n >= 5)  return "EXPLORER";
-  if (n >= 1)  return "INITIATE";
-  return "TRAILHEAD";
-}
-
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function StatPill({ value, label, sub }: { value: string | number; label: string; sub?: string }) {
@@ -872,7 +862,6 @@ export default function ProfilePage() {
               {[
                 { label: "VISITED", value: `${profile.parks_visited}/63` },
                 { label: "STATES", value: `${profile.states_visited}/50` },
-                { label: "CLASS", value: explorerRank(profile.parks_visited) },
                 { label: "BADGES", value: String(profile.badges.length) },
               ].map(({ label, value }) => (
                 <div key={label}>

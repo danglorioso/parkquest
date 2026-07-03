@@ -170,7 +170,7 @@ const s = StyleSheet.create({
   },
   badgeText: { fontSize: 13, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.3 },
   info:  { padding: 10, gap: 3 },
-  state: { fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 1, textTransform: 'uppercase' },
+  state: { fontSize: 11, fontWeight: '700', color: C.inkMute, letterSpacing: 1, textTransform: 'uppercase' },
   name:  { fontSize: 14, fontWeight: '800', color: C.ink, lineHeight: 17, letterSpacing: -0.2 },
   desc:  { fontSize: 13, color: C.inkMute, lineHeight: 16, marginTop: 2 },
 });

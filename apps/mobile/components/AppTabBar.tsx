@@ -33,7 +33,9 @@ export default function AppTabBar({ activeTab }: { activeTab: Tab }) {
   const insets = useSafeAreaInsets();
   const C = useColors();
 
-  const paddingBottom = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 8;
+  // Pull the bar closer to the screen edge: the full home-indicator inset (34pt
+  // on Face ID iPhones) leaves too much dead space below the icons
+  const paddingBottom = Platform.OS === 'ios' ? Math.max(insets.bottom - 12, 12) : 8;
   const barHeight = Platform.OS === 'ios' ? paddingBottom + 54 : 64;
 
   return (

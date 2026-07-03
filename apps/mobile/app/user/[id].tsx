@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { BADGE_MAP, BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
 import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline';
+import { PostCard, type FeedPost } from '@/components/PostCard';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -59,16 +60,6 @@ interface UserProfile {
   badges: ProfileBadge[];
   visited_parks: VisitedPark[];
   journal?: JournalEntry[];
-}
-
-function explorerRank(n: number): string {
-  if (n >= 63) return 'NATIONAL LEGEND';
-  if (n >= 50) return 'PIONEER';
-  if (n >= 30) return 'TRAILBLAZER';
-  if (n >= 15) return 'RANGER';
-  if (n >= 5)  return 'EXPLORER';
-  if (n >= 1)  return 'INITIATE';
-  return 'TRAILHEAD';
 }
 
 function tierColors(tier: string) {
@@ -220,6 +211,8 @@ export default function UserProfileScreen() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [friendBusy, setFriendBusy] = useState(false);
@@ -263,13 +256,20 @@ export default function UserProfileScreen() {
   const loadProfile = useCallback(async () => {
     const tok = await getToken();
     if (!tok || !id) { setLoading(false); return; }
+    setToken(tok);
     try {
-      const res = await fetch(`${BASE}/api/profile/${id}`, {
-        headers: { Authorization: `Bearer ${tok}` },
-      });
+      const [res, postsRes] = await Promise.all([
+        fetch(`${BASE}/api/profile/${id}`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        }),
+        fetch(`${BASE}/api/feed?author=${encodeURIComponent(id)}&limit=20`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        }),
+      ]);
       if (res.status === 404) { setNotFound(true); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setProfile(await res.json());
+      if (postsRes.ok) setPosts(await postsRes.json());
     } catch {
       setNotFound(true);
     } finally {
@@ -410,14 +410,11 @@ export default function UserProfileScreen() {
                 <Text style={styles.handle}>@{profile.username}</Text>
               ) : null}
 
-              <View style={styles.rankRow}>
-                {joinedDate ? (
+              {joinedDate ? (
+                <View style={styles.rankRow}>
                   <Text style={styles.joinText}>Joined {joinedDate}</Text>
-                ) : null}
-                <View style={styles.rankBadge}>
-                  <Text style={styles.rankText}>{explorerRank(profile.parks_visited)}</Text>
                 </View>
-              </View>
+              ) : null}
 
               {profile.bio ? (
                 <Text style={styles.bio}>{profile.bio}</Text>
@@ -551,6 +548,25 @@ export default function UserProfileScreen() {
               </View>
             ) : null}
 
+            {/* Recent posts — same cards as the feed */}
+            {token && posts.length > 0 ? (
+              <View style={styles.section}>
+                <SectionHeader icon="newspaper-outline" title="RECENT POSTS" />
+                {posts.map(p => (
+                  <PostCard
+                    key={p.id}
+                    post={p}
+                    token={token}
+                    myUserId={me?.id ?? ''}
+                    myAvatarUrl={me?.imageUrl}
+                    myName={me?.fullName ?? me?.username}
+                    onDelete={pid => setPosts(prev => prev.filter(x => x.id !== pid))}
+                    onParkPress={code => router.push(`/parks/${code}` as never)}
+                  />
+                ))}
+              </View>
+            ) : null}
+
           </ScrollView>
         )}
 
@@ -625,18 +641,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: C.inkMute,
   },
-  rankBadge: {
-    backgroundColor: C.primary + '18',
-    borderRadius: 100,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
-  rankText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: C.primary,
-    letterSpacing: 1.2,
-  },
   bio: {
     fontSize: 13.5,
     color: C.inkSoft,
@@ -683,7 +687,7 @@ const styles = StyleSheet.create({
   },
   section: {
     paddingHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 28,
   },
   friendButton: {
     backgroundColor: C.primary,

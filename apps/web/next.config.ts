@@ -2,6 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner'],
+  async rewrites() {
+    return [
+      // Next ignores dot-folders in app/, so the Apple Universal Links file
+      // lives at an API route and is rewritten to its required path
+      {
+        source: '/.well-known/apple-app-site-association',
+        destination: '/api/apple-app-site-association',
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {

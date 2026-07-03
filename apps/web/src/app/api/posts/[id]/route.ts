@@ -65,9 +65,11 @@ export async function GET(
         photos: posts.photos,
         park_code: posts.park_code,
         visit_id: posts.visit_id,
+        badge_id: posts.badge_id,
         created_at: posts.created_at,
         clerk_user_id: posts.clerk_user_id,
         park_name: parks.name,
+        park_image_url: parks.image_url,
         username: userProfiles.username,
         display_name: userProfiles.display_name,
         avatar_url: userProfiles.avatar_url,
@@ -77,6 +79,16 @@ export async function GET(
           ? sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${viewerId})`
           : sql<boolean>`false`,
         visibility: sql<string>`COALESCE(${visits.visibility}, ${posts.visibility}, 'public')`,
+        visit_date:             visits.visited_date,
+        visit_rating:           visits.rating,
+        visit_activities:       visits.activities,
+        visit_weather:          visits.weather_conditions,
+        visit_crowd:            visits.crowd,
+        visit_difficulty:       visits.difficulty,
+        visit_companion_count:  sql<number>`COALESCE(jsonb_array_length(${visits.companions}), 0)`,
+        visit_companion_names:  sql<Array<{username: string; display_name: string | null; avatar_url: string | null}> | null>`(SELECT json_agg(json_build_object('username', up.username, 'display_name', up.display_name, 'avatar_url', up.avatar_url)) FROM user_profiles up WHERE up.clerk_user_id = ANY(SELECT jsonb_array_elements_text(${visits.companions})))`,
+        visit_highlight:        visits.highlight,
+        visit_ordinal: sql<number>`(SELECT COUNT(*)::int FROM visits v2 WHERE v2.clerk_user_id = ${posts.clerk_user_id} AND v2.park_code = ${posts.park_code} AND v2.visited_date IS NOT NULL AND v2.is_bucket_list = false AND v2.id <= ${visits.id})`,
       })
       .from(posts)
       .leftJoin(parks, eq(posts.park_code, parks.park_code))
@@ -108,7 +120,17 @@ export async function GET(
       if (!friendship) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
     }
 
-    return NextResponse.json(post);
+    // Match the feed response shape so clients can reuse feed components
+    return NextResponse.json({
+      ...post,
+      is_friend_post: isOwner,
+      photos: Array.isArray(post.photos)
+        ? (post.photos as Array<{ url: string } | string>).map(ph =>
+            typeof ph === 'string' ? ph : ph.url
+          )
+        : null,
+      visit_date: post.visit_date ? post.visit_date.toISOString() : null,
+    });
   } catch (error) {
     console.error('Error fetching post:', error);
     return NextResponse.json({ error: 'Failed to fetch post' }, { status: 500 });

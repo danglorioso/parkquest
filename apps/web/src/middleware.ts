@@ -18,6 +18,16 @@ export default clerkMiddleware(async (auth, req) => {
   if (req.nextUrl.pathname.startsWith('/profile/')) {
     return NextResponse.next();
   }
+
+  // App share links (/u/<username> profiles, /p/<id> posts) and
+  // Apple/Google app-association files must be publicly reachable
+  if (
+    req.nextUrl.pathname.startsWith('/u/') ||
+    req.nextUrl.pathname.startsWith('/p/') ||
+    req.nextUrl.pathname.startsWith('/.well-known/')
+  ) {
+    return NextResponse.next();
+  }
   
   // Always allow API routes (they handle their own auth)
   if (req.nextUrl.pathname.startsWith('/api/')) {

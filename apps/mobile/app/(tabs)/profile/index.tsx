@@ -67,16 +67,6 @@ interface StampPreview {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function explorerRank(n: number): string {
-  if (n >= 63) return 'NATIONAL LEGEND';
-  if (n >= 50) return 'PIONEER';
-  if (n >= 30) return 'TRAILBLAZER';
-  if (n >= 15) return 'RANGER';
-  if (n >= 5)  return 'EXPLORER';
-  if (n >= 1)  return 'INITIATE';
-  return 'TRAILHEAD';
-}
-
 const TIER_COLOR: Record<string, string> = {
   bronze: '#B27339', silver: '#A8A39B', gold: '#D4A93F',
   platinum: '#6E97A3', legendary: '#8B5DBF',
@@ -290,7 +280,10 @@ export default function ProfileScreen() {
 
   const handleShare = async () => {
     if (!user?.id) return;
-    const url = `parkquest://user/${user.id}`;
+    // Universal Link — opens the app if installed, web profile otherwise
+    const url = username
+      ? `https://parkquest.me/u/${username}`
+      : `parkquest://user/${user.id}`;
     try {
       await Share.share({
         message: `Follow ${displayName} on ParkQuest and explore national parks together! ${url}`,
@@ -470,6 +463,14 @@ export default function ProfileScreen() {
                 <Text style={styles.passportStatVal}>{s.value}</Text>
               </View>
             ))}
+          </View>
+
+          {/* Stamp count progress line — mirrors the passport page */}
+          <View style={styles.passportProgress}>
+            <Text style={styles.passportProgressText}>{parksVisited} of 63 parks stamped</Text>
+            <View style={styles.passportProgressTrack}>
+              <View style={[styles.passportProgressFill, { width: `${(parksVisited / 63) * 100}%` as `${number}%` }]} />
+            </View>
           </View>
 
           {/* MRZ strip */}
@@ -825,6 +826,30 @@ const styles = StyleSheet.create({
   passportStatVal: {
     fontSize: 13, fontWeight: '700', color: C.gold, marginTop: 2, letterSpacing: 0.2,
     textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
+  },
+  passportProgress: {
+    gap: 6,
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  passportProgressText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: C.gold,
+    opacity: 0.7,
+    letterSpacing: 0.5,
+  },
+  passportProgressTrack: {
+    height: 3,
+    backgroundColor: C.gold + '22',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  passportProgressFill: {
+    height: 3,
+    backgroundColor: C.gold,
+    borderRadius: 2,
+    opacity: 0.85,
   },
   mrzText: {
     fontFamily: 'JetBrainsMono_400Regular',

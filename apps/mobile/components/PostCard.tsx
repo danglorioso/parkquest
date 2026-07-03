@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
-  Modal, Dimensions, Alert, ActivityIndicator,
+  Modal, Dimensions, Alert, ActivityIndicator, Share,
   StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -1040,7 +1040,7 @@ export function PostCard({
   const isFirstVisit = !isBadge && !!post.visit_id && Number(post.visit_ordinal) === 1;
 
   return (
-    <View style={[styles.card, isBadge && { borderColor: C.primary + '80' }, isFirstVisit && { borderColor: C.accent + '80' }]}>
+    <View style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}>
       {/* Badge banner */}
       {isBadge && (
         <View style={styles.badgeBanner}>
@@ -1051,7 +1051,7 @@ export function PostCard({
 
       {/* First visit banner */}
       {isFirstVisit && (
-        <View style={[styles.badgeBanner, { backgroundColor: C.accent + '1a', borderBottomColor: C.accent + '60' }]}>
+        <View style={[styles.badgeBanner, { backgroundColor: C.accent + '1A', borderBottomColor: C.accent + '60' }]}>
           <Ionicons name="star" size={14} color={C.accent} />
           <Text style={[styles.badgeBannerText, { color: C.accent }]}>FIRST VISIT</Text>
         </View>
@@ -1214,8 +1214,8 @@ export function PostCard({
       {/* Photo carousel */}
       {!isBadge && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
 
-      {/* Action row */}
-      <View style={styles.actionRow}>
+      {/* Action row — extra bottom padding when it's the last row in the card */}
+      <View style={[styles.actionRow, commentCount === 0 && { paddingBottom: 12 }]}>
         <TouchableOpacity
           onPress={handleLike}
           onLongPress={() => { if (likeCount > 0) setShowLikers(true); }}
@@ -1246,6 +1246,22 @@ export function PostCard({
               {commentCount.toLocaleString()}
             </Text>
           )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={async () => {
+            // Universal Link — opens the app if installed, web fallback otherwise
+            try {
+              await Share.share({ message: `Check out this post on ParkQuest! https://parkquest.me/p/${post.id}` });
+            } catch {
+              // user dismissed the share sheet
+            }
+          }}
+          activeOpacity={0.7}
+          style={styles.actionBtn}
+          accessibilityLabel="Share post"
+        >
+          <Ionicons name="share-outline" size={20} color={C.inkSoft} />
         </TouchableOpacity>
       </View>
 
@@ -1311,12 +1327,6 @@ export function PostCard({
         />
       )}
 
-      {/* Footer date */}
-      <Text style={styles.footerDate}>
-        {new Date(post.created_at)
-          .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-          .toUpperCase()}
-      </Text>
     </View>
   );
 }
@@ -1483,7 +1493,7 @@ const styles = StyleSheet.create({
   // Comments
   previewPanel: {
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
-    paddingBottom: 4,
+    paddingBottom: 12,
   },
   viewAllBtn: {
     paddingHorizontal: 18, paddingTop: 8, paddingBottom: 2,
@@ -1643,11 +1653,5 @@ const styles = StyleSheet.create({
   actionBtnActive: {},
   actionBtnText: {
     fontSize: 13, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.3,
-  },
-  // Left padding lines the date up with the heart icon inside the like
-  // button (18 row padding + 12 chip padding)
-  footerDate: {
-    paddingLeft: 18, paddingRight: 18, paddingBottom: 14, paddingTop: 4,
-    fontSize: 13, color: C.inkMute, letterSpacing: 0.3,
   },
 });
