@@ -1,8 +1,8 @@
 import {
-  ActivityIndicator, Dimensions, Image, Linking, Modal, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Animated, Dimensions, Image, Linking, Modal, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
@@ -13,6 +13,7 @@ import { ParkStamp } from '@/components/ParkStamp';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { useColors } from '@/lib/palette';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
@@ -76,6 +77,49 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+// ── Loading skeletons — subtle placeholders while data streams in ──────────────
+
+function usePulse() {
+  const pulse = useRef(new Animated.Value(0.55)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 750, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.55, duration: 750, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+  return pulse;
+}
+
+// Passport-card identity placeholder — sits where the name/handle render
+function NameSkeleton() {
+  const pulse = usePulse();
+  return (
+    <View>
+      <Animated.View style={[styles.skeletonName, { opacity: pulse }]} />
+      <Animated.View style={[styles.skeletonHandle, { opacity: pulse }]} />
+    </View>
+  );
+}
+
+// Horizontal strip placeholder — matches the stamp/badge preview rows
+function PreviewSkeleton() {
+  const pulse = usePulse();
+  return (
+    <Animated.View style={{ flexDirection: 'row', gap: 10, paddingBottom: 4, opacity: pulse }}>
+      {[0, 1, 2, 3].map(i => (
+        <View key={i} style={styles.badgePreviewItem}>
+          <View style={styles.skeletonCircle} />
+          <View style={styles.skeletonLine} />
+        </View>
+      ))}
+    </Animated.View>
+  );
 }
 
 // ── Badge detail modal — emoji, tier, how-to-earn, earned date ─────────────────
@@ -156,6 +200,7 @@ export default function ProfileScreen() {
   const router   = useRouter();
   const { getToken } = useAuth();
   const C = useColors();
+  const tabBarSpace = useTabBarSpace();
   const { user }     = useUser();
   const { signOut }  = useClerk();
 
@@ -171,6 +216,11 @@ export default function ProfileScreen() {
   const [searchOpen,   setSearchOpen]   = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
+  // Per-fetch success flags — sections show skeletons until their data has
+  // actually arrived, so an offline/slow start never looks like an empty account
+  const [visitsLoaded,  setVisitsLoaded]  = useState(false);
+  const [badgesLoaded,  setBadgesLoaded]  = useState(false);
+  const [friendsLoaded, setFriendsLoaded] = useState(false);
 
   // getToken from @clerk/clerk-expo is a new function every render — keeping it
   // in dep arrays re-triggers effects on each render and loops fetches forever.
@@ -201,6 +251,7 @@ export default function ProfileScreen() {
         setParksVisited(visited.length);
         setBucketList(vs.filter((v: any) => v.is_bucket_list).length);
         setRawVisits(vs);
+        setVisitsLoaded(true);
       }
       if (badgesRes.status === 'fulfilled') {
         const all = badgesRes.value.badges ?? [];
@@ -208,9 +259,11 @@ export default function ProfileScreen() {
         setBadgesEarned(earned.length);
         setTotalBadges(all.length);
         setEarnedBadges(earned.slice(0, 5));
+        setBadgesLoaded(true);
       }
       if (friendsRes.status === 'fulfilled') {
         setFriendCount(Array.isArray(friendsRes.value) ? friendsRes.value.length : 0);
+        setFriendsLoaded(true);
       }
     } catch (e) {
       console.error('Profile load error:', e);
@@ -222,7 +275,9 @@ export default function ProfileScreen() {
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
-  const displayName = profile?.display_name || user?.fullName || user?.username || 'Explorer';
+  // null = identity not loaded yet (offline/slow) — show a skeleton, not "Explorer"
+  const realName    = profile?.display_name || user?.fullName || user?.username || null;
+  const displayName = realName ?? 'Explorer';
   const username    = profile?.username || user?.username || '';
   const avatarUrl   = profile?.avatar_url || user?.imageUrl || null;
   const joinDate    = user?.createdAt
@@ -384,7 +439,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       {topBar}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}>
 
         {/* ── Passport hero card ───────────────────────────────────────────── */}
         <TouchableOpacity
@@ -434,16 +489,26 @@ export default function ProfileScreen() {
                 <Image source={{ uri: avatarUrl }} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: C.primary }]}>
-                  <Text style={styles.avatarInitial}>{(displayName[0] ?? 'E').toUpperCase()}</Text>
+                  {realName ? (
+                    <Text style={styles.avatarInitial}>{realName[0].toUpperCase()}</Text>
+                  ) : (
+                    <Ionicons name="person" size={30} color="rgba(255,251,241,0.45)" />
+                  )}
                 </View>
               )}
             </View>
             <View style={{ flex: 1, paddingRight: 30 }}>
-              <Text style={styles.passportName} numberOfLines={1} adjustsFontSizeToFit>
-                {displayName}
-              </Text>
-              {username ? <Text style={styles.passportHandle}>@{username}</Text> : null}
-              {joinDate ? <Text style={styles.passportJoined}>Joined {joinDate}</Text> : null}
+              {realName ? (
+                <>
+                  <Text style={styles.passportName} numberOfLines={1} adjustsFontSizeToFit>
+                    {realName}
+                  </Text>
+                  {username ? <Text style={styles.passportHandle}>@{username}</Text> : null}
+                  {joinDate ? <Text style={styles.passportJoined}>Joined {joinDate}</Text> : null}
+                </>
+              ) : (
+                <NameSkeleton />
+              )}
             </View>
           </View>
 
@@ -453,10 +518,10 @@ export default function ProfileScreen() {
 
           <View style={styles.passportStats}>
             {([
-              { label: 'VISITED', value: `${parksVisited}/63` },
-              { label: 'BUCKET',  value: String(bucketList) },
-              { label: 'BADGES',  value: String(badgesEarned) },
-              { label: 'FRIENDS', value: String(friendCount) },
+              { label: 'VISITED', value: visitsLoaded ? `${parksVisited}/63` : '–' },
+              { label: 'BUCKET',  value: visitsLoaded ? String(bucketList) : '–' },
+              { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–' },
+              { label: 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–' },
             ] as { label: string; value: string }[]).map(s => (
               <View key={s.label} style={styles.passportStatItem}>
                 <Text style={styles.passportStatLabel}>{s.label}</Text>
@@ -467,7 +532,9 @@ export default function ProfileScreen() {
 
           {/* Stamp count progress line — mirrors the passport page */}
           <View style={styles.passportProgress}>
-            <Text style={styles.passportProgressText}>{parksVisited} of 63 parks stamped</Text>
+            <Text style={styles.passportProgressText}>
+              {visitsLoaded ? `${parksVisited} of 63 parks stamped` : 'Loading…'}
+            </Text>
             <View style={styles.passportProgressTrack}>
               <View style={[styles.passportProgressFill, { width: `${(parksVisited / 63) * 100}%` as `${number}%` }]} />
             </View>
@@ -480,13 +547,14 @@ export default function ProfileScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* ── Recent stamps preview ────────────────────────────────────────── */}
-        {recentStamps.length > 0 && (
+        {/* ── Recent stamps preview — skeleton until visits load, hidden only when truly empty ── */}
+        {(!visitsLoaded || recentStamps.length > 0) && (
           <View style={styles.badgesPreview}>
             <View style={styles.sectionHeader}>
               <Ionicons name="book-outline" size={13} color={C.inkMute} />
               <Text style={styles.sectionKicker}>RECENT STAMPS</Text>
             </View>
+            {!visitsLoaded ? <PreviewSkeleton /> : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
               {recentStamps.map(s => (
                 <TouchableOpacity
@@ -515,7 +583,7 @@ export default function ProfileScreen() {
               >
                 <Svg width={52} height={52} viewBox="0 0 52 52" style={{ marginBottom: 6 }}>
                   <Circle
-                    cx={26} cy={26} r={23}
+                    cx={26} cy={26} r={25.5}
                     fill="none"
                     stroke={C.primary}
                     strokeWidth={1}
@@ -543,16 +611,18 @@ export default function ProfileScreen() {
                 <Text style={[styles.badgePreviewName, { color: C.primary }]} numberOfLines={2}>All Stamps</Text>
               </TouchableOpacity>
             </ScrollView>
+            )}
           </View>
         )}
 
-        {/* ── Earned badges preview ────────────────────────────────────────── */}
-        {earnedBadges.length > 0 && (
+        {/* ── Earned badges preview — skeleton until badges load, hidden only when truly empty ── */}
+        {(!badgesLoaded || earnedBadges.length > 0) && (
           <View style={styles.badgesPreview}>
             <View style={styles.sectionHeader}>
               <Ionicons name="ribbon-outline" size={13} color={C.inkMute} />
               <Text style={styles.sectionKicker}>EARNED</Text>
             </View>
+            {!badgesLoaded ? <PreviewSkeleton /> : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
               {earnedBadges.map(b => (
                 <TouchableOpacity
@@ -574,7 +644,7 @@ export default function ProfileScreen() {
               >
                 <Svg width={52} height={52} viewBox="0 0 52 52" style={{ marginBottom: 6 }}>
                   <Circle
-                    cx={26} cy={26} r={23}
+                    cx={26} cy={26} r={25.5}
                     fill="none"
                     stroke={C.primary}
                     strokeWidth={1}
@@ -602,6 +672,7 @@ export default function ProfileScreen() {
                 <Text style={[styles.badgePreviewName, { color: C.primary }]} numberOfLines={2}>All Badges</Text>
               </TouchableOpacity>
             </ScrollView>
+            )}
           </View>
         )}
 
@@ -638,10 +709,14 @@ export default function ProfileScreen() {
                   </Marker>
                 ))}
               </MapView>
-            ) : (
+            ) : visitsLoaded ? (
               <View style={styles.mapEmpty}>
                 <Ionicons name="map-outline" size={22} color={C.inkMute} />
                 <Text style={styles.mapEmptyText}>No park visits yet</Text>
+              </View>
+            ) : (
+              <View style={styles.mapEmpty}>
+                <ActivityIndicator size="small" color={C.inkMute} />
               </View>
             )}
           </TouchableOpacity>
@@ -947,6 +1022,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#2F7A4A',
     borderWidth: 2,
     borderColor: '#FFFBF1',
+  },
+
+  // Loading skeletons
+  skeletonName: {
+    width: 150, height: 22, borderRadius: 6,
+    backgroundColor: 'rgba(201,169,74,0.25)', marginTop: 4,
+  },
+  skeletonHandle: {
+    width: 90, height: 11, borderRadius: 5,
+    backgroundColor: 'rgba(201,169,74,0.16)', marginTop: 8,
+  },
+  skeletonCircle: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: 'rgba(27,26,22,0.08)', marginBottom: 6,
+  },
+  skeletonLine: {
+    width: 48, height: 9, borderRadius: 5,
+    backgroundColor: 'rgba(27,26,22,0.06)',
   },
 
   // Attribution

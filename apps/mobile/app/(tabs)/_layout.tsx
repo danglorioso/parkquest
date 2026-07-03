@@ -1,14 +1,11 @@
 import { Tabs, useRouter } from 'expo-router';
-import { DeviceEventEmitter, TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
+import { DeviceEventEmitter, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../../lib/palette';
+import FloatingTabBar from '../../components/FloatingTabBar';
 
 const STATIC = {
-  surface:  '#FFFBF1',
-  inkMute:  '#7A746A',
-  hairline: 'rgba(27,26,22,0.10)',
+  inkMute: '#7A746A',
 };
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -17,7 +14,7 @@ function TabIcon({
   focused,
   name,
   activeName,
-  size = 24,
+  size = 25,
   primary,
 }: {
   focused: boolean;
@@ -47,12 +44,6 @@ function LogVisitButton() {
     >
       <View style={[styles.fabGlow, { backgroundColor: C.accent }]}>
         <View style={[styles.fab, { backgroundColor: C.accent }]}>
-          <LinearGradient
-            colors={['rgba(255,200,150,0.38)', 'transparent', 'rgba(0,0,0,0.34)']}
-            locations={[0, 0.48, 1]}
-            style={StyleSheet.absoluteFillObject}
-            pointerEvents="none"
-          />
           <Ionicons name="add" size={26} color="#FFFBF1" />
         </View>
       </View>
@@ -62,31 +53,11 @@ function LogVisitButton() {
 
 export default function TabsLayout() {
   const C = useColors();
-  const insets = useSafeAreaInsets();
-  const tabPaddingBottom = Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 4);
-  const tabBarHeight = tabPaddingBottom + 64;
 
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: C.primary,
-        tabBarInactiveTintColor: STATIC.inkMute,
-        tabBarStyle: {
-          backgroundColor: STATIC.surface,
-          borderTopColor: STATIC.hairline,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          height: tabBarHeight,
-          paddingBottom: tabPaddingBottom,
-          paddingTop: 8,
-          paddingHorizontal: Platform.OS === 'ios' ? 14 : 6,
-        },
-        tabBarLabelStyle: {
-          fontSize: 13,
-          fontWeight: '500',
-          letterSpacing: 0.2,
-        },
-      }}
+      tabBar={(props) => <FloatingTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen
         name="feed"
@@ -118,16 +89,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} name="map-outline" activeName="map" primary={C.primary} />
           ),
-          tabBarStyle: {
-            position: 'absolute',
-            backgroundColor: 'rgba(255,251,241,0.88)',
-            borderTopColor: STATIC.hairline,
-            borderTopWidth: StyleSheet.hairlineWidth,
-            height: tabBarHeight,
-            paddingBottom: tabPaddingBottom,
-            paddingTop: 8,
-            paddingHorizontal: Platform.OS === 'ios' ? 14 : 6,
-          },
         }}
       />
       <Tabs.Screen
@@ -142,7 +103,7 @@ export default function TabsLayout() {
         options={{
           title: 'Parks',
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="compass-outline" activeName="compass" size={26} primary={C.primary} />
+            <TabIcon focused={focused} name="compass-outline" activeName="compass" size={27} primary={C.primary} />
           ),
         }}
       />
@@ -166,21 +127,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fabGlow: {
-    borderRadius: 26,
+    borderRadius: 36,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.42,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.38,
+    shadowRadius: 7,
     elevation: 12,
   },
   fab: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 50,
+    height: 50,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     borderWidth: 0.75,
     borderColor: 'rgba(255,255,255,0.22)',
+    boxShadow:
+      'inset 0 3 5 rgba(255,255,255,0.45), inset 0 -4 6 rgba(0,0,0,0.35)',
   },
 });

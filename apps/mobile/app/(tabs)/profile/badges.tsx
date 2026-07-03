@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -489,6 +490,7 @@ function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => 
 
 export default function BadgesScreen() {
   const { getToken } = useAuth();
+  const tabBarSpace = useTabBarSpace();
   const [badges,        setBadges]        = useState<BadgeData[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState(false);
@@ -680,7 +682,7 @@ export default function BadgesScreen() {
           return item._type;
         }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}
         // Improved scroll performance
         removeClippedSubviews={false}
       />

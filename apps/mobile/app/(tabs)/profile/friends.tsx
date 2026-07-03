@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -320,6 +321,7 @@ export default function FriendsScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tabBarSpace = useTabBarSpace();
 
   const [friends,    setFriends]    = useState<FriendUser[]  | null>(null);
   const [incoming,   setIncoming]   = useState<PendingUser[] | null>(null);
@@ -722,7 +724,7 @@ export default function FriendsScreen() {
         keyboardDismissMode="on-drag"
         refreshing={refreshing}
         onRefresh={handleRefresh}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}
       />
     </View>
   );

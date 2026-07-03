@@ -122,10 +122,6 @@ export default function RootLayout() {
                   }}
                 />
                 <Stack.Screen
-                  name="parks/[id]"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
                   name="profile/edit"
                   options={{
                     headerShown: true,

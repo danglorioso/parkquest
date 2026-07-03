@@ -15,6 +15,7 @@ import { fullStateName } from '@/lib/stateNames';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { useColors } from '@/lib/palette';
 import { CompassSpinner } from '@/components/LoadingScreen';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -455,7 +456,7 @@ function ParkBottomSheet({
 
   const sheetRadius = sheetH.interpolate({
     inputRange: [SHEET_FULL - 60, SHEET_FULL],
-    outputRange: [16, 0],
+    outputRange: [28, 0],
     extrapolate: 'clamp',
   });
 
@@ -732,8 +733,7 @@ function ParkBottomSheet({
 
   const heroUrl      = npsImages[imgIdx] ?? null;
   const stateLabel   = fullStateName(park.states.split(',')[0].trim());
-  // Matches the tab bar height formula in (tabs)/_layout.tsx
-  const tabBarH      = Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 4) + 64;
+  const tabBarH      = useTabBarSpace();
   const forecastDays = (weather ?? []).filter(p => p.isDaytime).slice(0, 7);
   const forecastNights = (weather ?? []).filter(p => !p.isDaytime);
   const hasContact   = npsPhone || npsEmail || npsWebUrl;
@@ -1776,8 +1776,8 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 30,
     backgroundColor: 'rgba(255,251,241,0.97)',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     borderTopWidth: 0.5,
     borderColor: C.hairline,
     shadowColor: '#000',

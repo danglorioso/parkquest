@@ -19,6 +19,8 @@ config.resolver.nodeModulesPaths = [
 const rootPkg = (name) => path.resolve(monorepoRoot, 'node_modules', name);
 config.resolver.extraNodeModules = {
   'expo-blur': rootPkg('expo-blur'),
+  'expo-glass-effect': rootPkg('expo-glass-effect'),
+  'expo-haptics': rootPkg('expo-haptics'),
 };
 
 // Hard-pin singleton packages to the monorepo root. Uses Metro's own resolver

@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,8 @@ type RowItem =
   | { type: 'header' }
   | { type: 'stamps'; rowIdx: number; items: StampItem[] }
   | { type: 'divider'; pageNum: number }
-  | { type: 'empty' };
+  | { type: 'empty' }
+  | { type: 'skeleton'; idx: number };
 
 // ── Stamp cell ────────────────────────────────────────────────────────────────
 
@@ -140,6 +142,7 @@ function SkeletonRow() {
 
 export default function PassportScreen() {
   const { getToken }  = useAuth();
+  const tabBarSpace = useTabBarSpace();
   const { user }      = useUser();
   const router        = useRouter();
 
@@ -217,12 +220,16 @@ export default function PassportScreen() {
   }, [allStampItems]);
 
   const avatarUrl = profile?.avatar_url || user?.imageUrl || null;
-  const name = profile?.display_name ?? profile?.username ?? 'Explorer';
+  // null = profile not loaded yet — header shows a skeleton bar, not "Explorer"
+  const name = profile?.display_name ?? profile?.username ?? null;
   const pNo  = passportNo(profile?.username ?? user?.username ?? 'explorer');
 
   // Build FlatList rows: header + stamp rows (with page dividers)
   const listData = useMemo((): RowItem[] => {
-    if (loading) return [{ type: 'header' }];
+    // Still loading: skeleton stamp rows instead of a blank page
+    if (loading) {
+      return [{ type: 'header' }, { type: 'skeleton', idx: 0 }, { type: 'skeleton', idx: 1 }, { type: 'skeleton', idx: 2 }];
+    }
 
     const rows: RowItem[] = [{ type: 'header' }];
 
@@ -268,10 +275,11 @@ export default function PassportScreen() {
           if (item.type === 'header') return 'header';
           if (item.type === 'divider') return `div-${item.pageNum}`;
           if (item.type === 'empty') return 'empty';
+          if (item.type === 'skeleton') return `skel-${item.idx}`;
           return `row-${item.rowIdx}`;
         }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}
         renderItem={({ item }) => {
           if (item.type === 'header') {
             return (
@@ -309,12 +317,20 @@ export default function PassportScreen() {
                       <Image source={{ uri: avatarUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     ) : (
                       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 28, fontWeight: '900', color: GOLD }}>{name.slice(0,2).toUpperCase()}</Text>
+                        {name ? (
+                          <Text style={{ fontSize: 28, fontWeight: '900', color: GOLD }}>{name.slice(0,2).toUpperCase()}</Text>
+                        ) : (
+                          <Ionicons name="person" size={26} color={GOLD} style={{ opacity: 0.5 }} />
+                        )}
                       </View>
                     )}
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={st.headerName} numberOfLines={2} adjustsFontSizeToFit>{name}</Text>
+                    {name ? (
+                      <Text style={st.headerName} numberOfLines={2} adjustsFontSizeToFit>{name}</Text>
+                    ) : (
+                      <View style={{ width: 150, height: 22, borderRadius: 6, backgroundColor: 'rgba(201,169,74,0.25)', marginBottom: 6 }} />
+                    )}
                     {profile?.username ? (
                       <Text style={st.headerHandle}>@{profile.username}</Text>
                     ) : null}
@@ -327,10 +343,10 @@ export default function PassportScreen() {
                 {/* Stats */}
                 <View style={st.headerStats}>
                   {[
-                    { label: 'PARKS',  value: `${visitedCount}/63` },
-                    { label: 'STATES', value: `${statesCount}/50` },
-                    { label: 'BUCKET', value: String(bucketCount) },
-                    { label: 'BADGES', value: `${badgeCount}/${totalBadges}` },
+                    { label: 'PARKS',  value: loading ? '–' : `${visitedCount}/63` },
+                    { label: 'STATES', value: loading ? '–' : `${statesCount}/50` },
+                    { label: 'BUCKET', value: loading ? '–' : String(bucketCount) },
+                    { label: 'BADGES', value: loading ? '–' : `${badgeCount}/${totalBadges}` },
                   ].map((s, i) => (
                     <View key={s.label} style={[st.headerStat, i > 0 && st.headerStatBorder]}>
                       <Text style={st.headerStatLabel}>{s.label}</Text>
@@ -360,6 +376,10 @@ export default function PassportScreen() {
                 <View style={st.pageDividerLine} />
               </View>
             );
+          }
+
+          if (item.type === 'skeleton') {
+            return <SkeletonRow />;
           }
 
           if (item.type === 'empty') {

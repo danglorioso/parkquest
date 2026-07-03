@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker } from 'react-native-maps';
 import { fullStateName } from '@/lib/stateNames';
 import { useColors } from '@/lib/palette';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -315,6 +316,7 @@ export default function ParkDetailScreen() {
   const { user } = useUser();
   const insets = useSafeAreaInsets();
   const C = useColors();
+  const tabBarSpace = useTabBarSpace();
 
   const [park,         setPark]         = useState<Park | null>(null);
   const [nps,          setNps]          = useState<NpsData | null>(null);
@@ -518,7 +520,7 @@ export default function ParkDetailScreen() {
       <ScrollView
         style={styles.screen}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: tabBarSpace + 12 }}
       >
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
         <View style={[styles.hero, { height: 260 + insets.top, backgroundColor: gradientColor(park.park_code) }]}>

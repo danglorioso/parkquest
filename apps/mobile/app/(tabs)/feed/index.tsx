@@ -8,12 +8,14 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
 import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { useColors } from '@/lib/palette';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -75,6 +77,7 @@ export default function FeedScreen() {
   const router = useRouter();
   const palette = useColors();
   const insets = useSafeAreaInsets();
+  const tabBarSpace = useTabBarSpace();
   const TOP_BAR_H = insets.top + 56;
 
   const [token, setToken]         = useState<string | null>(null);
@@ -95,7 +98,10 @@ export default function FeedScreen() {
     const tok = await getToken();
     if (!tok) { setLoading(false); return; }
     setToken(tok);
-    if (isRefresh) setRefreshing(true);
+    if (isRefresh) {
+      setRefreshing(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
     else setPosts(prev => { if (prev.length === 0) setLoading(true); return prev; });
     setError(false);
     try {
@@ -227,7 +233,7 @@ export default function FeedScreen() {
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         ListEmptyComponent={ListEmpty}
-        contentContainerStyle={[styles.listContent, { paddingTop: TOP_BAR_H + 8 }]}
+        contentContainerStyle={[styles.listContent, { paddingTop: TOP_BAR_H + 8, paddingBottom: tabBarSpace + 8 }]}
         showsVerticalScrollIndicator={false}
         onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
         scrollEventThrottle={16}

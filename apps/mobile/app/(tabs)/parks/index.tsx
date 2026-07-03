@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
 import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
 import { useColors } from '@/lib/palette';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -454,6 +455,7 @@ function FilterPanel({
 export default function ParksScreen() {
   const { getToken } = useAuth();
   const { primary, accent } = useColors();
+  const tabBarSpace = useTabBarSpace();
 
   const [parks,   setParks]   = useState<Park[]>([]);
   const [visits,  setVisits]  = useState<Visit[]>([]);
@@ -546,11 +548,10 @@ export default function ParksScreen() {
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [parks, visits, query, statusFilter, regionFilter, activityFilters, topicFilters, activitiesMap, topicsMap]);
 
-  const hasFilter = !!query || statusFilter !== 'all' || regionFilter !== 'all'
+  const hasFilter = statusFilter !== 'all' || regionFilter !== 'all'
     || activityFilters.length > 0 || topicFilters.length > 0;
 
   const handleReset = useCallback(() => {
-    setQuery('');
     setStatusFilter('all');
     setRegionFilter('all');
     setActivityFilters([]);
@@ -653,7 +654,6 @@ export default function ParksScreen() {
           value={query} onChangeText={setQuery}
           placeholder="Search parks…" placeholderTextColor={C.inkMute}
           style={styles.searchInput} autoCorrect={false} autoCapitalize="none"
-          clearButtonMode="while-editing"
         />
         {query.length > 0 && (
           <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
@@ -678,7 +678,7 @@ export default function ParksScreen() {
       />
 
       {/* Results count */}
-      {hasFilter && !loading && (
+      {(hasFilter || !!query) && !loading && (
         <Text style={styles.resultsCount}>{filtered.length} RESULT{filtered.length !== 1 ? 'S' : ''}</Text>
       )}
     </View>
@@ -758,7 +758,7 @@ export default function ParksScreen() {
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={ListEmpty}
         ListFooterComponent={ListFooter}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: tabBarSpace + 8 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"

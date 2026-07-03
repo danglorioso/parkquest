@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -431,6 +432,7 @@ function DateRow({
 export default function JournalEntryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getToken } = useAuth();
+  const tabBarSpace = useTabBarSpace();
   const router = useRouter();
 
   const [entry,   setEntry]   = useState<JournalEntry | null>(null);
@@ -615,7 +617,7 @@ export default function JournalEntryScreen() {
           ),
         }} />
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}>
           {/* Hero photo section */}
           {photos.length > 0
             ? <PhotoHero photos={photos} cover={entry.cover_photo} />
@@ -767,7 +769,7 @@ export default function JournalEntryScreen() {
       >
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 60, gap: 22 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: tabBarSpace + 24, gap: 22 }}
           keyboardShouldPersistTaps="handled"
         >
           {/* Park name (non-editable) */}

@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -193,6 +194,7 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
 
 export default function JournalScreen() {
   const { getToken } = useAuth();
+  const tabBarSpace = useTabBarSpace();
   const router = useRouter();
 
   const [entries,    setEntries]    = useState<JournalEntry[]>([]);
@@ -361,7 +363,7 @@ export default function JournalScreen() {
           </View>
         )}
         ListHeaderComponent={ListHeader}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
