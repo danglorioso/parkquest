@@ -4,6 +4,7 @@ import {
   Modal, Dimensions, Alert, ActivityIndicator, Share,
   StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder,
 } from 'react-native';
+import { ImageLightbox } from '@/components/ImageLightbox';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -158,71 +159,6 @@ export function Avatar({
         <Text style={[styles.avatarInitials, { fontSize: Math.max(13, size * 0.32) }]}>{initials}</Text>
       )}
     </View>
-  );
-}
-
-// ── Lightbox ──────────────────────────────────────────────────────────────────
-
-function Lightbox({
-  photos, startIdx, onClose,
-}: { photos: string[]; startIdx: number; onClose: () => void }) {
-  const [idx, setIdx] = useState(startIdx);
-  const n = photos.length;
-
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.lightboxBg}>
-        {/* Close */}
-        <TouchableOpacity style={styles.lightboxClose} onPress={onClose} hitSlop={16}>
-          <Ionicons name="close" size={22} color="#fff" />
-        </TouchableOpacity>
-
-        {/* Counter */}
-        {n > 1 && (
-          <View style={styles.lightboxCounter}>
-            <Text style={styles.lightboxCounterText}>{idx + 1} / {n}</Text>
-          </View>
-        )}
-
-        {/* Image */}
-        <Image
-          source={{ uri: photos[idx] }}
-          style={styles.lightboxImage}
-          contentFit="contain"
-        />
-
-        {/* Prev */}
-        {idx > 0 && (
-          <TouchableOpacity
-            style={[styles.lightboxNav, { left: 16 }]}
-            onPress={() => setIdx(i => i - 1)}
-          >
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </TouchableOpacity>
-        )}
-
-        {/* Next */}
-        {idx < n - 1 && (
-          <TouchableOpacity
-            style={[styles.lightboxNav, { right: 16 }]}
-            onPress={() => setIdx(i => i + 1)}
-          >
-            <Ionicons name="chevron-forward" size={24} color="#fff" />
-          </TouchableOpacity>
-        )}
-
-        {/* Dot strip */}
-        {n > 1 && (
-          <View style={styles.lightboxDots}>
-            {photos.map((_, k) => (
-              <TouchableOpacity key={k} onPress={() => setIdx(k)}>
-                <View style={[styles.dot, k === idx ? styles.dotActive : styles.dotInactive]} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </View>
-    </Modal>
   );
 }
 
@@ -409,9 +345,9 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
       )}
 
       {lightboxIdx !== null && (
-        <Lightbox
-          photos={photos.filter(Boolean)}
-          startIdx={lightboxIdx}
+        <ImageLightbox
+          images={photos.filter(Boolean).map(url => ({ url }))}
+          initialIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
         />
       )}
@@ -1343,40 +1279,6 @@ const styles = StyleSheet.create({
     fontWeight: '700', color: C.inkMute,
   },
 
-  // Lightbox
-  lightboxBg: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.93)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  lightboxClose: {
-    position: 'absolute', top: 52, right: 18,
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center', zIndex: 10,
-  },
-  lightboxCounter: {
-    position: 'absolute', top: 60,
-    alignSelf: 'center',
-  },
-  lightboxCounterText: {
-    color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: '600',
-  },
-  lightboxImage: {
-    width: '90%', height: '75%',
-  },
-  lightboxNav: {
-    position: 'absolute', top: '50%', marginTop: -24,
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  lightboxDots: {
-    position: 'absolute', bottom: 40,
-    flexDirection: 'row', gap: 6,
-  },
-  dot: { height: 7, borderRadius: 4 },
-  dotActive: { width: 22, backgroundColor: '#fff' },
-  dotInactive: { width: 7, backgroundColor: 'rgba(255,255,255,0.35)' },
 
   // Carousel
   carouselCounter: {

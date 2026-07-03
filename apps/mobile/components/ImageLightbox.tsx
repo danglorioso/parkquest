@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import {
-  Dimensions, FlatList, Modal, Pressable, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View,
+  Dimensions, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,52 +23,47 @@ export function ImageLightbox({
   const insets = useSafeAreaInsets();
   const [idx, setIdx] = useState(initialIndex);
   const listRef = useRef<FlatList<LightboxImage>>(null);
+  const n = images.length;
 
-  const goTo = (i: number) => {
-    const next = (i + images.length) % images.length;
+  const goTo = (k: number) => {
+    const next = Math.max(0, Math.min(n - 1, k));
     listRef.current?.scrollToIndex({ index: next, animated: true });
     setIdx(next);
   };
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.bg} onPress={onClose}>
+      <View style={styles.bg}>
+        {/* Fullscreen pager — swipe anywhere to change image */}
         <FlatList
           ref={listRef}
           data={images}
-          keyExtractor={(_, i) => String(i)}
+          keyExtractor={(_, k) => String(k)}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
+          style={StyleSheet.absoluteFill}
           initialScrollIndex={initialIndex}
-          getItemLayout={(_, i) => ({ length: W, offset: W * i, index: i })}
-          onMomentumScrollEnd={e => setIdx(Math.round(e.nativeEvent.contentOffset.x / W))}
+          getItemLayout={(_, index) => ({ length: W, offset: W * index, index })}
+          onMomentumScrollEnd={e => {
+            setIdx(Math.round(e.nativeEvent.contentOffset.x / W));
+          }}
           renderItem={({ item }) => (
-            <ScrollView
-              style={{ width: W }}
-              contentContainerStyle={styles.zoomContainer}
-              maximumZoomScale={4}
-              minimumZoomScale={1}
-              bouncesZoom
-              centerContent
-              showsVerticalScrollIndicator={false}
-              showsHorizontalScrollIndicator={false}
-            >
+            <View style={styles.page}>
               <Image
                 source={{ uri: item.url }}
                 style={styles.img}
                 contentFit="contain"
-                transition={200}
                 cachePolicy="memory-disk"
               />
-            </ScrollView>
+            </View>
           )}
         />
 
-        {/* Counter */}
-        {images.length > 1 && (
+        {/* Counter chip — top left */}
+        {n > 1 && (
           <View style={[styles.counter, { top: insets.top + 12 }]} pointerEvents="none">
-            <Text style={styles.counterText}>{idx + 1} / {images.length}</Text>
+            <Text style={styles.counterText}>{idx + 1} / {n}</Text>
           </View>
         )}
 
@@ -77,38 +71,49 @@ export function ImageLightbox({
         <TouchableOpacity
           style={[styles.close, { top: insets.top + 12 }]}
           onPress={onClose}
-          hitSlop={8}
+          hitSlop={16}
         >
-          <Ionicons name="close" size={18} color="#FFFBF1" />
+          <Ionicons name="close" size={22} color="#FFFBF1" />
         </TouchableOpacity>
 
-        {/* Arrows */}
-        {images.length > 1 && (
-          <>
-            <TouchableOpacity
-              style={[styles.nav, { left: 12 }]}
-              onPress={() => goTo(idx - 1)}
-              hitSlop={8}
-            >
-              <Ionicons name="chevron-back" size={20} color="#FFFBF1" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.nav, { right: 12 }]}
-              onPress={() => goTo(idx + 1)}
-              hitSlop={8}
-            >
-              <Ionicons name="chevron-forward" size={20} color="#FFFBF1" />
-            </TouchableOpacity>
-          </>
+        {/* Prev arrow */}
+        {idx > 0 && (
+          <TouchableOpacity
+            style={[styles.nav, { left: 16 }]}
+            onPress={() => goTo(idx - 1)}
+          >
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </TouchableOpacity>
+        )}
+
+        {/* Next arrow */}
+        {idx < n - 1 && (
+          <TouchableOpacity
+            style={[styles.nav, { right: 16 }]}
+            onPress={() => goTo(idx + 1)}
+          >
+            <Ionicons name="chevron-forward" size={24} color="#fff" />
+          </TouchableOpacity>
         )}
 
         {/* Caption */}
         {images[idx]?.title ? (
-          <View style={[styles.caption, { bottom: insets.bottom + 24 }]} pointerEvents="none">
+          <View style={[styles.caption, { bottom: insets.bottom + 64 }]} pointerEvents="none">
             <Text style={styles.captionText} numberOfLines={2}>{images[idx].title}</Text>
           </View>
         ) : null}
-      </Pressable>
+
+        {/* Dot strip */}
+        {n > 1 && (
+          <View style={[styles.dots, { bottom: insets.bottom + 28 }]}>
+            {images.map((_, k) => (
+              <TouchableOpacity key={k} onPress={() => goTo(k)}>
+                <View style={[styles.dot, k === idx ? styles.dotActive : styles.dotInactive]} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
     </Modal>
   );
 }
@@ -116,17 +121,17 @@ export function ImageLightbox({
 const styles = StyleSheet.create({
   bg: {
     flex: 1,
-    backgroundColor: 'rgba(10,9,7,0.96)',
+    backgroundColor: 'rgba(0,0,0,0.93)',
   },
-  zoomContainer: {
+  page: {
     width: W,
-    flexGrow: 1,
+    height: '100%',
+    alignItems: 'center',
     justifyContent: 'center',
   },
   img: {
-    width: W,
-    height: '100%',
-    minHeight: 320,
+    width: '90%',
+    height: '75%',
   },
   counter: {
     position: 'absolute',
@@ -143,22 +148,23 @@ const styles = StyleSheet.create({
   },
   close: {
     position: 'absolute',
-    right: 16,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    right: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 10,
   },
   nav: {
     position: 'absolute',
     top: '50%',
-    marginTop: -18,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    marginTop: -24,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -174,4 +180,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 17,
   },
+  dots: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  dot: { height: 7, borderRadius: 4 },
+  dotActive: { width: 22, backgroundColor: '#fff' },
+  dotInactive: { width: 7, backgroundColor: 'rgba(255,255,255,0.35)' },
 });

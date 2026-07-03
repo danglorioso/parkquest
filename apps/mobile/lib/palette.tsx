@@ -69,6 +69,7 @@ export function useColors() {
     hairlineSoft: 'rgba(27,26,22,0.06)',
     visited:      '#2F7A4A',
     bucket:       '#C48A20',
+    liked:        '#D45040',
     primary:      colors.primary,
     primaryDeep:  colors.primaryDeep,
     accent:       colors.accent,

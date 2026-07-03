@@ -431,6 +431,9 @@ export default function ParkDetailScreen() {
     prevHeroRef.current = null;
   }, [nps]);
 
+  const totalImgs = nps?.images?.length ?? 0;
+  const heroImage = totalImgs > 0 ? nps!.images[heroIdx]?.url : park?.image_url;
+
   useEffect(() => {
     if (!heroImage) return;
     if (prevHeroRef.current !== heroImage) {
@@ -457,8 +460,6 @@ export default function ParkDetailScreen() {
   // Pair each daytime with the night low
   const forecastNights = weather?.periods.filter(p => !p.isDaytime) ?? [];
 
-  const totalImgs = nps?.images?.length ?? 0;
-  const heroImage = totalImgs > 0 ? nps!.images[heroIdx]?.url : park?.image_url;
   const stripImages: Array<{ img: NpsImage; actualIdx: number }> = [];
   if (nps && totalImgs >= 2) {
     const stripCount = Math.min(totalImgs - 1, 4);

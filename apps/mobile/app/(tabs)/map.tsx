@@ -38,7 +38,6 @@ const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get('window');
 
 const SHEET_PEEK = SCREEN_H * 0.48;
 const SHEET_FULL = SCREEN_H;
-const TAB_BAR_H = Platform.OS === 'ios' ? 84 : 64;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -193,7 +192,7 @@ function FilterPill({
   return (
     <View style={styles.pill}>
       {FILTERS.map((f, i) => (
-        <View key={f.key} style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View key={f.key} style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, minWidth: 0 }}>
           <TouchableOpacity
             onPress={() => onSelect(f.key)}
             activeOpacity={0.7}
@@ -203,7 +202,10 @@ function FilterPill({
             <Text style={[styles.pillCount, active === f.key && styles.pillCountActive]}>
               {counts[f.key]}
             </Text>
-            <Text style={[styles.pillLabel, active === f.key && styles.pillLabelActive]}>
+            <Text
+              numberOfLines={1}
+              style={[styles.pillLabel, active === f.key && styles.pillLabelActive]}
+            >
               {f.label}
             </Text>
           </TouchableOpacity>
@@ -457,11 +459,16 @@ function ParkBottomSheet({
     extrapolate: 'clamp',
   });
 
-  // Image carousel
+  // Image carousel — auto-rotates like the park detail page hero
   const [npsImages, setNpsImages] = useState<string[]>(
     park.image_url ? [park.image_url] : []
   );
   const [imgIdx, setImgIdx] = useState(0);
+  const [heroLoaded, setHeroLoaded] = useState(false);
+  const [prevHeroUrl, setPrevHeroUrl] = useState<string | null>(null);
+  const prevHeroRef = useRef<string | null>(null);
+  const npsImagesRef = useRef<string[]>(npsImages);
+  npsImagesRef.current = npsImages;
 
   // NPS summary data
   const [npsActivities,    setNpsActivities]    = useState<string[]>([]);
@@ -490,12 +497,17 @@ function ParkBottomSheet({
   // Scroll-to-expand state
   const sheetFullRef    = useRef(false);
   const [scrollEnabled, setScrollEnabled] = useState(false);
+  const dismissingRef   = useRef(false);
+  const scrollOffsetRef = useRef(0);
 
   // ── Animate in ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
     sheetFullRef.current = false;
+    dismissingRef.current = false;
     setScrollEnabled(false);
+    scrollRef.current?.scrollTo?.({ y: 0, animated: false });
+    scrollOffsetRef.current = 0;
     baseH.current = SHEET_PEEK;
     sheetH.setValue(0);
     Animated.spring(sheetH, {
@@ -510,6 +522,9 @@ function ParkBottomSheet({
     if (park.image_url) setNpsImages([park.image_url]);
     else setNpsImages([]);
     setImgIdx(0);
+    setHeroLoaded(false);
+    setPrevHeroUrl(null);
+    prevHeroRef.current = null;
     setNpsActivities([]);
     setNpsTopics([]);
     setNpsEntranceFees([]);
@@ -600,6 +615,10 @@ function ParkBottomSheet({
     const full = target >= SHEET_FULL;
     sheetFullRef.current = full;
     setScrollEnabled(full);
+    if (!full) {
+      scrollRef.current?.scrollTo?.({ y: 0, animated: false });
+      scrollOffsetRef.current = 0;
+    }
     Animated.spring(sheetH, {
       toValue: target, useNativeDriver: false,
       damping: 22, mass: 0.75, stiffness: 260,
@@ -608,11 +627,13 @@ function ParkBottomSheet({
   }
 
   function dismiss() {
+    if (dismissingRef.current) return;
+    dismissingRef.current = true;
     sheetFullRef.current = false;
     setScrollEnabled(false);
     onDismissStart();
     Animated.timing(sheetH, {
-      toValue: 0, duration: 200, useNativeDriver: false,
+      toValue: 0, duration: 260, useNativeDriver: false,
     }).start(onClose);
   }
 
@@ -629,7 +650,8 @@ function ParkBottomSheet({
   // Drag handle at the top of the sheet controls vertical snap/dismiss.
 
   const topStripPan = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, { dy, dx }) => Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx),
+    onMoveShouldSetPanResponder: (_, { dy, dx }) =>
+      !dismissingRef.current && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx),
     onPanResponderGrant: () => {
       sheetH.stopAnimation(v => { baseH.current = v; });
     },
@@ -639,8 +661,8 @@ function ParkBottomSheet({
     onPanResponderRelease: (_, { dy, vy }) => {
       const raw = baseH.current - dy;
       const mid = (SHEET_PEEK + SHEET_FULL) / 2;
-      // Require significant velocity OR drag well past peek to dismiss.
-      if (vy > 2.5 || (vy > 1.2 && raw < SHEET_PEEK * 0.65)) {
+      // Decisive downward flick or a drag below the peek zone closes the sheet
+      if (vy > 1.2 || raw < SHEET_PEEK * 0.65) {
         dismiss();
       } else if (vy < -0.5 || raw > mid) {
         snapTo(SHEET_FULL);
@@ -651,12 +673,19 @@ function ParkBottomSheet({
   })).current;
 
   // ── Content pan handler ───────────────────────────────────────────────────────
-  // When sheet is not full, upward drags expand the sheet instead of scrolling.
-  // Uses a ref so the PanResponder closure always sees current state.
+  // When sheet is not full, vertical drags move the sheet instead of scrolling.
+  // When full, a downward drag with the scroll already at the top grabs the
+  // sheet (same pattern as the comments sheet), so header + text move as one.
+  // Uses refs so the PanResponder closure always sees current state.
 
   const contentPan = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, { dy, dx }) =>
-      !sheetFullRef.current && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx),
+    onMoveShouldSetPanResponder: (_, { dy, dx }) => {
+      if (dismissingRef.current) return false;
+      if (Math.abs(dy) <= 8 || Math.abs(dy) <= Math.abs(dx)) return false;
+      if (!sheetFullRef.current) return true;
+      return scrollOffsetRef.current <= 1 && dy > 0;
+    },
+    onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: () => {
       sheetH.stopAnimation(v => { baseH.current = v; });
     },
@@ -703,14 +732,45 @@ function ParkBottomSheet({
 
   const heroUrl      = npsImages[imgIdx] ?? null;
   const stateLabel   = fullStateName(park.states.split(',')[0].trim());
+  // Matches the tab bar height formula in (tabs)/_layout.tsx
+  const tabBarH      = Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 4) + 64;
   const forecastDays = (weather ?? []).filter(p => p.isDaytime).slice(0, 7);
   const forecastNights = (weather ?? []).filter(p => !p.isDaytime);
   const hasContact   = npsPhone || npsEmail || npsWebUrl;
 
+  // Photo strip shows the next images relative to the rotating hero
+  const stripImages: Array<{ url: string; actualIdx: number }> = [];
+  if (npsImages.length >= 2) {
+    const stripCount = Math.min(npsImages.length - 1, 4);
+    for (let i = 0; i < stripCount; i++) {
+      const actualIdx = (imgIdx + 1 + i) % npsImages.length;
+      stripImages.push({ url: npsImages[actualIdx], actualIdx });
+    }
+  }
+
+  // Keep the previous hero visible behind the incoming one for a cross-dissolve
+  useEffect(() => {
+    if (!heroUrl) return;
+    if (prevHeroRef.current !== heroUrl) {
+      setPrevHeroUrl(prevHeroRef.current);
+      prevHeroRef.current = heroUrl;
+    }
+  }, [heroUrl]);
+
+  // Auto-advance the hero every 5s once the first image has loaded
+  useEffect(() => {
+    if (!heroLoaded || npsImages.length < 2) return;
+    const tid = setInterval(() => {
+      setImgIdx(prev => (prev + 1) % npsImagesRef.current.length);
+    }, 5000);
+    return () => clearInterval(tid);
+  }, [heroLoaded, npsImages.length]);
+
   // ── Collapsing header animations ─────────────────────────────────────────────
 
   const BANNER_H = 240;
-  const COLLAPSED_H = 56;
+  // Collapsed bar sits below the status bar / dynamic island
+  const COLLAPSED_H = insets.top + 56;
 
   const headerHeight = scrollY.interpolate({
     inputRange: [0, BANNER_H - COLLAPSED_H],
@@ -725,6 +785,12 @@ function ParkBottomSheet({
   const stateOpacity = scrollY.interpolate({
     inputRange: [0, (BANNER_H - COLLAPSED_H) * 0.45],
     outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  // Shift the collapsed title right so it clears the back button
+  const heroPadLeft = scrollY.interpolate({
+    inputRange: [0, (BANNER_H - COLLAPSED_H) * 0.75],
+    outputRange: [16, 60],
     extrapolate: 'clamp',
   });
 
@@ -743,64 +809,31 @@ function ParkBottomSheet({
           keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
           scrollEnabled={scrollEnabled}
+          bounces={false}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { y: scrollY } } }],
             {
               useNativeDriver: false,
               listener: (e: any) => {
-                const y = e.nativeEvent.contentOffset.y;
-                if (y < 0) {
-                  // Rubber-band: 0.28x of overscroll reaches the sheet height
-                  const newH = Math.max(SHEET_PEEK * 0.72, SHEET_FULL + y * 0.28);
-                  sheetH.setValue(newH);
-                  baseH.current = newH;
-                }
+                scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
               },
             }
           )}
-          onScrollEndDrag={e => {
-            const y = e.nativeEvent.contentOffset.y;
-            const vy = (e.nativeEvent as any).velocity?.y ?? 0;
-            if (y <= 0) {
-              const mid = (SHEET_PEEK + SHEET_FULL) / 2;
-              // Require a fast deliberate flick OR very large drag to dismiss
-              if (vy < -2.0 || (vy < -0.8 && baseH.current < SHEET_PEEK * 0.72)) {
-                dismiss();
-              } else if (baseH.current < mid) {
-                snapTo(SHEET_PEEK);
-              } else {
-                snapTo(SHEET_FULL);
-              }
-            }
-          }}
           contentContainerStyle={{ paddingTop: BANNER_H }}
         >
           {/* Body content */}
           <View style={styles.sheetBody}>
 
-          {/* ── Quick stats ── */}
-          <View style={styles.statsRow}>
-            <StatCell label="State" value={fullStateName(park.states)} />
-            <View style={styles.statDivider} />
-            <StatCell
-              label="Status"
-              value={park.status === 'visited' ? 'Visited' : park.status === 'bucketList' ? 'Bucket list' : 'Not yet'}
-              valueColor={park.status === 'visited' ? C.visited : park.status === 'bucketList' ? C.bucket : C.inkMute}
-            />
-            <View style={styles.statDivider} />
-            <StatCell label="Visits" value={String(fullVisits.length)} />
-          </View>
-
-          {/* ── Photo strip ── */}
-          {npsImages.length > 1 && (
+          {/* ── Photo strip — next images relative to the rotating hero ── */}
+          {stripImages.length > 0 && (
             <ScrollView
               horizontal showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.photoStrip}
             >
-              {npsImages.slice(1, 5).map((url, i) => (
+              {stripImages.map(({ url, actualIdx }, slotIdx) => (
                 <TouchableOpacity
-                  key={i}
-                  onPress={() => setLightboxIdx(i + 1)}
+                  key={slotIdx}
+                  onPress={() => setLightboxIdx(actualIdx)}
                   activeOpacity={0.85}
                   style={styles.photoStripItem}
                 >
@@ -814,13 +847,26 @@ function ParkBottomSheet({
                     source={{ uri: url }}
                     style={StyleSheet.absoluteFill}
                     contentFit="cover"
-                    transition={300}
+                    transition={800}
                     cachePolicy="memory-disk"
                   />
                 </TouchableOpacity>
               ))}
             </ScrollView>
           )}
+
+          {/* ── Quick stats ── */}
+          <View style={styles.statsRow}>
+            <StatCell label="State" value={fullStateName(park.states)} />
+            <View style={styles.statDivider} />
+            <StatCell
+              label="Status"
+              value={park.status === 'visited' ? 'Visited' : park.status === 'bucketList' ? 'Bucket list' : 'Not yet'}
+              valueColor={park.status === 'visited' ? C.visited : park.status === 'bucketList' ? C.bucket : C.inkMute}
+            />
+            <View style={styles.statDivider} />
+            <StatCell label="Visits" value={String(fullVisits.length)} />
+          </View>
 
           {/* ── About ── */}
           {park.description ? (
@@ -1072,18 +1118,29 @@ function ParkBottomSheet({
             style={StyleSheet.absoluteFill}
           />
           <View style={StyleSheet.absoluteFill} {...topStripPan.panHandlers}>
+            {/* Previous image stays visible as background during cross-dissolve */}
+            {prevHeroUrl && (
+              <Image
+                source={{ uri: prevHeroUrl }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            )}
             {heroUrl ? (
               <TouchableOpacity
                 style={StyleSheet.absoluteFill}
-                activeOpacity={0.9}
+                activeOpacity={0.95}
                 onPress={() => npsImages.length > 0 && setLightboxIdx(imgIdx)}
               >
                 <Image
+                  key={heroUrl}
                   source={{ uri: heroUrl }}
                   style={StyleSheet.absoluteFill}
                   contentFit="cover"
-                  transition={300}
+                  transition={800}
                   cachePolicy="memory-disk"
+                  onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
                 />
               </TouchableOpacity>
             ) : null}
@@ -1101,32 +1158,14 @@ function ParkBottomSheet({
               <View style={styles.handleBar} />
             </View>
           </View>
-          {npsImages.length > 1 && (
-            <>
-              <TouchableOpacity
-                style={[styles.imgArrow, styles.imgArrowLeft]}
-                onPress={() => setImgIdx(i => (i - 1 + npsImages.length) % npsImages.length)}
-                hitSlop={8}
-              >
-                <Ionicons name="chevron-back" size={16} color="#FFFBF1" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.imgArrow, styles.imgArrowRight]}
-                onPress={() => setImgIdx(i => (i + 1) % npsImages.length)}
-                hitSlop={8}
-              >
-                <Ionicons name="chevron-forward" size={16} color="#FFFBF1" />
-              </TouchableOpacity>
-            </>
-          )}
-          <View style={styles.heroContent} pointerEvents="none">
+          <Animated.View style={[styles.heroContent, { paddingLeft: heroPadLeft }]} pointerEvents="none">
             <Animated.Text style={[styles.heroDesignation, { opacity: stateOpacity }]}>
               {stateLabel.toUpperCase()}
             </Animated.Text>
             <Animated.Text style={[styles.heroName, { fontSize: heroTitleFontSize }]} numberOfLines={1}>
               {park.name}
             </Animated.Text>
-          </View>
+          </Animated.View>
         </Animated.View>
 
         {/* Back button — outside ScrollView so it persists after banner scrolls away */}
@@ -1142,7 +1181,7 @@ function ParkBottomSheet({
         </View>{/* end contentPan wrapper */}
 
         {/* Action row — pinned at bottom, only visible when sheet is full-screen */}
-        {scrollEnabled && <View style={styles.actionRowWrap}>
+        {scrollEnabled && <View style={[styles.actionRowWrap, { paddingBottom: tabBarH + 8 }]}>
           <View style={styles.actionRow}>
             {park.status === 'visited' ? (
               <>
@@ -1619,6 +1658,8 @@ const styles = StyleSheet.create({
   filterPillWrap: {
     position: 'absolute',
     left: 14,
+    right: 14,
+    alignItems: 'flex-start',
     zIndex: 20,
   },
   mapControls: {
@@ -1665,13 +1706,13 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
+    maxWidth: '100%',
     backgroundColor: 'rgba(255,251,241,0.92)',
     borderWidth: 0.5,
     borderColor: C.hairline,
     borderRadius: 100,
     paddingVertical: 6,
-    paddingHorizontal: 8,
-    gap: 2,
+    paddingHorizontal: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -1681,10 +1722,12 @@ const styles = StyleSheet.create({
   pillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
+    minWidth: 0,
     borderRadius: 100,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 4,
-    gap: 4,
+    gap: 3,
   },
   pillBtnActive: {
     backgroundColor: 'rgba(31,61,46,0.10)',
@@ -1698,7 +1741,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: C.ink,
-    minWidth: 14,
+    minWidth: 12,
     textAlign: 'center',
   },
   pillCountActive: {
@@ -1708,7 +1751,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: C.inkSoft,
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
+    flexShrink: 1,
   },
   pillLabelActive: {
     color: C.ink,
@@ -1818,39 +1862,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     lineHeight: 30,
   },
-  imgArrow: {
-    position: 'absolute',
-    top: '50%',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -14,
-  },
-  imgArrowLeft:  { left: 10 },
-  imgArrowRight: { right: 10 },
-  imgDots: {
-    position: 'absolute',
-    bottom: 8,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  imgDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,251,241,0.45)',
-  },
-  imgDotActive: {
-    backgroundColor: '#FFFBF1',
-    width: 14,
-  },
-
   // Sticky title bar — compact single-line name when scrolled
   titleBar: {
     backgroundColor: C.surface,
@@ -2173,14 +2184,13 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 
-  // Action row — bottom padding clears the floating tab bar
+  // Action row — bottom padding (inline) clears the floating tab bar
   actionRowWrap: {
     flexShrink: 0,
     borderTopWidth: 0.5,
     borderTopColor: C.hairlineSoft,
     paddingTop: 12,
     paddingHorizontal: 14,
-    paddingBottom: TAB_BAR_H + 8,
     gap: 10,
   },
   actionRow: {
