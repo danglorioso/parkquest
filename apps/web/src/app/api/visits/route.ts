@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { visits, parks, friendships, notifications } from '@/lib/db/schema';
+import { visits, parks, friendships, notifications, posts } from '@/lib/db/schema';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, desc, or, sql } from 'drizzle-orm';
+import { deleteR2PhotosTrusted, extractPhotoUrls } from '@/lib/photoCleanup';
 
 async function notifyFriendsOfVisit(userId: string, visitId: number, park_code: string) {
   const friends = await db
@@ -198,14 +199,38 @@ export async function DELETE(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const park_code = searchParams.get('park_code');
+    // Set when this delete is really a "move this visit to a different park" step
+    // (edit flow deletes the old park_code row after re-creating it under the new
+    // one, reusing the same photos) — a true delete-this-entry action never sets it.
+    const skipPhotoCleanup = searchParams.get('skip_photo_cleanup') === '1';
 
     if (!park_code) {
       return NextResponse.json({ error: 'Park code is required' }, { status: 400 });
     }
 
+    const [visit] = await db
+      .select({ id: visits.id, photos: visits.photos, cover_photo: visits.cover_photo })
+      .from(visits)
+      .where(and(eq(visits.clerk_user_id, userId), eq(visits.park_code, park_code)))
+      .limit(1);
+
     await db
       .delete(visits)
       .where(and(eq(visits.clerk_user_id, userId), eq(visits.park_code, park_code)));
+
+    if (visit && !skipPhotoCleanup) {
+      // If a post still points at this visit, it survives the delete (visit_id -> null
+      // via the FK) and keeps using these same photos — leave storage alone in that case.
+      const [linkedPost] = await db
+        .select({ id: posts.id })
+        .from(posts)
+        .where(eq(posts.visit_id, visit.id))
+        .limit(1);
+      if (!linkedPost) {
+        const urls = [...extractPhotoUrls(visit.photos), ...(visit.cover_photo ? [visit.cover_photo] : [])];
+        deleteR2PhotosTrusted(urls).catch(e => console.error('Visit photo cleanup failed:', e));
+      }
+    }
 
     return NextResponse.json({ message: 'Visit removed successfully' });
   } catch (error) {

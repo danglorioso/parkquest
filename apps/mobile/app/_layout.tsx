@@ -17,6 +17,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
 import LoadingScreen from '../components/LoadingScreen';
+import { ToastHost } from '../lib/toast';
 
 const tokenCache = {
   getToken: (key: string) => SecureStore.getItemAsync(key),
@@ -145,6 +146,7 @@ export default function RootLayout() {
               <RootStack />
             </ClerkLoaded>
             <LoadingScreen visible={!appReady} />
+            <ToastHost />
           </SafeAreaProvider>
           </PaletteProvider>
         </GestureHandlerRootView>

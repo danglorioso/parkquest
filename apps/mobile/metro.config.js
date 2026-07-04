@@ -21,6 +21,7 @@ config.resolver.extraNodeModules = {
   'expo-blur': rootPkg('expo-blur'),
   'expo-glass-effect': rootPkg('expo-glass-effect'),
   'expo-haptics': rootPkg('expo-haptics'),
+  'expo-image-manipulator': rootPkg('expo-image-manipulator'),
 };
 
 // Hard-pin singleton packages to the monorepo root. Uses Metro's own resolver

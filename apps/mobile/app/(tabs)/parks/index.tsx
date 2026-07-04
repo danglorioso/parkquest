@@ -126,7 +126,9 @@ function StatusBadge({ status }: { status: ParkStatus }) {
 
 // ── Park card ─────────────────────────────────────────────────────────────────
 
-function ParkCard({ park, status }: { park: Park; status: ParkStatus }) {
+function ParkCard({
+  park, status, descLines = 2, onTitleLayout,
+}: { park: Park; status: ParkStatus; descLines?: number; onTitleLayout?: (lines: number) => void }) {
   const router = useRouter();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
@@ -153,12 +155,51 @@ function ParkCard({ park, status }: { park: Park; status: ParkStatus }) {
       </View>
       <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
         <Text style={styles.cardState} numberOfLines={1}>{stateName}</Text>
-        <Text style={styles.cardName} numberOfLines={2}>{park.name}</Text>
+        <Text
+          style={styles.cardName}
+          numberOfLines={2}
+          onTextLayout={onTitleLayout ? (e) => onTitleLayout(e.nativeEvent.lines.length) : undefined}
+        >
+          {park.name}
+        </Text>
         {park.description ? (
-          <Text style={styles.cardDesc} numberOfLines={2}>{park.description}</Text>
+          <Text style={styles.cardDesc} numberOfLines={descLines}>{park.description}</Text>
         ) : null}
       </View>
     </TouchableOpacity>
+  );
+}
+
+// Grid row of two cards. Cards stretch to equal height, so a title that wraps
+// to 2 lines on one side leaves spare height on the other — give that side's
+// description the extra line instead of truncating it needlessly.
+function ParkCardRow({
+  left, right, visits,
+}: { left: Park; right: Park | null; visits: Visit[] }) {
+  const [leftTitleLines, setLeftTitleLines] = useState(1);
+  const [rightTitleLines, setRightTitleLines] = useState(1);
+  const maxTitleLines = Math.max(leftTitleLines, rightTitleLines);
+
+  return (
+    <View style={styles.rowWrap}>
+      <ParkCard
+        park={left}
+        status={parkStatus(left.park_code, visits)}
+        descLines={2 + (maxTitleLines - leftTitleLines)}
+        onTitleLayout={setLeftTitleLines}
+      />
+      {right
+        ? (
+          <ParkCard
+            park={right}
+            status={parkStatus(right.park_code, visits)}
+            descLines={2 + (maxTitleLines - rightTitleLines)}
+            onTitleLayout={setRightTitleLines}
+          />
+        )
+        : <View style={{ width: CARD_W }} />
+      }
+    </View>
   );
 }
 
@@ -741,15 +782,7 @@ export default function ParksScreen() {
             const vc = visits.filter(v => v.park_code === item.park.park_code && !v.is_bucket_list && v.visited_date).length;
             return <ParkListRow park={item.park} status={s} visitCount={vc} />;
           }
-          return (
-            <View style={styles.rowWrap}>
-              <ParkCard park={item.left} status={parkStatus(item.left.park_code, visits)} />
-              {item.right
-                ? <ParkCard park={item.right} status={parkStatus(item.right.park_code, visits)} />
-                : <View style={{ width: CARD_W }} />
-              }
-            </View>
-          );
+          return <ParkCardRow left={item.left} right={item.right} visits={visits} />;
         }}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={ListEmpty}
@@ -1022,18 +1055,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.14)',
   },
   cardState: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     color: C.inkMute,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
     marginBottom: 4,
   },
   cardName: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '800',
     color: C.ink,
-    lineHeight: 17,
+    lineHeight: 20,
     letterSpacing: -0.2,
   },
   cardDesc: {

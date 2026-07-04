@@ -10,6 +10,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { BADGE_MAP, BADGE_TIER_COLORS } from '@/lib/badges';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { relTime } from '@/lib/dates';
@@ -856,6 +857,7 @@ export function PostCard({
 
   const handleLike = async () => {
     const prev = liked;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLiked(!prev);
     setLikeCount(c => c + (prev ? -1 : 1));
     try {

@@ -4,14 +4,14 @@ import {
   TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, type SharedValue,
 } from 'react-native-reanimated';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +19,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { ImageLightbox } from '@/components/ImageLightbox';
+import { showToast } from '@/lib/toast';
+import { loadRawDrafts, upsertRawDraft, deleteRawDraft, type SavedDraft as SharedSavedDraft } from '@/lib/drafts';
+import { parkColor } from '@/lib/parkColors';
+import { relTime } from '@/lib/dates';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -40,7 +44,6 @@ interface Draft {
   companions:string[];
   companionObjs: CompanionUser[];
   photos:    string[];
-  cover:     string | null;
   visibility:'Private' | 'Friends' | 'Public';
   caption:   string;
 }
@@ -98,21 +101,13 @@ function makeBlank(): Draft {
     parkCode: '', startDate: null, endDate: null, title: '',
     rating: 0, crowd: 0, difficulty: 0, weather: [], wouldReturn: null,
     highlight: '', notes: '', activities: [], companions: [], companionObjs: [],
-    photos: [], cover: null, visibility: 'Friends', caption: '',
+    photos: [], visibility: 'Friends', caption: '',
   };
 }
 
 // ── Draft persistence ─────────────────────────────────────────────────────────
 
-const DRAFT_KEY = 'pq-visit-drafts';
-const MAX_DRAFTS = 5;
-
-interface SavedDraft {
-  id: string;
-  savedAt: string; // ISO
-  parkName?: string;
-  draft: Draft;
-}
+type SavedDraft = SharedSavedDraft<Draft>;
 
 function draftHasContent(d: Draft): boolean {
   return !!(d.parkCode || d.title || d.notes || d.highlight ||
@@ -120,35 +115,24 @@ function draftHasContent(d: Draft): boolean {
 }
 
 async function loadDrafts(): Promise<SavedDraft[]> {
-  try {
-    const raw = await AsyncStorage.getItem(DRAFT_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as SavedDraft[];
-    // Rehydrate date objects
-    return parsed.map(sd => ({
-      ...sd,
-      draft: {
-        ...sd.draft,
-        startDate: sd.draft.startDate ? new Date(sd.draft.startDate as unknown as string) : null,
-        endDate:   sd.draft.endDate   ? new Date(sd.draft.endDate   as unknown as string) : null,
-      },
-    }));
-  } catch { return []; }
+  const parsed = await loadRawDrafts<Draft>();
+  // Rehydrate date objects
+  return parsed.map(sd => ({
+    ...sd,
+    draft: {
+      ...sd.draft,
+      startDate: sd.draft.startDate ? new Date(sd.draft.startDate as unknown as string) : null,
+      endDate:   sd.draft.endDate   ? new Date(sd.draft.endDate   as unknown as string) : null,
+    },
+  }));
 }
 
 async function upsertDraft(d: Draft, parkName: string | undefined, id: string): Promise<void> {
-  try {
-    const saved: SavedDraft = { id, savedAt: new Date().toISOString(), parkName, draft: d };
-    const rest = (await loadDrafts()).filter(s => s.id !== id);
-    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify([saved, ...rest].slice(0, MAX_DRAFTS)));
-  } catch { /* ignore */ }
+  await upsertRawDraft<Draft>({ id, savedAt: new Date().toISOString(), parkName, draft: d });
 }
 
 async function deleteDraft(id: string): Promise<void> {
-  try {
-    const rest = (await loadDrafts()).filter(s => s.id !== id);
-    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(rest));
-  } catch { /* ignore */ }
+  await deleteRawDraft(id);
 }
 
 function draftAge(iso: string): string {
@@ -180,6 +164,16 @@ async function apiFetch<T>(path: string, token: string, opts: RequestInit = {}):
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+// Best-effort cleanup of orphaned uploads (abandoned drafts, removed photos).
+// Fire-and-forget: a failed cleanup just leaves an orphaned file, not a broken visit.
+function deletePhotos(urls: string[], token: string | null) {
+  if (!token || urls.length === 0) return;
+  apiFetch('/api/upload/delete', token, {
+    method: 'POST',
+    body: JSON.stringify({ urls }),
+  }).catch(e => console.warn('Photo cleanup failed:', e));
 }
 
 // ── StarRating ────────────────────────────────────────────────────────────────
@@ -257,22 +251,24 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
   );
 }
 
-// ── ScaleRow ──────────────────────────────────────────────────────────────────
+// ── ScaleRow (slider) ───────────────────────────────────────────────────────────
 
-const SCALE_BAR_W = 38;
-const SCALE_BAR_GAP = 5;
-const SCALE_BAR_SLOT = SCALE_BAR_W + SCALE_BAR_GAP;
-const SCALE_BAR_HEIGHTS = [14, 22, 30, 40, 52];
+const SLIDER_THUMB = 22;
+const SLIDER_TRACK_H = 6;
 
 function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: number) => void; labels: string[] }) {
   const C = useColors();
   const containerX = useRef(0);
-  const maxH = SCALE_BAR_HEIGHTS[SCALE_BAR_HEIGHTS.length - 1];
+  const trackWidth = useRef(0);
+  const [, forceRender] = useState(0);
+  const steps = labels.length;
 
   const valueFromX = (x: number) => {
-    const clamped = Math.max(0, x);
-    const idx = Math.floor(clamped / SCALE_BAR_SLOT);
-    return Math.min(labels.length, Math.max(1, idx + 1));
+    const w = trackWidth.current;
+    if (w <= 0) return value;
+    const clamped = Math.max(0, Math.min(w, x));
+    const idx = Math.round((clamped / w) * (steps - 1));
+    return Math.min(steps, Math.max(1, idx + 1));
   };
 
   const panResponder = useRef(PanResponder.create({
@@ -288,36 +284,50 @@ function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: nu
     },
   })).current;
 
+  const pct = value > 0 ? ((value - 1) / (steps - 1)) * 100 : 0;
+
   return (
     <View>
       <View
         ref={r => { if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; }); }}
-        style={{ flexDirection: 'row', alignItems: 'flex-end', gap: SCALE_BAR_GAP, height: maxH + 4 }}
+        onLayout={e => {
+          trackWidth.current = e.nativeEvent.layout.width;
+          forceRender(n => n + 1);
+        }}
+        style={{ height: SLIDER_THUMB + 8, justifyContent: 'center' }}
         {...panResponder.panHandlers}
       >
-        {labels.map((l, i) => {
-          const filled = value >= i + 1;
-          const isSel  = value === i + 1;
-          const h = SCALE_BAR_HEIGHTS[i];
-          return (
-            <View
-              key={l}
-              pointerEvents="none"
-              style={{
-                width: SCALE_BAR_W,
-                height: h,
-                borderRadius: 6,
-                backgroundColor: filled ? C.primary : C.surfaceAlt,
-                borderWidth: 0.5,
-                borderColor: filled ? C.primary : C.hairline,
-                opacity: filled && !isSel ? 0.5 : 1,
-              }}
-            />
-          );
-        })}
+        {/* track */}
+        <View style={{
+          height: SLIDER_TRACK_H, borderRadius: SLIDER_TRACK_H / 2,
+          backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline, overflow: 'hidden',
+        }}>
+          <View style={{ height: '100%', width: `${pct}%`, backgroundColor: C.primary, borderRadius: SLIDER_TRACK_H / 2 }} />
+        </View>
+
+        {/* step ticks */}
+        <View pointerEvents="none" style={{
+          position: 'absolute', left: SLIDER_THUMB / 2, right: SLIDER_THUMB / 2,
+          flexDirection: 'row', justifyContent: 'space-between',
+        }}>
+          {labels.map((l, i) => (
+            <View key={l} style={{
+              width: 3, height: 3, borderRadius: 1.5, marginLeft: -1.5,
+              backgroundColor: value >= i + 1 ? C.onPrimary : C.hairline,
+            }} />
+          ))}
+        </View>
+
+        {/* thumb */}
+        <View pointerEvents="none" style={{
+          position: 'absolute', left: `${pct}%`, marginLeft: -SLIDER_THUMB / 2,
+          width: SLIDER_THUMB, height: SLIDER_THUMB, borderRadius: SLIDER_THUMB / 2,
+          backgroundColor: C.surface, borderWidth: 2, borderColor: value > 0 ? C.primary : C.hairline,
+          shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 2.5, shadowOffset: { width: 0, height: 1 }, elevation: 2,
+        }} />
       </View>
-      <Text style={{ marginTop: 8, fontSize: 13, fontWeight: '600', color: value > 0 ? C.primary : C.inkMute }}>
-        {value > 0 ? labels[value - 1] : 'Swipe or tap to set'}
+      <Text style={{ marginTop: 6, fontSize: 13, fontWeight: '600', color: value > 0 ? C.primary : C.inkMute }}>
+        {value > 0 ? labels[value - 1] : 'Drag or tap to set'}
       </Text>
     </View>
   );
@@ -647,9 +657,12 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
 
 // ── Photo crop modal ────────────────────────────────────────────────────────
 
-const PHOTO_THUMB = 88;
+const PHOTO_THUMB = 124;
 const PHOTO_GAP = 8;
 const CROP_MAX_ZOOM = 4;
+// Longest edge, px — matches the server's safety-net cap. Keeps what we upload (and
+// pay to store in R2) close to what a feed/thumbnail ever actually displays.
+const PHOTO_MAX_DIMENSION = 1600;
 
 function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
   uri: string | null; index: number; total: number;
@@ -723,14 +736,19 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
       const cropSize = FRAME / totalScale;
       const cropX = clamp(left / totalScale, 0, Math.max(0, imgSize.w - cropSize));
       const cropY = clamp(top / totalScale, 0, Math.max(0, imgSize.h - cropSize));
+      const actions: ImageManipulator.Action[] = [{ crop: {
+        originX: cropX, originY: cropY,
+        width: Math.min(cropSize, imgSize.w - cropX),
+        height: Math.min(cropSize, imgSize.h - cropY),
+      } }];
+      // Cap the output — the crop region can still be huge on a high-res source photo.
+      if (cropSize > PHOTO_MAX_DIMENSION) {
+        actions.push({ resize: { width: PHOTO_MAX_DIMENSION, height: PHOTO_MAX_DIMENSION } });
+      }
       const result = await ImageManipulator.manipulateAsync(
         uri,
-        [{ crop: {
-          originX: cropX, originY: cropY,
-          width: Math.min(cropSize, imgSize.w - cropX),
-          height: Math.min(cropSize, imgSize.h - cropY),
-        } }],
-        { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG },
+        actions,
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG },
       );
       onDone(result.uri);
     } catch (e) {
@@ -788,36 +806,36 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
 const PHOTO_CELL = PHOTO_THUMB + PHOTO_GAP;
 
 function DraggablePhotoThumb({
-  index, url, isCover, count, activeIndex, overIndex, onDragStart, onDragEnd, onPress, onSetCover, onRemove,
+  index, url, isCover, count, activeIndex, overIndex, onDragStart, onDragEnd, onPress, onRemove,
 }: {
   index: number; url: string; isCover: boolean; count: number;
   activeIndex: SharedValue<number>; overIndex: SharedValue<number>;
   onDragStart: () => void;
   onDragEnd: (from: number, to: number) => void;
-  onPress: () => void; onSetCover: () => void; onRemove: () => void;
+  onPress: () => void; onRemove: () => void;
 }) {
   const C = useColors();
   const translateX = useSharedValue(0);
-  const indexRef = useRef(index);
-  indexRef.current = index;
 
+  // Gesture.Pan() is rebuilt fresh every render (not memoized), so it already closes
+  // over the current `index` prop directly — no ref indirection needed here.
   const pan = Gesture.Pan()
     .activateAfterLongPress(220)
     .onStart(() => {
       translateX.value = 0;
-      activeIndex.value = indexRef.current;
-      overIndex.value = indexRef.current;
+      activeIndex.value = index;
+      overIndex.value = index;
       runOnJS(onDragStart)();
     })
     .onUpdate(e => {
       translateX.value = e.translationX;
-      const raw = indexRef.current + Math.round(e.translationX / PHOTO_CELL);
+      const raw = index + Math.round(e.translationX / PHOTO_CELL);
       const clamped = Math.max(0, Math.min(count - 1, raw));
       if (clamped !== overIndex.value) overIndex.value = clamped;
     })
     .onEnd(() => {
       translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
-      const from = indexRef.current;
+      const from = index;
       const to = overIndex.value;
       activeIndex.value = -1;
       overIndex.value = -1;
@@ -850,11 +868,8 @@ function DraggablePhotoThumb({
         <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={StyleSheet.absoluteFill}>
           <Image source={{ uri: url }} style={StyleSheet.absoluteFill as any} resizeMode="cover" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.photoCoverBtn} onPress={onSetCover} hitSlop={6}>
-          <Ionicons name={isCover ? 'star' : 'star-outline'} size={11} color={isCover ? C.accent : C.onPrimary} />
-        </TouchableOpacity>
         <TouchableOpacity style={styles.photoRemoveBtn} onPress={onRemove} hitSlop={6}>
-          <Ionicons name="close" size={11} color="#FFFBF1" />
+          <Ionicons name="close" size={13} color="#FFFBF1" />
         </TouchableOpacity>
         {isCover && (
           <View style={styles.coverBadge}>
@@ -862,7 +877,7 @@ function DraggablePhotoThumb({
           </View>
         )}
         <View style={styles.photoIndex}>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: C.onPrimary }}>{index + 1}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: C.onPrimary }}>{index + 1}</Text>
         </View>
       </Reanimated.View>
     </GestureDetector>
@@ -871,15 +886,15 @@ function DraggablePhotoThumb({
 
 // ── Photo strip ──────────────────────────────────────────────────────────────
 
-function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover, onReorder }: {
-  token: string; photos: string[]; cover: string | null;
+function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder }: {
+  getToken: () => Promise<string | null>; photos: string[];
   onAdd: (urls: string[]) => void;
   onRemove: (url: string) => void;
-  onSetCover: (url: string) => void;
   onReorder: (next: string[]) => void;
 }) {
   const C = useColors();
-  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const uploading = uploadProgress.total > 0;
   const [cropQueue, setCropQueue] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [cropDone, setCropDone] = useState<{ uri: string; mimeType?: string; fileName?: string }[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -889,7 +904,7 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover, onReord
 
   const pickAndUpload = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 0.85,
       selectionLimit: Math.max(1, 10 - photos.length),
@@ -900,35 +915,36 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover, onReord
   };
 
   const uploadAll = async (items: { uri: string; mimeType?: string; fileName?: string }[]) => {
-    setUploading(true);
+    setUploadProgress({ done: 0, total: items.length });
+    // Fetch a fresh token right before uploading — this can happen many minutes into
+    // the modal session, well past a Clerk session token's short lifetime.
+    const tok = await getToken();
+    if (!tok) {
+      showToast("Couldn't upload photos — please try again", 'error');
+      setUploadProgress({ done: 0, total: 0 });
+      return;
+    }
     const urls: string[] = [];
     for (const item of items) {
       try {
-        const presignRes = await apiFetch<{ uploadUrl: string; publicUrl: string }>(
-          '/api/upload/presign', token,
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              filename: item.fileName ?? 'photo.jpg',
-              contentType: item.mimeType ?? 'image/jpeg',
-              size: 0,
-            }),
-          }
-        );
         const fileRes = await fetch(item.uri);
         const blob = await fileRes.blob();
-        await fetch(presignRes.uploadUrl, {
-          method: 'PUT',
+        // Posts the (already client-resized) bytes straight to our server, which does
+        // a safety-net resize/recompress before writing to R2 — see /api/upload.
+        const { publicUrl } = await apiFetch<{ publicUrl: string }>('/api/upload', tok, {
+          method: 'POST',
           headers: { 'Content-Type': item.mimeType ?? 'image/jpeg' },
           body: blob,
         });
-        urls.push(presignRes.publicUrl);
+        urls.push(publicUrl);
       } catch (e) {
         console.warn('Photo upload failed:', e);
+      } finally {
+        setUploadProgress(p => ({ done: p.done + 1, total: p.total }));
       }
     }
     if (urls.length) onAdd(urls);
-    setUploading(false);
+    setUploadProgress({ done: 0, total: 0 });
   };
 
   const advanceCrop = (finalUri: string) => {
@@ -945,7 +961,27 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover, onReord
     }
   };
 
-  const skipCrop = () => advanceCrop(cropQueue[0].uri);
+  const skipCrop = async () => {
+    const asset = cropQueue[0];
+    const longestEdge = Math.max(asset.width, asset.height);
+    // width/height can come back 0 if the system didn't report them — treat that as
+    // "unknown" (needs the resize pass) rather than "already small enough".
+    if (longestEdge > 0 && longestEdge <= PHOTO_MAX_DIMENSION) { advanceCrop(asset.uri); return; }
+    try {
+      // Uncropped photos still need the resize pass — a picked-but-not-cropped
+      // photo can be full sensor resolution otherwise.
+      const resizeAction: ImageManipulator.Action = asset.width >= asset.height
+        ? { resize: { width: PHOTO_MAX_DIMENSION } }
+        : { resize: { height: PHOTO_MAX_DIMENSION } };
+      const result = await ImageManipulator.manipulateAsync(
+        asset.uri, [resizeAction], { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG },
+      );
+      advanceCrop(result.uri);
+    } catch (e) {
+      console.warn('Resize failed, using original photo:', e);
+      advanceCrop(asset.uri);
+    }
+  };
   const cancelCrops = () => { setCropQueue([]); setCropDone([]); };
 
   const handleReorder = (from: number, to: number) => {
@@ -982,12 +1018,11 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover, onReord
         {photos.map((url, idx) => (
           <DraggablePhotoThumb
             key={url}
-            index={idx} url={url} isCover={cover === url} count={photos.length}
+            index={idx} url={url} isCover={idx === 0} count={photos.length}
             activeIndex={activeIndex} overIndex={overIndex}
             onDragStart={() => setScrollEnabled(false)}
             onDragEnd={handleReorder}
             onPress={() => setLightboxIndex(idx)}
-            onSetCover={() => onSetCover(url)}
             onRemove={() => onRemove(url)}
           />
         ))}
@@ -1000,7 +1035,14 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover, onReord
           </TouchableOpacity>
         )}
       </ScrollView>
-      {photos.length > 1 && (
+      {uploading ? (
+        <View style={styles.uploadProgressWrap}>
+          <View style={styles.uploadProgressTrack}>
+            <View style={[styles.uploadProgressFill, { width: `${(uploadProgress.done / uploadProgress.total) * 100}%`, backgroundColor: C.primary }]} />
+          </View>
+          <Text style={styles.uploadProgressText}>Uploading {uploadProgress.done} of {uploadProgress.total}…</Text>
+        </View>
+      ) : photos.length > 1 && (
         <Text style={styles.photoReorderHint}>Press and hold a photo to reorder</Text>
       )}
     </View>
@@ -1390,8 +1432,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
         onClose={() => setShowCalendar(false)}
       />
 
-      <View style={{ marginBottom: 24, flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-        <Text style={styles.kicker}>01</Text>
+      <View style={{ marginBottom: 24 }}>
         <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Where & when</Text>
       </View>
 
@@ -1503,7 +1544,7 @@ function StepVisit({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(
   const C = useColors();
   return (
     <View>
-      <Section kicker="02" title="How was it?" tag="optional">
+      <Section title="How was it?" tag="optional">
         <View style={styles.card}>
           <StarRating value={draft.rating} onChange={v => set('rating', v)} />
         </View>
@@ -1541,32 +1582,30 @@ function StepVisit({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(
   );
 }
 
-function StepJournal({ draft, set, token, npsActivityNames }: {
+function StepJournal({ draft, set, token, getToken, npsActivityNames, originalPhotos }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void; token: string;
+  getToken: () => Promise<string | null>;
   npsActivityNames: string[];
+  originalPhotos: Set<string>;
 }) {
   const C = useColors();
   return (
     <View>
-      <View style={{ marginBottom: 24, flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-        <Text style={styles.kicker}>03</Text>
+      <View style={{ marginBottom: 24 }}>
         <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Journal & photos</Text>
       </View>
 
-      <Section title="Photos" tag="optional">
+      <Section title="Photos" tag="optional" hint={`${draft.photos.length} of 10`}>
         <PhotoStrip
-          token={token} photos={draft.photos} cover={draft.cover}
-          onAdd={urls => {
-            const next = [...draft.photos, ...urls].slice(0, 10);
-            set('photos', next);
-            if (!draft.cover && next.length > 0) set('cover', next[0]);
-          }}
+          getToken={getToken} photos={draft.photos}
+          onAdd={urls => set('photos', [...draft.photos, ...urls].slice(0, 10))}
           onRemove={url => {
             const next = draft.photos.filter(p => p !== url);
             set('photos', next);
-            if (draft.cover === url) set('cover', next[0] ?? null);
+            // Only nuke it immediately if it was uploaded this session — photos already
+            // attached to the saved visit stay live until the edit is actually submitted.
+            if (!originalPhotos.has(url)) getToken().then(tok => deletePhotos([url], tok));
           }}
-          onSetCover={url => set('cover', url)}
           onReorder={next => set('photos', next)}
         />
       </Section>
@@ -1604,123 +1643,188 @@ function StepJournal({ draft, set, token, npsActivityNames }: {
   );
 }
 
-function PreviewChip({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+// Mirrors the (unexported) label/icon maps PostCard.tsx uses to render a real
+// feed post, so this preview matches what the post will actually look like.
+const PREVIEW_WEATHER_LABELS: Record<string, string> = {
+  clear: 'Clear', partly: 'Partly cloudy', cloudy: 'Cloudy',
+  rain: 'Rain', storm: 'Storms', snow: 'Snow', fog: 'Fog', wind: 'Windy',
+};
+const PREVIEW_WEATHER_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  clear: 'sunny-outline', partly: 'partly-sunny-outline', cloudy: 'cloud-outline',
+  rain: 'rainy-outline', storm: 'thunderstorm-outline', snow: 'snow-outline',
+  fog: 'water-outline', wind: 'speedometer-outline',
+};
+const PREVIEW_ACTIVITY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  hiking: 'walk-outline', camping: 'bonfire-outline', backpacking: 'walk-outline',
+  climbing: 'trending-up-outline', kayaking: 'boat-outline', rafting: 'boat-outline',
+  fishing: 'fish-outline', diving: 'water-outline', wildlife: 'paw-outline',
+  photography: 'camera-outline', stargazing: 'moon-outline', tours: 'map-outline',
+  cycling: 'bicycle-outline', mountaineering: 'trending-up-outline',
+};
+const PREVIEW_VIS_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  public: 'globe-outline', friends: 'people-outline', private: 'lock-closed-outline',
+};
+
+function PreviewChip({ icon, children }: { icon?: keyof typeof Ionicons.glyphMap; children: React.ReactNode }) {
   return (
     <View style={styles.previewChip}>
-      <Ionicons name={icon} size={11} color={C.inkSoft} />
-      <Text style={styles.previewChipText}>{label}</Text>
+      {icon && <Ionicons name={icon} size={11} color={C.inkSoft} />}
+      {typeof children === 'string' ? <Text style={styles.previewChipText}>{children}</Text> : children}
     </View>
   );
 }
 
-function VisitPreview({ draft, park, userName, avatarUrl }: {
-  draft: Draft; park: ParkInfo | undefined; userName: string; avatarUrl?: string | null;
+function VisitPreview({ draft, park, userName, username, avatarUrl }: {
+  draft: Draft; park: ParkInfo | undefined; userName: string; username?: string | null; avatarUrl?: string | null;
 }) {
   const C = useColors();
-  const visIcon: keyof typeof Ionicons.glyphMap =
-    draft.visibility === 'Private' ? 'lock-closed' :
-    draft.visibility === 'Public'  ? 'globe-outline' : 'people';
+  const visIcon = PREVIEW_VIS_ICONS[draft.visibility.toLowerCase()] ?? PREVIEW_VIS_ICONS.friends;
   const selectedWeather = WEATHER_OPTS.filter(w => draft.weather.includes(w.id));
-  const days = dayCount(draft.startDate, draft.endDate);
-  const coverUrl = draft.photos.length > 0 ? (draft.cover ?? draft.photos[0]) : null;
+  const hasPhotos = draft.photos.length > 0;
+  const coverUrl = draft.photos[0] ?? null;
+  const dateLabel = draft.startDate ? fmtDate(draft.startDate) : null;
+
+  const hasMeta = draft.rating > 0 || (hasPhotos && !!dateLabel) || selectedWeather.length > 0 ||
+    draft.crowd > 0 || draft.difficulty > 0 || draft.activities.length > 0 ||
+    draft.companionObjs.length > 0 || !!draft.highlight;
 
   return (
     <View style={styles.previewCard}>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 9 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, paddingTop: 13, paddingBottom: 9 }}>
         {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={{ width: 32, height: 32, borderRadius: 16 }} />
+          <Image source={{ uri: avatarUrl }} style={{ width: 38, height: 38, borderRadius: 19 }} />
         ) : (
-          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: C.onPrimary, fontWeight: '800', fontSize: 13 }}>{userName[0]?.toUpperCase()}</Text>
+          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: C.onPrimary, fontWeight: '800', fontSize: 14 }}>{userName[0]?.toUpperCase()}</Text>
           </View>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontWeight: '700', fontSize: 13, color: C.ink }} numberOfLines={1}>
-            {userName} <Text style={{ color: C.inkMute, fontWeight: '500' }}>· now</Text>
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="location" size={10} color={C.primary} />
-            <Text style={{ fontSize: 13, color: C.primary, letterSpacing: 0.4, fontWeight: '700' }} numberOfLines={1}>
-              {park ? `${park.name.toUpperCase()} · ${park.states.split(',')[0].trim()}` : 'NO PARK'}
+          <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }} numberOfLines={1}>{userName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
+            <Text style={{ fontSize: 13, color: C.inkMute }} numberOfLines={1}>
+              {username ? `@${username} · ` : ''}now
             </Text>
+            <Ionicons name={visIcon} size={10.5} color={C.inkMute} style={{ opacity: 0.75 }} />
           </View>
-        </View>
-        <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: C.surfaceAlt, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100 }}>
-          <Ionicons name={visIcon} size={11} color={C.inkMute} />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: C.inkMute }}>{draft.visibility}</Text>
         </View>
       </View>
 
-      {/* Cover — photo or faint gradient placeholder */}
-      {(coverUrl || draft.rating > 0) && (
-        <View>
-          {coverUrl ? (
-            <Image source={{ uri: coverUrl }} style={{ width: '100%', height: 170 }} resizeMode="cover" />
-          ) : (
-            <LinearGradient
-              colors={[C.primary, C.accent]}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              style={{ height: 170, opacity: 0.25 }}
-            />
-          )}
-          {draft.rating > 0 && (
-            <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 3, backgroundColor: 'rgba(20,17,12,0.55)', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 100 }}>
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Ionicons
-                  key={i}
-                  name={draft.rating >= i + 1 ? 'star' : draft.rating >= i + 0.5 ? 'star-half' : 'star-outline'}
-                  size={12}
-                  color={draft.rating >= i + 0.5 ? '#FFD580' : 'rgba(255,255,255,0.4)'}
-                />
-              ))}
-            </View>
-          )}
-          {draft.photos.length > 1 && (
-            <View style={{ position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(20,17,12,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 100 }}>
-              <Ionicons name="images-outline" size={11} color="#FFFBF1" />
-              <Text style={{ color: C.onPrimary, fontSize: 13, fontWeight: '600' }}>{draft.photos.length}</Text>
-            </View>
-          )}
+      {/* Park chip — only shown alongside photos, like the real card (no-photo posts show the park in the hero banner instead) */}
+      {park && hasPhotos && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 13, paddingBottom: 9 }}>
+          <Ionicons name="location-sharp" size={11} color={C.primary} />
+          <Text style={{ fontSize: 12.5, fontWeight: '700', letterSpacing: 0.4, color: C.primary }}>{park.name.toUpperCase()}</Text>
         </View>
       )}
 
-      {/* Body */}
-      <View style={{ paddingHorizontal: 13, paddingTop: 11, paddingBottom: 13 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 7 }}>
-          <Ionicons name="calendar-outline" size={13} color={C.inkMute} />
-          <Text style={{ fontWeight: '600', fontSize: 13, color: C.inkSoft }}>
-            {draft.startDate ? fmtDate(draft.startDate) : 'No date'}
-            {draft.endDate ? ` – ${fmtDate(draft.endDate)}` : ''}
-          </Text>
-          {days > 1 && (
-            <View style={{ backgroundColor: 'rgba(197,107,61,0.1)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 100 }}>
-              <Text style={{ fontSize: 13, letterSpacing: 0.6, color: C.accent, fontWeight: '700' }}>{days} DAYS</Text>
+      {/* Caption */}
+      {draft.caption ? (
+        <Text style={{ paddingHorizontal: 13, paddingBottom: 10, fontSize: 14.5, color: C.ink, lineHeight: 20 }}>
+          {draft.caption.length > 200 ? `${draft.caption.slice(0, 200)}…` : draft.caption}
+        </Text>
+      ) : null}
+
+      {/* Visit metadata */}
+      {hasMeta && (
+        <View style={{ paddingHorizontal: 13, paddingBottom: 11, gap: 8 }}>
+          {draft.highlight ? (
+            <Text style={{ fontSize: 13, color: C.inkSoft, fontStyle: 'italic', lineHeight: 18 }}>"{draft.highlight}"</Text>
+          ) : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {draft.rating > 0 && (
+              <PreviewChip>
+                <Text style={styles.previewChipText}>
+                  <Text style={{ color: '#C49A28' }}>★ </Text>
+                  {draft.rating % 1 === 0 ? draft.rating.toFixed(0) : draft.rating.toFixed(1)}
+                </Text>
+              </PreviewChip>
+            )}
+            {hasPhotos && dateLabel ? <PreviewChip icon="calendar-outline">{dateLabel}</PreviewChip> : null}
+            {selectedWeather.map(w => (
+              <PreviewChip key={w.id} icon={PREVIEW_WEATHER_ICONS[w.id] ?? 'cloudy-outline'}>
+                {PREVIEW_WEATHER_LABELS[w.id] ?? w.label}
+              </PreviewChip>
+            ))}
+            {draft.crowd > 0 && <PreviewChip icon="people-outline">{CROWD_LABELS[draft.crowd - 1]}</PreviewChip>}
+            {draft.difficulty > 0 && <PreviewChip icon="trail-sign-outline">{DIFF_LABELS[draft.difficulty - 1]}</PreviewChip>}
+            {draft.activities.map(a => (
+              <PreviewChip key={a} icon={PREVIEW_ACTIVITY_ICONS[a] ?? 'star-outline'}>
+                {a.charAt(0).toUpperCase() + a.slice(1)}
+              </PreviewChip>
+            ))}
+            {draft.companionObjs.length > 0 && (() => {
+              const MAX = 2;
+              const shown = draft.companionObjs.slice(0, MAX);
+              const extra = draft.companionObjs.length - MAX;
+              return (
+                <PreviewChip icon="people-outline">
+                  {`With ${shown.map(c => c.display_name ?? `@${c.username}`).join(', ')}${extra > 0 ? `, +${extra} more` : ''}`}
+                </PreviewChip>
+              );
+            })()}
+          </View>
+        </View>
+      )}
+
+      {/* Photo carousel — or a park hero banner when there are no photos yet */}
+      {hasPhotos ? (
+        <View>
+          <Image source={{ uri: coverUrl! }} style={{ width: '100%', height: 210 }} resizeMode="cover" />
+          {draft.photos.length > 1 && (
+            <View style={{ position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(20,17,12,0.6)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
+              <Text style={{ color: '#FFFBF1', fontSize: 12, fontWeight: '500' }}>1 / {draft.photos.length}</Text>
+            </View>
+          )}
+          {draft.photos.length > 1 && (
+            <View style={{ position: 'absolute', bottom: 10, width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 5 }}>
+              {draft.photos.map((_, i) => (
+                <View key={i} style={{
+                  height: 6, borderRadius: 3, width: i === 0 ? 22 : 6,
+                  backgroundColor: i === 0 ? '#FFFBF1' : 'rgba(255,251,241,0.5)',
+                }} />
+              ))}
             </View>
           )}
         </View>
-        {draft.title ? (
-          <Text style={{ fontWeight: '800', fontSize: 17, color: C.ink, letterSpacing: -0.3, marginBottom: 5 }}>{draft.title}</Text>
-        ) : null}
-        {draft.caption ? (
-          <Text style={{ fontSize: 13, color: C.inkSoft, lineHeight: 19 }}>
-            {draft.caption.length > 160 ? `${draft.caption.slice(0, 160)}…` : draft.caption}
-          </Text>
-        ) : null}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 10 }}>
-          {selectedWeather.map(w => <PreviewChip key={w.id} icon="partly-sunny-outline" label={w.label} />)}
-          {draft.crowd > 0 && <PreviewChip icon="people-outline" label={CROWD_LABELS[draft.crowd - 1]} />}
-          {draft.difficulty > 0 && <PreviewChip icon="walk-outline" label={DIFF_LABELS[draft.difficulty - 1]} />}
-          {draft.activities.slice(0, 3).map(a => <PreviewChip key={a} icon="location-outline" label={a} />)}
+      ) : (
+        <View style={{ paddingHorizontal: 13, paddingBottom: 13 }}>
+          <View style={{ borderRadius: 14, overflow: 'hidden', height: 150, justifyContent: 'flex-end' }}>
+            {park?.image_url ? (
+              <Image source={{ uri: park.image_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            ) : (
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: parkColor(draft.parkCode || 'ZZZZ') }]} />
+            )}
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)']}
+              locations={[0.25, 0.6, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={{ padding: 14 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.3 }} numberOfLines={2}>
+                {park?.name ?? 'National Park'}
+              </Text>
+              {dateLabel && (
+                <Text style={{ fontSize: 12.5, color: 'rgba(255,251,241,0.70)', marginTop: 3, fontWeight: '500' }}>{dateLabel}</Text>
+              )}
+            </View>
+          </View>
         </View>
+      )}
+
+      {/* Action row */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 13, paddingVertical: 10, borderTopWidth: 0.5, borderTopColor: C.hairlineSoft }}>
+        <Ionicons name="heart-outline" size={19} color={C.inkSoft} />
+        <Ionicons name="chatbubble-outline" size={17} color={C.inkSoft} />
+        <Ionicons name="share-outline" size={17} color={C.inkSoft} />
       </View>
     </View>
   );
 }
 
-function StepShare({ draft, set, park, userName, avatarUrl }: {
+function StepShare({ draft, set, park, userName, username, avatarUrl }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
-  park: ParkInfo | undefined; userName: string; avatarUrl?: string | null;
+  park: ParkInfo | undefined; userName: string; username?: string | null; avatarUrl?: string | null;
 }) {
   const C = useColors();
   return (
@@ -1739,7 +1843,7 @@ function StepShare({ draft, set, park, userName, avatarUrl }: {
       </Section>
 
       <Section title="Preview">
-        <VisitPreview draft={draft} park={park} userName={userName} avatarUrl={avatarUrl} />
+        <VisitPreview draft={draft} park={park} userName={userName} username={username} avatarUrl={avatarUrl} />
       </Section>
     </View>
   );
@@ -1749,6 +1853,7 @@ function StepShare({ draft, set, park, userName, avatarUrl }: {
 
 export default function LogVisitModal() {
   const router   = useRouter();
+  const navigation = useNavigation();
   const { getToken } = useAuth();
   const { user } = useUser();
   const insets   = useSafeAreaInsets();
@@ -1762,6 +1867,17 @@ export default function LogVisitModal() {
   const isEdit = editVisitId != null && !isNaN(editVisitId);
 
   const [token,      setToken]      = useState<string | null>(null);
+  // Clerk session tokens are short-lived (~60s) — this modal's flow can easily run
+  // longer than that, so never reuse a cached token for a request. Always fetch a
+  // fresh one right before the call via getTokenRef.current(), per the codebase idiom
+  // (see map.tsx, profile/*.tsx). The `token` state is only for gating renders.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+  const getFreshToken = useCallback(async () => {
+    const tok = await getTokenRef.current();
+    setToken(tok);
+    return tok;
+  }, []);
   const [draft,      setDraftState] = useState<Draft>(() => {
     const blank = makeBlank();
     if (!isEdit && parkCodeParam) blank.parkCode = parkCodeParam;
@@ -1773,6 +1889,10 @@ export default function LogVisitModal() {
   const [submitting, setSubmitting] = useState(false);
   const [editLoading, setEditLoading] = useState(isEdit);
   const scrollRef = useRef<ScrollView>(null);
+  // Photo URLs already persisted server-side before this session started (populated
+  // when editing an existing visit). Anything in draft.photos NOT in this set was
+  // freshly uploaded this session and is safe to delete from storage if abandoned.
+  const originalPhotos = useRef<Set<string>>(new Set());
 
   const set = useCallback(<K extends keyof Draft>(k: K, v: Draft[K]) => {
     setDraftState(prev => ({ ...prev, [k]: v }));
@@ -1782,6 +1902,11 @@ export default function LogVisitModal() {
   const draftId = useRef(`draft-${Date.now()}`);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [restoreBanner, setRestoreBanner] = useState<SavedDraft | null>(null);
+  // Set right before any router.back() we trigger ourselves (Cancel/Discard/Save draft/
+  // submit) — those paths already handle the draft + any messaging. Left false, it means
+  // the screen is being torn down by something we didn't drive, i.e. the native swipe-down
+  // gesture, so the listener below saves the draft and reassures the user it's not lost.
+  const leavingViaAction = useRef(false);
 
   useEffect(() => {
     if (isEdit) return;
@@ -1799,6 +1924,20 @@ export default function LogVisitModal() {
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [draft, parks, isEdit]);
 
+  // Catches dismissal we didn't initiate ourselves — the native swipe-down-to-dismiss
+  // gesture on this pageSheet, or the Android back button — and flushes the draft
+  // immediately instead of waiting on the debounce, with a toast to confirm it stuck.
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', () => {
+      if (leavingViaAction.current || isEdit || !draftHasContent(draft)) return;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
+      upsertDraft(draft, parkName, draftId.current);
+      showToast('Draft saved');
+    });
+    return unsub;
+  }, [navigation, draft, parks, isEdit]);
+
   const resumeDraft = () => {
     if (!restoreBanner) return;
     setDraftState(restoreBanner.draft);
@@ -1809,19 +1948,17 @@ export default function LogVisitModal() {
   const discardSavedDraft = () => {
     if (!restoreBanner) return;
     deleteDraft(restoreBanner.id);
+    getFreshToken().then(tok => deletePhotos(restoreBanner.draft.photos, tok));
     setRestoreBanner(null);
   };
 
   useEffect(() => {
-    getToken().then(tok => {
-      setToken(tok);
+    getFreshToken().then(tok => {
       if (tok) {
         apiFetch<ParkInfo[]>('/api/parks', tok).then(setParks).catch(() => {});
       }
     });
-    // getToken intentionally omitted — unstable identity re-runs this every render
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [getFreshToken]);
 
   // Prefill the form when editing an existing visit
   useEffect(() => {
@@ -1840,6 +1977,13 @@ export default function LogVisitModal() {
         }
         const vis = v.visibility ?? 'friends';
         const visibility = (vis.charAt(0).toUpperCase() + vis.slice(1)) as Draft['visibility'];
+        originalPhotos.current = new Set(v.photos ?? []);
+        // The first photo is now always the cover — if this visit had a
+        // different photo set as cover previously, move it to the front.
+        const photos = v.photos ?? [];
+        const orderedPhotos = v.cover_photo && photos.includes(v.cover_photo) && photos[0] !== v.cover_photo
+          ? [v.cover_photo, ...photos.filter(p => p !== v.cover_photo)]
+          : photos;
         setDraftState({
           parkCode:   v.park_code,
           startDate:  v.visited_date ? new Date(v.visited_date) : null,
@@ -1855,8 +1999,7 @@ export default function LogVisitModal() {
           activities: v.activities ?? [],
           companions: v.companions ?? [],
           companionObjs,
-          photos:     v.photos ?? [],
-          cover:      v.cover_photo ?? null,
+          photos:     orderedPhotos,
           visibility: ['Private', 'Friends', 'Public'].includes(visibility) ? visibility : 'Friends',
           caption,
         });
@@ -1901,7 +2044,16 @@ export default function LogVisitModal() {
     if (isEdit) {
       Alert.alert('Discard changes?', "Your edits won't be saved.", [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+        {
+          text: 'Discard', style: 'destructive',
+          onPress: () => {
+            // Photos already on the saved visit stay put — only clean up ones added this session.
+            const orphaned = draft.photos.filter(p => !originalPhotos.current.has(p));
+            getFreshToken().then(tok => deletePhotos(orphaned, tok));
+            leavingViaAction.current = true;
+            router.back();
+          },
+        },
       ]);
       return;
     }
@@ -1914,6 +2066,8 @@ export default function LogVisitModal() {
           onPress: () => {
             if (saveTimer.current) clearTimeout(saveTimer.current);
             deleteDraft(draftId.current);
+            getFreshToken().then(tok => deletePhotos(draft.photos, tok));
+            leavingViaAction.current = true;
             router.back();
           },
         },
@@ -1923,21 +2077,28 @@ export default function LogVisitModal() {
             if (saveTimer.current) clearTimeout(saveTimer.current);
             const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
             upsertDraft(draft, parkName, draftId.current);
+            leavingViaAction.current = true;
             router.back();
           },
         },
       ]);
     } else {
+      leavingViaAction.current = true;
       router.back();
     }
   };
 
   const handleSubmit = async () => {
-    if (!draft.parkCode || !draft.startDate || !token) return;
+    if (!draft.parkCode || !draft.startDate) return;
     setSubmitting(true);
     try {
+      // Fetch a fresh token right here rather than reusing the one from mount —
+      // this flow can easily run past a Clerk session token's ~60s lifetime.
+      const tok = await getFreshToken();
+      if (!tok) throw new Error('No auth token');
+
       if (isEdit) {
-        await apiFetch(`/api/visits/${editVisitId}`, token, {
+        await apiFetch(`/api/visits/${editVisitId}`, tok, {
           method: 'PATCH',
           body: JSON.stringify({
             park_code:          draft.parkCode,
@@ -1954,12 +2115,12 @@ export default function LogVisitModal() {
             title:              draft.title || null,
             notes:              draft.notes || null,
             photos:             draft.photos.length > 0 ? draft.photos : null,
-            cover_photo:        draft.cover ?? null,
+            cover_photo:        draft.photos[0] ?? null,
             visibility:         draft.visibility.toLowerCase(),
           }),
         });
         if (editPostId != null) {
-          await apiFetch(`/api/posts/${editPostId}`, token, {
+          await apiFetch(`/api/posts/${editPostId}`, tok, {
             method: 'PATCH',
             body: JSON.stringify({
               caption:   draft.caption || null,
@@ -1968,11 +2129,16 @@ export default function LogVisitModal() {
             }),
           });
         }
+        // Original photos dropped during this edit are no longer referenced anywhere — clean them up.
+        deletePhotos([...originalPhotos.current].filter(p => !draft.photos.includes(p)), tok);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast('Visit updated');
+        leavingViaAction.current = true;
         router.back();
         return;
       }
 
-      const visitRes = await apiFetch<{ visit: { id: number } }>('/api/visits', token, {
+      const visitRes = await apiFetch<{ visit: { id: number } }>('/api/visits', tok, {
         method: 'POST',
         body: JSON.stringify({
           park_code:          draft.parkCode,
@@ -1989,13 +2155,13 @@ export default function LogVisitModal() {
           title:              draft.title || null,
           notes:              draft.notes || null,
           photos:             draft.photos.length > 0 ? draft.photos : null,
-          cover_photo:        draft.cover ?? null,
+          cover_photo:        draft.photos[0] ?? null,
           visibility:         draft.visibility.toLowerCase(),
         }),
       });
 
       if (draft.visibility !== 'Private' && visitRes.visit?.id) {
-        await apiFetch('/api/posts', token, {
+        await apiFetch('/api/posts', tok, {
           method: 'POST',
           body: JSON.stringify({
             caption:   draft.caption || null,
@@ -2008,12 +2174,21 @@ export default function LogVisitModal() {
 
       if (saveTimer.current) clearTimeout(saveTimer.current);
       deleteDraft(draftId.current);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('Visit logged!');
+      leavingViaAction.current = true;
       router.back();
     } catch (e) {
       if (e instanceof Error && e.message.includes('409')) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         Alert.alert('Park already logged', 'You already have a visit for that park. Edit that visit instead.');
       } else {
-        Alert.alert('Something went wrong', 'Please try again.');
+        // Post didn't go through — make sure the latest edits are saved as a draft so nothing is lost.
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
+        upsertDraft(draft, parkName, draftId.current);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast("Couldn't post — saved as a draft", 'error');
       }
     } finally {
       setSubmitting(false);
@@ -2092,13 +2267,14 @@ export default function LogVisitModal() {
           <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} />
         )}
         {step === 1 && <StepVisit draft={draft} set={set} />}
-        {step === 2 && token && <StepJournal draft={draft} set={set} token={token} npsActivityNames={npsActivityNames} />}
+        {step === 2 && token && <StepJournal draft={draft} set={set} token={token} getToken={getFreshToken} npsActivityNames={npsActivityNames} originalPhotos={originalPhotos.current} />}
         {step === 3 && (
           <StepShare
             draft={draft}
             set={set}
             park={parks.find(p => p.park_code === draft.parkCode)}
             userName={user?.fullName ?? user?.username ?? 'You'}
+            username={user?.username}
             avatarUrl={user?.imageUrl}
           />
         )}
@@ -2297,23 +2473,18 @@ const styles = StyleSheet.create({
     width: PHOTO_THUMB, height: PHOTO_THUMB, borderRadius: 14, overflow: 'hidden',
     backgroundColor: C.surfaceAlt,
   },
-  photoCoverBtn: {
-    position: 'absolute', top: 5, left: 5,
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: 'rgba(20,17,12,0.55)', alignItems: 'center', justifyContent: 'center',
-  },
   photoRemoveBtn: {
-    position: 'absolute', top: 5, right: 5,
-    width: 20, height: 20, borderRadius: 10,
+    position: 'absolute', top: 6, right: 6,
+    width: 24, height: 24, borderRadius: 12,
     backgroundColor: 'rgba(20,17,12,0.55)', alignItems: 'center', justifyContent: 'center',
   },
   coverBadge: {
-    position: 'absolute', bottom: 5, left: 5,
-    backgroundColor: 'rgba(20,17,12,0.6)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 100,
+    position: 'absolute', bottom: 6, left: 6,
+    backgroundColor: 'rgba(20,17,12,0.6)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 100,
   },
   photoIndex: {
-    position: 'absolute', bottom: 5, right: 5,
-    backgroundColor: 'rgba(20,17,12,0.55)', width: 20, height: 20, borderRadius: 10,
+    position: 'absolute', bottom: 6, right: 6,
+    backgroundColor: 'rgba(20,17,12,0.55)', width: 24, height: 24, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
   },
   photoAdd: {
@@ -2324,6 +2495,18 @@ const styles = StyleSheet.create({
   },
   photoReorderHint: {
     fontSize: 11.5, color: C.inkMute, marginTop: 8,
+  },
+  uploadProgressWrap: {
+    marginTop: 10, gap: 6,
+  },
+  uploadProgressTrack: {
+    height: 4, borderRadius: 2, backgroundColor: C.surfaceAlt, overflow: 'hidden',
+  },
+  uploadProgressFill: {
+    height: 4, borderRadius: 2,
+  },
+  uploadProgressText: {
+    fontSize: 11.5, color: C.inkMute,
   },
 
   // Photo crop modal
@@ -2468,7 +2651,7 @@ const styles = StyleSheet.create({
   previewChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: C.surfaceAlt,
-    borderRadius: 100,
+    borderRadius: 100, borderWidth: 0.5, borderColor: C.hairline,
     paddingHorizontal: 9, paddingVertical: 4,
   },
   previewChipText: {

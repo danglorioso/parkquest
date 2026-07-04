@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePalette, PALETTES, STATIC as BASE_C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
 import { Avatar } from '@/components/Avatar';
 import * as ImagePicker from 'expo-image-picker';
+import { showToast } from '@/lib/toast';
 
 const ERROR = '#C04040';
 
@@ -199,6 +200,7 @@ export default function EditProfileScreen() {
         return;
       }
 
+      showToast('Settings updated');
       router.back();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong');

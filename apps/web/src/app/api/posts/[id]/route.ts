@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, or, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, parks, userProfiles, visits, friendships } from '@/lib/db/schema';
+import { deleteR2PhotosTrusted, extractPhotoUrls } from '@/lib/photoCleanup';
 
 export async function PATCH(
   req: Request,
@@ -155,6 +156,14 @@ export async function DELETE(
       .returning();
 
     if (deleted.length === 0) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+
+    // Only clean up photos for standalone posts — a visit-linked post's photos are
+    // owned by the (still-existing) visit, which keeps using them.
+    if (deleted[0].visit_id == null) {
+      const urls = extractPhotoUrls(deleted[0].photos);
+      deleteR2PhotosTrusted(urls).catch(e => console.error('Post photo cleanup failed:', e));
+    }
+
     return NextResponse.json({ message: 'Post deleted' });
   } catch (error) {
     console.error('Error deleting post:', error);

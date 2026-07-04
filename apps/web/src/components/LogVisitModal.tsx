@@ -220,6 +220,17 @@ function deleteDraft(id: string): void {
   localStorage.setItem(DRAFT_KEY, JSON.stringify(loadDrafts().filter(s => s.id !== id)));
 }
 
+// Best-effort cleanup of orphaned uploads (abandoned drafts, removed photos).
+// Fire-and-forget: a failed cleanup just leaves an orphaned file, not a broken visit.
+function deletePhotos(urls: string[]): void {
+  if (urls.length === 0) return;
+  fetch("/api/upload/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ urls }),
+  }).catch(e => console.warn("Photo cleanup failed:", e));
+}
+
 function draftAge(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const m = Math.floor(ms / 60000);
@@ -1039,6 +1050,27 @@ function ReturnChoice({ value, onChange }: { value: string | null; onChange: (v:
 
 // ── Photo uploader ─────────────────────────────────────────────────────────
 
+const PHOTO_MAX_DIMENSION = 1600; // longest edge, px — matches the server's safety-net cap
+
+// Downscale + recompress to JPEG in the browser before upload. Keeps requests well
+// under Vercel's 4.5 MB function body limit and avoids storing full-res originals
+// in R2 for photos that only ever render at feed/thumbnail size.
+async function resizeImageFile(file: File, maxDim = PHOTO_MAX_DIMENSION, quality = 0.8): Promise<Blob> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+  return blob ?? file;
+}
+
 function PhotoUploader({ photos, cover, onAddPhotos, onRemove, onSetCover }: {
   photos: string[]; cover: string | null;
   onAddPhotos: (urls: string[]) => void;
@@ -1058,22 +1090,20 @@ function PhotoUploader({ photos, cover, onAddPhotos, onRemove, onSetCover }: {
     let failed = 0;
     for (const file of Array.from(files).slice(0, 10 - photos.length)) {
       try {
-        const presignRes = await fetch("/api/upload/presign", {
+        // Resize client-side before it ever leaves the browser — Vercel Functions
+        // hard-cap request bodies at 4.5 MB, and there's no point paying to store
+        // (or wait to upload) a full-res original a feed thumbnail never needs.
+        const resized = await resizeImageFile(file);
+        const uploadRes = await fetch("/api/upload", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
+          headers: { "Content-Type": "image/jpeg" },
+          body: resized,
         });
-        if (!presignRes.ok) {
-          const err = await presignRes.json().catch(() => ({}));
-          throw new Error(err.error ?? `Presign failed (${presignRes.status})`);
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json().catch(() => ({}));
+          throw new Error(err.error ?? `Upload failed (${uploadRes.status})`);
         }
-        const { uploadUrl, publicUrl } = await presignRes.json();
-        const uploadRes = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
-        if (!uploadRes.ok) throw new Error(`Upload failed (${uploadRes.status})`);
+        const { publicUrl } = await uploadRes.json();
         urls.push(publicUrl);
       } catch (e) {
         failed++;
@@ -1355,7 +1385,7 @@ function StepRate({ draft, set }: { draft: VisitDraft; set: SetFn }) {
   );
 }
 
-function StepJournal({ draft, set, activities, npsActivityNames }: { draft: VisitDraft; set: SetFn; activities: string[]; npsActivityNames: string[] }) {
+function StepJournal({ draft, set, activities, npsActivityNames, originalPhotos }: { draft: VisitDraft; set: SetFn; activities: string[]; npsActivityNames: string[]; originalPhotos: Set<string> }) {
   return (
     <>
       <div style={{ display: "flex", flexDirection: "column", gap: 18, marginBottom: 18 }}>
@@ -1380,7 +1410,7 @@ function StepJournal({ draft, set, activities, npsActivityNames }: { draft: Visi
       <Section title="Who came along?" tag="optional" mb={18}>
         <CompanionPicker value={draft.companions} onChange={v => set("companions", v)} />
       </Section>
-      <Section title="Photos" tag="optional">
+      <Section title="Photos" tag="optional" hint={`${draft.photos.length} of 10`}>
         <PhotoUploader photos={draft.photos} cover={draft.cover}
           onAddPhotos={urls => {
             const next = [...draft.photos, ...urls].slice(0, 10);
@@ -1391,6 +1421,9 @@ function StepJournal({ draft, set, activities, npsActivityNames }: { draft: Visi
             const next = draft.photos.filter(p => p !== url);
             set("photos", next);
             if (draft.cover === url) set("cover", next[0] ?? null);
+            // Only nuke it immediately if it was uploaded this session — photos already
+            // attached to the saved visit stay live until the edit is actually submitted.
+            if (!originalPhotos.has(url)) deletePhotos([url]);
           }}
           onSetCover={url => set("cover", url)}
         />
@@ -1499,12 +1532,17 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const centerRef = useRef<HTMLDivElement>(null);
   const isDirty   = useRef(false);
+  // Photo URLs already persisted server-side before this session started (populated
+  // when editing an existing visit). Anything in draft.photos NOT in this set was
+  // freshly uploaded this session and is safe to delete from storage if abandoned.
+  const originalPhotos = useRef<Set<string>>(new Set());
 
   // Single dispatch on open — avoids multiple setState calls in one effect
   useEffect(() => {
     if (open) {
       draftId.current = `draft-${Date.now()}`;
       isDirty.current = false;
+      originalPhotos.current = new Set(editMode ? (initialDraft?.photos ?? []) : []);
       dispatch({
         type: 'open',
         draft: initialDraft ? { ...makeBlankDraft(), ...initialDraft } : makeBlankDraft(),
@@ -1592,9 +1630,11 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
     if (!draft.parkCode || !draft.dates.start) return;
     setSubmitting(true);
     try {
-      // In edit mode, if the park changed, remove the old visit record first
+      // In edit mode, if the park changed, remove the old visit record first.
+      // skip_photo_cleanup: this is a relabel, not a real delete — the same photos
+      // are about to be re-attached to the new visit row below.
       if (editMode && initialDraft?.parkCode && initialDraft.parkCode !== draft.parkCode) {
-        await fetch(`/api/visits?park_code=${initialDraft.parkCode}`, { method: "DELETE" });
+        await fetch(`/api/visits?park_code=${initialDraft.parkCode}&skip_photo_cleanup=1`, { method: "DELETE" });
       }
       const visitRes = await fetch("/api/visits", {
         method: "POST",
@@ -1635,6 +1675,10 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
         }
       }
 
+      if (editMode) {
+        // Original photos dropped during this edit are no longer referenced anywhere — clean them up.
+        deletePhotos([...originalPhotos.current].filter(p => !draft.photos.includes(p)));
+      }
       onPosted?.();
       handleClose();
       if (editMode) {
@@ -1656,7 +1700,7 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
   const renderStep = (key: string) => {
     if (key === "where")   return <StepWhere   draft={draft} set={set} onOpenPark={() => setShowParkPicker(true)} park={park} />;
     if (key === "rate")    return <StepRate    draft={draft} set={set} />;
-    if (key === "journal") return <StepJournal draft={draft} set={set} activities={availableActivities} npsActivityNames={npsActivityCache?.names ?? []} />;
+    if (key === "journal") return <StepJournal draft={draft} set={set} activities={availableActivities} npsActivityNames={npsActivityCache?.names ?? []} originalPhotos={originalPhotos.current} />;
     if (key === "share")   return <StepShare   draft={draft} set={set} />;
     return null;
   };
@@ -1724,7 +1768,7 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
                 <button onClick={() => { dispatch({ type: 'set-draft', draft: restoreBannerDraft.draft }); draftId.current = restoreBannerDraft.id; setRestoreBannerDraft(null); }} style={{ padding: "7px 14px", borderRadius: 8, border: 0, background: "var(--primary)", color: "#FFFBF1", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
                   Restore
                 </button>
-                <button onClick={() => { deleteDraft(restoreBannerDraft.id); setRestoreBannerDraft(null); }} style={{ padding: "7px 14px", borderRadius: 8, border: "0.5px solid var(--hairline)", background: "transparent", color: "var(--ink-mute)", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+                <button onClick={() => { deleteDraft(restoreBannerDraft.id); deletePhotos(restoreBannerDraft.draft.photos); setRestoreBannerDraft(null); }} style={{ padding: "7px 14px", borderRadius: 8, border: "0.5px solid var(--hairline)", background: "transparent", color: "var(--ink-mute)", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
                   Discard
                 </button>
                 <button onClick={() => setRestoreBannerDraft(null)} style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-mute)", lineHeight: 0, padding: 4, flexShrink: 0 }}>
@@ -1790,7 +1834,17 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
                     Save as draft
                   </button>
                 )}
-                <button onClick={() => { dispatch({ type: 'hide-exit-confirm' }); handleClose(); }} style={{ padding: "12px", borderRadius: 10, border: editMode ? 0 : "0.5px solid var(--hairline)", background: editMode ? "#C04040" : "transparent", color: editMode ? "#FFFBF1" : "var(--ink)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit" }}>
+                <button onClick={() => {
+                  // Clean up whatever photos are abandoned by this discard: in edit mode only
+                  // ones added this session (the visit's original photos stay live); for a
+                  // brand-new entry, nothing was ever submitted so all of them are orphaned.
+                  const orphaned = editMode
+                    ? draft.photos.filter(p => !originalPhotos.current.has(p))
+                    : draft.photos;
+                  deletePhotos(orphaned);
+                  dispatch({ type: 'hide-exit-confirm' });
+                  handleClose();
+                }} style={{ padding: "12px", borderRadius: 10, border: editMode ? 0 : "0.5px solid var(--hairline)", background: editMode ? "#C04040" : "transparent", color: editMode ? "#FFFBF1" : "var(--ink)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit" }}>
                   Discard changes
                 </button>
                 <button onClick={() => dispatch({ type: 'hide-exit-confirm' })} style={{ padding: "9px", borderRadius: 10, border: 0, background: "transparent", color: "var(--ink-mute)", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>

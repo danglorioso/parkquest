@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { DeviceEventEmitter, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../../lib/palette';
 import FloatingTabBar from '../../components/FloatingTabBar';
+import { hasDrafts, onDraftsChanged } from '../../lib/drafts';
 
 const STATIC = {
   inkMute: '#7A746A',
@@ -35,10 +37,17 @@ function TabIcon({
 function LogVisitButton() {
   const router = useRouter();
   const C = useColors();
+  const [hasDraft, setHasDraft] = useState(false);
+
+  useEffect(() => {
+    hasDrafts().then(setHasDraft);
+    return onDraftsChanged(() => { hasDrafts().then(setHasDraft); });
+  }, []);
+
   return (
     <TouchableOpacity
       onPress={() => router.push('/(modals)/log-visit')}
-      accessibilityLabel="Log a park visit"
+      accessibilityLabel={hasDraft ? 'Log a park visit — draft saved' : 'Log a park visit'}
       accessibilityRole="button"
       style={styles.fabWrapper}
     >
@@ -46,6 +55,7 @@ function LogVisitButton() {
         <View style={[styles.fab, { backgroundColor: C.accent }]}>
           <Ionicons name="add" size={26} color="#FFFBF1" />
         </View>
+        {hasDraft && <View style={styles.draftDot} />}
       </View>
     </TouchableOpacity>
   );
@@ -133,6 +143,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.38,
     shadowRadius: 7,
     elevation: 12,
+  },
+  draftDot: {
+    position: 'absolute', top: -1, right: -1,
+    width: 12, height: 12, borderRadius: 6,
+    backgroundColor: '#DC2626',
+    borderWidth: 1.5, borderColor: '#FFFBF1',
   },
   fab: {
     width: 50,

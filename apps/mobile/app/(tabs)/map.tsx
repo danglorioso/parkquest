@@ -169,11 +169,11 @@ function FilterPill({
   return (
     <View style={styles.pill}>
       {FILTERS.map((f, i) => (
-        <View key={f.key} style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, minWidth: 0 }}>
+        <View key={f.key} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
           <TouchableOpacity
             onPress={() => onSelect(f.key)}
             activeOpacity={0.7}
-            style={[styles.pillBtn, active === f.key && styles.pillBtnActive]}
+            style={[styles.pillBtn, styles.pillBtnFlex, active === f.key && styles.pillBtnActive]}
           >
             <View style={[styles.pillDot, { backgroundColor: f.dot }]} />
             <Text style={[styles.pillCount, active === f.key && styles.pillCountActive]}>
@@ -755,7 +755,7 @@ function ParkBottomSheet({
   });
   const heroTitleFontSize = scrollY.interpolate({
     inputRange: [0, (BANNER_H - COLLAPSED_H) * 0.75],
-    outputRange: [26, 15],
+    outputRange: [26, 20],
     extrapolate: 'clamp',
   });
   const stateOpacity = scrollY.interpolate({
@@ -800,6 +800,19 @@ function ParkBottomSheet({
           {/* Body content */}
           <View style={styles.sheetBody}>
 
+          {/* ── Quick stats ── */}
+          <View style={styles.statsRow}>
+            <StatCell label="State" value={fullStateName(park.states)} />
+            <View style={styles.statDivider} />
+            <StatCell
+              label="Status"
+              value={park.status === 'visited' ? 'Visited' : park.status === 'bucketList' ? 'Bucket list' : 'Not yet'}
+              valueColor={park.status === 'visited' ? C.visited : park.status === 'bucketList' ? C.bucket : C.inkMute}
+            />
+            <View style={styles.statDivider} />
+            <StatCell label="Visits" value={String(fullVisits.length)} />
+          </View>
+
           {/* ── Photo strip — next images relative to the rotating hero ── */}
           {stripImages.length > 0 && (
             <ScrollView
@@ -830,19 +843,6 @@ function ParkBottomSheet({
               ))}
             </ScrollView>
           )}
-
-          {/* ── Quick stats ── */}
-          <View style={styles.statsRow}>
-            <StatCell label="State" value={fullStateName(park.states)} />
-            <View style={styles.statDivider} />
-            <StatCell
-              label="Status"
-              value={park.status === 'visited' ? 'Visited' : park.status === 'bucketList' ? 'Bucket list' : 'Not yet'}
-              valueColor={park.status === 'visited' ? C.visited : park.status === 'bucketList' ? C.bucket : C.inkMute}
-            />
-            <View style={styles.statDivider} />
-            <StatCell label="Visits" value={String(fullVisits.length)} />
-          </View>
 
           {/* ── About ── */}
           {park.description ? (
@@ -1635,7 +1635,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 14,
     right: 14,
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     zIndex: 20,
   },
   mapControls: {
@@ -1701,9 +1701,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
     borderRadius: 100,
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
     paddingVertical: 4,
-    gap: 3,
+    gap: 2,
+  },
+  pillBtnFlex: {
+    flex: 1,
+    justifyContent: 'center',
   },
   pillBtnActive: {
     backgroundColor: 'rgba(31,61,46,0.10)',
@@ -1728,7 +1732,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: C.inkSoft,
     letterSpacing: 0.2,
-    flexShrink: 1,
+    flexShrink: 0,
   },
   pillLabelActive: {
     color: C.ink,
@@ -1737,7 +1741,7 @@ const styles = StyleSheet.create({
     width: 1,
     height: 12,
     backgroundColor: C.hairline,
-    marginHorizontal: 1,
+    marginHorizontal: 4,
   },
 
   // Bottom sheet
@@ -1869,7 +1873,8 @@ const styles = StyleSheet.create({
   // Photo strip
   photoStrip: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 14,
+    paddingBottom: 14,
     gap: 8,
     flexDirection: 'row',
   },
@@ -1889,8 +1894,8 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
     overflow: 'hidden',
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: 14,
+    marginBottom: 14,
   },
   statCell: {
     flex: 1,
