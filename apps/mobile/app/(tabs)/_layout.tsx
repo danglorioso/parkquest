@@ -51,8 +51,8 @@ function LogVisitButton() {
       accessibilityRole="button"
       style={styles.fabWrapper}
     >
-      <View style={[styles.fabGlow, { backgroundColor: C.accent }]}>
-        <View style={[styles.fab, { backgroundColor: C.accent }]}>
+      <View style={[styles.fabGlow, { backgroundColor: C.fabAccent }]}>
+        <View style={[styles.fab, { backgroundColor: C.fabAccent }]}>
           <Ionicons name="add" size={26} color="#FFFBF1" />
         </View>
         {hasDraft && <View style={styles.draftDot} />}
