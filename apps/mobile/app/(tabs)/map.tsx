@@ -12,27 +12,14 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
+import { parkGradient } from '@/lib/parkColors';
 import { ImageLightbox } from '@/components/ImageLightbox';
-import { useColors } from '@/lib/palette';
+import { STATIC as C, useColors } from '@/lib/palette';
 import { CompassSpinner } from '@/components/LoadingScreen';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  surface:     '#FFFBF1',
-  surfaceAlt:  '#F7F0DE',
-  ink:         '#1B1A16',
-  inkSoft:     '#3C3A33',
-  inkMute:     '#7A746A',
-  hairline:    'rgba(27,26,22,0.10)',
-  hairlineSoft:'rgba(27,26,22,0.06)',
-  primary:     '#1F3D2E',
-  accent:      '#C56B3D',
-  visited:     '#2F7A4A',
-  bucket:      '#D89A3A',
-  unvisited:   '#A8A29A',
-};
+// Not-yet-visited marker gray — map-only, not part of the shared palette
+const UNVISITED = '#A8A29A';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get('window');
@@ -102,22 +89,11 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   return res.json();
 }
 
-const GRADIENTS: [string, string, string][] = [
-  ['#1F3D2E', '#2F7A4A', '#C56B3D'],
-  ['#2D4F66', '#1F3D2E', '#D89A3A'],
-  ['#7B3A1F', '#C56B3D', '#1F3D2E'],
-  ['#3A2E5C', '#6E97A3', '#D89A3A'],
-  ['#2F7A4A', '#1F3D2E', '#2D4F66'],
-];
-function gradientColors(code: string): [string, string, string] {
-  const idx = code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length;
-  return GRADIENTS[idx];
-}
 
 function markerConfig(status: ParkStatus, selected: boolean) {
   const color =
     status === 'visited'    ? C.visited :
-    status === 'bucketList' ? C.bucket  : C.unvisited;
+    status === 'bucketList' ? C.bucket  : UNVISITED;
   const dotR  = selected ? 10 : status === 'visited' ? 7.5 : 6;
   const haloR = selected ? 17 : status === 'visited' ? 13  : 10;
   const haloOpacity = selected ? 0.24 : 0.15;
@@ -180,7 +156,7 @@ const FILTERS: Array<{ key: FilterStatus; dot: string; label: string }> = [
   { key: 'all',        dot: C.ink,       label: 'ALL'    },
   { key: 'visited',    dot: C.visited,   label: 'VISITED'},
   { key: 'bucketList', dot: C.bucket,    label: 'BUCKET' },
-  { key: 'notVisited', dot: C.unvisited, label: 'TO GO'  },
+  { key: 'notVisited', dot: UNVISITED, label: 'TO GO'  },
 ];
 
 function FilterPill({
@@ -838,7 +814,7 @@ function ParkBottomSheet({
                   style={styles.photoStripItem}
                 >
                   <LinearGradient
-                    colors={gradientColors(park.park_code)}
+                    colors={parkGradient(park.park_code)}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={StyleSheet.absoluteFill}
@@ -1112,7 +1088,7 @@ function ParkBottomSheet({
         {/* Collapsing header — image clips from bottom as height shrinks; title stays pinned */}
         <Animated.View style={[styles.collapsingHeader, { height: headerHeight }]} pointerEvents="box-none">
           <LinearGradient
-            colors={gradientColors(park.park_code)}
+            colors={parkGradient(park.park_code)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -1190,12 +1166,12 @@ function ParkBottomSheet({
                   style={[styles.actionBtn, { backgroundColor: C.primary, flex: 1 }]}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="pencil" size={14} color="#FFFBF1" />
+                  <Ionicons name="pencil" size={14} color={C.onPrimary} />
                   <Text style={styles.actionBtnText}>Log a visit</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { if (fullVisits[0]) router.push(`/profile/journal/${fullVisits[0].id}` as never); }}
-                  style={[styles.actionBtnOutline, { flex: 1 }]}
+                  style={[styles.actionBtnOutline, { flex: 1, borderColor: C.primary }]}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="pencil-outline" size={14} color={C.primary} />
@@ -1208,7 +1184,7 @@ function ParkBottomSheet({
                 style={[styles.actionBtn, { backgroundColor: C.primary, flex: 1 }]}
                 activeOpacity={0.8}
               >
-                <Ionicons name="pencil" size={14} color="#FFFBF1" />
+                <Ionicons name="pencil" size={14} color={C.onPrimary} />
                 <Text style={styles.actionBtnText}>Log a visit</Text>
               </TouchableOpacity>
             )}
@@ -1227,9 +1203,9 @@ function ParkBottomSheet({
                   <Ionicons
                     name={park.status === 'bucketList' ? 'bookmark' : 'bookmark-outline'}
                     size={14}
-                    color={park.status === 'bucketList' ? '#FFFBF1' : C.bucket}
+                    color={park.status === 'bucketList' ? C.onPrimary : C.bucket}
                   />
-                  <Text style={[styles.bucketBtnText, park.status === 'bucketList' && { color: '#FFFBF1' }]}>
+                  <Text style={[styles.bucketBtnText, park.status === 'bucketList' && { color: C.onPrimary }]}>
                     {park.status === 'bucketList' ? 'On bucket list' : 'Add to bucket list'}
                   </Text>
                 </>
@@ -1858,7 +1834,7 @@ const styles = StyleSheet.create({
   heroName: {
     fontSize: 26,
     fontWeight: '900',
-    color: '#FFFBF1',
+    color: C.onPrimary,
     letterSpacing: -0.5,
     lineHeight: 30,
   },
@@ -1983,12 +1959,10 @@ const styles = StyleSheet.create({
   },
   chipExpand: {
     backgroundColor: 'transparent',
-    borderColor: C.primary,
   },
   chipExpandText: {
     fontSize: 13,
     fontWeight: '600',
-    color: C.primary,
   },
 
   // Hours
@@ -2041,7 +2015,6 @@ const styles = StyleSheet.create({
   feeCost: {
     fontSize: 13,
     fontWeight: '700',
-    color: C.primary,
   },
   feeDesc: {
     fontSize: 13,
@@ -2059,7 +2032,6 @@ const styles = StyleSheet.create({
   linkBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: C.primary,
   },
   contactRow: {
     flexDirection: 'row',
@@ -2163,7 +2135,6 @@ const styles = StyleSheet.create({
   visitEditBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: C.primary,
   },
 
   // Attribution
@@ -2209,7 +2180,7 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFBF1',
+    color: C.onPrimary,
   },
   actionBtnOutline: {
     flex: 1,
@@ -2221,13 +2192,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: C.primary,
     backgroundColor: 'transparent',
   },
   actionBtnOutlineText: {
     fontSize: 13,
     fontWeight: '700',
-    color: C.primary,
   },
   bucketBtn: {
     flexDirection: 'row',

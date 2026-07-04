@@ -11,22 +11,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { STATIC as C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
+import { dayCount, fmtDate, fmtRange, MONTHS } from '@/lib/dates';
+import { parkColor } from '@/lib/parkColors';
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:         '#F2EBDB',
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkSoft:    '#3C3A33',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  primary:    '#1F3D2E',
-  primaryDeep:'#152A20',
-  accent:     '#C56B3D',
-  danger:     '#C0392B',
-};
+const DANGER = '#C0392B';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const W    = Dimensions.get('window').width;
@@ -111,61 +100,30 @@ interface Draft {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const MONTHS     = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const MONTHS_ABB = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-}
-
-function fmtRange(start: string | null, end: string | null): string {
-  if (!start) return '';
-  const s = new Date(start);
-  if (!end) return `${MONTHS[s.getMonth()]} ${s.getDate()}, ${s.getFullYear()}`;
-  const e = new Date(end);
-  if (s.getFullYear() === e.getFullYear()) {
-    if (s.getMonth() === e.getMonth())
-      return `${MONTHS[s.getMonth()]} ${s.getDate()}–${e.getDate()}, ${e.getFullYear()}`;
-    return `${MONTHS_ABB[s.getMonth()]} ${s.getDate()} – ${MONTHS_ABB[e.getMonth()]} ${e.getDate()}, ${e.getFullYear()}`;
-  }
-  return `${MONTHS_ABB[s.getMonth()]} ${s.getDate()}, ${s.getFullYear()} – ${MONTHS_ABB[e.getMonth()]} ${e.getDate()}, ${e.getFullYear()}`;
-}
-
-function dayCount(start: string | null, end: string | null): number {
-  if (!start) return 0;
-  if (!end) return 1;
-  return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1;
-}
-
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-const GRADIENTS = ['#1F3D2E','#2D4F66','#7B3A1F','#3A2E5C','#2F7A4A'];
-function gradientColor(code: string): string {
-  return GRADIENTS[code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length];
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function Stars({ value, size = 14 }: { value: number; size?: number }) {
+  const T = useColors();
   return (
     <View style={{ flexDirection: 'row', gap: 2 }}>
       {Array.from({ length: 5 }).map((_, i) => (
-        <Ionicons key={i} name={i < Math.round(value) ? 'star' : 'star-outline'} size={size} color={C.accent} />
+        <Ionicons key={i} name={i < Math.round(value) ? 'star' : 'star-outline'} size={size} color={T.accent} />
       ))}
     </View>
   );
 }
 
 function RatingInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const T = useColors();
   return (
     <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
       {Array.from({ length: 5 }).map((_, i) => (
         <TouchableOpacity key={i} onPress={() => onChange(i + 1)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-          <Ionicons name={i < value ? 'star' : 'star-outline'} size={26} color={C.accent} />
+          <Ionicons name={i < value ? 'star' : 'star-outline'} size={26} color={T.accent} />
         </TouchableOpacity>
       ))}
       {value > 0 && (
@@ -178,6 +136,7 @@ function RatingInput({ value, onChange }: { value: number; onChange: (n: number)
 }
 
 function ScaleInput({ value, labels, onChange }: { value: number; labels: string[]; onChange: (n: number) => void }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={{ flexDirection: 'row', gap: 6 }}>
       {labels.map((lbl, i) => {
@@ -195,6 +154,7 @@ function ScaleInput({ value, labels, onChange }: { value: number; labels: string
 function MultiChips({
   options, selected, onChange,
 }: { options: { value: string; label: string }[]; selected: string[]; onChange: (v: string[]) => void }) {
+  const s = useThemedStyles(makeStyles);
   function toggle(v: string) {
     onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v]);
   }
@@ -225,6 +185,7 @@ function ActivityChips({ selected, onChange }: { selected: string[]; onChange: (
 // ── Photo section (view mode) ─────────────────────────────────────────────────
 
 function PhotoHero({ photos, cover }: { photos: string[]; cover: string | null }) {
+  const s = useThemedStyles(makeStyles);
   const [idx, setIdx] = useState(() => {
     const ci = cover ? photos.indexOf(cover) : -1;
     return ci >= 0 ? ci : 0;
@@ -304,6 +265,8 @@ function PhotoStrip({
   onCoverChange: (p: string | null) => void;
   token: string;
 }) {
+  const s = useThemedStyles(makeStyles);
+  const T = useColors();
   const [uploading, setUploading] = useState(false);
 
   async function pickAndUpload() {
@@ -373,9 +336,9 @@ function PhotoStrip({
           {photos.length < 5 && (
             <TouchableOpacity onPress={pickAndUpload} disabled={uploading} style={s.stripAdd}>
               {uploading
-                ? <Ionicons name="cloud-upload-outline" size={22} color={C.primary} />
-                : <Ionicons name="add-circle-outline" size={22} color={C.primary} />}
-              <Text style={{ fontSize: 13, color: C.primary, fontWeight: '600', marginTop: 4 }}>
+                ? <Ionicons name="cloud-upload-outline" size={22} color={T.primary} />
+                : <Ionicons name="add-circle-outline" size={22} color={T.primary} />}
+              <Text style={{ fontSize: 13, color: T.primary, fontWeight: '600', marginTop: 4 }}>
                 {uploading ? 'Uploading…' : 'Add photo'}
               </Text>
             </TouchableOpacity>
@@ -394,13 +357,15 @@ function PhotoStrip({
 function DateRow({
   label, value, onChange,
 }: { label: string; value: Date | null; onChange: (d: Date | null) => void }) {
+  const s = useThemedStyles(makeStyles);
+  const T = useColors();
   const [open, setOpen] = useState(false);
 
   return (
     <View style={{ gap: 6 }}>
       <Text style={s.fieldLabel}>{label}</Text>
       <TouchableOpacity onPress={() => setOpen(o => !o)} style={s.dateBtn}>
-        <Ionicons name="calendar-outline" size={15} color={C.primary} />
+        <Ionicons name="calendar-outline" size={15} color={T.primary} />
         <Text style={s.dateBtnText}>
           {value ? `${MONTHS[value.getMonth()]} ${value.getDate()}, ${value.getFullYear()}` : 'Select date'}
         </Text>
@@ -419,7 +384,7 @@ function DateRow({
             if (Platform.OS !== 'ios') setOpen(false);
             if (d) onChange(d);
           }}
-          accentColor={C.primary}
+          accentColor={T.primary}
           style={{ alignSelf: 'flex-start' }}
         />
       )}
@@ -434,6 +399,8 @@ export default function JournalEntryScreen() {
   const { getToken } = useAuth();
   const tabBarSpace = useTabBarSpace();
   const router = useRouter();
+  const s = useThemedStyles(makeStyles);
+  const T = useColors();
 
   const [entry,   setEntry]   = useState<JournalEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -597,11 +564,11 @@ export default function JournalEntryScreen() {
   if (!editing) {
     const visKey   = (entry.visibility ?? 'private').toLowerCase();
     const visIcon  = visKey === 'public' ? 'globe-outline' : visKey === 'friends' ? 'people-outline' : 'lock-closed-outline';
-    const visColor = visKey === 'public' ? '#2F7A4A' : visKey === 'friends' ? C.primary : C.inkMute;
+    const visColor = visKey === 'public' ? C.visited : visKey === 'friends' ? T.primary : C.inkMute;
     const weatherLabels = (entry.weather_conditions ?? []).map(
       v => WEATHER_OPTS.find(o => o.value === v)?.label ?? v
     );
-    const placeholderBg = gradientColor(entry.park_code);
+    const placeholderBg = parkColor(entry.park_code);
 
     return (
       <SafeAreaView style={s.screen} edges={['bottom']}>
@@ -612,7 +579,7 @@ export default function JournalEntryScreen() {
               onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { visitId: String(entry.id) } } as never)}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name="create-outline" size={22} color={C.primary} />
+              <Ionicons name="create-outline" size={22} color={T.primary} />
             </TouchableOpacity>
           ),
         }} />
@@ -634,7 +601,7 @@ export default function JournalEntryScreen() {
           <View style={s.body}>
             {/* Park + state */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              <Ionicons name="location" size={12} color={C.primary} />
+              <Ionicons name="location" size={12} color={T.primary} />
               <Text style={s.parkLabel}>
                 {entry.park_name ?? entry.park_code}
                 {entry.states ? <Text style={{ color: C.inkMute }}> · {entry.states}</Text> : null}
@@ -676,7 +643,7 @@ export default function JournalEntryScreen() {
             {/* Highlight */}
             {entry.highlight ? (
               <View style={s.highlightBox}>
-                <Ionicons name="sparkles-outline" size={13} color={C.accent} style={{ marginTop: 2 }} />
+                <Ionicons name="sparkles-outline" size={13} color={T.accent} style={{ marginTop: 2 }} />
                 <Text style={s.highlightText}>"{entry.highlight}"</Text>
               </View>
             ) : null}
@@ -740,7 +707,7 @@ export default function JournalEntryScreen() {
 
             {/* Delete */}
             <TouchableOpacity onPress={confirmDelete} style={s.deleteBtn}>
-              <Ionicons name="trash-outline" size={15} color={C.danger} />
+              <Ionicons name="trash-outline" size={15} color={DANGER} />
               <Text style={s.deleteBtnText}>Delete entry</Text>
             </TouchableOpacity>
           </View>
@@ -775,7 +742,7 @@ export default function JournalEntryScreen() {
           {/* Park name (non-editable) */}
           <View style={s.editField}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 14 }}>
-              <Ionicons name="location" size={14} color={C.primary} />
+              <Ionicons name="location" size={14} color={T.primary} />
               <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }}>{entry.park_name ?? entry.park_code}</Text>
             </View>
           </View>
@@ -832,7 +799,7 @@ export default function JournalEntryScreen() {
                 const on = draft.would_return === opt.value;
                 return (
                   <TouchableOpacity key={opt.value} onPress={() => set('would_return', on ? '' : opt.value)} style={[s.chip, on && s.chipOn]}>
-                    <Ionicons name={opt.icon as any} size={14} color={on ? '#FFFBF1' : C.inkSoft} />
+                    <Ionicons name={opt.icon as any} size={14} color={on ? C.onPrimary : C.inkSoft} />
                     <Text style={[s.chipText, on && s.chipTextOn]}>{opt.label}</Text>
                   </TouchableOpacity>
                 );
@@ -902,7 +869,7 @@ export default function JournalEntryScreen() {
                 const on = (draft.visibility ?? 'private') === opt.value;
                 return (
                   <TouchableOpacity key={opt.value} onPress={() => set('visibility', opt.value)} style={[s.chip, on && s.chipOn]}>
-                    <Ionicons name={opt.icon as any} size={13} color={on ? '#FFFBF1' : C.inkSoft} />
+                    <Ionicons name={opt.icon as any} size={13} color={on ? C.onPrimary : C.inkSoft} />
                     <Text style={[s.chipText, on && s.chipTextOn]}>{opt.label}</Text>
                   </TouchableOpacity>
                 );
@@ -922,7 +889,7 @@ export default function JournalEntryScreen() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
+const makeStyles = (T: Colors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
   heroPlaceholder: { width: W, height: 200, justifyContent: 'flex-end', padding: 16 },
@@ -937,23 +904,23 @@ const s = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'center', gap: 6,
   },
   heroDot:   { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
-  heroDotOn: { backgroundColor: '#FFFBF1' },
+  heroDotOn: { backgroundColor: C.onPrimary },
 
   body: { padding: 16, paddingTop: 20, gap: 16 },
 
-  parkLabel:  { fontSize: 13, fontWeight: '700', color: C.primary },
+  parkLabel:  { fontSize: 13, fontWeight: '700', color: T.primary },
   entryTitle: { fontSize: 22, fontWeight: '900', color: C.ink, letterSpacing: -0.5, lineHeight: 28 },
 
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   metaText: { fontSize: 13, color: C.inkMute },
   metaDivider: { width: 1, height: 12, backgroundColor: C.hairline },
   daysBadge: { backgroundColor: C.surfaceAlt, borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2 },
-  daysBadgeText: { fontSize: 13, fontWeight: '700', color: C.accent },
+  daysBadgeText: { fontSize: 13, fontWeight: '700', color: T.accent },
 
   highlightBox: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
     backgroundColor: C.surface, borderRadius: 12,
-    borderLeftWidth: 3, borderLeftColor: C.accent,
+    borderLeftWidth: 3, borderLeftColor: T.accent,
     padding: 12, paddingLeft: 10,
   },
   highlightText: { flex: 1, fontSize: 14.5, fontStyle: 'italic', color: C.inkSoft, lineHeight: 22 },
@@ -998,18 +965,18 @@ const s = StyleSheet.create({
     paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8,
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
   },
-  scalePillOn:     { backgroundColor: C.primary, borderColor: C.primary },
+  scalePillOn:     { backgroundColor: T.primary, borderColor: T.primary },
   scalePillText:   { fontSize: 13, fontWeight: '600', color: C.inkSoft },
-  scalePillTextOn: { color: '#FFFBF1' },
+  scalePillTextOn: { color: C.onPrimary },
 
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 100,
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
   },
-  chipOn:     { backgroundColor: C.primary, borderColor: C.primary },
+  chipOn:     { backgroundColor: T.primary, borderColor: T.primary },
   chipText:   { fontSize: 13, fontWeight: '500', color: C.inkSoft },
-  chipTextOn: { color: '#FFFBF1' },
+  chipTextOn: { color: C.onPrimary },
 
   // Photo strip
   stripThumb:     { width: 80, height: 80, borderRadius: 8, overflow: 'hidden' },
@@ -1017,7 +984,7 @@ const s = StyleSheet.create({
   stripRemoveBtn: { position: 'absolute', top: 2, right: 2 },
   stripAdd: {
     width: 80, height: 80, borderRadius: 8, borderWidth: 1.5, borderStyle: 'dashed',
-    borderColor: C.primary, alignItems: 'center', justifyContent: 'center',
+    borderColor: T.primary, alignItems: 'center', justifyContent: 'center',
   },
 
   deleteBtn: {
@@ -1026,11 +993,11 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(192,57,43,0.25)',
     backgroundColor: 'rgba(192,57,43,0.06)',
   },
-  deleteBtnText: { fontSize: 14, fontWeight: '600', color: C.danger },
+  deleteBtnText: { fontSize: 14, fontWeight: '600', color: DANGER },
 
   ctaBtn: {
-    backgroundColor: C.primary, borderRadius: 14,
+    backgroundColor: T.primary, borderRadius: 14,
     paddingVertical: 16, alignItems: 'center',
   },
-  ctaBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFBF1', letterSpacing: -0.1 },
+  ctaBtnText: { fontSize: 16, fontWeight: '700', color: C.onPrimary, letterSpacing: -0.1 },
 });

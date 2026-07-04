@@ -8,23 +8,13 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
-import { BADGE_MAP, BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
+import { BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
 import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline';
 import { PostCard, type FeedPost } from '@/components/PostCard';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:         '#F2EBDB',
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkSoft:    '#3C3A33',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  primary:    '#1F3D2E',
-  accent:     '#C56B3D',
-};
+import { Avatar } from '@/components/Avatar';
+import { BadgeInfoModal } from '@/components/BadgeInfoModal';
+import { EmptyState } from '@/components/EmptyState';
+import { STATIC as C, useColors } from '@/lib/palette';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -80,50 +70,6 @@ function SectionHeader({ icon, title }: {
   );
 }
 
-// ── Badge detail modal — emoji, tier, how-to-earn, earned date ─────────────────
-
-function BadgeInfoModal({ badge, onClose }: { badge: ProfileBadge; onClose: () => void }) {
-  const def = BADGE_MAP.get(badge.badge_id);
-  const t = tierColors(badge.tier);
-  const earnedDate = badge.earned_at
-    ? new Date(badge.earned_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-    : null;
-
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.badgeOverlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.badgeModal}>
-          <TouchableOpacity onPress={onClose} style={styles.badgeModalClose}>
-            <Ionicons name="close" size={16} color={C.inkMute} />
-          </TouchableOpacity>
-
-          <View style={[styles.badgeModalEmoji, { backgroundColor: t.fill + '14', borderColor: t.fill + '44' }]}>
-            <Text style={{ fontSize: 36 }}>{badge.emoji}</Text>
-          </View>
-          <Text style={styles.badgeModalName}>{badge.name}</Text>
-          <Text style={[styles.badgeModalTier, { color: t.fill }]}>{badge.tier}</Text>
-
-          {def ? (
-            <View style={styles.badgeModalHow}>
-              <Text style={styles.badgeModalHowKicker}>HOW TO EARN</Text>
-              <Text style={styles.badgeModalHowText}>{def.description}</Text>
-            </View>
-          ) : null}
-
-          {earnedDate ? (
-            <Text style={styles.badgeModalEarned}>
-              Earned on <Text style={{ fontWeight: '700', color: C.inkSoft }}>{earnedDate}</Text>
-            </Text>
-          ) : (
-            <Text style={[styles.badgeModalEarned, { fontStyle: 'italic' }]}>Not yet earned</Text>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 interface FriendRow {
   clerk_user_id: string;
   username: string;
@@ -137,6 +83,7 @@ function FriendListModal({ userId, onClose, onNavigate }: {
   onNavigate: (id: string) => void;
 }) {
   const { getToken } = useAuth();
+  const T = useColors();
   const [friends, setFriends] = useState<FriendRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -164,7 +111,7 @@ function FriendListModal({ userId, onClose, onNavigate }: {
             {loading ? 'Friends' : `${friends.length} ${friends.length === 1 ? 'Friend' : 'Friends'}`}
           </Text>
           {loading ? (
-            <ActivityIndicator color={C.primary} style={{ marginTop: 24, marginBottom: 16 }} />
+            <ActivityIndicator color={T.primary} style={{ marginTop: 24, marginBottom: 16 }} />
           ) : friends.length === 0 ? (
             <Text style={styles.friendsEmpty}>No friends yet</Text>
           ) : (
@@ -178,15 +125,7 @@ function FriendListModal({ userId, onClose, onNavigate }: {
                   onPress={() => onNavigate(f.clerk_user_id)}
                   activeOpacity={0.7}
                 >
-                  {f.avatar_url ? (
-                    <Image source={{ uri: f.avatar_url }} style={styles.friendAvatar} />
-                  ) : (
-                    <View style={[styles.friendAvatar, styles.friendAvatarFallback]}>
-                      <Text style={styles.friendAvatarInitials}>
-                        {(f.display_name ?? f.username ?? '?').trim().split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
-                      </Text>
-                    </View>
-                  )}
+                  <Avatar url={f.avatar_url} name={f.display_name ?? f.username} size={38} />
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.friendRowName}>{f.display_name ?? f.username}</Text>
                     {f.display_name ? <Text style={styles.friendRowHandle}>@{f.username}</Text> : null}
@@ -209,6 +148,7 @@ export default function UserProfileScreen() {
   const { getToken } = useAuth();
   const { user: me } = useUser();
   const router = useRouter();
+  const T = useColors();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -371,7 +311,6 @@ export default function UserProfileScreen() {
 
   const isFriend = profile?.friendship_status === 'accepted';
   const displayName = profile?.display_name ?? profile?.username ?? 'Explorer';
-  const initials = displayName[0]?.toUpperCase() ?? '?';
   const joinedDate = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : null;
@@ -382,13 +321,15 @@ export default function UserProfileScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['bottom']}>
         {loading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator color={C.primary} />
+            <ActivityIndicator color={T.primary} />
           </View>
         ) : notFound || !profile ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-            <Ionicons name="person-outline" size={40} color={C.inkMute} />
-            <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>User not found</Text>
-            <Text style={{ fontSize: 13, color: C.inkMute }}>This profile doesn't exist.</Text>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <EmptyState
+              icon="person-outline"
+              title="User not found"
+              subtitle="This profile doesn't exist."
+            />
           </View>
         ) : (
           <ScrollView
@@ -397,13 +338,7 @@ export default function UserProfileScreen() {
           >
             {/* Hero */}
             <View style={styles.hero}>
-              {profile.avatar_url ? (
-                <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text style={styles.avatarInitials}>{initials}</Text>
-                </View>
-              )}
+              <Avatar url={profile.avatar_url} name={displayName} size={88} style={styles.avatar} />
 
               <Text style={styles.name}>{displayName}</Text>
               {profile.username ? (
@@ -448,6 +383,7 @@ export default function UserProfileScreen() {
                 <TouchableOpacity
                   style={[
                     styles.friendButton,
+                    { backgroundColor: T.primary },
                     isFriend && styles.friendButtonSecondary,
                     friendBusy && { opacity: 0.6 },
                   ]}
@@ -456,13 +392,13 @@ export default function UserProfileScreen() {
                   activeOpacity={0.8}
                 >
                   {friendBusy ? (
-                    <ActivityIndicator size="small" color={isFriend ? C.inkMute : '#FFFBF1'} />
+                    <ActivityIndicator size="small" color={isFriend ? C.inkMute : C.onPrimary} />
                   ) : (
                     <>
                       <Ionicons
                         name={friendButtonIcon()}
                         size={16}
-                        color={isFriend ? C.inkSoft : '#FFFBF1'}
+                        color={isFriend ? C.inkSoft : C.onPrimary}
                         style={{ marginRight: 7 }}
                       />
                       <Text style={[styles.friendButtonText, isFriend && styles.friendButtonTextSecondary]}>
@@ -482,7 +418,7 @@ export default function UserProfileScreen() {
               <View style={styles.mapCard}>
                 {mapParks.length > 0 ? (
                   <MapView
-                    style={{ width: '100%', height: 220 }}
+                    style={{ width: '100%', height: 220, borderRadius: 14 }}
                     provider={PROVIDER_DEFAULT}
                     initialRegion={mapRegion}
                     rotateEnabled={false}
@@ -571,7 +507,16 @@ export default function UserProfileScreen() {
         )}
 
         {selectedBadge ? (
-          <BadgeInfoModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+          <BadgeInfoModal
+            badge={{
+              id: selectedBadge.badge_id,
+              name: selectedBadge.name,
+              emoji: selectedBadge.emoji,
+              tier: selectedBadge.tier,
+              earned_at: selectedBadge.earned_at,
+            }}
+            onClose={() => setSelectedBadge(null)}
+          />
         ) : null}
 
         {showFriendsModal && profile ? (
@@ -602,22 +547,9 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
     borderWidth: 2,
     borderColor: 'rgba(27,26,22,0.12)',
     marginBottom: 14,
-  },
-  avatarFallback: {
-    backgroundColor: '#F7F0DE',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: C.inkMute,
   },
   name: {
     fontSize: 22,
@@ -690,7 +622,6 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   friendButton: {
-    backgroundColor: C.primary,
     borderRadius: 10,
     paddingVertical: 13,
     minHeight: 46,
@@ -704,7 +635,7 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
   },
   friendButtonText: {
-    color: '#FFFBF1',
+    color: C.onPrimary,
     fontWeight: '700',
     fontSize: 14,
   },
@@ -740,6 +671,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: C.surface,
+    borderRadius: 14,
   },
   mapEmptyText: {
     fontSize: 13,
@@ -749,9 +681,9 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: '#2F7A4A',
+    backgroundColor: C.visited,
     borderWidth: 2,
-    borderColor: '#FFFBF1',
+    borderColor: C.onPrimary,
   },
 
   // Badge chips
@@ -780,84 +712,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-  },
-
-  // Badge detail modal — light theme, matches web profile BadgeModal
-  badgeOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  badgeModal: {
-    backgroundColor: C.bg,
-    borderRadius: 18,
-    borderWidth: 0.5,
-    borderColor: C.hairline,
-    paddingVertical: 32,
-    paddingHorizontal: 28,
-    width: '100%',
-    maxWidth: 360,
-    alignItems: 'center',
-  },
-  badgeModalClose: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    zIndex: 10,
-    padding: 4,
-  },
-  badgeModalEmoji: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  badgeModalName: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: C.ink,
-    letterSpacing: -0.3,
-    textAlign: 'center',
-  },
-  badgeModalTier: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
-    marginTop: 5,
-    marginBottom: 20,
-  },
-  badgeModalHow: {
-    backgroundColor: C.surface,
-    borderWidth: 0.5,
-    borderColor: C.hairline,
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    alignSelf: 'stretch',
-  },
-  badgeModalHowKicker: {
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 1.2,
-    color: C.inkMute,
-    marginBottom: 6,
-  },
-  badgeModalHowText: {
-    fontSize: 13.5,
-    color: C.inkSoft,
-    lineHeight: 21,
-  },
-  badgeModalEarned: {
-    fontSize: 13,
-    color: C.inkMute,
-    textAlign: 'center',
   },
 
   // Friends list bottom sheet
@@ -900,21 +754,6 @@ const styles = StyleSheet.create({
   friendRowSep: {
     height: 0.5,
     backgroundColor: C.hairline,
-  },
-  friendAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-  },
-  friendAvatarFallback: {
-    backgroundColor: C.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  friendAvatarInitials: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#FFFBF1',
   },
   friendRowName: {
     fontSize: 14,

@@ -8,21 +8,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
-import { usePalette, PALETTES } from '@/lib/palette';
+import { usePalette, PALETTES, STATIC as BASE_C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
+import { Avatar } from '@/components/Avatar';
 import * as ImagePicker from 'expo-image-picker';
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const BASE_C = {
-  bg:       '#F2EBDB',
-  surface:  '#FFFBF1',
-  surfaceAlt:'#F7F0DE',
-  ink:      '#1B1A16',
-  inkSoft:  '#3C3A33',
-  inkMute:  '#7A746A',
-  hairline: 'rgba(27,26,22,0.10)',
-  error:    '#C04040',
-};
+const ERROR = '#C04040';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -31,7 +21,7 @@ const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const fieldStyles = StyleSheet.create({
   field:      { gap: 5 },
   fieldLabel: { fontWeight: '600', fontSize: 13, color: BASE_C.ink, letterSpacing: 0.2 },
-  fieldError: { fontSize: 13, color: BASE_C.error },
+  fieldError: { fontSize: 13, color: ERROR },
 });
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
@@ -51,12 +41,9 @@ export default function EditProfileScreen() {
   const { getToken } = useAuth();
   const { signOut } = useClerk();
   const { user } = useUser();
-  const { paletteId, colors: paletteColors, setPalette } = usePalette();
-  const C = useMemo(
-    () => ({ ...BASE_C, primary: paletteColors.primary, accent: paletteColors.accent }),
-    [paletteColors],
-  );
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const { paletteId, setPalette } = usePalette();
+  const C = useColors();
+  const styles = useThemedStyles(makeStyles);
 
   const [firstName,     setFirstName]     = useState('');
   const [lastName,      setLastName]      = useState('');
@@ -260,8 +247,7 @@ export default function EditProfileScreen() {
     }
   };
 
-  const initials = ([firstName[0], lastName[0]].filter(Boolean).join('').toUpperCase()
-    || user?.username?.[0]?.toUpperCase()) ?? '?';
+  const avatarName = [firstName, lastName].filter(Boolean).join(' ') || user?.username || '?';
 
   if (loading) {
     return (
@@ -286,15 +272,14 @@ export default function EditProfileScreen() {
           <View style={styles.avatarNameRow}>
             <TouchableOpacity onPress={handleAvatarTap} activeOpacity={0.8}>
               <View style={styles.avatarWrap}>
-                {avatarPreview && !removeAvatarPending ? (
-                  <Image source={{ uri: avatarPreview }} style={styles.avatar} />
-                ) : (
-                  <View style={[styles.avatar, styles.avatarFallback]}>
-                    <Text style={styles.avatarInitials}>{initials}</Text>
-                  </View>
-                )}
+                <Avatar
+                  url={avatarPreview && !removeAvatarPending ? avatarPreview : null}
+                  name={avatarName}
+                  size={92}
+                  style={styles.avatar}
+                />
                 <View style={styles.cameraButton}>
-                  <Ionicons name="camera" size={13} color="#FFFBF1" />
+                  <Ionicons name="camera" size={13} color={BASE_C.onPrimary} />
                 </View>
               </View>
               <Text style={styles.avatarHint}>Edit photo</Text>
@@ -394,7 +379,7 @@ export default function EditProfileScreen() {
                       {label}
                     </Text>
                     {selected && (
-                      <Ionicons name="checkmark" size={12} color={colors.primary} style={{ marginLeft: 'auto' }} />
+                      <Ionicons name="checkmark" size={18} color={colors.primary} style={{ marginLeft: 'auto' }} />
                     )}
                   </TouchableOpacity>
                 );
@@ -535,7 +520,7 @@ export default function EditProfileScreen() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
+function makeStyles(C: Colors) {
   return StyleSheet.create({
   scroll: {
     padding: 20,
@@ -559,21 +544,8 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     textAlign: 'center',
   },
   avatar: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
     borderWidth: 1.5,
     borderColor: C.hairline,
-  },
-  avatarFallback: {
-    backgroundColor: C.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    fontWeight: '800',
-    fontSize: 30,
-    color: C.inkMute,
   },
   cameraButton: {
     position: 'absolute',
@@ -644,7 +616,7 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
   },
   errorText: {
     fontSize: 13,
-    color: C.error,
+    color: ERROR,
   },
   saveButton: {
     backgroundColor: C.primary,
@@ -655,7 +627,7 @@ function makeStyles(C: typeof BASE_C & { primary: string; accent: string }) {
     minHeight: 46,
   },
   saveText: {
-    color: '#FFFBF1',
+    color: C.onPrimary,
     fontWeight: '700',
     fontSize: 14,
   },

@@ -14,27 +14,14 @@ import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
-import { useColors } from '@/lib/palette';
+import { STATIC as C, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:         '#F2EBDB',
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkSoft:    '#3C3A33',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  primary:    '#1F3D2E',
-};
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 // ── Filter chip ───────────────────────────────────────────────────────────────
 
-type Filter = 'all' | 'visits' | 'badges';
+type Filter = 'all' | 'friends' | 'visits' | 'badges';
 
 function FilterChip({
   label, active, primary, onPress,
@@ -158,6 +145,7 @@ export default function FeedScreen() {
   }, []);
 
   const filtered = posts.filter(p =>
+    filter === 'friends' ? p.is_friend_post :
     filter === 'visits' ? !!p.visit_id :
     filter === 'badges' ? !!p.badge_id :
     true
@@ -179,9 +167,10 @@ export default function FeedScreen() {
       {/* Filter chips — only show when there are posts */}
       {posts.length > 0 && (
         <View style={styles.chips}>
-          <FilterChip label="All"    active={filter === 'all'}    primary={palette.primary} onPress={() => setFilter('all')} />
-          <FilterChip label="Visits" active={filter === 'visits'} primary={palette.primary} onPress={() => setFilter(f => f === 'visits' ? 'all' : 'visits')} />
-          <FilterChip label="Badges" active={filter === 'badges'} primary={palette.primary} onPress={() => setFilter(f => f === 'badges' ? 'all' : 'badges')} />
+          <FilterChip label="All"     active={filter === 'all'}     primary={palette.primary} onPress={() => setFilter('all')} />
+          <FilterChip label="Friends" active={filter === 'friends'} primary={palette.primary} onPress={() => setFilter(f => f === 'friends' ? 'all' : 'friends')} />
+          <FilterChip label="Visits"  active={filter === 'visits'}  primary={palette.primary} onPress={() => setFilter(f => f === 'visits' ? 'all' : 'visits')} />
+          <FilterChip label="Badges"  active={filter === 'badges'}  primary={palette.primary} onPress={() => setFilter(f => f === 'badges' ? 'all' : 'badges')} />
         </View>
       )}
     </View>
@@ -209,7 +198,7 @@ export default function FeedScreen() {
         onPress={() => loadFeed()}
         style={{ marginTop: 4, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: palette.primary, borderRadius: 12 }}
       >
-        <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+        <Text style={{ color: C.onPrimary, fontWeight: '700', fontSize: 14 }}>Retry</Text>
       </TouchableOpacity>
     </View>
   ) : (
@@ -259,7 +248,7 @@ export default function FeedScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => loadFeed(true)}
-            tintColor={C.primary}
+            tintColor={palette.primary}
           />
         }
         removeClippedSubviews
@@ -376,14 +365,12 @@ const styles = StyleSheet.create({
     borderRadius: 100, borderWidth: 0.5, borderColor: C.hairline,
     backgroundColor: C.surfaceAlt,
   },
-  chipActive: {
-    backgroundColor: C.primary, borderColor: C.primary,
-  },
+  chipActive: {},
   chipText: {
     fontSize: 13, fontWeight: '600', color: C.inkSoft,
   },
   chipTextActive: {
-    color: '#FFFBF1',
+    color: C.onPrimary,
   },
 
   // Footer

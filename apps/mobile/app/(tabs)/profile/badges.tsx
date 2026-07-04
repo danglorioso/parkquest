@@ -8,19 +8,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:         '#F2EBDB',
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkSoft:    '#3C3A33',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  primary:    '#1F3D2E',
-};
+import { STATIC as C, useColors } from '@/lib/palette';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW   = Dimensions.get('window').width;
@@ -345,6 +333,7 @@ type Audience = typeof AUDIENCE_OPTS[number]['value'];
 
 function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
   const { getToken, userId } = useAuth();
+  const T = useColors();
   const [caption, setCaption]             = useState('');
   const [audience, setAudience]           = useState<Audience>('friends');
   const [submitting, setSubmitting]       = useState(false);
@@ -437,10 +426,10 @@ function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => 
                   key={opt.value}
                   onPress={() => setAudience(opt.value)}
                   activeOpacity={0.7}
-                  style={[styles.audiencePill, active && styles.audiencePillActive]}
+                  style={[styles.audiencePill, active && { borderWidth: 1.5, borderColor: T.primary, backgroundColor: `${T.primary}17` }]}
                 >
-                  <Ionicons name={opt.icon} size={13} color={active ? C.primary : C.inkMute} />
-                  <Text style={[styles.audienceLabel, active && { color: C.primary }]}>
+                  <Ionicons name={opt.icon} size={13} color={active ? T.primary : C.inkMute} />
+                  <Text style={[styles.audienceLabel, active && { color: T.primary }]}>
                     {opt.label}
                   </Text>
                 </TouchableOpacity>
@@ -470,11 +459,12 @@ function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => 
               activeOpacity={0.8}
               style={[
                 styles.shareBtn,
+                { backgroundColor: T.primary },
                 alreadyShared && styles.shareBtnDisabled,
                 submitting && { opacity: 0.55 },
               ]}
             >
-              {!alreadyShared && <Ionicons name="checkmark" size={13} color="#FFFBF1" />}
+              {!alreadyShared && <Ionicons name="checkmark" size={13} color={C.onPrimary} />}
               <Text style={[styles.shareBtnText, alreadyShared && { color: C.inkMute }]}>
                 {alreadyShared ? 'Already shared' : 'Share'}
               </Text>
@@ -491,6 +481,7 @@ function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => 
 export default function BadgesScreen() {
   const { getToken } = useAuth();
   const tabBarSpace = useTabBarSpace();
+  const T = useColors();
   const [badges,        setBadges]        = useState<BadgeData[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState(false);
@@ -647,7 +638,7 @@ export default function BadgesScreen() {
     return (
       <SafeAreaView style={styles.screen} edges={[]}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={C.primary} />
+          <ActivityIndicator size="large" color={T.primary} />
         </View>
       </SafeAreaView>
     );
@@ -661,9 +652,9 @@ export default function BadgesScreen() {
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
           <TouchableOpacity
             onPress={() => { setLoading(true); loadBadges(); }}
-            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: T.primary, borderRadius: 12 }}
           >
-            <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+            <Text style={{ color: C.onPrimary, fontWeight: '700', fontSize: 14 }}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -902,7 +893,7 @@ const styles = StyleSheet.create({
   },
   shareBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: C.primary, borderRadius: 8,
+    borderRadius: 8,
     paddingHorizontal: 14, paddingVertical: 5,
   },
   shareBtnDisabled: {
@@ -910,7 +901,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: C.hairline,
   },
   shareBtnText: {
-    fontSize: 13, fontWeight: '700', color: '#FFFBF1',
+    fontSize: 13, fontWeight: '700', color: C.onPrimary,
   },
   sharePreview: {
     marginHorizontal: 18, marginTop: 16,
@@ -940,10 +931,6 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
     paddingVertical: 7, borderRadius: 8,
     borderWidth: 0.5, borderColor: C.hairline,
-  },
-  audiencePillActive: {
-    borderWidth: 1.5, borderColor: C.primary,
-    backgroundColor: 'rgba(31,61,46,0.09)',
   },
   audienceLabel: {
     fontSize: 13, fontWeight: '700', color: C.inkMute,

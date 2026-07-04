@@ -1,13 +1,14 @@
 import { Stack } from 'expo-router';
-
-const HEADER = {
-  headerStyle: { backgroundColor: '#F2EBDB' },
-  headerTintColor: '#1F3D2E',
-  headerShadowVisible: false,
-  headerBackTitle: 'Profile',
-};
+import { STATIC, useColors } from '@/lib/palette';
 
 export default function ProfileStackLayout() {
+  const T = useColors();
+  const HEADER = {
+    headerStyle: { backgroundColor: STATIC.bg },
+    headerTintColor: T.primary,
+    headerShadowVisible: false,
+    headerBackTitle: 'Profile',
+  };
   return (
     <Stack screenOptions={HEADER}>
       <Stack.Screen name="index" options={{ headerShown: false }} />

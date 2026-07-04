@@ -12,24 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
-import { useColors } from '@/lib/palette';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:         '#F2EBDB',
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkSoft:    '#3C3A33',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  hairlineSoft:'rgba(27,26,22,0.06)',
-  primary:    '#1F3D2E',
-  accent:     '#C56B3D',
-  visited:    '#2F7A4A',
-  bucket:     '#D89A3A',
-};
+import { STATIC as C, useColors } from '@/lib/palette';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -350,7 +333,7 @@ function WeatherGrid({ value, onChange }: { value: string[]; onChange: (v: strin
             style={[styles.weatherChip, { backgroundColor: on ? C.primary : C.surfaceAlt, borderColor: on ? C.primary : C.hairline }]}
           >
             <Text style={{ fontSize: 18, lineHeight: 22 }}>{w.emoji}</Text>
-            <Text style={[styles.weatherLabel, { color: on ? '#FFFBF1' : C.inkSoft }]}>{w.label}</Text>
+            <Text style={[styles.weatherLabel, { color: on ? C.onPrimary : C.inkSoft }]}>{w.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -410,13 +393,13 @@ function ActivityChips({ value, onChange, npsActivityNames = [] }: {
               style={[styles.activityChip, { backgroundColor: on ? C.primary : C.surfaceAlt, borderColor: on ? C.primary : C.hairline }]}
             >
               {on && <Ionicons name="checkmark" size={11} color="#FFFBF1" />}
-              <Text style={[styles.activityChipText, { color: on ? '#FFFBF1' : C.inkSoft }]}>{a}</Text>
+              <Text style={[styles.activityChipText, { color: on ? C.onPrimary : C.inkSoft }]}>{a}</Text>
             </TouchableOpacity>
           );
         })}
         {customActivities.map(a => (
           <View key={a} style={[styles.activityChip, { backgroundColor: C.primary, borderColor: C.primary }]}>
-            <Text style={[styles.activityChipText, { color: '#FFFBF1' }]}>{a}</Text>
+            <Text style={[styles.activityChipText, { color: C.onPrimary }]}>{a}</Text>
             <TouchableOpacity onPress={() => removeCustom(a)} hitSlop={6}>
               <Ionicons name="close" size={11} color="rgba(255,251,241,0.8)" />
             </TouchableOpacity>
@@ -489,7 +472,7 @@ function ReturnRow({ value, onChange }: { value: Draft['wouldReturn']; onChange:
     <View style={{ flexDirection: 'row', gap: 7 }}>
       {RETURN_OPTS.map(o => {
         const on = value === o.id;
-        const textCol = on ? '#FFFBF1' : C.inkSoft;
+        const textCol = on ? C.onPrimary : C.inkSoft;
         return (
           <TouchableOpacity
             key={o.id} onPress={() => onChange(on ? null : o.id as Draft['wouldReturn'])} activeOpacity={0.7}
@@ -524,7 +507,7 @@ function VisibilityPicker({ value, onChange }: { value: Draft['visibility']; onC
             style={[styles.visRow, { borderColor: on ? C.primary : 'transparent', backgroundColor: on ? C.surface : C.surfaceAlt }]}
           >
             <View style={[styles.visIcon, { backgroundColor: on ? C.primary : C.surface, borderColor: on ? C.primary : C.hairline }]}>
-              <Ionicons name={o.icon as any} size={17} color={on ? '#FFFBF1' : C.inkSoft} />
+              <Ionicons name={o.icon as any} size={17} color={on ? C.onPrimary : C.inkSoft} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontWeight: '700', fontSize: 14, color: C.ink }}>{o.v}</Text>
@@ -548,6 +531,7 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
   onChange: (ids: string[], objs: CompanionUser[]) => void;
   token: string | null;
 }) {
+  const C = useColors();
   const [q, setQ] = useState('');
   const [results, setResults] = useState<CompanionUser[]>([]);
   const [searching, setSearching] = useState(false);
@@ -594,12 +578,12 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
           {tagged.map(u => {
             const name = (u.display_name ?? u.username).split(' ')[0];
             return (
-              <View key={u.clerk_user_id} style={styles.companionChip}>
+              <View key={u.clerk_user_id} style={[styles.companionChip, { backgroundColor: C.primary }]}>
                 {u.avatar_url
                   ? <Image source={{ uri: u.avatar_url }} style={{ width: 22, height: 22, borderRadius: 11 }} />
-                  : <View style={styles.companionInitial}><Text style={{ color: '#FFFBF1', fontSize: 13, fontWeight: '700' }}>{name[0]}</Text></View>
+                  : <View style={styles.companionInitial}><Text style={{ color: C.onPrimary, fontSize: 13, fontWeight: '700' }}>{name[0]}</Text></View>
                 }
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFBF1' }}>{name}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: C.onPrimary }}>{name}</Text>
                 <TouchableOpacity onPress={() => toggle(u)} hitSlop={6}>
                   <Ionicons name="close" size={13} color="rgba(255,251,241,0.8)" />
                 </TouchableOpacity>
@@ -636,7 +620,7 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
               >
                 {u.avatar_url
                   ? <Image source={{ uri: u.avatar_url }} style={{ width: 32, height: 32, borderRadius: 16 }} />
-                  : <View style={[styles.companionInitial, { width: 32, height: 32, borderRadius: 16 }]}><Text style={{ color: '#FFFBF1', fontWeight: '700' }}>{name[0]}</Text></View>
+                  : <View style={[styles.companionInitial, { width: 32, height: 32, borderRadius: 16 }]}><Text style={{ color: C.onPrimary, fontWeight: '700' }}>{name[0]}</Text></View>
                 }
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: '600', fontSize: 13.5, color: C.ink }}>{name}</Text>
@@ -715,18 +699,18 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover }: {
             <View key={url} style={styles.photoThumb}>
               <Image source={{ uri: url }} style={StyleSheet.absoluteFill as any} resizeMode="cover" />
               <TouchableOpacity style={styles.photoCoverBtn} onPress={() => onSetCover(url)}>
-                <Ionicons name={isCover ? 'star' : 'star-outline'} size={11} color={isCover ? C.accent : '#FFFBF1'} />
+                <Ionicons name={isCover ? 'star' : 'star-outline'} size={11} color={isCover ? C.accent : C.onPrimary} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.photoRemoveBtn} onPress={() => onRemove(url)}>
                 <Ionicons name="close" size={11} color="#FFFBF1" />
               </TouchableOpacity>
               {isCover && (
                 <View style={styles.coverBadge}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFBF1', letterSpacing: 0.5 }}>COVER</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.onPrimary, letterSpacing: 0.5 }}>COVER</Text>
                 </View>
               )}
               <View style={styles.photoIndex}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFBF1' }}>{idx + 1}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: C.onPrimary }}>{idx + 1}</Text>
               </View>
             </View>
           );
@@ -750,6 +734,7 @@ function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
   visible: boolean; parks: ParkInfo[]; selected: string;
   onClose: () => void; onPick: (code: string) => void;
 }) {
+  const C = useColors();
   const [q, setQ] = useState('');
   const insets = useSafeAreaInsets();
 
@@ -797,8 +782,8 @@ function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
             return (
               <TouchableOpacity onPress={() => { onPick(p.park_code); onClose(); }} activeOpacity={0.7}
                 style={[styles.parkRow, { backgroundColor: on ? C.surfaceAlt : 'transparent' }]}>
-                <View style={styles.parkBadge}>
-                  <Text style={{ color: '#FFFBF1', fontWeight: '800', fontSize: 13 }}>{state2}</Text>
+                <View style={[styles.parkBadge, { backgroundColor: C.primary }]}>
+                  <Text style={{ color: C.onPrimary, fontWeight: '800', fontSize: 13 }}>{state2}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>{p.name}</Text>
@@ -954,7 +939,7 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
                       <Text style={{
                         fontSize: 13,
                         fontWeight: isViewMonth ? '700' : '500',
-                        color: isViewMonth ? '#FFFBF1' : isFuture ? 'rgba(122,116,106,0.4)' : C.inkSoft,
+                        color: isViewMonth ? C.onPrimary : isFuture ? 'rgba(122,116,106,0.4)' : C.inkSoft,
                       }}>{m}</Text>
                     </TouchableOpacity>
                   );
@@ -1022,7 +1007,7 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
                           <Text style={{
                             fontSize: 13,
                             fontWeight: endpoint ? '800' : mid ? '700' : '400',
-                            color: endpoint ? '#FFFBF1' : disabled ? 'rgba(122,116,106,0.35)' : mid ? C.primary : C.ink,
+                            color: endpoint ? C.onPrimary : disabled ? 'rgba(122,116,106,0.35)' : mid ? C.primary : C.ink,
                           }}>{d.getDate()}</Text>
                         </TouchableOpacity>
                       </View>
@@ -1041,6 +1026,7 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
 // ── Section wrapper ───────────────────────────────────────────────────────────
 
 function RequirementTag({ kind }: { kind: 'required' | 'optional' }) {
+  const C = useColors();
   return (
     <Text style={{
       fontSize: 13, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase',
@@ -1092,7 +1078,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
         onClose={() => setShowCalendar(false)}
       />
 
-      <Section kicker="01" title="Where & when">
+      <Section title="Where & when">
         {/* Park picker */}
         <TouchableOpacity onPress={onPickPark} activeOpacity={0.7} style={[
           styles.parkBanner,
@@ -1117,7 +1103,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: 'rgba(255,251,241,0.8)', letterSpacing: 1.2 }}>NATIONAL PARK</Text>
-                  <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.3, marginTop: 2 }}>{park.name}</Text>
+                  <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '800', color: C.onPrimary, letterSpacing: -0.3, marginTop: 2 }}>{park.name}</Text>
                   <Text style={{ fontSize: 13, color: 'rgba(255,251,241,0.8)', marginTop: 1 }}>{fullStateName(park.states.split(',')[0].trim())}</Text>
                 </View>
                 <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,251,241,0.92)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
@@ -1313,6 +1299,7 @@ function PreviewChip({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; la
 function VisitPreview({ draft, park, userName, avatarUrl }: {
   draft: Draft; park: ParkInfo | undefined; userName: string; avatarUrl?: string | null;
 }) {
+  const C = useColors();
   const visIcon: keyof typeof Ionicons.glyphMap =
     draft.visibility === 'Private' ? 'lock-closed' :
     draft.visibility === 'Public'  ? 'globe-outline' : 'people';
@@ -1328,7 +1315,7 @@ function VisitPreview({ draft, park, userName, avatarUrl }: {
           <Image source={{ uri: avatarUrl }} style={{ width: 32, height: 32, borderRadius: 16 }} />
         ) : (
           <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: '#FFFBF1', fontWeight: '800', fontSize: 13 }}>{userName[0]?.toUpperCase()}</Text>
+            <Text style={{ color: C.onPrimary, fontWeight: '800', fontSize: 13 }}>{userName[0]?.toUpperCase()}</Text>
           </View>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -1375,7 +1362,7 @@ function VisitPreview({ draft, park, userName, avatarUrl }: {
           {draft.photos.length > 1 && (
             <View style={{ position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(20,17,12,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 100 }}>
               <Ionicons name="images-outline" size={11} color="#FFFBF1" />
-              <Text style={{ color: '#FFFBF1', fontSize: 13, fontWeight: '600' }}>{draft.photos.length}</Text>
+              <Text style={{ color: C.onPrimary, fontSize: 13, fontWeight: '600' }}>{draft.photos.length}</Text>
             </View>
           )}
         </View>
@@ -1771,8 +1758,8 @@ export default function LogVisitModal() {
                 {' · '}{draftAge(restoreBanner.savedAt)}
               </Text>
             </View>
-            <TouchableOpacity onPress={resumeDraft} style={styles.draftResumeBtn} activeOpacity={0.8}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFBF1' }}>Restore</Text>
+            <TouchableOpacity onPress={resumeDraft} style={[styles.draftResumeBtn, { backgroundColor: C.primary }]} activeOpacity={0.8}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: C.onPrimary }}>Restore</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={discardSavedDraft} hitSlop={6} style={styles.draftDiscardBtn} activeOpacity={0.7}>
               <Text style={{ fontSize: 13, fontWeight: '600', color: C.inkMute }}>Discard</Text>
@@ -1823,13 +1810,13 @@ export default function LogVisitModal() {
         <TouchableOpacity
           onPress={isLast ? handleSubmit : goNext}
           disabled={!canContinue || submitting}
-          style={[styles.nextBtn, { backgroundColor: canContinue ? C.primary : C.surfaceAlt }]}
+          style={[styles.nextBtn, { backgroundColor: canContinue ? C.primary : C.surfaceAlt, shadowColor: C.primary }]}
           activeOpacity={0.8}
         >
-          <Text style={{ fontSize: 14, fontWeight: '800', color: canContinue ? '#FFFBF1' : C.inkMute }}>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: canContinue ? C.onPrimary : C.inkMute }}>
             {isLast ? (submitting ? 'Saving…' : isEdit ? 'Save' : 'Post') : 'Continue'}
           </Text>
-          {!isLast && <Ionicons name="arrow-forward" size={14} color={canContinue ? '#FFFBF1' : C.inkMute} />}
+          {!isLast && <Ionicons name="arrow-forward" size={14} color={canContinue ? C.onPrimary : C.inkMute} />}
         </TouchableOpacity>
       </View>
 
@@ -1860,7 +1847,6 @@ const styles = StyleSheet.create({
     fontSize: 13, color: C.inkMute, marginTop: 1,
   },
   draftResumeBtn: {
-    backgroundColor: C.primary,
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 8,
     flexShrink: 0,
@@ -1964,7 +1950,6 @@ const styles = StyleSheet.create({
   companionChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingLeft: 4, paddingRight: 8, paddingVertical: 4, borderRadius: 100,
-    backgroundColor: C.primary,
   },
   companionInitial: {
     width: 22, height: 22, borderRadius: 11,
@@ -2036,7 +2021,7 @@ const styles = StyleSheet.create({
   },
   parkBadge: {
     width: 34, height: 34, borderRadius: 9,
-    backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
 
   // Date picker
@@ -2175,7 +2160,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 18, paddingVertical: 11, borderRadius: 10,
     width: 120, justifyContent: 'center',
-    shadowColor: '#1F3D2E', shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
 });

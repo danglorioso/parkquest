@@ -11,25 +11,9 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
 import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
-import { useColors } from '@/lib/palette';
+import { STATIC as C, useColors } from '@/lib/palette';
+import { parkGradient } from '@/lib/parkColors';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:         '#F2EBDB',
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkSoft:    '#3C3A33',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  hairlineSoft:'rgba(27,26,22,0.06)',
-  primary:    '#1F3D2E',
-  accent:     '#C56B3D',
-  visited:    '#2F7A4A',
-  bucket:     '#C48A20',
-};
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const CARD_GAP = 14;
@@ -58,14 +42,6 @@ type StatusFilter = 'all' | 'visited' | 'bucketList' | 'notVisited';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const GRADIENTS = [
-  ['#1F3D2E', '#2F7A4A'],
-  ['#2D4F66', '#1F3D2E'],
-  ['#7B3A1F', '#C56B3D'],
-  ['#3A2E5C', '#6E97A3'],
-  ['#2F7A4A', '#2D4F66'],
-];
-
 const REGIONS = [
   { label: 'Northeast',     states: ['CT','ME','MA','NH','NJ','NY','PA','RI','VT'] },
   { label: 'Mid-Atlantic',  states: ['DC','DE','MD','NC','VA','WV'] },
@@ -89,8 +65,8 @@ const STATUS_FILTERS: Array<{ key: StatusFilter; label: string; color: string }>
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function gradientColors(code: string): [string, string] {
-  const idx = code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length;
-  return [GRADIENTS[idx][0], GRADIENTS[idx][1]];
+  const g = parkGradient(code);
+  return [g[0], g[1]];
 }
 
 function parkStatus(code: string, visits: Visit[]): ParkStatus {
@@ -338,9 +314,9 @@ function FilterPanel({
         >
           <Ionicons
             name="options-outline" size={15}
-            color={open || activeCount > 0 ? '#FFFBF1' : C.inkSoft}
+            color={open || activeCount > 0 ? C.onPrimary : C.inkSoft}
           />
-          <Text style={[styles.filterToggleText, (open || activeCount > 0) && { color: '#FFFBF1' }]}>
+          <Text style={[styles.filterToggleText, (open || activeCount > 0) && { color: C.onPrimary }]}>
             Filters
           </Text>
           {activeCount > 0 && (
@@ -350,7 +326,7 @@ function FilterPanel({
           )}
           <Ionicons
             name={open ? 'chevron-up' : 'chevron-down'} size={13}
-            color={open || activeCount > 0 ? '#FFFBF1' : C.inkMute}
+            color={open || activeCount > 0 ? C.onPrimary : C.inkMute}
           />
         </TouchableOpacity>
 
@@ -450,7 +426,7 @@ function FilterPanel({
                             activeOpacity={0.7}
                             style={styles.pillReset}
                           >
-                            <Text style={styles.pillResetText}>Clear</Text>
+                            <Text style={[styles.pillResetText, { color: accent }]}>Clear</Text>
                           </TouchableOpacity>
                         )}
                       </>
@@ -625,7 +601,6 @@ export default function ParksScreen() {
     <View>
       {/* Page header */}
       <View style={styles.header}>
-        <Text style={styles.kicker}>{loading ? 'NATIONAL PARKS' : `${parks.length} NATIONAL PARKS`}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={styles.title}>Explore the Parks</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -633,7 +608,7 @@ export default function ParksScreen() {
               <TouchableOpacity
                 onPress={() => setShowViewMenu(v => !v)}
                 hitSlop={8}
-                style={[styles.viewToggle, showViewMenu && styles.viewToggleActive]}
+                style={[styles.viewToggle, showViewMenu && [styles.viewToggleActive, { backgroundColor: primary + '14' }]]}
               >
                 <Ionicons
                   name={viewMode === 'grid' ? 'grid-outline' : 'list-outline'}
@@ -649,7 +624,7 @@ export default function ParksScreen() {
                   ] as const).map(opt => (
                     <TouchableOpacity
                       key={opt.mode}
-                      style={[styles.viewMenuItem, viewMode === opt.mode && styles.viewMenuItemActive]}
+                      style={[styles.viewMenuItem, viewMode === opt.mode && { backgroundColor: primary + '12' }]}
                       onPress={() => { setViewMode(opt.mode); setShowViewMenu(false); }}
                       activeOpacity={0.7}
                     >
@@ -739,7 +714,7 @@ export default function ParksScreen() {
             onPress={() => loadData()}
             style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: primary, borderRadius: 12 }}
           >
-            <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+            <Text style={{ color: C.onPrimary, fontWeight: '700', fontSize: 14 }}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -803,13 +778,6 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 14,
   },
-  kicker: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.inkMute,
-    letterSpacing: 1.4,
-    marginBottom: 3,
-  },
   title: {
     fontSize: 30,
     fontWeight: '900',
@@ -853,10 +821,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
   },
-  filterToggleActive: {
-    backgroundColor: C.primary,
-    borderColor: C.primary,
-  },
+  filterToggleActive: {},
   filterToggleText: {
     fontSize: 13,
     fontWeight: '600',
@@ -867,14 +832,13 @@ const styles = StyleSheet.create({
     height: 17,
     borderRadius: 9,
     paddingHorizontal: 4,
-    backgroundColor: '#FFFBF1',
+    backgroundColor: C.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterBadgeText: {
     fontSize: 13,
     fontWeight: '800',
-    color: C.primary,
   },
   filterPanel: {
     marginTop: 8,
@@ -925,10 +889,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
   },
-  pillActive: {
-    backgroundColor: C.primary,
-    borderColor: C.primary,
-  },
+  pillActive: {},
   pillDot: {
     width: 6,
     height: 6,
@@ -940,7 +901,7 @@ const styles = StyleSheet.create({
     color: C.ink,
   },
   pillTextActive: {
-    color: '#FFFBF1',
+    color: C.onPrimary,
     fontWeight: '600',
   },
   pillReset: {
@@ -953,16 +914,13 @@ const styles = StyleSheet.create({
   pillResetText: {
     fontSize: 13,
     fontWeight: '600',
-    color: C.accent,
   },
 
   activeChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(31,61,46,0.10)',
     borderWidth: 0.5,
-    borderColor: C.primary,
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -970,7 +928,6 @@ const styles = StyleSheet.create({
   activeChipText: {
     fontSize: 13,
     fontWeight: '600',
-    color: C.primary,
     maxWidth: 160,
   },
 
@@ -988,7 +945,6 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   viewToggleActive: {
-    backgroundColor: C.primary + '14',
     borderRadius: 6,
   },
   viewMenu: {
@@ -1102,7 +1058,7 @@ const styles = StyleSheet.create({
   statusBadgeText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFBF1',
+    color: C.onPrimary,
     letterSpacing: 0.3,
   },
 

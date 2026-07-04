@@ -12,6 +12,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BADGE_MAP, BADGE_TIER_COLORS } from '@/lib/badges';
 import { STATIC as C, useColors } from '@/lib/palette';
+import { relTime } from '@/lib/dates';
+import { parkColor } from '@/lib/parkColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -67,23 +69,6 @@ interface Liker {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-export function relTime(iso: string): string {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60)       return 'just now';
-  if (diff < 3600)     return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400)    return `${Math.floor(diff / 3600)}h`;
-  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-const PARK_COLORS = [
-  '#1F3D2E', '#2D4F66', '#7B3A1F', '#3A2E5C', '#2F7A4A',
-];
-export function parkColor(code: string): string {
-  const idx = code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % PARK_COLORS.length;
-  return PARK_COLORS[idx];
-}
 
 const WEATHER_LABELS: Record<string, string> = {
   clear: 'Clear', partly: 'Partly cloudy', cloudy: 'Cloudy',

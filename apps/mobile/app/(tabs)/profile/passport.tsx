@@ -10,20 +10,11 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
+import { STATIC as C, useColors } from '@/lib/palette';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const C = {
-  bg:          '#F2EBDB',
-  surface:     '#FFFBF1',
-  surfaceAlt:  '#F7F0DE',
-  ink:         '#1B1A16',
-  inkSoft:     '#3C3A33',
-  inkMute:     '#7A746A',
-  hairline:    'rgba(27,26,22,0.10)',
-  primary:     '#1F3D2E',
-  primaryDeep: '#152A20',
-};
+// Passport-book aesthetic: paper, gold foil, and stamp inks are intentionally
+// fixed — only the cover color follows the app palette.
 
 const PAPER  = '#FAF3E0';
 const GOLD   = '#C9A94A';
@@ -145,6 +136,7 @@ export default function PassportScreen() {
   const tabBarSpace = useTabBarSpace();
   const { user }      = useUser();
   const router        = useRouter();
+  const T             = useColors();
 
   const [profile,     setProfile]     = useState<ProfileInfo | null>(null);
   const [visits,      setVisits]      = useState<Visit[]>([]);
@@ -258,9 +250,9 @@ export default function PassportScreen() {
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
           <TouchableOpacity
             onPress={() => load()}
-            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: T.primary, borderRadius: 12 }}
           >
-            <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+            <Text style={{ color: C.onPrimary, fontWeight: '700', fontSize: 14 }}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -283,7 +275,7 @@ export default function PassportScreen() {
         renderItem={({ item }) => {
           if (item.type === 'header') {
             return (
-              <View style={st.header}>
+              <View style={[st.header, { backgroundColor: T.primaryDeep }]}>
                 {/* Wavy background */}
                 <Svg
                   width="100%"
@@ -312,7 +304,7 @@ export default function PassportScreen() {
 
                 {/* Avatar + identity */}
                 <View style={st.headerIdentity}>
-                  <View style={st.headerAvatar}>
+                  <View style={[st.headerAvatar, { backgroundColor: T.primary }]}>
                     {avatarUrl ? (
                       <Image source={{ uri: avatarUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     ) : (
@@ -419,7 +411,6 @@ export default function PassportScreen() {
 const st = StyleSheet.create({
   // ── Header (green passport card) ──
   header: {
-    backgroundColor: C.primaryDeep,
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 20,
@@ -460,7 +451,6 @@ const st = StyleSheet.create({
     borderWidth: 2,
     borderColor: GOLD + '66',
     overflow: 'hidden',
-    backgroundColor: C.primary,
     flexShrink: 0,
   },
   headerName: {

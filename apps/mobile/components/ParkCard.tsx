@@ -4,6 +4,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { STATIC as C } from '@/lib/palette';
 import { STATE_NAMES } from '@/lib/stateNames';
+import { parkColor } from '@/lib/parkColors';
 
 // Matches web parks/page.tsx `ParkCard` + `CardSkeleton` exactly.
 // Park interface is intentionally minimal so it composes with any API shape.
@@ -25,22 +26,6 @@ export interface ParkCardProps {
   status?:     ParkStatus;
   showStatus?: boolean;
   onPress?:    () => void;
-}
-
-// ── Gradient palette (deterministic by park_code) ─────────────────────────────
-// Matches web PostCard.tsx `parkGradient` exactly.
-
-const GRADIENTS: [string, string, string][] = [
-  ['#1F3D2E', '#2F7A4A', '#C56B3D'],
-  ['#2D4F66', '#1F3D2E', '#D89A3A'],
-  ['#7B3A1F', '#C56B3D', '#1F3D2E'],
-  ['#3A2E5C', '#6E97A3', '#D89A3A'],
-  ['#2F7A4A', '#1F3D2E', '#2D4F66'],
-];
-
-export function parkGradientColor(code: string): string {
-  const idx = code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length;
-  return GRADIENTS[idx][0];
 }
 
 function stateName(abbr: string): string {
@@ -66,7 +51,7 @@ function StatusBadge({ status }: { status: ParkStatus }) {
 
 export function ParkCard({ park, status = 'notVisited', showStatus = true, onPress }: ParkCardProps) {
   const [imgFailed, setImgFailed] = useState(false);
-  const bg = parkGradientColor(park.park_code);
+  const bg = parkColor(park.park_code);
   const abbr = park.states.split(',')[0]?.trim() ?? park.states;
   const state = stateName(abbr);
 

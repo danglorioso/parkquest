@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Animated, Dimensions, Image, Linking, Modal, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Animated, Dimensions, Image, Linking, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -7,31 +7,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
-import { BADGE_MAP } from '@/lib/badges';
+import { BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
+import { BadgeInfoModal } from '@/components/BadgeInfoModal';
 import { Wordmark } from '@/components/Wordmark';
 import { ParkStamp } from '@/components/ParkStamp';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
-import { useColors } from '@/lib/palette';
+import { STATIC as C, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:          '#F2EBDB',
-  surface:     '#FFFBF1',
-  surfaceAlt:  '#F7F0DE',
-  ink:         '#1B1A16',
-  inkSoft:     '#3C3A33',
-  inkMute:     '#7A746A',
-  hairline:    'rgba(27,26,22,0.10)',
-  primary:     '#1F3D2E',
-  primaryDeep: '#152A20',
-  accent:      '#C56B3D',
-  gold:        '#C9A94A',
-};
+// Passport gold foil — fixed across palettes, matches the passport screen
+const GOLD = '#C9A94A';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -68,10 +56,9 @@ interface StampPreview {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const TIER_COLOR: Record<string, string> = {
-  bronze: '#B27339', silver: '#A8A39B', gold: '#D4A93F',
-  platinum: '#6E97A3', legendary: '#8B5DBF',
-};
+function tierFill(tier: string): string {
+  return (BADGE_TIER_COLORS[tier as BadgeTier] ?? BADGE_TIER_COLORS.bronze).fill;
+}
 
 async function apiFetch<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -122,50 +109,6 @@ function PreviewSkeleton() {
   );
 }
 
-// ── Badge detail modal — emoji, tier, how-to-earn, earned date ─────────────────
-
-function BadgeInfoModal({ badge, onClose }: { badge: BadgeSummary; onClose: () => void }) {
-  const def = BADGE_MAP.get(badge.id);
-  const tint = TIER_COLOR[badge.tier] ?? '#B27339';
-  const earnedDate = badge.earned_at
-    ? new Date(badge.earned_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-    : null;
-
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.badgeOverlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.badgeModal}>
-          <TouchableOpacity onPress={onClose} style={styles.badgeModalClose}>
-            <Ionicons name="close" size={16} color={C.inkMute} />
-          </TouchableOpacity>
-
-          <View style={[styles.badgeModalEmoji, { backgroundColor: tint + '14', borderColor: tint + '44' }]}>
-            <Text style={{ fontSize: 36 }}>{badge.emoji}</Text>
-          </View>
-          <Text style={styles.badgeModalName}>{badge.name}</Text>
-          <Text style={[styles.badgeModalTier, { color: tint }]}>{badge.tier}</Text>
-
-          {def ? (
-            <View style={styles.badgeModalHow}>
-              <Text style={styles.badgeModalHowKicker}>HOW TO EARN</Text>
-              <Text style={styles.badgeModalHowText}>{def.description}</Text>
-            </View>
-          ) : null}
-
-          {earnedDate ? (
-            <Text style={styles.badgeModalEarned}>
-              Earned on <Text style={{ fontWeight: '700', color: C.inkSoft }}>{earnedDate}</Text>
-            </Text>
-          ) : (
-            <Text style={[styles.badgeModalEarned, { fontStyle: 'italic' }]}>Not yet earned</Text>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 // ── Nav row ───────────────────────────────────────────────────────────────────
 
 function NavRow({
@@ -174,14 +117,14 @@ function NavRow({
   icon: string; label: string; subtitle?: string;
   count?: number | string; onPress: () => void; danger?: boolean;
 }) {
-  const C = useColors();
+  const T = useColors();
   return (
     <TouchableOpacity onPress={onPress} style={styles.navRow} activeOpacity={0.7}>
-      <View style={[styles.navIcon, { backgroundColor: C.primary + '12' }, danger && { backgroundColor: 'rgba(197,107,61,0.12)' }]}>
-        <Ionicons name={icon as any} size={18} color={danger ? C.accent : C.primary} />
+      <View style={[styles.navIcon, { backgroundColor: T.primary + '12' }, danger && { backgroundColor: `${T.accent}1F` }]}>
+        <Ionicons name={icon as any} size={18} color={danger ? T.accent : T.primary} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.navLabel, danger && { color: C.accent }]}>{label}</Text>
+        <Text style={[styles.navLabel, danger && { color: T.accent }]}>{label}</Text>
         {subtitle ? <Text style={styles.navSub}>{subtitle}</Text> : null}
       </View>
       {count != null ? (
@@ -631,7 +574,7 @@ export default function ProfileScreen() {
                   activeOpacity={0.7}
                   style={styles.badgePreviewItem}
                 >
-                  <View style={[styles.badgeCircle, { backgroundColor: (TIER_COLOR[b.tier] ?? '#B27339') + '22', borderColor: (TIER_COLOR[b.tier] ?? '#B27339') + '55' }]}>
+                  <View style={[styles.badgeCircle, { backgroundColor: tierFill(b.tier) + '22', borderColor: tierFill(b.tier) + '55' }]}>
                     <Text style={{ fontSize: 22 }}>{b.emoji}</Text>
                   </View>
                   <Text style={styles.badgePreviewName} numberOfLines={2}>{b.name}</Text>
@@ -689,7 +632,7 @@ export default function ProfileScreen() {
           >
             {mapParks.length > 0 ? (
               <MapView
-                style={{ width: '100%', height: 200 }}
+                style={{ width: '100%', height: 200, borderRadius: 14 }}
                 provider={PROVIDER_DEFAULT}
                 initialRegion={mapRegion}
                 rotateEnabled={false}
@@ -830,12 +773,11 @@ const styles = StyleSheet.create({
     width: 84, height: 84, borderRadius: 42,
   },
   avatarFallback: {
-    backgroundColor: C.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitial: {
-    fontSize: 30, fontWeight: '900', color: '#FFFBF1',
+    fontSize: 30, fontWeight: '900', color: C.onPrimary,
   },
 
   // Passport card
@@ -846,10 +788,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 20,
     paddingVertical: 18,
-    backgroundColor: C.primaryDeep,
     borderWidth: 0.5,
     borderColor: 'rgba(0,0,0,0.3)',
-    shadowColor: C.primaryDeep,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -876,7 +816,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   passportName: {
-    fontSize: 26, fontWeight: '800', color: C.gold, letterSpacing: -0.5,
+    fontSize: 26, fontWeight: '800', color: GOLD, letterSpacing: -0.5,
     textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
   },
   passportHandle: {
@@ -899,7 +839,7 @@ const styles = StyleSheet.create({
     fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.8)', letterSpacing: 1.2,
   },
   passportStatVal: {
-    fontSize: 13, fontWeight: '700', color: C.gold, marginTop: 2, letterSpacing: 0.2,
+    fontSize: 13, fontWeight: '700', color: GOLD, marginTop: 2, letterSpacing: 0.2,
     textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
   passportProgress: {
@@ -910,19 +850,19 @@ const styles = StyleSheet.create({
   passportProgressText: {
     fontSize: 11,
     fontWeight: '600',
-    color: C.gold,
+    color: GOLD,
     opacity: 0.7,
     letterSpacing: 0.5,
   },
   passportProgressTrack: {
     height: 3,
-    backgroundColor: C.gold + '22',
+    backgroundColor: GOLD + '22',
     borderRadius: 2,
     overflow: 'hidden',
   },
   passportProgressFill: {
     height: 3,
-    backgroundColor: C.gold,
+    backgroundColor: GOLD,
     borderRadius: 2,
     opacity: 0.85,
   },
@@ -976,7 +916,6 @@ const styles = StyleSheet.create({
   },
   navIcon: {
     width: 36, height: 36, borderRadius: 10,
-    backgroundColor: C.primary + '12',
     alignItems: 'center', justifyContent: 'center',
   },
   navLabel: {
@@ -1010,6 +949,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: C.surface,
+    borderRadius: 14,
   },
   mapEmptyText: {
     fontSize: 13,
@@ -1019,9 +959,9 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: '#2F7A4A',
+    backgroundColor: C.visited,
     borderWidth: 2,
-    borderColor: '#FFFBF1',
+    borderColor: C.onPrimary,
   },
 
   // Loading skeletons
@@ -1072,51 +1012,5 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  plusBtn: {
-    backgroundColor: C.primary,
-    borderColor: C.primary,
-  },
-
-  // Badge detail modal — light theme, matches web profile BadgeModal
-  badgeOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center', justifyContent: 'center', padding: 24,
-  },
-  badgeModal: {
-    backgroundColor: C.bg, borderRadius: 18,
-    borderWidth: 0.5, borderColor: C.hairline,
-    paddingVertical: 32, paddingHorizontal: 28,
-    width: '100%', maxWidth: 360, alignItems: 'center',
-  },
-  badgeModalClose: {
-    position: 'absolute', top: 14, right: 14, zIndex: 10, padding: 4,
-  },
-  badgeModalEmoji: {
-    width: 72, height: 72, borderRadius: 20, borderWidth: 2,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
-  },
-  badgeModalName: {
-    fontSize: 20, fontWeight: '800', color: C.ink,
-    letterSpacing: -0.3, textAlign: 'center',
-  },
-  badgeModalTier: {
-    fontSize: 13, fontWeight: '700', letterSpacing: 1.6,
-    textTransform: 'uppercase', marginTop: 5, marginBottom: 20,
-  },
-  badgeModalHow: {
-    backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 10, paddingVertical: 14, paddingHorizontal: 16,
-    marginBottom: 16, alignSelf: 'stretch',
-  },
-  badgeModalHowKicker: {
-    fontSize: 13, fontWeight: '600', letterSpacing: 1.2,
-    color: C.inkMute, marginBottom: 6,
-  },
-  badgeModalHowText: {
-    fontSize: 13.5, color: C.inkSoft, lineHeight: 21,
-  },
-  badgeModalEarned: {
-    fontSize: 13, color: C.inkMute, textAlign: 'center',
   },
 });

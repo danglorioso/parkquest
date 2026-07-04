@@ -25,19 +25,21 @@ export function Avatar({ url, name, size = 40, style }: AvatarProps) {
     .toUpperCase();
 
   return (
-    <View style={[{ width: size, height: size, borderRadius: r, overflow: 'hidden', flexShrink: 0 }, style]}>
-      {url ? (
-        <Image
-          source={{ uri: url }}
-          style={{ width: size, height: size }}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-        />
-      ) : (
-        <View style={[st.fallback, { borderRadius: r, backgroundColor: T.primary }]}>
-          <Text style={[st.initials, { fontSize: Math.max(13, size * 0.33) }]}>{initials}</Text>
-        </View>
-      )}
+    <View style={[{ width: size, height: size, borderRadius: r, flexShrink: 0 }, style]}>
+      <View style={{ flex: 1, borderRadius: r, overflow: 'hidden' }}>
+        {url ? (
+          <Image
+            source={{ uri: url }}
+            style={{ width: size, height: size }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <View style={[st.fallback, { borderRadius: r, backgroundColor: T.primary }]}>
+            <Text style={[st.initials, { fontSize: Math.max(13, size * 0.33) }]}>{initials}</Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 }

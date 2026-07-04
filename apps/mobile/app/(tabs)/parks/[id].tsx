@@ -12,24 +12,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker } from 'react-native-maps';
 import { fullStateName } from '@/lib/stateNames';
-import { useColors } from '@/lib/palette';
+import { STATIC as C, useColors } from '@/lib/palette';
+import { parkColor, parkGradient } from '@/lib/parkColors';
+import { ImageLightbox } from '@/components/ImageLightbox';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:          '#F2EBDB',
-  surface:     '#FFFBF1',
-  surfaceAlt:  '#F7F0DE',
-  ink:         '#1B1A16',
-  inkSoft:     '#3C3A33',
-  inkMute:     '#7A746A',
-  hairline:    'rgba(27,26,22,0.10)',
-  primary:     '#1F3D2E',
-  accent:      '#C56B3D',
-  visited:     '#2F7A4A',
-  bucket:      '#C48A20',
-};
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
@@ -136,26 +122,6 @@ interface WeatherForecast {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const GRADIENTS: [string, string, string][] = [
-  ['#1F3D2E', '#2F7A4A', '#C56B3D'],
-  ['#2D4F66', '#1F3D2E', '#D89A3A'],
-  ['#7B3A1F', '#C56B3D', '#1F3D2E'],
-  ['#3A2E5C', '#6E97A3', '#D89A3A'],
-  ['#2F7A4A', '#1F3D2E', '#2D4F66'],
-];
-
-function gradientIndex(code: string): number {
-  return code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length;
-}
-
-function gradientColor(code: string): string {
-  return GRADIENTS[gradientIndex(code)][0];
-}
-
-function gradientColors(code: string): [string, string, string] {
-  return GRADIENTS[gradientIndex(code)];
-}
-
 function weatherEmoji(shortForecast: string): string {
   const f = shortForecast.toLowerCase();
   if (f.includes('thunder') || f.includes('storm'))    return '⛈️';
@@ -219,54 +185,6 @@ function ChipGrid({
         </TouchableOpacity>
       )}
     </View>
-  );
-}
-
-// ── Photo lightbox ────────────────────────────────────────────────────────────
-
-function Lightbox({ images, initialIndex, onClose }: {
-  images: NpsImage[];
-  initialIndex: number;
-  onClose: () => void;
-}) {
-  const [idx, setIdx] = useState(initialIndex);
-  const flatRef = useRef<FlatList<NpsImage>>(null);
-
-  return (
-    <Modal visible animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.lightboxBg} onPress={onClose}>
-        <TouchableOpacity style={styles.lightboxClose} onPress={onClose}>
-          <Ionicons name="close" size={26} color="#FFFBF1" />
-        </TouchableOpacity>
-        <FlatList
-          ref={flatRef}
-          data={images}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          initialScrollIndex={initialIndex}
-          getItemLayout={(_, index) => ({ length: SW, offset: SW * index, index })}
-          onMomentumScrollEnd={e => {
-            setIdx(Math.round(e.nativeEvent.contentOffset.x / SW));
-          }}
-          renderItem={({ item }) => (
-            <Pressable onPress={() => {}} style={{ width: SW, justifyContent: 'center', alignItems: 'center' }}>
-              <Image source={{ uri: item.url }} style={styles.lightboxImg} resizeMode="contain" />
-            </Pressable>
-          )}
-          keyExtractor={(_, i) => String(i)}
-          style={{ flexGrow: 0 }}
-        />
-        {images[idx]?.title ? (
-          <Text style={styles.lightboxCaption}>{images[idx].title}</Text>
-        ) : null}
-        {images.length > 1 && (
-          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 24 }}>
-            {idx + 1} / {images.length}
-          </Text>
-        )}
-      </Pressable>
-    </Modal>
   );
 }
 
@@ -490,7 +408,7 @@ export default function ParkDetailScreen() {
           onPress={() => loadData()}
           style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
         >
-          <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
+          <Text style={{ color: C.onPrimary, fontWeight: '700', fontSize: 14 }}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
@@ -501,7 +419,7 @@ export default function ParkDetailScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {lightbox && (
-        <Lightbox
+        <ImageLightbox
           images={lightbox.images}
           initialIndex={lightbox.idx}
           onClose={() => setLightbox(null)}
@@ -523,7 +441,7 @@ export default function ParkDetailScreen() {
         contentContainerStyle={{ paddingBottom: tabBarSpace + 12 }}
       >
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
-        <View style={[styles.hero, { height: 260 + insets.top, backgroundColor: gradientColor(park.park_code) }]}>
+        <View style={[styles.hero, { height: 260 + insets.top, backgroundColor: parkColor(park.park_code) }]}>
           {/* Previous image stays visible as background during cross-dissolve */}
           {prevHeroImage && (
             <ExpoImage
@@ -573,7 +491,7 @@ export default function ParkDetailScreen() {
             contentContainerStyle={styles.photoStrip}
           >
             {stripImages.map(({ img, actualIdx }, slotIdx) => {
-              const gc = gradientColors(park.park_code);
+              const gc = parkGradient(park.park_code);
               return (
                 <TouchableOpacity
                   key={slotIdx}
@@ -643,15 +561,15 @@ export default function ParkDetailScreen() {
             disabled={bucketBusy}
           >
             {bucketBusy ? (
-              <ActivityIndicator size="small" color={onBucket ? '#FFFBF1' : C.bucket} />
+              <ActivityIndicator size="small" color={onBucket ? C.onPrimary : C.bucket} />
             ) : (
               <>
                 <Ionicons
                   name={onBucket ? 'bookmark' : 'bookmark-outline'}
                   size={16}
-                  color={onBucket ? '#FFFBF1' : C.bucket}
+                  color={onBucket ? C.onPrimary : C.bucket}
                 />
-                <Text style={[styles.bucketBtnText, onBucket && { color: '#FFFBF1' }]}>
+                <Text style={[styles.bucketBtnText, onBucket && { color: C.onPrimary }]}>
                   {onBucket ? 'On bucket list' : 'Add to bucket list'}
                 </Text>
               </>
@@ -747,7 +665,7 @@ export default function ParkDetailScreen() {
               activeOpacity={0.8}
             >
               <Ionicons name="map-outline" size={14} color={C.primary} />
-              <Text style={styles.viewOnMapBtnText}>View on full map</Text>
+              <Text style={[styles.viewOnMapBtnText, { color: C.primary }]}>View on full map</Text>
               <Ionicons name="arrow-forward" size={13} color={C.primary} />
             </TouchableOpacity>
           </Section>
@@ -1059,14 +977,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: C.primary,
     borderRadius: 12,
     paddingVertical: 11,
   },
   actionBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFBF1',
+    color: C.onPrimary,
   },
   actionBtnOutline: {
     flex: 1,
@@ -1078,12 +995,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 11,
     borderWidth: 1.5,
-    borderColor: C.primary,
   },
   actionBtnOutlineText: {
     fontSize: 13,
     fontWeight: '700',
-    color: C.primary,
   },
   bucketBtn: {
     flexDirection: 'row',
@@ -1161,12 +1076,10 @@ const styles = StyleSheet.create({
   },
   chipExpand: {
     backgroundColor: 'transparent',
-    borderColor: C.primary,
   },
   chipExpandText: {
     fontSize: 13,
     fontWeight: '600',
-    color: C.primary,
   },
 
   // Hours
@@ -1218,7 +1131,6 @@ const styles = StyleSheet.create({
   feeCost: {
     fontSize: 13,
     fontWeight: '700',
-    color: C.primary,
   },
   feeDesc: {
     fontSize: 13,
@@ -1237,7 +1149,6 @@ const styles = StyleSheet.create({
   linkBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: C.primary,
   },
   contactRow: {
     flexDirection: 'row',
@@ -1341,41 +1252,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
 
-  // Lightbox
-  lightboxBg: {
-    flex: 1,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  lightboxClose: {
-    position: 'absolute',
-    top: 56,
-    right: 20,
-    zIndex: 10,
-    padding: 8,
-  },
-  lightboxImg: {
-    width: SW,
-    height: SW * 0.75,
-  },
-  lightboxCaption: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 13,
-    textAlign: 'center',
-    paddingHorizontal: 24,
-    marginTop: 12,
-  },
-  lightboxNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 24,
-    marginTop: 24,
-  },
-  lightboxNavBtn: {
-    padding: 8,
-  },
-
   // Attribution
   attribution: {
     marginHorizontal: 16,
@@ -1420,6 +1296,5 @@ const styles = StyleSheet.create({
   viewOnMapBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#1F3D2E',
   },
 });

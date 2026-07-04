@@ -384,7 +384,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
             {/* Header */}
             <View style={styles.sheetHeader} {...panResponder.panHandlers}>
               <View>
-                <Text style={styles.sheetKicker}>ACTIVITY</Text>
+                <Text style={styles.sheetKicker}>NOTIFICATIONS</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 1 }}>
                   <Text style={styles.sheetTitle}>Notifications</Text>
                   {newCount > 0 && (

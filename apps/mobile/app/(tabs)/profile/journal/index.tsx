@@ -9,26 +9,11 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-
-const C = {
-  bg:         '#F2EBDB',
-  surface:    '#FFFBF1',
-  surfaceAlt: '#F7F0DE',
-  ink:        '#1B1A16',
-  inkSoft:    '#3C3A33',
-  inkMute:    '#7A746A',
-  hairline:   'rgba(27,26,22,0.10)',
-  primary:    '#1F3D2E',
-  accent:     '#C56B3D',
-  visited:    '#2F7A4A',
-};
+import { STATIC as C, useColors } from '@/lib/palette';
+import { dayCount, fmtDate, fmtRange } from '@/lib/dates';
+import { parkColor } from '@/lib/parkColors';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
-
-const MONTHS     = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const MONTHS_ABB = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,45 +41,14 @@ export interface JournalEntry {
   created_at: string | null;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-export function fmtDate(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-}
-
-export function fmtRange(start: string | null, end: string | null): string {
-  if (!start) return '';
-  const s = new Date(start);
-  if (!end) return `${MONTHS[s.getMonth()]} ${s.getDate()}, ${s.getFullYear()}`;
-  const e = new Date(end);
-  if (s.getFullYear() === e.getFullYear()) {
-    if (s.getMonth() === e.getMonth())
-      return `${MONTHS[s.getMonth()]} ${s.getDate()}–${e.getDate()}, ${e.getFullYear()}`;
-    return `${MONTHS_ABB[s.getMonth()]} ${s.getDate()} – ${MONTHS_ABB[e.getMonth()]} ${e.getDate()}, ${e.getFullYear()}`;
-  }
-  return `${MONTHS_ABB[s.getMonth()]} ${s.getDate()}, ${s.getFullYear()} – ${MONTHS_ABB[e.getMonth()]} ${e.getDate()}, ${e.getFullYear()}`;
-}
-
-export function dayCount(start: string | null, end: string | null): number {
-  if (!start) return 0;
-  if (!end) return 1;
-  return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1;
-}
-
-const GRADIENTS = ['#1F3D2E', '#2D4F66', '#7B3A1F', '#3A2E5C', '#2F7A4A'];
-export function gradientColor(code: string): string {
-  return GRADIENTS[code.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length];
-}
-
 // ── Stars ─────────────────────────────────────────────────────────────────────
 
 function Stars({ value, size = 11 }: { value: number; size?: number }) {
+  const T = useColors();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
       {Array.from({ length: 5 }).map((_, i) => (
-        <Ionicons key={i} name={i < Math.round(value) ? 'star' : 'star-outline'} size={size} color={C.accent} />
+        <Ionicons key={i} name={i < Math.round(value) ? 'star' : 'star-outline'} size={size} color={T.accent} />
       ))}
       <Text style={{ fontSize: Math.max(13, size - 2), fontWeight: '600', color: C.inkMute, marginLeft: 4 }}>
         {value}/5
@@ -122,10 +76,11 @@ function SkeletonCard() {
 // ── Entry card ────────────────────────────────────────────────────────────────
 
 function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => void }) {
+  const T = useColors();
   const cover  = entry.cover_photo ?? entry.photos?.[0] ?? null;
   const days   = dayCount(entry.visited_date, entry.end_date);
   const visKey = (entry.visibility ?? 'private').toLowerCase();
-  const visColor = visKey === 'public' ? C.visited : visKey === 'friends' ? C.primary : C.inkMute;
+  const visColor = visKey === 'public' ? C.visited : visKey === 'friends' ? T.primary : C.inkMute;
   const visIcon  = visKey === 'public'
     ? 'globe-outline' : visKey === 'friends'
     ? 'people-outline' : 'lock-closed-outline';
@@ -133,7 +88,7 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
   return (
     <TouchableOpacity onPress={onPress} style={styles.card} activeOpacity={0.78}>
       {/* Thumbnail — matches web's 80px left column */}
-      <View style={[styles.thumb, { backgroundColor: gradientColor(entry.park_code) }]}>
+      <View style={[styles.thumb, { backgroundColor: parkColor(entry.park_code) }]}>
         {cover && (
           <Image
             source={{ uri: cover }}
@@ -144,8 +99,8 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
         )}
         {(entry.photos?.length ?? 0) > 1 && (
           <View style={styles.photoCountBadge}>
-            <Ionicons name="images-outline" size={9} color="#FFFBF1" />
-            <Text style={{ color: '#FFFBF1', fontSize: 13, fontWeight: '600' }}>{entry.photos!.length}</Text>
+            <Ionicons name="images-outline" size={9} color={C.onPrimary} />
+            <Text style={{ color: C.onPrimary, fontSize: 13, fontWeight: '600' }}>{entry.photos!.length}</Text>
           </View>
         )}
       </View>
@@ -154,8 +109,8 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
       <View style={styles.cardContent}>
         {/* Park name kicker */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <Ionicons name="location" size={10} color={C.primary} />
-          <Text style={styles.parkKicker} numberOfLines={1}>
+          <Ionicons name="location" size={10} color={T.primary} />
+          <Text style={[styles.parkKicker, { color: T.primary }]} numberOfLines={1}>
             {(entry.park_name ?? entry.park_code).toUpperCase()}
           </Text>
         </View>
@@ -170,7 +125,7 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
           <Text style={styles.entryDate}>{fmtRange(entry.visited_date, entry.end_date)}</Text>
           {days > 1 && (
             <View style={styles.daysBadge}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>{days}D</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: T.accent }}>{days}D</Text>
             </View>
           )}
         </View>
@@ -196,6 +151,7 @@ export default function JournalScreen() {
   const { getToken } = useAuth();
   const tabBarSpace = useTabBarSpace();
   const router = useRouter();
+  const T = useColors();
 
   const [entries,    setEntries]    = useState<JournalEntry[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -292,7 +248,7 @@ export default function JournalScreen() {
           {[null, ...years].map(y => (
             <TouchableOpacity
               key={y ?? 'all'} onPress={() => setYearFilter(y)}
-              style={[styles.yearPill, yearFilter === y && styles.yearPillOn]}
+              style={[styles.yearPill, yearFilter === y && { backgroundColor: T.primary, borderColor: T.primary }]}
             >
               <Text style={[styles.yearPillText, yearFilter === y && styles.yearPillTextOn]}>
                 {y ?? 'All'}
@@ -345,10 +301,10 @@ export default function JournalScreen() {
               onPress={() => { setSortBy(s); setSortOpen(false); }}
               style={[styles.sortSheetRow, i < arr.length - 1 && { borderBottomWidth: 0.5, borderBottomColor: C.hairline }]}
             >
-              <Text style={[styles.sortSheetRowText, sortBy === s && { color: C.primary, fontWeight: '700' }]}>
+              <Text style={[styles.sortSheetRowText, sortBy === s && { color: T.primary, fontWeight: '700' }]}>
                 {SORT_LABELS[s]}
               </Text>
-              {sortBy === s && <Ionicons name="checkmark" size={17} color={C.primary} />}
+              {sortBy === s && <Ionicons name="checkmark" size={17} color={T.primary} />}
             </TouchableOpacity>
           ))}
         </View>
@@ -428,9 +384,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9,
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
   },
-  yearPillOn:     { backgroundColor: C.primary, borderColor: C.primary },
   yearPillText:   { fontSize: 13, fontWeight: '700', color: C.inkSoft, letterSpacing: 0.4 },
-  yearPillTextOn: { color: '#FFFBF1' },
+  yearPillTextOn: { color: C.onPrimary },
 
   emptyWrap:  { alignItems: 'center', paddingVertical: 60, gap: 12 },
   emptyIcon:  {
@@ -459,7 +414,7 @@ const styles = StyleSheet.create({
     flex: 1, minWidth: 0, padding: 12, paddingLeft: 13, paddingRight: 14, gap: 4,
   },
   parkKicker: {
-    flex: 1, fontSize: 13, fontWeight: '700', color: C.primary, letterSpacing: 0.8,
+    flex: 1, fontSize: 13, fontWeight: '700', letterSpacing: 0.8,
   },
   entryTitle: {
     fontSize: 14, fontWeight: '800', color: C.ink, letterSpacing: -0.2, lineHeight: 17,

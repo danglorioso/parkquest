@@ -120,7 +120,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
 
   // Swipe UP to dismiss (dy negative = moving toward top)
   const panResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
+    onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, { dy }) => dy < -6,
     onPanResponderMove: (_, { dy }) => { if (dy < 0) dragY.setValue(dy); },
     onPanResponderRelease: (_, { dy, vy }) => {
@@ -270,7 +270,6 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
             {/* Header */}
             <View style={styles.header} {...panResponder.panHandlers}>
               <View>
-                <Text style={styles.kicker}>EXPLORE</Text>
                 <Text style={styles.title}>Search</Text>
               </View>
               <TouchableOpacity onPress={close} style={styles.closeBtn} hitSlop={8}>
@@ -446,18 +445,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: C.hairlineSoft,
   },
-  kicker: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    color: C.inkMute,
-  },
   title: {
     fontSize: 20,
     fontWeight: '800',
     color: C.ink,
     letterSpacing: -0.3,
-    marginTop: 1,
   },
   closeBtn: {
     width: 30,

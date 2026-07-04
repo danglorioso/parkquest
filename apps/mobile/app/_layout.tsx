@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { useFonts } from 'expo-font';
-import { PaletteProvider } from '../lib/palette';
+import { PaletteProvider, STATIC, useColors } from '../lib/palette';
 import {
   JetBrainsMono_400Regular,
   JetBrainsMono_600SemiBold,
@@ -99,6 +99,37 @@ function SplashController({ onReady }: { onReady: () => void }) {
   return null;
 }
 
+function RootStack() {
+  const T = useColors();
+  const HEADER = {
+    headerShown: true,
+    headerStyle: { backgroundColor: STATIC.bg },
+    headerTintColor: T.primary,
+    headerShadowVisible: false,
+  };
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="(modals)/log-visit"
+        options={{
+          presentation: 'modal',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="profile/edit"
+        options={{ ...HEADER, title: 'Edit Profile', headerBackTitle: 'Profile' }}
+      />
+      <Stack.Screen
+        name="user/[id]"
+        options={{ ...HEADER, headerBackTitle: 'Back' }}
+      />
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
   const [appReady, setAppReady] = useState(false);
 
@@ -111,38 +142,7 @@ export default function RootLayout() {
             <SplashController onReady={() => setAppReady(true)} />
             <ClerkLoaded>
               <AuthSync />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                <Stack.Screen
-                  name="(modals)/log-visit"
-                  options={{
-                    presentation: 'modal',
-                    headerShown: false,
-                  }}
-                />
-                <Stack.Screen
-                  name="profile/edit"
-                  options={{
-                    headerShown: true,
-                    title: 'Edit Profile',
-                    headerStyle: { backgroundColor: '#F2EBDB' },
-                    headerTintColor: '#1F3D2E',
-                    headerShadowVisible: false,
-                    headerBackTitle: 'Profile',
-                  }}
-                />
-                <Stack.Screen
-                  name="user/[id]"
-                  options={{
-                    headerShown: true,
-                    headerStyle: { backgroundColor: '#F2EBDB' },
-                    headerTintColor: '#1F3D2E',
-                    headerShadowVisible: false,
-                    headerBackTitle: 'Back',
-                  }}
-                />
-              </Stack>
+              <RootStack />
             </ClerkLoaded>
             <LoadingScreen visible={!appReady} />
           </SafeAreaProvider>

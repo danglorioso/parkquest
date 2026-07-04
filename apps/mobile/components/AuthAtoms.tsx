@@ -19,10 +19,12 @@ export function clerkMsg(e: unknown): string {
 export function FField({
   label, value, onChange, secureText = false,
   keyboard, trailing, onTrailing, autoFocus = false,
+  autoCapitalize = 'none',
 }: {
   label: string; value: string; onChange: (v: string) => void;
   secureText?: boolean; keyboard?: 'email-address' | 'number-pad' | 'default';
   trailing?: string; onTrailing?: () => void; autoFocus?: boolean;
+  autoCapitalize?: 'none' | 'words' | 'sentences' | 'characters';
 }) {
   const T = useColors();
   return (
@@ -34,7 +36,7 @@ export function FField({
           value={value} onChangeText={onChange}
           secureTextEntry={secureText}
           keyboardType={keyboard ?? 'default'}
-          autoCapitalize="none" autoCorrect={false}
+          autoCapitalize={autoCapitalize} autoCorrect={false}
           autoFocus={autoFocus}
         />
       </View>

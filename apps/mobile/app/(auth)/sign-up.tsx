@@ -1,6 +1,6 @@
 import {
-  KeyboardAvoidingView, Platform,
-  ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  KeyboardAvoidingView, LayoutAnimation, Platform,
+  ScrollView, StyleSheet, Text, TouchableOpacity, UIManager, View,
 } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +12,14 @@ import {
 import { STATIC as C, useColors } from '@/lib/palette';
 
 type Step = 'email' | 'password' | 'verify' | 'username';
+
+// LayoutAnimation needs an explicit opt-in on Android's old architecture
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const animateReveal = () =>
+  LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -27,8 +35,16 @@ export default function SignUpScreen() {
   const [showPw,   setShowPw]   = useState(false);
   const [code,     setCode]     = useState('');
   const [username, setUsername] = useState('');
+  const [showName, setShowName] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName,  setLastName]  = useState('');
   const [busy,     setBusy]     = useState(false);
   const [error,    setError]    = useState('');
+
+  const toggleShowName = () => {
+    animateReveal();
+    setShowName(v => !v);
+  };
 
   const handleEmailContinue = () => {
     if (!email.trim()) return;
@@ -94,17 +110,20 @@ export default function SignUpScreen() {
     if (uname.length < 3) return;
     setError('');
     setBusy(true);
+    const nameFields = showName
+      ? { firstName: firstName.trim() || undefined, lastName: lastName.trim() || undefined }
+      : {};
     try {
       if (signUp && signUp.status === 'missing_requirements') {
         // Sign-up not finished yet (no session) — username completes it.
-        const result = await signUp.update({ username: uname });
+        const result = await signUp.update({ username: uname, ...nameFields });
         if (result.status !== 'complete') {
           setError('Could not finish sign-up. Please try again.');
           return;
         }
         await setActive!({ session: result.createdSessionId });
       } else if (user) {
-        await user.update({ username: uname });
+        await user.update({ username: uname, ...nameFields });
       } else {
         setError('Account not ready yet. Please try again.');
         return;
@@ -171,6 +190,19 @@ export default function SignUpScreen() {
                 autoFocus
               />
               <Text style={st.helperText}>Lowercase letters, numbers, underscores · min 3 chars</Text>
+
+              <TouchableOpacity onPress={toggleShowName} style={st.nameToggle} activeOpacity={0.7}>
+                <Text style={[st.nameToggleText, { color: T.primary }]}>
+                  {showName ? 'Hide name' : '+ Add your name'}
+                </Text>
+              </TouchableOpacity>
+
+              {showName && <>
+                <FField label="FIRST NAME" value={firstName} onChange={setFirstName} autoCapitalize="words" autoFocus />
+                <FField label="LAST NAME" value={lastName} onChange={setLastName} autoCapitalize="words" />
+                <Text style={st.helperText}>Optional · shown on your profile</Text>
+              </>}
+
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Enter ParkQuest" onPress={handleUsername} loading={busy} disabled={username.length < 3} />
             </>}
@@ -201,6 +233,9 @@ const st = StyleSheet.create({
   sub:      { fontSize: 14, color: C.inkMute, marginTop: 6 },
 
   helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
+
+  nameToggle:     { marginBottom: 14, marginTop: -4 },
+  nameToggleText: { fontSize: 13, fontWeight: '700' },
 
   switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
   switchText: { fontSize: 13, color: C.inkMute },
