@@ -2,10 +2,10 @@ import {
   KeyboardAvoidingView, LayoutAnimation, Platform,
   ScrollView, StyleSheet, Text, TouchableOpacity, UIManager, View,
 } from 'react-native';
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSignUp, useUser } from '@clerk/clerk-expo';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import {
   clerkMsg, ErrorBox, FField, MONO, PrimaryBtn, SecondaryBtn,
 } from '@/components/AuthAtoms';
@@ -25,6 +25,7 @@ const animateReveal = () =>
 
 export default function SignUpScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const T = useColors();
   const { signUp, setActive, isLoaded } = useSignUp();
   const { user } = useUser();
@@ -45,6 +46,10 @@ export default function SignUpScreen() {
     animateReveal();
     setShowName(v => !v);
   };
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerLeft: step === 'email' ? undefined : () => null });
+  }, [navigation, step]);
 
   const handleEmailContinue = () => {
     if (!email.trim()) return;

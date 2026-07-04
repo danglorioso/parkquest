@@ -1467,7 +1467,7 @@ const styles = StyleSheet.create({
   },
   padH: { paddingHorizontal: 18 },
   actionRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 22,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
     paddingHorizontal: 18, paddingVertical: 6,
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
   },

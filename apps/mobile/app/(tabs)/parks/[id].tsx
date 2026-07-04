@@ -249,6 +249,7 @@ export default function ParkDetailScreen() {
   const [heroIdx,      setHeroIdx]      = useState(0);
   const [heroLoaded,   setHeroLoaded]   = useState(false);
   const [prevHeroImage, setPrevHeroImage] = useState<string | null>(null);
+  const [actionBtnHeight, setActionBtnHeight] = useState<number | null>(null);
   const prevHeroRef = useRef<string | null>(null);
   const npsRef = useRef<NpsData | null>(null);
   npsRef.current = nps;
@@ -536,6 +537,7 @@ export default function ParkDetailScreen() {
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: C.primary }]}
             onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
+            onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
             activeOpacity={0.8}
           >
             <Ionicons name="pencil" size={16} color="#FFFBF1" />
@@ -660,7 +662,7 @@ export default function ParkDetailScreen() {
               </MapView>
             </View>
             <TouchableOpacity
-              style={styles.viewOnMapBtn}
+              style={[styles.viewOnMapBtn, actionBtnHeight != null && { height: actionBtnHeight, paddingVertical: 0 }]}
               onPress={() => router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code } } as never)}
               activeOpacity={0.8}
             >

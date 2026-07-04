@@ -384,8 +384,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
             {/* Header */}
             <View style={styles.sheetHeader} {...panResponder.panHandlers}>
               <View>
-                <Text style={styles.sheetKicker}>NOTIFICATIONS</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={styles.sheetTitle}>Notifications</Text>
                   {newCount > 0 && (
                     <View style={styles.newChip}>
@@ -518,11 +517,7 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   sheetHeader: {
     paddingHorizontal: 18, paddingTop: 12, paddingBottom: 14,
     borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-  },
-  sheetKicker: {
-    fontSize: 13, fontWeight: '700', letterSpacing: 1.5,
-    color: C.inkMute,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   sheetTitle: {
     fontWeight: '800', fontSize: 20, color: C.ink, letterSpacing: -0.3,

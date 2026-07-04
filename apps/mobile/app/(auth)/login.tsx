@@ -2,10 +2,10 @@ import {
   KeyboardAvoidingView, Platform,
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSignIn } from '@clerk/clerk-expo';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import {
   clerkMsg, ErrorBox, FField, InfoText, MONO, PrimaryBtn, SecondaryBtn,
 } from '@/components/AuthAtoms';
@@ -17,6 +17,7 @@ type Step = 'form' | 'mfa' | 'forgot_email' | 'forgot_verify';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const T = useColors();
   const { signIn, setActive, isLoaded } = useSignIn();
 
@@ -31,6 +32,10 @@ export default function LoginScreen() {
   const [fgShowPw,  setFgShowPw]  = useState(false);
   const [busy,      setBusy]      = useState(false);
   const [error,     setError]     = useState('');
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerLeft: step === 'form' ? undefined : () => null });
+  }, [navigation, step]);
 
   const handleSignIn = async () => {
     if (!isLoaded) return;

@@ -1,11 +1,16 @@
 import {
-  ActivityIndicator, Alert, Animated, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform,
+  ActivityIndicator, Alert, Animated, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, {
+  useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, type SharedValue,
+} from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors } from '@/lib/palette';
+import { ImageLightbox } from '@/components/ImageLightbox';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -614,7 +620,7 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
             const name = u.display_name ?? u.username;
             return (
               <TouchableOpacity
-                key={u.clerk_user_id} onPress={() => toggle(u)} activeOpacity={0.7}
+                key={u.clerk_user_id} onPress={() => { toggle(u); setQ(''); setResults([]); }} activeOpacity={0.7}
                 style={[styles.resultRow, { backgroundColor: on ? 'rgba(31,61,46,0.06)' : 'transparent',
                   borderBottomWidth: idx < results.length - 1 ? 0.5 : 0, borderBottomColor: C.hairlineSoft }]}
               >
@@ -639,16 +645,247 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
   );
 }
 
-// ── PhotoStrip ────────────────────────────────────────────────────────────────
+// ── Photo crop modal ────────────────────────────────────────────────────────
 
-function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover }: {
+const PHOTO_THUMB = 88;
+const PHOTO_GAP = 8;
+const CROP_MAX_ZOOM = 4;
+
+function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
+  uri: string | null; index: number; total: number;
+  onCancel: () => void; onSkip: () => void; onDone: (croppedUri: string) => void;
+}) {
+  const C = useColors();
+  const FRAME = Math.min(Dimensions.get('window').width - 48, 320);
+  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
+  const [scale, setScale] = useState(1);
+  const [tx, setTx] = useState(0);
+  const [ty, setTy] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const gesture = useRef({ startScale: 1, startTx: 0, startTy: 0, startDist: 0 }).current;
+
+  useEffect(() => {
+    if (!uri) return;
+    setScale(1); setTx(0); setTy(0);
+    Image.getSize(uri, (w, h) => setImgSize({ w, h }), () => setImgSize({ w: 1, h: 1 }));
+  }, [uri]);
+
+  const baseScale = imgSize ? Math.max(FRAME / imgSize.w, FRAME / imgSize.h) : 1;
+  const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+  const clampPan = (nx: number, ny: number, s: number) => {
+    if (!imgSize) return { x: nx, y: ny };
+    const dw = imgSize.w * baseScale * s;
+    const dh = imgSize.h * baseScale * s;
+    const maxX = Math.max(0, (dw - FRAME) / 2);
+    const maxY = Math.max(0, (dh - FRAME) / 2);
+    return { x: clamp(nx, -maxX, maxX), y: clamp(ny, -maxY, maxY) };
+  };
+
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (e) => {
+      gesture.startScale = scale;
+      gesture.startTx = tx;
+      gesture.startTy = ty;
+      const touches = e.nativeEvent.touches;
+      if (touches.length === 2) {
+        const [a, b] = touches;
+        gesture.startDist = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
+      }
+    },
+    onPanResponderMove: (e, gestureState) => {
+      const touches = e.nativeEvent.touches;
+      if (touches.length === 2 && gesture.startDist > 0) {
+        const [a, b] = touches;
+        const dist = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
+        const nextScale = clamp(gesture.startScale * (dist / gesture.startDist), 1, CROP_MAX_ZOOM);
+        setScale(nextScale);
+        const p = clampPan(gesture.startTx, gesture.startTy, nextScale);
+        setTx(p.x); setTy(p.y);
+      } else if (touches.length === 1) {
+        const p = clampPan(gesture.startTx + gestureState.dx, gesture.startTy + gestureState.dy, scale);
+        setTx(p.x); setTy(p.y);
+      }
+    },
+  })).current;
+
+  const handleDone = async () => {
+    if (!uri || !imgSize) return;
+    setBusy(true);
+    try {
+      const totalScale = baseScale * scale;
+      const dw = imgSize.w * totalScale;
+      const dh = imgSize.h * totalScale;
+      const left = (dw - FRAME) / 2 - tx;
+      const top = (dh - FRAME) / 2 - ty;
+      const cropSize = FRAME / totalScale;
+      const cropX = clamp(left / totalScale, 0, Math.max(0, imgSize.w - cropSize));
+      const cropY = clamp(top / totalScale, 0, Math.max(0, imgSize.h - cropSize));
+      const result = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ crop: {
+          originX: cropX, originY: cropY,
+          width: Math.min(cropSize, imgSize.w - cropX),
+          height: Math.min(cropSize, imgSize.h - cropY),
+        } }],
+        { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG },
+      );
+      onDone(result.uri);
+    } catch (e) {
+      console.warn('Crop failed, using original photo:', e);
+      onDone(uri);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal visible={!!uri} animationType="fade" transparent onRequestClose={onCancel}>
+      <View style={styles.cropBg}>
+        <View style={styles.cropHeader}>
+          <TouchableOpacity onPress={onCancel} hitSlop={8}>
+            <Text style={styles.cropHeaderBtn}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={styles.cropHeaderTitle}>{total > 1 ? `Crop photo ${index + 1} of ${total}` : 'Crop photo'}</Text>
+          <TouchableOpacity onPress={handleDone} disabled={busy} hitSlop={8}>
+            {busy ? <ActivityIndicator size="small" color="#FFFBF1" /> : <Text style={[styles.cropHeaderBtn, { fontWeight: '800', color: C.accent }]}>Use Photo</Text>}
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={[styles.cropFrame, { width: FRAME, height: FRAME }]} {...panResponder.panHandlers}>
+            {uri && imgSize && (
+              <Image
+                source={{ uri }}
+                style={{
+                  position: 'absolute',
+                  width: imgSize.w * baseScale,
+                  height: imgSize.h * baseScale,
+                  left: (FRAME - imgSize.w * baseScale) / 2,
+                  top: (FRAME - imgSize.h * baseScale) / 2,
+                  transform: [{ translateX: tx }, { translateY: ty }, { scale }],
+                }}
+              />
+            )}
+          </View>
+        </View>
+
+        <View style={styles.cropFooter}>
+          <Text style={styles.cropHint}>Pinch to zoom &middot; drag to reposition</Text>
+          <TouchableOpacity onPress={onSkip} hitSlop={8}>
+            <Text style={styles.cropSkip}>Use original, uncropped</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Draggable photo thumb ───────────────────────────────────────────────────
+
+const PHOTO_CELL = PHOTO_THUMB + PHOTO_GAP;
+
+function DraggablePhotoThumb({
+  index, url, isCover, count, activeIndex, overIndex, onDragStart, onDragEnd, onPress, onSetCover, onRemove,
+}: {
+  index: number; url: string; isCover: boolean; count: number;
+  activeIndex: SharedValue<number>; overIndex: SharedValue<number>;
+  onDragStart: () => void;
+  onDragEnd: (from: number, to: number) => void;
+  onPress: () => void; onSetCover: () => void; onRemove: () => void;
+}) {
+  const C = useColors();
+  const translateX = useSharedValue(0);
+  const indexRef = useRef(index);
+  indexRef.current = index;
+
+  const pan = Gesture.Pan()
+    .activateAfterLongPress(220)
+    .onStart(() => {
+      translateX.value = 0;
+      activeIndex.value = indexRef.current;
+      overIndex.value = indexRef.current;
+      runOnJS(onDragStart)();
+    })
+    .onUpdate(e => {
+      translateX.value = e.translationX;
+      const raw = indexRef.current + Math.round(e.translationX / PHOTO_CELL);
+      const clamped = Math.max(0, Math.min(count - 1, raw));
+      if (clamped !== overIndex.value) overIndex.value = clamped;
+    })
+    .onEnd(() => {
+      translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
+      const from = indexRef.current;
+      const to = overIndex.value;
+      activeIndex.value = -1;
+      overIndex.value = -1;
+      runOnJS(onDragEnd)(from, to);
+    });
+
+  const animStyle = useAnimatedStyle(() => {
+    const active = activeIndex.value === index;
+    if (active) {
+      return {
+        transform: [{ translateX: translateX.value }, { scale: 1.06 }],
+        zIndex: 10, shadowOpacity: 0.22,
+      };
+    }
+    let shift = 0;
+    if (activeIndex.value !== -1) {
+      const a = activeIndex.value, t = overIndex.value;
+      if (a < index && index <= t) shift = -1;
+      else if (a > index && index >= t) shift = 1;
+    }
+    return {
+      transform: [{ translateX: withTiming(shift * PHOTO_CELL, { duration: 160 }) }, { scale: 1 }],
+      zIndex: 0, shadowOpacity: 0,
+    };
+  });
+
+  return (
+    <GestureDetector gesture={pan}>
+      <Reanimated.View style={[styles.photoThumb, animStyle]}>
+        <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={StyleSheet.absoluteFill}>
+          <Image source={{ uri: url }} style={StyleSheet.absoluteFill as any} resizeMode="cover" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.photoCoverBtn} onPress={onSetCover} hitSlop={6}>
+          <Ionicons name={isCover ? 'star' : 'star-outline'} size={11} color={isCover ? C.accent : C.onPrimary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.photoRemoveBtn} onPress={onRemove} hitSlop={6}>
+          <Ionicons name="close" size={11} color="#FFFBF1" />
+        </TouchableOpacity>
+        {isCover && (
+          <View style={styles.coverBadge}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: C.onPrimary, letterSpacing: 0.5 }}>COVER</Text>
+          </View>
+        )}
+        <View style={styles.photoIndex}>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: C.onPrimary }}>{index + 1}</Text>
+        </View>
+      </Reanimated.View>
+    </GestureDetector>
+  );
+}
+
+// ── Photo strip ──────────────────────────────────────────────────────────────
+
+function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover, onReorder }: {
   token: string; photos: string[]; cover: string | null;
   onAdd: (urls: string[]) => void;
   onRemove: (url: string) => void;
   onSetCover: (url: string) => void;
+  onReorder: (next: string[]) => void;
 }) {
   const C = useColors();
   const [uploading, setUploading] = useState(false);
+  const [cropQueue, setCropQueue] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const [cropDone, setCropDone] = useState<{ uri: string; mimeType?: string; fileName?: string }[]>([]);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const activeIndex = useSharedValue(-1);
+  const overIndex = useSharedValue(-1);
 
   const pickAndUpload = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -658,27 +895,31 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover }: {
       selectionLimit: Math.max(1, 10 - photos.length),
     });
     if (result.canceled || !result.assets?.length) return;
+    setCropDone([]);
+    setCropQueue(result.assets);
+  };
 
+  const uploadAll = async (items: { uri: string; mimeType?: string; fileName?: string }[]) => {
     setUploading(true);
     const urls: string[] = [];
-    for (const asset of result.assets) {
+    for (const item of items) {
       try {
         const presignRes = await apiFetch<{ uploadUrl: string; publicUrl: string }>(
           '/api/upload/presign', token,
           {
             method: 'POST',
             body: JSON.stringify({
-              filename: asset.fileName ?? 'photo.jpg',
-              contentType: asset.mimeType ?? 'image/jpeg',
-              size: asset.fileSize ?? 0,
+              filename: item.fileName ?? 'photo.jpg',
+              contentType: item.mimeType ?? 'image/jpeg',
+              size: 0,
             }),
           }
         );
-        const fileRes = await fetch(asset.uri);
+        const fileRes = await fetch(item.uri);
         const blob = await fileRes.blob();
         await fetch(presignRes.uploadUrl, {
           method: 'PUT',
-          headers: { 'Content-Type': asset.mimeType ?? 'image/jpeg' },
+          headers: { 'Content-Type': item.mimeType ?? 'image/jpeg' },
           body: blob,
         });
         urls.push(presignRes.publicUrl);
@@ -690,40 +931,78 @@ function PhotoStrip({ token, photos, cover, onAdd, onRemove, onSetCover }: {
     setUploading(false);
   };
 
+  const advanceCrop = (finalUri: string) => {
+    const asset = cropQueue[0];
+    const nextDone = [...cropDone, { uri: finalUri, mimeType: 'image/jpeg', fileName: asset.fileName ?? 'photo.jpg' }];
+    const rest = cropQueue.slice(1);
+    if (rest.length === 0) {
+      setCropQueue([]);
+      setCropDone([]);
+      uploadAll(nextDone);
+    } else {
+      setCropDone(nextDone);
+      setCropQueue(rest);
+    }
+  };
+
+  const skipCrop = () => advanceCrop(cropQueue[0].uri);
+  const cancelCrops = () => { setCropQueue([]); setCropDone([]); };
+
+  const handleReorder = (from: number, to: number) => {
+    setScrollEnabled(true);
+    if (from === to) return;
+    const next = [...photos];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onReorder(next);
+  };
+
   return (
     <View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
-        {photos.map((url, idx) => {
-          const isCover = cover === url;
-          return (
-            <View key={url} style={styles.photoThumb}>
-              <Image source={{ uri: url }} style={StyleSheet.absoluteFill as any} resizeMode="cover" />
-              <TouchableOpacity style={styles.photoCoverBtn} onPress={() => onSetCover(url)}>
-                <Ionicons name={isCover ? 'star' : 'star-outline'} size={11} color={isCover ? C.accent : C.onPrimary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.photoRemoveBtn} onPress={() => onRemove(url)}>
-                <Ionicons name="close" size={11} color="#FFFBF1" />
-              </TouchableOpacity>
-              {isCover && (
-                <View style={styles.coverBadge}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.onPrimary, letterSpacing: 0.5 }}>COVER</Text>
-                </View>
-              )}
-              <View style={styles.photoIndex}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: C.onPrimary }}>{idx + 1}</Text>
-              </View>
-            </View>
-          );
-        })}
+      <PhotoCropModal
+        uri={cropQueue[0]?.uri ?? null}
+        index={cropDone.length}
+        total={cropDone.length + cropQueue.length}
+        onCancel={cancelCrops}
+        onSkip={skipCrop}
+        onDone={advanceCrop}
+      />
+      {lightboxIndex !== null && (
+        <ImageLightbox
+          images={photos.map(url => ({ url }))}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
+      <ScrollView
+        horizontal showsHorizontalScrollIndicator={false}
+        scrollEnabled={scrollEnabled}
+        contentContainerStyle={{ gap: PHOTO_GAP, paddingBottom: 4, paddingHorizontal: 2 }}
+      >
+        {photos.map((url, idx) => (
+          <DraggablePhotoThumb
+            key={url}
+            index={idx} url={url} isCover={cover === url} count={photos.length}
+            activeIndex={activeIndex} overIndex={overIndex}
+            onDragStart={() => setScrollEnabled(false)}
+            onDragEnd={handleReorder}
+            onPress={() => setLightboxIndex(idx)}
+            onSetCover={() => onSetCover(url)}
+            onRemove={() => onRemove(url)}
+          />
+        ))}
         {photos.length < 10 && (
           <TouchableOpacity onPress={pickAndUpload} disabled={uploading} style={styles.photoAdd} activeOpacity={0.7}>
             <Ionicons name={uploading ? 'hourglass' : 'add'} size={24} color={C.primary} />
-            <Text style={{ fontSize: 13, fontWeight: '600', color: C.primary, marginTop: 3 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: C.primary, marginTop: 4 }}>
               {uploading ? 'Uploading…' : 'Add photos'}
             </Text>
           </TouchableOpacity>
         )}
       </ScrollView>
+      {photos.length > 1 && (
+        <Text style={styles.photoReorderHint}>Press and hold a photo to reorder</Text>
+      )}
     </View>
   );
 }
@@ -854,6 +1133,22 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
   };
 
   const today = new Date();
+
+  // Same quick-select chips as web: Today, This weekend
+  const applyToday = () => {
+    setSelStart(today);
+    setSelEnd(null);
+    setView(new Date(today.getFullYear(), today.getMonth(), 1));
+  };
+  const applyThisWeekend = () => {
+    const sat = new Date(today);
+    sat.setDate(today.getDate() + (6 - today.getDay()));
+    const sun = new Date(sat);
+    sun.setDate(sat.getDate() + 1);
+    setSelStart(sat);
+    setSelEnd(sun);
+    setView(new Date(sat.getFullYear(), sat.getMonth(), 1));
+  };
   const rangeBg = 'rgba(31,61,46,0.13)';
 
   const firstDow = new Date(view.getFullYear(), view.getMonth(), 1).getDay();
@@ -870,8 +1165,11 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
       <Pressable style={styles.dateBackdrop} onPress={onClose} />
       <Animated.View style={[styles.dateSheet, { transform: [{ translateY: slide }] }]}>
         <View style={styles.dateSheetHeader}>
-          <TouchableOpacity onPress={() => { setSelStart(null); setSelEnd(null); }}>
-            <Text style={{ fontSize: 16, color: C.inkMute }}>Clear</Text>
+          <TouchableOpacity onPress={() => {
+            if (selStart || selEnd) { setSelStart(null); setSelEnd(null); }
+            else onClose();
+          }}>
+            <Text style={{ fontSize: 16, color: C.inkMute }}>{selStart || selEnd ? 'Clear' : 'Cancel'}</Text>
           </TouchableOpacity>
           <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>Dates</Text>
           <TouchableOpacity onPress={() => { onApply(selStart, selEnd); onClose(); }}>
@@ -880,6 +1178,16 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
         </View>
 
         <View style={{ padding: 16 }}>
+          {/* Quick-select chips */}
+          <View style={styles.calChipsRow}>
+            <TouchableOpacity style={styles.calChip} onPress={applyToday}>
+              <Text style={styles.calChipText}>Today</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.calChip} onPress={applyThisWeekend}>
+              <Text style={styles.calChipText}>This weekend</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Month / year navigation */}
           <View style={styles.calNavRow}>
             <TouchableOpacity
@@ -971,7 +1279,7 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
                         {/* Range background — pill strip, rounded at row edges and endpoints */}
                         {mid && (
                           <View style={{
-                            position: 'absolute', top: 4, bottom: 4, left: 0, right: 0,
+                            position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
                             backgroundColor: rangeBg,
                             borderTopLeftRadius:     isRowStart ? 999 : 0,
                             borderBottomLeftRadius:  isRowStart ? 999 : 0,
@@ -981,7 +1289,7 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
                         )}
                         {isStart && selEnd && !isEnd && (
                           <View style={{
-                            position: 'absolute', top: 4, bottom: 4, right: 0, left: '50%',
+                            position: 'absolute', top: 0, bottom: 0, right: 0, left: '50%',
                             backgroundColor: rangeBg,
                             borderTopRightRadius:    isRowEnd ? 999 : 0,
                             borderBottomRightRadius: isRowEnd ? 999 : 0,
@@ -989,7 +1297,7 @@ function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
                         )}
                         {isEnd && !isStart && (
                           <View style={{
-                            position: 'absolute', top: 4, bottom: 4, left: 0, right: '50%',
+                            position: 'absolute', top: 0, bottom: 0, left: 0, right: '50%',
                             backgroundColor: rangeBg,
                             borderTopLeftRadius:    isRowStart ? 999 : 0,
                             borderBottomLeftRadius: isRowStart ? 999 : 0,
@@ -1037,16 +1345,20 @@ function RequirementTag({ kind }: { kind: 'required' | 'optional' }) {
   );
 }
 
-function Section({ kicker, title, hint, tag, children }: {
-  kicker?: string; title?: string; hint?: string; tag?: 'required' | 'optional'; children: React.ReactNode;
+function Section({ kicker, title, hint, tag, children, mb = 24 }: {
+  kicker?: string; title?: string; hint?: string; tag?: 'required' | 'optional'; children: React.ReactNode; mb?: number;
 }) {
   return (
-    <View style={{ marginBottom: 24 }}>
+    <View style={{ marginBottom: mb }}>
       {(kicker || title || hint) && (
         <View style={{ marginBottom: 10 }}>
-          {kicker && <Text style={styles.kicker}>{kicker}</Text>}
-          {title  && <Text style={styles.sectionTitle}>{title}{tag && <RequirementTag kind={tag} />}</Text>}
-          {hint   && <Text style={{ fontSize: 13, color: C.inkMute, marginTop: 3, lineHeight: 17 }}>{hint}</Text>}
+          {(kicker || title) && (
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              {kicker && <Text style={styles.kicker}>{kicker}</Text>}
+              {title  && <Text style={[styles.sectionTitle, kicker ? { marginTop: 0 } : null]}>{title}{tag && <RequirementTag kind={tag} />}</Text>}
+            </View>
+          )}
+          {hint && <Text style={{ fontSize: 13, color: C.inkMute, marginTop: 3, lineHeight: 17 }}>{hint}</Text>}
         </View>
       )}
       {children}
@@ -1078,7 +1390,12 @@ function StepWhere({ draft, set, parks, onPickPark }: {
         onClose={() => setShowCalendar(false)}
       />
 
-      <Section title="Where & when">
+      <View style={{ marginBottom: 24, flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <Text style={styles.kicker}>01</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Where & when</Text>
+      </View>
+
+      <Section title="Park" tag="required" mb={28}>
         {/* Park picker */}
         <TouchableOpacity onPress={onPickPark} activeOpacity={0.7} style={[
           styles.parkBanner,
@@ -1102,8 +1419,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
               />
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: 'rgba(255,251,241,0.8)', letterSpacing: 1.2 }}>NATIONAL PARK</Text>
-                  <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '800', color: C.onPrimary, letterSpacing: -0.3, marginTop: 2 }}>{park.name}</Text>
+                  <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '800', color: C.onPrimary, letterSpacing: -0.3 }}>{park.name}</Text>
                   <Text style={{ fontSize: 13, color: 'rgba(255,251,241,0.8)', marginTop: 1 }}>{fullStateName(park.states.split(',')[0].trim())}</Text>
                 </View>
                 <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,251,241,0.92)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
@@ -1128,7 +1444,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
 
       {/* Rest locked until park selected */}
       <View style={{ opacity: park ? 1 : 0.35, pointerEvents: park ? 'auto' : 'none' } as any}>
-        <Section title="Trip title" tag="optional">
+        <Section title="Trip title" tag="optional" mb={28}>
           <TextInput
             value={draft.title} onChangeText={v => set('title', v.slice(0, 80))}
             placeholder="Give this trip a name" placeholderTextColor={C.inkMute}
@@ -1136,8 +1452,8 @@ function StepWhere({ draft, set, parks, onPickPark }: {
           />
         </Section>
 
-        <Section title="Dates" tag="required">
-          <View style={styles.card}>
+        <Section title="Dates" tag="required" mb={0}>
+          <View style={[styles.card, { paddingVertical: 4 }]}>
             <TouchableOpacity
               onPress={() => setShowCalendar(true)} activeOpacity={0.7}
               style={[styles.dateRow, { borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft }]}
@@ -1232,10 +1548,28 @@ function StepJournal({ draft, set, token, npsActivityNames }: {
   const C = useColors();
   return (
     <View>
-      <View style={{ marginBottom: 24 }}>
+      <View style={{ marginBottom: 24, flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
         <Text style={styles.kicker}>03</Text>
-        <Text style={styles.sectionTitle}>Journal & photos</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Journal & photos</Text>
       </View>
+
+      <Section title="Photos" tag="optional">
+        <PhotoStrip
+          token={token} photos={draft.photos} cover={draft.cover}
+          onAdd={urls => {
+            const next = [...draft.photos, ...urls].slice(0, 10);
+            set('photos', next);
+            if (!draft.cover && next.length > 0) set('cover', next[0]);
+          }}
+          onRemove={url => {
+            const next = draft.photos.filter(p => p !== url);
+            set('photos', next);
+            if (draft.cover === url) set('cover', next[0] ?? null);
+          }}
+          onSetCover={url => set('cover', url)}
+          onReorder={next => set('photos', next)}
+        />
+      </Section>
 
       <Section title="Highlight" tag="optional">
         <TextInput
@@ -1264,23 +1598,6 @@ function StepJournal({ draft, set, token, npsActivityNames }: {
           companions={draft.companions} companionObjs={draft.companionObjs}
           onChange={(ids, objs) => { set('companions', ids); set('companionObjs', objs); }}
           token={token}
-        />
-      </Section>
-
-      <Section title="Photos" tag="optional">
-        <PhotoStrip
-          token={token} photos={draft.photos} cover={draft.cover}
-          onAdd={urls => {
-            const next = [...draft.photos, ...urls].slice(0, 10);
-            set('photos', next);
-            if (!draft.cover && next.length > 0) set('cover', next[0]);
-          }}
-          onRemove={url => {
-            const next = draft.photos.filter(p => p !== url);
-            set('photos', next);
-            if (draft.cover === url) set('cover', next[0] ?? null);
-          }}
-          onSetCover={url => set('cover', url)}
         />
       </Section>
     </View>
@@ -1737,7 +2054,7 @@ export default function LogVisitModal() {
 
       {/* Step kicker */}
       <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
-        <Text style={styles.kicker}>STEP {String(step + 1).padStart(2, '0')} OF {String(STEPS.length).padStart(2, '0')} · {STEPS[step].toUpperCase()}</Text>
+        <Text style={styles.kicker}>STEP {step + 1} OF {STEPS.length}</Text>
       </View>
 
       {/* Content */}
@@ -1755,14 +2072,14 @@ export default function LogVisitModal() {
               <Text style={styles.draftBannerSub} numberOfLines={1}>
                 {restoreBanner.parkName ?? 'No park selected'}
                 {restoreBanner.draft.title ? ` — ${restoreBanner.draft.title}` : ''}
-                {' · '}{draftAge(restoreBanner.savedAt)}
               </Text>
+              <Text style={styles.draftBannerAge}>{draftAge(restoreBanner.savedAt)}</Text>
             </View>
             <TouchableOpacity onPress={resumeDraft} style={[styles.draftResumeBtn, { backgroundColor: C.primary }]} activeOpacity={0.8}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: C.onPrimary }}>Restore</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={discardSavedDraft} hitSlop={6} style={styles.draftDiscardBtn} activeOpacity={0.7}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: C.inkMute }}>Discard</Text>
+              <Ionicons name="trash-outline" size={16} color={C.inkMute} />
             </TouchableOpacity>
           </View>
         )}
@@ -1846,14 +2163,18 @@ const styles = StyleSheet.create({
   draftBannerSub: {
     fontSize: 13, color: C.inkMute, marginTop: 1,
   },
+  draftBannerAge: {
+    fontSize: 12, color: C.inkMute, marginTop: 2,
+  },
   draftResumeBtn: {
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 8,
     flexShrink: 0,
   },
   draftDiscardBtn: {
+    width: 32, height: 32,
+    alignItems: 'center', justifyContent: 'center',
     borderWidth: 0.5, borderColor: C.hairline,
-    paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 8,
     flexShrink: 0,
   },
@@ -1973,7 +2294,7 @@ const styles = StyleSheet.create({
 
   // Photos
   photoThumb: {
-    width: 80, height: 80, borderRadius: 12, overflow: 'hidden',
+    width: PHOTO_THUMB, height: PHOTO_THUMB, borderRadius: 14, overflow: 'hidden',
     backgroundColor: C.surfaceAlt,
   },
   photoCoverBtn: {
@@ -1996,9 +2317,42 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   photoAdd: {
-    width: 80, height: 80, borderRadius: 12,
+    width: PHOTO_THUMB, height: PHOTO_THUMB, borderRadius: 14,
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.hairline,
     backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 10, paddingVertical: 10,
+  },
+  photoReorderHint: {
+    fontSize: 11.5, color: C.inkMute, marginTop: 8,
+  },
+
+  // Photo crop modal
+  cropBg: {
+    flex: 1, backgroundColor: 'rgba(10,9,7,0.97)',
+  },
+  cropHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 56, paddingHorizontal: 20, paddingBottom: 16,
+  },
+  cropHeaderBtn: {
+    fontSize: 15, fontWeight: '600', color: '#FFFBF1',
+  },
+  cropHeaderTitle: {
+    fontSize: 14, fontWeight: '700', color: 'rgba(255,251,241,0.85)',
+  },
+  cropFrame: {
+    borderRadius: 4, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(255,251,241,0.7)',
+    backgroundColor: '#000',
+  },
+  cropFooter: {
+    alignItems: 'center', gap: 14, paddingBottom: 48, paddingTop: 20,
+  },
+  cropHint: {
+    fontSize: 12.5, color: 'rgba(255,251,241,0.6)',
+  },
+  cropSkip: {
+    fontSize: 13.5, fontWeight: '600', color: 'rgba(255,251,241,0.85)', textDecorationLine: 'underline',
   },
 
   // Park picker
@@ -2040,6 +2394,16 @@ const styles = StyleSheet.create({
   },
 
   // Calendar
+  calChipsRow: {
+    flexDirection: 'row', gap: 6, marginBottom: 12,
+  },
+  calChip: {
+    backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 100, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  calChipText: {
+    fontSize: 12, fontWeight: '600', color: C.inkSoft,
+  },
   calNavRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },

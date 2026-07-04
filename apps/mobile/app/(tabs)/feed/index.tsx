@@ -203,7 +203,7 @@ export default function FeedScreen() {
     </View>
   ) : (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyEmoji}>🌲</Text>
+      <Text style={styles.emptyEmoji}>{filter === 'friends' ? '⛰️' : '🌲'}</Text>
       <Text style={styles.emptyTitle}>
         {posts.length === 0
           ? 'No posts yet'
