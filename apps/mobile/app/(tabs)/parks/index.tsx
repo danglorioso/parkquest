@@ -14,6 +14,9 @@ import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { parkGradient } from '@/lib/parkColors';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
+import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { useIsOnline } from '@/lib/network';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const CARD_GAP = 14;
@@ -29,6 +32,8 @@ interface Park {
   states: string;
   description: string | null;
   image_url: string | null;
+  latitude: string | null;
+  longitude: string | null;
 }
 
 interface Visit {
@@ -504,6 +509,9 @@ export default function ParksScreen() {
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showViewMenu, setShowViewMenu] = useState(false);
+  const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
+  const isOnline = useIsOnline();
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
@@ -512,22 +520,57 @@ export default function ParksScreen() {
   const loadData = useCallback(async () => {
     const tok = await getToken();
     if (!tok) return;
-    setParks(prev => { if (prev.length === 0) setLoading(true); return prev; });
     setError(false);
-    try {
-      const [parksData, visitsData] = await Promise.all([
-        fetch(`${BASE}/api/parks`).then(r => r.json()) as Promise<Park[]>,
-        apiFetch<Visit[]>('/api/visits', tok),
-      ]);
-      setParks(parksData);
-      setVisits(visitsData);
-    } catch (e) {
-      console.error('Parks load failed:', e);
-      setError(true);
-    } finally {
+    const isFirstLoad = !hasLoadedRef.current;
+    if (isFirstLoad) setLoading(true);
+
+    // Paint whatever's already downloaded instantly instead of blocking on the
+    // network — the live fetch below still runs and replaces it once it lands.
+    let cache = isFirstLoad ? await loadOfflineParks() : null;
+    if (cache) {
+      setParks(cache.parks);
+      setOfflineFetchedAt(isOnline ? null : cache.fetchedAt);
       setLoading(false);
+      hasLoadedRef.current = true;
     }
-  }, [getToken]);
+
+    if (!isOnline) {
+      if (!hasLoadedRef.current) {
+        cache ??= await loadOfflineParks();
+        if (cache) {
+          setParks(cache.parks);
+          setOfflineFetchedAt(cache.fetchedAt);
+          hasLoadedRef.current = true;
+        } else {
+          setError(true);
+        }
+      }
+    } else {
+      try {
+        const parksData = await fetch(`${BASE}/api/parks`).then(r => r.json()) as Park[];
+        setParks(parksData);
+        setOfflineFetchedAt(null);
+        hasLoadedRef.current = true;
+        saveOfflineParks(parksData); // silent background refresh of the offline cache
+      } catch (e) {
+        console.error('Parks load failed, falling back to offline cache:', e);
+        cache ??= await loadOfflineParks();
+        if (cache) {
+          setParks(cache.parks);
+          setOfflineFetchedAt(cache.fetchedAt);
+          hasLoadedRef.current = true;
+        } else if (!hasLoadedRef.current) {
+          setError(true);
+        }
+      }
+    }
+    try {
+      setVisits(await apiFetch<Visit[]>('/api/visits', tok));
+    } catch (e) {
+      console.error('Visits load failed:', e);
+    }
+    setLoading(false);
+  }, [getToken, isOnline]);
 
   const loadDataRef = useRef(loadData);
   loadDataRef.current = loadData;
@@ -640,6 +683,8 @@ export default function ParksScreen() {
 
   const ListHeader = (
     <View>
+      {offlineFetchedAt && <OfflineBanner fetchedAt={offlineFetchedAt} />}
+
       {/* Page header */}
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

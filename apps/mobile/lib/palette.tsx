@@ -32,7 +32,7 @@ export interface PaletteColors {
 }
 
 export const PALETTES: { id: PaletteId; label: string; colors: PaletteColors }[] = [
-  { id: 'forest',  label: 'Forest',  colors: { primary: '#1F3D2E', primaryDeep: '#152A20', accent: '#C56B3D', fabAccent: '#C9367F' } },
+  { id: 'forest',  label: 'Forest',  colors: { primary: '#1F3D2E', primaryDeep: '#152A20', accent: '#C56B3D', fabAccent: '#C56B3D' } },
   { id: 'canyon',  label: 'Canyon',  colors: { primary: '#7B3A1F', primaryDeep: '#582410', accent: '#D89A3A', fabAccent: '#369EC9' } },
   { id: 'glacier', label: 'Glacier', colors: { primary: '#2D4F66', primaryDeep: '#1A3548', accent: '#C7864B', fabAccent: '#D03947' } },
   { id: 'dusk',    label: 'Dusk',    colors: { primary: '#3A2E5C', primaryDeep: '#241B40', accent: '#D9764A', fabAccent: '#8AA63A' } },

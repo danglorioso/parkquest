@@ -12,6 +12,10 @@ import { usePalette, PALETTES, STATIC as BASE_C, useColors, useThemedStyles, typ
 import { Avatar } from '@/components/Avatar';
 import * as ImagePicker from 'expo-image-picker';
 import { showToast } from '@/lib/toast';
+import { getParks } from '@/lib/api';
+import { loadOfflineParks, saveOfflineParks, onOfflineParksChanged } from '@/lib/offlineParks';
+import { relTime } from '@/lib/dates';
+import { useIsOnline } from '@/lib/network';
 
 const ERROR = '#C04040';
 
@@ -43,6 +47,7 @@ export default function EditProfileScreen() {
   const { signOut } = useClerk();
   const { user } = useUser();
   const { paletteId, setPalette } = usePalette();
+  const isOnline = useIsOnline();
   const C = useColors();
   const styles = useThemedStyles(makeStyles);
 
@@ -61,6 +66,9 @@ export default function EditProfileScreen() {
   const [deleting,            setDeleting]            = useState(false);
   const [removeAvatarPending, setRemoveAvatarPending] = useState(false);
   const [fullscreenAvatar,    setFullscreenAvatar]    = useState(false);
+  const [offlineFetchedAt,    setOfflineFetchedAt]    = useState<string | null>(null);
+  const [offlineCount,        setOfflineCount]        = useState(0);
+  const [downloading,         setDownloading]         = useState(false);
 
   const original = useRef({ firstName: '', lastName: '', username: '', bio: '', paletteId: '' });
 
@@ -101,6 +109,38 @@ export default function EditProfileScreen() {
   // only on mount — paletteId changes after user edits, so capture initial value
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reflect the offline park cache's state, including background refreshes
+  // triggered from the Parks/Map tabs while this screen is mounted.
+  useEffect(() => {
+    const refresh = () => {
+      loadOfflineParks().then(cache => {
+        setOfflineFetchedAt(cache?.fetchedAt ?? null);
+        setOfflineCount(cache?.parks.length ?? 0);
+      });
+    };
+    refresh();
+    return onOfflineParksChanged(refresh);
+  }, []);
+
+  const handleDownloadParks = async () => {
+    if (!isOnline) {
+      showToast('Connect to the internet to download park data', 'error');
+      return;
+    }
+    setDownloading(true);
+    try {
+      const tok = await getToken();
+      if (!tok) throw new Error('Not authenticated');
+      const parks = await getParks(tok);
+      await saveOfflineParks(parks);
+      showToast(`Downloaded ${parks.length} parks for offline use`);
+    } catch {
+      showToast('Failed to download park data', 'error');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const hasChanges =
     firstName !== original.current.firstName ||
@@ -389,6 +429,36 @@ export default function EditProfileScreen() {
             </View>
           </View>
 
+          {/* Offline Data */}
+          <View style={[fieldStyles.field, { gap: 10 }]}>
+            <Text style={fieldStyles.fieldLabel}>Offline Data</Text>
+            <View style={styles.offlineRow}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.offlineTitle}>
+                  {offlineFetchedAt ? `${offlineCount} parks downloaded` : 'Not downloaded yet'}
+                </Text>
+                <Text style={styles.offlineSubtitle}>
+                  {!isOnline
+                    ? 'No connection — connect to the internet to update'
+                    : offlineFetchedAt
+                      ? `Last updated ${relTime(offlineFetchedAt)}`
+                      : 'Download park data to browse without a connection'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.offlineButton, (downloading || !isOnline) && { opacity: 0.4 }]}
+                onPress={handleDownloadParks}
+                disabled={downloading || !isOnline}
+                activeOpacity={0.7}
+              >
+                {downloading
+                  ? <ActivityIndicator color={C.primary} size="small" />
+                  : <Text style={styles.offlineButtonText}>{offlineFetchedAt ? 'Update' : 'Download'}</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* Error */}
           {error ? (
             <View style={styles.errorBox}>
@@ -661,6 +731,40 @@ function makeStyles(C: Colors) {
     fontSize: 13,
     fontWeight: '500',
     color: C.inkSoft,
+  },
+  offlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: C.surfaceAlt,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 10,
+    padding: 12,
+  },
+  offlineTitle: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: C.ink,
+  },
+  offlineSubtitle: {
+    fontSize: 12,
+    color: C.inkMute,
+  },
+  offlineButton: {
+    borderWidth: 1.5,
+    borderColor: C.primary,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minWidth: 84,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offlineButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.primary,
   },
   signOutBtn: {
     alignItems: 'center',

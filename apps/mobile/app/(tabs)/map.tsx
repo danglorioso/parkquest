@@ -17,6 +17,9 @@ import { ImageLightbox } from '@/components/ImageLightbox';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { CompassSpinner } from '@/components/LoadingScreen';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
+import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { useIsOnline } from '@/lib/network';
 
 // Not-yet-visited marker gray — map-only, not part of the shared palette
 const UNVISITED = '#A8A29A';
@@ -1240,6 +1243,9 @@ export default function MapScreen() {
   const [selectedPark, setSelectedPark] = useState<ParkForMap | null>(null);
   const [loading, setLoading]           = useState(true);
   const [mapPressKey, setMapPressKey]   = useState(0);
+  const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
+  const isOnline = useIsOnline();
+  const hasLoadedRef = useRef(false);
   const mapRef = useRef<MapView>(null);
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -1335,29 +1341,70 @@ export default function MapScreen() {
     const tok = await getTokenRef.current();
     if (!tok) return;
     setToken(tok);
-    setLoading(true);
-    try {
-      const [parksData, visitsData] = await Promise.all([
-        apiFetch<Array<{
+    const isFirstLoad = !hasLoadedRef.current;
+    if (isFirstLoad) setLoading(true);
+
+    let parksData: typeof rawParksRef.current | null = null;
+    // Paint whatever's already downloaded instantly instead of blocking on the
+    // network — the live fetch below still runs and replaces it once it lands.
+    let cache = isFirstLoad ? await loadOfflineParks() : null;
+    if (cache) {
+      parksData = cache.parks;
+      rawParksRef.current = cache.parks;
+      mergeVisits(cache.parks, []);
+      setOfflineFetchedAt(isOnline ? null : cache.fetchedAt);
+      setLoading(false);
+      hasLoadedRef.current = true;
+    }
+
+    if (!isOnline) {
+      if (!hasLoadedRef.current) {
+        cache ??= await loadOfflineParks();
+        if (!cache) { setLoading(false); return; }
+        parksData = cache.parks;
+        setOfflineFetchedAt(cache.fetchedAt);
+        hasLoadedRef.current = true;
+      }
+    } else {
+      try {
+        parksData = await apiFetch<Array<{
           park_code: string; name: string; states: string;
           latitude: string | null; longitude: string | null;
           description: string | null; image_url: string | null;
-        }>>('/api/parks', tok),
-        apiFetch<Array<{
-          id: number; park_code: string; is_bucket_list: boolean;
-          visited_date: string | null; end_date: string | null;
-          title: string | null; notes: string | null; photos: string[] | null;
-          visibility: string | null;
-        }>>('/api/visits', tok),
-      ]);
-      rawParksRef.current = parksData;
+        }>>('/api/parks', tok);
+        setOfflineFetchedAt(null);
+        hasLoadedRef.current = true;
+        saveOfflineParks(parksData); // silent background refresh of the offline cache
+      } catch (e) {
+        console.error('Map parks load failed, falling back to offline cache:', e);
+        cache ??= await loadOfflineParks();
+        if (cache) {
+          parksData = cache.parks;
+          setOfflineFetchedAt(cache.fetchedAt);
+          hasLoadedRef.current = true;
+        } else if (!hasLoadedRef.current) {
+          setLoading(false);
+          return;
+        }
+      }
+    }
+    if (!parksData) { setLoading(false); return; }
+    rawParksRef.current = parksData;
+    try {
+      const visitsData = await apiFetch<Array<{
+        id: number; park_code: string; is_bucket_list: boolean;
+        visited_date: string | null; end_date: string | null;
+        title: string | null; notes: string | null; photos: string[] | null;
+        visibility: string | null;
+      }>>('/api/visits', tok);
       mergeVisits(parksData, visitsData);
     } catch (e) {
-      console.error('Map data load failed:', e);
+      console.error('Map visits load failed:', e);
+      mergeVisits(parksData, []);
     } finally {
       setLoading(false);
     }
-  }, [mergeVisits]);
+  }, [mergeVisits, isOnline]);
 
   // Parks are static — load once on mount. Visits change — reload on every focus.
   useEffect(() => { loadData(); }, [loadData]);
@@ -1481,7 +1528,13 @@ export default function MapScreen() {
         })}
       </MapView>
 
-      <View style={[styles.filterPillWrap, { top: insets.top + 60 }]}>
+      {offlineFetchedAt && (
+        <View style={{ position: 'absolute', top: insets.top + 8, left: 0, right: 0 }}>
+          <OfflineBanner fetchedAt={offlineFetchedAt} />
+        </View>
+      )}
+
+      <View style={[styles.filterPillWrap, { top: insets.top + (offlineFetchedAt ? 96 : 60) }]}>
         <FilterPill
           active={filterStatus}
           counts={counts}
