@@ -14,8 +14,11 @@ import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
+import { useIsOnline } from '@/lib/network';
+import { loadOfflineFeed, saveOfflineFeed } from '@/lib/offlineFeed';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -75,6 +78,10 @@ export default function FeedScreen() {
   const [filter, setFilter]       = useState<Filter>('all');
   const [error, setError]         = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
+  const isOnline = useIsOnline();
+  const hasLoadedRef = useRef(false);
+  const lastFetchedAtRef = useRef<string | null>(null);
 
   const flatListRef = useRef<FlatList<FeedPost>>(null);
   useScrollToTop(flatListRef);
@@ -93,6 +100,36 @@ export default function FeedScreen() {
     const tok = await getToken();
     if (!tok) { setLoading(false); setRefreshing(false); refreshingRef.current = false; return; }
     setToken(tok);
+
+    const isFirstLoad = !hasLoadedRef.current;
+
+    // Paint whatever's cached instantly instead of blocking on the network —
+    // the live fetch below still runs and replaces it once it lands.
+    let cache = isFirstLoad ? await loadOfflineFeed() : null;
+    if (cache) {
+      setPosts(cache.posts);
+      setOfflineFetchedAt(isOnline ? null : cache.fetchedAt);
+      setLoading(false);
+      hasLoadedRef.current = true;
+    }
+
+    if (!isOnline) {
+      if (!hasLoadedRef.current) {
+        cache ??= await loadOfflineFeed();
+        if (cache) {
+          setPosts(cache.posts);
+          setOfflineFetchedAt(cache.fetchedAt);
+          hasLoadedRef.current = true;
+        } else {
+          setError(true);
+        }
+      }
+      setLoading(false);
+      setRefreshing(false);
+      refreshingRef.current = false;
+      return;
+    }
+
     if (!isRefresh) setPosts(prev => { if (prev.length === 0) setLoading(true); return prev; });
     setError(false);
     try {
@@ -100,25 +137,48 @@ export default function FeedScreen() {
         fetch(`${BASE}/api/feed`, { headers: { Authorization: `Bearer ${tok}` } }),
         isRefresh ? new Promise<void>(r => setTimeout(r, 700)) : Promise.resolve(),
       ]);
-      if (res.ok) {
-        const data = await res.json();
-        setPosts(data);
-      } else {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setPosts(data);
+      setOfflineFetchedAt(null);
+      hasLoadedRef.current = true;
+      lastFetchedAtRef.current = new Date().toISOString();
+      saveOfflineFeed(data); // silent background refresh of the offline cache
+    } catch (e) {
+      console.error('Feed load failed, falling back to offline cache:', e);
+      cache ??= await loadOfflineFeed();
+      if (cache) {
+        setPosts(cache.posts);
+        setOfflineFetchedAt(cache.fetchedAt);
+        hasLoadedRef.current = true;
+      } else if (!hasLoadedRef.current) {
         setError(true);
       }
-    } catch {
-      setError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
       refreshingRef.current = false;
     }
-  }, [getToken]);
+  }, [getToken, isOnline]);
 
   const loadFeedRef = useRef(loadFeed);
   loadFeedRef.current = loadFeed;
 
   useFocusEffect(useCallback(() => { loadFeedRef.current(); }, []));
+
+  // React to connectivity changes without waiting for the next focus/tab-press:
+  // coming back online quietly refetches (dropping the banner once fresh data
+  // lands); going offline mid-session surfaces the banner right away instead of
+  // leaving stale posts on screen with no indication they're out of date.
+  const wasOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    if (!wasOnlineRef.current && isOnline) {
+      loadFeedRef.current();
+    } else if (wasOnlineRef.current && !isOnline && hasLoadedRef.current) {
+      setOfflineFetchedAt(prev => prev ?? lastFetchedAtRef.current ?? new Date().toISOString());
+    }
+    wasOnlineRef.current = isOnline;
+  }, [isOnline]);
 
   // Programmatic refresh (tab re-press / wordmark tap). Fabric's begin-refresh
   // jumps the content offset without animation, so animate the pull-down reveal
@@ -158,6 +218,13 @@ export default function FeedScreen() {
 
   const ListHeader = (
     <View style={styles.header}>
+      {offlineFetchedAt && (
+        // The feed's FlatList already insets its content 16px horizontally
+        // (contentContainerStyle), so cancel OfflineBanner's own side margin
+        // here to keep it flush with the header/post cards above and below it.
+        <OfflineBanner fetchedAt={offlineFetchedAt} noun="posts" style={{ marginHorizontal: 0 }} />
+      )}
+
       {/* Page kicker + title */}
       <View style={styles.headerTop}>
         <View style={{ flex: 1 }}>

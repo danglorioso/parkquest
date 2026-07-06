@@ -1,15 +1,15 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/lib/palette';
 import { relTime } from '@/lib/dates';
 
-export function OfflineBanner({ fetchedAt }: { fetchedAt: string }) {
+export function OfflineBanner({ fetchedAt, noun = 'parks', style }: { fetchedAt: string; noun?: string; style?: ViewStyle }) {
   const C = useColors();
   return (
-    <View style={[styles.wrap, { backgroundColor: C.surfaceAlt, borderColor: C.hairline }]}>
+    <View style={[styles.wrap, { backgroundColor: C.surfaceAlt, borderColor: C.hairline }, style]}>
       <Ionicons name="cloud-offline-outline" size={14} color={C.inkMute} />
       <Text style={[styles.text, { color: C.inkMute }]} numberOfLines={1}>
-        Offline — showing parks saved {relTime(fetchedAt)}
+        Offline — showing {noun} saved {relTime(fetchedAt)}
       </Text>
     </View>
   );

@@ -12,8 +12,11 @@ import { usePalette, PALETTES, STATIC as BASE_C, useColors, useThemedStyles, typ
 import { Avatar } from '@/components/Avatar';
 import * as ImagePicker from 'expo-image-picker';
 import { showToast } from '@/lib/toast';
-import { getParks } from '@/lib/api';
-import { loadOfflineParks, saveOfflineParks, onOfflineParksChanged } from '@/lib/offlineParks';
+import { getParks, getParksNpsAll } from '@/lib/api';
+import {
+  loadOfflineParks, saveOfflineParks, onOfflineParksChanged,
+  saveOfflineParksNps, prefetchParkImages,
+} from '@/lib/offlineParks';
 import { relTime } from '@/lib/dates';
 import { useIsOnline } from '@/lib/network';
 
@@ -132,8 +135,22 @@ export default function EditProfileScreen() {
     try {
       const tok = await getToken();
       if (!tok) throw new Error('Not authenticated');
-      const parks = await getParks(tok);
-      await saveOfflineParks(parks);
+      // Base list (map pins, About text, cover image URL) + the full per-park NPS
+      // payload (gallery images, activities, topics, hours, fees, directions,
+      // contact) in one bulk request — previously only the base list was cached,
+      // which is why offline browsing only ever showed those few fields.
+      const [parks, npsByCode] = await Promise.all([
+        getParks(tok),
+        getParksNpsAll(tok),
+      ]);
+      await Promise.all([
+        saveOfflineParks(parks),
+        saveOfflineParksNps(npsByCode),
+      ]);
+      // Best-effort, runs in the background — pulls the actual image bytes (covers
+      // + full galleries) into disk cache so they render offline too. Caching the
+      // URLs above isn't enough on its own since nothing has fetched those bytes yet.
+      prefetchParkImages(parks, npsByCode);
       showToast(`Downloaded ${parks.length} parks for offline use`);
     } catch {
       showToast('Failed to download park data', 'error');
@@ -769,7 +786,7 @@ function makeStyles(C: Colors) {
   signOutBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 4,
   },
   signOutText: {
     fontSize: 13,

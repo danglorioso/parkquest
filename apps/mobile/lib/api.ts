@@ -125,8 +125,51 @@ export const getParks = (token: string | null) =>
 export const getPark = (token: string | null, parkCode: string) =>
   req<ParkDetail>(`/api/parks/${parkCode}`, token);
 
+// ── NPS detail data (gallery images, activities, hours, fees, contact, etc.) ────
+// Shared shape between the per-park detail screen and the offline "download for
+// offline" flow, which needs the exact same fields to cache anything meaningful.
+
+export interface NpsImage {
+  url: string;
+  title: string;
+  altText: string;
+  credit: string;
+}
+
+export interface NpsHours {
+  name: string;
+  description: string;
+  standardHours: Record<string, string>;
+}
+
+export interface NpsFee {
+  cost: string;
+  title: string;
+  description: string;
+}
+
+export interface NpsData {
+  images: NpsImage[];
+  activities: string[];
+  topics: string[];
+  operatingHours: NpsHours[];
+  entranceFees: NpsFee[];
+  directionsInfo: string;
+  directionsUrl: string;
+  weatherInfo: string;
+  phone: string;
+  email: string;
+  url: string;
+  designation: string;
+}
+
 export const getParkNPS = (token: string | null, parkCode: string) =>
-  req<any>(`/api/parks/${parkCode}/nps`, token);
+  req<NpsData>(`/api/parks/${parkCode}/nps`, token);
+
+// Bulk variant — every park's full NPS payload in one upstream request, keyed by
+// park_code. Used by the offline-download flow instead of N per-park calls.
+export const getParksNpsAll = (token: string | null) =>
+  req<Record<string, NpsData>>('/api/parks/nps-all', token);
 
 export const getParkWeather = (token: string | null, parkCode: string) =>
   req<any>(`/api/parks/${parkCode}/weather`, token);

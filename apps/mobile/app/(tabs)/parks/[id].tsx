@@ -16,21 +16,19 @@ import { STATIC as C, useColors } from '@/lib/palette';
 import { parkColor, parkGradient } from '@/lib/parkColors';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { useIsOnline } from '@/lib/network';
+import type { ParkDetail, NpsData, NpsImage } from '@/lib/api';
+import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface Park {
-  park_code: string;
-  name: string;
-  states: string;
-  description: string | null;
-  latitude: string | null;
-  longitude: string | null;
-  image_url: string | null;
-}
+// Same shape as the base parks list (lib/api.ts's ParkDetail) — kept as a local
+// alias since this file refers to it as `Park` throughout.
+type Park = ParkDetail;
 
 interface Visit {
   id: number;
@@ -69,40 +67,6 @@ interface PostLite {
   like_count: number;
   comment_count: number;
   liked_by_me: boolean;
-}
-
-interface NpsImage {
-  url: string;
-  title: string;
-  altText: string;
-  credit: string;
-}
-
-interface OperatingHours {
-  name: string;
-  description: string;
-  standardHours: Record<string, string>;
-}
-
-interface EntranceFee {
-  cost: string;
-  title: string;
-  description: string;
-}
-
-interface NpsData {
-  images: NpsImage[];
-  activities: string[];
-  topics: string[];
-  operatingHours: OperatingHours[];
-  entranceFees: EntranceFee[];
-  directionsInfo: string;
-  directionsUrl: string;
-  weatherInfo: string;
-  phone: string;
-  email: string;
-  url: string;
-  designation: string;
 }
 
 interface ForecastPeriod {
@@ -250,6 +214,8 @@ export default function ParkDetailScreen() {
   const [heroLoaded,   setHeroLoaded]   = useState(false);
   const [prevHeroImage, setPrevHeroImage] = useState<string | null>(null);
   const [actionBtnHeight, setActionBtnHeight] = useState<number | null>(null);
+  const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
+  const isOnline = useIsOnline();
   const prevHeroRef = useRef<string | null>(null);
   const npsRef = useRef<NpsData | null>(null);
   npsRef.current = nps;
@@ -259,6 +225,21 @@ export default function ParkDetailScreen() {
     if (!tok || !id) return;
     setToken(tok);
     setPark(prev => { if (!prev) setLoading(true); return prev; });
+
+    // Fully offline — skip the network entirely and read whatever the "download
+    // for offline" flow (profile/edit.tsx) has cached for this park, instead of
+    // leaving the screen on its "failed to load" state.
+    if (!isOnline) {
+      const [parksCache, npsCache] = await Promise.all([loadOfflineParks(), loadOfflineParksNps()]);
+      const cachedPark = parksCache?.parks.find(p => p.park_code === id) ?? null;
+      const cachedNps = npsCache?.npsByCode[id] ?? null;
+      if (cachedPark) setPark(cachedPark);
+      if (cachedNps) setNps(cachedNps);
+      setOfflineFetchedAt(npsCache?.fetchedAt ?? parksCache?.fetchedAt ?? null);
+      setLoading(false);
+      return;
+    }
+
     try {
       const [parkData, npsData, visitsData, postsData] = await Promise.allSettled([
         apiFetch<Park>(`/api/parks/${id}`, tok),
@@ -266,8 +247,33 @@ export default function ParkDetailScreen() {
         apiFetch<Visit[]>('/api/visits', tok),
         apiFetch<PostLite[]>(`/api/posts?parkCode=${id}`, tok),
       ]);
-      if (parkData.status === 'fulfilled') setPark(parkData.value);
-      if (npsData.status === 'fulfilled')  setNps(npsData.value);
+
+      // Live fetch succeeded for both — clear any previous "showing offline data"
+      // state. If either piece failed (flaky connection, not necessarily airplane
+      // mode), fall back per-field to whatever's cached rather than losing content
+      // that was visible a moment ago.
+      let staleAt: string | null = null;
+
+      if (parkData.status === 'fulfilled') {
+        setPark(parkData.value);
+      } else {
+        const parksCache = await loadOfflineParks();
+        const cachedPark = parksCache?.parks.find(p => p.park_code === id) ?? null;
+        if (cachedPark) { setPark(cachedPark); staleAt = parksCache!.fetchedAt; }
+      }
+
+      if (npsData.status === 'fulfilled') {
+        setNps(npsData.value);
+      } else {
+        const npsCache = await loadOfflineParksNps();
+        const cachedNps = npsCache?.npsByCode[id] ?? null;
+        if (cachedNps) {
+          setNps(cachedNps);
+          staleAt = staleAt && staleAt > npsCache!.fetchedAt ? staleAt : npsCache!.fetchedAt;
+        }
+      }
+
+      setOfflineFetchedAt(staleAt);
 
       const allVisits = visitsData.status === 'fulfilled' ? visitsData.value : [];
       const parkVisits = allVisits.filter((v: Visit) => v.park_code === id && !v.is_bucket_list && v.visited_date);
@@ -302,7 +308,7 @@ export default function ParkDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken, id, user?.id]);
+  }, [getToken, id, user?.id, isOnline]);
 
   const loadWeather = useCallback(async () => {
     const tok = await getToken();
@@ -344,6 +350,17 @@ export default function ParkDetailScreen() {
     loadDataRef.current();
     loadWeatherRef.current();
   }, []);
+
+  // Connectivity just returned — quietly refetch so live data (and weather,
+  // which isn't cached at all) replaces whatever offline fallback is showing.
+  const wasOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    if (!wasOnlineRef.current && isOnline) {
+      loadDataRef.current();
+      loadWeatherRef.current();
+    }
+    wasOnlineRef.current = isOnline;
+  }, [isOnline]);
 
   useEffect(() => {
     setHeroIdx(0);
@@ -518,6 +535,8 @@ export default function ParkDetailScreen() {
             })}
           </ScrollView>
         )}
+
+        {offlineFetchedAt && <OfflineBanner fetchedAt={offlineFetchedAt} noun="park details" />}
 
         {/* ── Quick stats ───────────────────────────────────────────────────── */}
         <View style={styles.statsRow}>
