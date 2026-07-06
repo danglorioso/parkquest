@@ -2,7 +2,7 @@
   "expo": {
     "name": "ParkQuest",
     "slug": "parkquest",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "parkquest",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.danglorioso.parkquest",
-      "buildNumber": "1",
+      "buildNumber": "58",
       "developmentTeam": "U8AK9PG243",
       "associatedDomains": ["applinks:parkquest.me"],
       "infoPlist": {
