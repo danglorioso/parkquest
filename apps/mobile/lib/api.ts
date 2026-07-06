@@ -174,6 +174,23 @@ export const getParksNpsAll = (token: string | null) =>
 export const getParkWeather = (token: string | null, parkCode: string) =>
   req<any>(`/api/parks/${parkCode}/weather`, token);
 
+// Friends (of the current user) who've logged a non-private visit to this
+// park — powers the "N friends have visited" mutuals indicator on the park
+// detail screen. `friends` is capped to a few profiles for the avatar stack;
+// `total` reflects everyone.
+export interface ParkVisitorsSummary {
+  friends: Array<{
+    clerk_user_id: string;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  }>;
+  total: number;
+}
+
+export const getParkVisitors = (token: string | null, parkCode: string) =>
+  req<ParkVisitorsSummary>(`/api/parks/${parkCode}/visitors`, token);
+
 // ── Visits ─────────────────────────────────────────────────────────────────────
 
 export interface VisitEntry {

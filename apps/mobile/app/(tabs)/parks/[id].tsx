@@ -17,8 +17,9 @@ import { parkColor, parkGradient } from '@/lib/parkColors';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { Avatar } from '@/components/Avatar';
 import { useIsOnline } from '@/lib/network';
-import type { ParkDetail, NpsData, NpsImage } from '@/lib/api';
+import type { ParkDetail, NpsData, NpsImage, ParkVisitorsSummary } from '@/lib/api';
 import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -215,6 +216,7 @@ export default function ParkDetailScreen() {
   const [prevHeroImage, setPrevHeroImage] = useState<string | null>(null);
   const [actionBtnHeight, setActionBtnHeight] = useState<number | null>(null);
   const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
+  const [visitors, setVisitors] = useState<ParkVisitorsSummary | null>(null);
   const isOnline = useIsOnline();
   const prevHeroRef = useRef<string | null>(null);
   const npsRef = useRef<NpsData | null>(null);
@@ -236,16 +238,21 @@ export default function ParkDetailScreen() {
       if (cachedPark) setPark(cachedPark);
       if (cachedNps) setNps(cachedNps);
       setOfflineFetchedAt(npsCache?.fetchedAt ?? parksCache?.fetchedAt ?? null);
+      // "Friends who've visited" depends on the current user's live friends list —
+      // there's no offline cache for it (unlike the park content above), so it
+      // just stays hidden while offline rather than showing stale mutuals.
+      setVisitors(null);
       setLoading(false);
       return;
     }
 
     try {
-      const [parkData, npsData, visitsData, postsData] = await Promise.allSettled([
+      const [parkData, npsData, visitsData, postsData, visitorsData] = await Promise.allSettled([
         apiFetch<Park>(`/api/parks/${id}`, tok),
         apiFetch<NpsData>(`/api/parks/${id}/nps`, tok),
         apiFetch<Visit[]>('/api/visits', tok),
         apiFetch<PostLite[]>(`/api/posts?parkCode=${id}`, tok),
+        apiFetch<ParkVisitorsSummary>(`/api/parks/${id}/visitors`, tok),
       ]);
 
       // Live fetch succeeded for both — clear any previous "showing offline data"
@@ -303,6 +310,10 @@ export default function ParkDetailScreen() {
           });
         setMyParkPosts(merged);
       }
+
+      // No offline fallback here by design (see the !isOnline branch above) —
+      // just hide the mutuals section if this particular call didn't land.
+      setVisitors(visitorsData.status === 'fulfilled' ? visitorsData.value : null);
     } catch (e) {
       console.error('Park detail load failed:', e);
     } finally {
@@ -550,6 +561,15 @@ export default function ParkDetailScreen() {
           <View style={styles.statDivider} />
           <StatCell label="Visits" value={String(visits.length)} />
         </View>
+
+        {/* ── Friends who've visited ──────────────────────────────────────────
+            Omitted entirely at zero (no offline-fallback text/spinner needed —
+            it's a nice-to-have, not core content) and while offline, since this
+            depends on the current user's live friends list rather than anything
+            cached for offline viewing. */}
+        {isOnline && visitors && visitors.total > 0 && (
+          <FriendsVisitedRow friends={visitors.friends} total={visitors.total} />
+        )}
 
         {/* ── Action buttons ────────────────────────────────────────────────── */}
         <View style={styles.actionRow}>
@@ -886,6 +906,35 @@ function StatCell({ label, value, valueColor }: { label: string; value: string; 
   );
 }
 
+// ── Friends who've visited (mutuals) ─────────────────────────────────────────
+
+function FriendsVisitedRow({ friends, total }: { friends: ParkVisitorsSummary['friends']; total: number }) {
+  const C = useColors();
+  const shown = friends.slice(0, 3);
+  return (
+    <View style={styles.mutualsRow}>
+      <View style={styles.mutualsAvatars}>
+        {shown.map((f, i) => (
+          <Avatar
+            key={f.clerk_user_id}
+            url={f.avatar_url}
+            name={f.display_name ?? f.username}
+            size={28}
+            style={{
+              ...styles.mutualsAvatar,
+              marginLeft: i === 0 ? 0 : -10,
+              zIndex: shown.length - i,
+            }}
+          />
+        ))}
+      </View>
+      <Text style={styles.mutualsText}>
+        {total} {total === 1 ? 'friend has' : 'friends have'} visited
+      </Text>
+    </View>
+  );
+}
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
@@ -983,6 +1032,33 @@ const styles = StyleSheet.create({
     width: 0.5,
     backgroundColor: C.hairline,
     marginVertical: 10,
+  },
+
+  // Friends who've visited (mutuals)
+  mutualsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  mutualsAvatars: {
+    flexDirection: 'row',
+  },
+  mutualsAvatar: {
+    borderWidth: 2,
+    borderColor: C.surface,
+  },
+  mutualsText: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: C.inkSoft,
   },
 
   // Actions

@@ -20,6 +20,8 @@ import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useIsOnline } from '@/lib/network';
+import { Avatar } from '@/components/Avatar';
+import type { ParkVisitorsSummary } from '@/lib/api';
 
 // Not-yet-visited marker gray — map-only, not part of the shared palette
 const UNVISITED = '#A8A29A';
@@ -380,6 +382,36 @@ function StatCell({ label, value, valueColor }: { label: string; value: string; 
   );
 }
 
+// ── FriendsVisitedRow (mutuals) ───────────────────────────────────────────────
+// Same component as parks/[id].tsx's — duplicated locally rather than shared,
+// matching how StatCell/ChipGrid are already duplicated per screen in this file.
+
+function FriendsVisitedRow({ friends, total }: { friends: ParkVisitorsSummary['friends']; total: number }) {
+  const shown = friends.slice(0, 3);
+  return (
+    <View style={styles.mutualsRow}>
+      <View style={styles.mutualsAvatars}>
+        {shown.map((f, i) => (
+          <Avatar
+            key={f.clerk_user_id}
+            url={f.avatar_url}
+            name={f.display_name ?? f.username}
+            size={28}
+            style={{
+              ...styles.mutualsAvatar,
+              marginLeft: i === 0 ? 0 : -10,
+              zIndex: shown.length - i,
+            }}
+          />
+        ))}
+      </View>
+      <Text style={styles.mutualsText}>
+        {total} {total === 1 ? 'friend has' : 'friends have'} visited
+      </Text>
+    </View>
+  );
+}
+
 // ── ChipGrid ──────────────────────────────────────────────────────────────────
 
 function ChipGrid({
@@ -428,6 +460,7 @@ function ParkBottomSheet({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const C = useColors();
+  const isOnline = useIsOnline();
   const sheetH   = useRef(new Animated.Value(0)).current;
   const baseH    = useRef(SHEET_PEEK);
   const scrollY  = useRef(new Animated.Value(0)).current;
@@ -465,6 +498,10 @@ function ParkBottomSheet({
 
   // Weather
   const [weather, setWeather] = useState<WeatherPeriod[] | null>(null);
+
+  // Friends who've visited (mutuals) — no offline cache for this (per-user/live
+  // data), so it's simply not fetched/hidden while offline, same as the detail page.
+  const [visitors, setVisitors] = useState<ParkVisitorsSummary | null>(null);
 
   // Full visits (with rating + photos)
   const [fullVisits,       setFullVisits]       = useState<FullVisit[]>([]);
@@ -588,6 +625,22 @@ function ParkBottomSheet({
       })
       .catch(() => {});
   }, [park.park_code, token]);
+
+  // ── Load friends-who-visited (mutuals) ────────────────────────────────────────
+  // Skipped entirely while offline — this is per-user/live data, not park
+  // content, so there's nothing cached to fall back to; it just stays hidden.
+
+  useEffect(() => {
+    setVisitors(null);
+    if (!isOnline) return;
+
+    fetch(`${BASE}/api/parks/${park.park_code}/visitors`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: ParkVisitorsSummary | null) => { if (data) setVisitors(data); })
+      .catch(() => {});
+  }, [park.park_code, token, isOnline]);
 
   // ── Sheet snap / dismiss ──────────────────────────────────────────────────────
 
@@ -815,6 +868,11 @@ function ParkBottomSheet({
             <View style={styles.statDivider} />
             <StatCell label="Visits" value={String(fullVisits.length)} />
           </View>
+
+          {/* ── Friends who've visited ── */}
+          {isOnline && visitors && visitors.total > 0 && (
+            <FriendsVisitedRow friends={visitors.friends} total={visitors.total} />
+          )}
 
           {/* ── Photo strip — next images relative to the rotating hero ── */}
           {stripImages.length > 0 && (
@@ -1974,6 +2032,32 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
 
+  // Friends who've visited (mutuals)
+  mutualsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  mutualsAvatars: {
+    flexDirection: 'row',
+  },
+  mutualsAvatar: {
+    borderWidth: 2,
+    borderColor: C.surface,
+  },
+  mutualsText: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: C.inkSoft,
+  },
 
   sectionBody: {
     fontSize: 13.5,
