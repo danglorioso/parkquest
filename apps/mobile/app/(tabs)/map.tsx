@@ -22,6 +22,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { useIsOnline } from '@/lib/network';
 import { Avatar } from '@/components/Avatar';
 import type { ParkVisitorsSummary } from '@/lib/api';
+import { showToast } from '@/lib/toast';
 
 // Not-yet-visited marker gray — map-only, not part of the shared palette
 const UNVISITED = '#A8A29A';
@@ -92,6 +93,12 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+// Carries the park's name/states/image along so the log-visit modal can render its
+// "Where" banner filled in on the first frame, instead of waiting on its own /api/parks fetch.
+function logVisitParams(park: { park_code: string; name: string; states: string; image_url?: string | null }) {
+  return { parkCode: park.park_code, parkName: park.name, parkStates: park.states, parkImageUrl: park.image_url ?? '' };
 }
 
 
@@ -600,12 +607,10 @@ function ParkBottomSheet({
       .catch(() => {});
   }, [park.park_code, token, park.image_url]);
 
-  // ── Load weather + full visits ────────────────────────────────────────────────
+  // ── Load weather ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     setWeather(null);
-    setFullVisits([]);
-
     fetch(`${BASE}/api/parks/${park.park_code}/weather`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -614,7 +619,13 @@ function ParkBottomSheet({
         if (data?.periods) setWeather(data.periods);
       })
       .catch(() => {});
+  }, [park.park_code, token]);
 
+  // ── Load full visits ──────────────────────────────────────────────────────────
+  // Re-runs when `park.status` flips (e.g. right after logging a visit updates the
+  // live park object from the parent's list) so "Your Journal" and the visit count
+  // pick up the new entry instantly, without needing the sheet to be reopened.
+  useEffect(() => {
     fetch(`${BASE}/api/visits`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : [])
       .then((visits: Array<FullVisit & { park_code: string; is_bucket_list: boolean }>) => {
@@ -624,7 +635,7 @@ function ParkBottomSheet({
         setFullVisits(mine);
       })
       .catch(() => {});
-  }, [park.park_code, token]);
+  }, [park.park_code, token, park.status]);
 
   // ── Load friends-who-visited (mutuals) ────────────────────────────────────────
   // Skipped entirely while offline — this is per-user/live data, not park
@@ -742,22 +753,29 @@ function ParkBottomSheet({
   // ── Actions ───────────────────────────────────────────────────────────────────
 
   const handleBucketList = async () => {
+    if (actionLoading) return;
     setActionLoading('bucket');
+    // Flip the button/dot instantly and only fire the request in the background —
+    // reverting it is the rare path (request failure), so don't make every tap wait
+    // on a round trip first.
+    const prevStatus = park.status;
+    const nextStatus: ParkStatus = prevStatus === 'bucketList' ? 'notVisited' : 'bucketList';
+    onStatusChange(park.park_code, nextStatus);
     try {
-      if (park.status === 'bucketList') {
-        await fetch(`${BASE}/api/visits?park_code=${park.park_code}`, {
-          method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
-        });
-        onStatusChange(park.park_code, 'notVisited');
-      } else {
-        await fetch(`${BASE}/api/visits`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ park_code: park.park_code, is_bucket_list: true }),
-        });
-        onStatusChange(park.park_code, 'bucketList');
-      }
-    } catch { /* ignore */ }
+      const res = prevStatus === 'bucketList'
+        ? await fetch(`${BASE}/api/visits?park_code=${park.park_code}`, {
+            method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+          })
+        : await fetch(`${BASE}/api/visits`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ park_code: park.park_code, is_bucket_list: true }),
+          });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch {
+      onStatusChange(park.park_code, prevStatus);
+      showToast("Couldn't update bucket list — please try again", 'error');
+    }
     setActionLoading(null);
   };
 
@@ -1223,12 +1241,12 @@ function ParkBottomSheet({
             {park.status === 'visited' ? (
               <>
                 <TouchableOpacity
-                  onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: park.park_code } } as never)}
+                  onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
                   style={[styles.actionBtn, { backgroundColor: C.primary, flex: 1 }]}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="pencil" size={14} color={C.onPrimary} />
-                  <Text style={styles.actionBtnText}>Log a visit</Text>
+                  <Text style={styles.actionBtnText}>Log another visit</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { if (fullVisits[0]) router.push(`/profile/journal/${fullVisits[0].id}` as never); }}
@@ -1241,7 +1259,7 @@ function ParkBottomSheet({
               </>
             ) : (
               <TouchableOpacity
-                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: park.park_code } } as never)}
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
                 style={[styles.actionBtn, { backgroundColor: C.primary, flex: 1 }]}
                 activeOpacity={0.8}
               >
@@ -1253,24 +1271,17 @@ function ParkBottomSheet({
           {park.status !== 'visited' && (
             <TouchableOpacity
               onPress={handleBucketList}
-              disabled={!!actionLoading}
               activeOpacity={0.8}
               style={[styles.bucketBtn, park.status === 'bucketList' && styles.bucketBtnActive]}
             >
-              {actionLoading === 'bucket' ? (
-                <Text style={[styles.bucketBtnText]}>…</Text>
-              ) : (
-                <>
-                  <Ionicons
-                    name={park.status === 'bucketList' ? 'bookmark' : 'bookmark-outline'}
-                    size={14}
-                    color={park.status === 'bucketList' ? C.onPrimary : C.bucket}
-                  />
-                  <Text style={[styles.bucketBtnText, park.status === 'bucketList' && { color: C.onPrimary }]}>
-                    {park.status === 'bucketList' ? 'On bucket list' : 'Add to bucket list'}
-                  </Text>
-                </>
-              )}
+              <Ionicons
+                name={park.status === 'bucketList' ? 'bookmark' : 'bookmark-outline'}
+                size={14}
+                color={park.status === 'bucketList' ? C.onPrimary : C.bucket}
+              />
+              <Text style={[styles.bucketBtnText, park.status === 'bucketList' && { color: C.onPrimary }]}>
+                {park.status === 'bucketList' ? 'On bucket list' : 'Add to bucket list'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>}
@@ -1492,10 +1503,15 @@ export default function MapScreen() {
     setParks(prev =>
       prev.map(p => p.park_code === code ? { ...p, status } : p)
     );
-    setSelectedPark(prev =>
-      prev?.park_code === code ? { ...prev, status } : prev
-    );
   }, []);
+
+  // The bottom sheet is opened with a snapshot of the tapped park. Re-derive it from
+  // the live `parks` list on every render instead, so a status change picked up by
+  // loadVisits() (e.g. after logging a visit) or handleStatusChange (bucket-list
+  // toggle) is reflected in the open sheet instantly, without closing/reopening it.
+  const liveSelectedPark = selectedPark
+    ? parks.find(p => p.park_code === selectedPark.park_code) ?? selectedPark
+    : null;
 
   const handleSelectPark = useCallback((park: ParkForMap) => {
     setSelectedPark(park);
@@ -1606,10 +1622,10 @@ export default function MapScreen() {
         </View>
       )}
 
-      {selectedPark && token && (
+      {liveSelectedPark && token && (
         <ParkBottomSheet
-          key={selectedPark.park_code}
-          park={selectedPark}
+          key={liveSelectedPark.park_code}
+          park={liveSelectedPark}
           token={token}
           onClose={() => setSelectedPark(null)}
           onDismissStart={handleSheetDismissStart}

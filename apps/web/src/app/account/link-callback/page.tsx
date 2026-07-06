@@ -1,0 +1,37 @@
+"use client";
+
+import { useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+
+export default function LinkCallback() {
+  const { user, isLoaded } = useUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const dest = sessionStorage.getItem("pq_link_return") ?? "/dashboard";
+    sessionStorage.removeItem("pq_link_return");
+    const returnPath = dest.startsWith("/") && !dest.startsWith("//") ? dest : "/dashboard";
+
+    (user?.reload() ?? Promise.resolve())
+      .catch(() => {})
+      .finally(() => router.replace(`${returnPath}?linkedAccount=1`));
+  }, [isLoaded, user, router]);
+
+  return (
+    <div style={{
+      display: "flex",
+      height: "100vh",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "var(--bg, #FFFBF1)",
+    }}>
+      <svg width="32" height="32" viewBox="0 0 24 24" style={{ animation: "spin 0.9s linear infinite" }}>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        <circle cx="12" cy="12" r="10" stroke="#3A5A42" strokeWidth="2.5" fill="none" opacity="0.2" />
+        <path d="M12 2a10 10 0 0 1 10 10" stroke="#3A5A42" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      </svg>
+    </div>
+  );
+}

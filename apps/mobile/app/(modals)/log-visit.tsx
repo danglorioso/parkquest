@@ -1882,8 +1882,13 @@ export default function LogVisitModal() {
   const C = useColors();
 
   // Edit mode — opened from a feed post's "Edit visit" menu item
-  const { visitId: visitIdParam, postId: postIdParam, parkCode: parkCodeParam } =
-    useLocalSearchParams<{ visitId?: string; postId?: string; parkCode?: string }>();
+  const {
+    visitId: visitIdParam, postId: postIdParam, parkCode: parkCodeParam,
+    parkName: parkNameParam, parkStates: parkStatesParam, parkImageUrl: parkImageUrlParam,
+  } = useLocalSearchParams<{
+    visitId?: string; postId?: string; parkCode?: string;
+    parkName?: string; parkStates?: string; parkImageUrl?: string;
+  }>();
   const editVisitId = visitIdParam ? Number(visitIdParam) : null;
   const editPostId  = postIdParam && !isNaN(Number(postIdParam)) ? Number(postIdParam) : null;
   const isEdit = editVisitId != null && !isNaN(editVisitId);
@@ -1906,7 +1911,14 @@ export default function LogVisitModal() {
     return blank;
   });
   const [step,       setStep]       = useState(0);
-  const [parks,      setParks]      = useState<ParkInfo[]>([]);
+  // Seed with the park we were opened from (passed via route params) so the "Where"
+  // step's park banner renders filled on the very first frame instead of flashing
+  // an empty "Select a park" state while the full /api/parks list is still loading.
+  // Replaced wholesale once that fetch resolves below.
+  const [parks,      setParks]      = useState<ParkInfo[]>(() => {
+    if (isEdit || !parkCodeParam || !parkNameParam || !parkStatesParam) return [];
+    return [{ park_code: parkCodeParam, name: parkNameParam, states: parkStatesParam, image_url: parkImageUrlParam ?? null }];
+  });
   const [showPicker, setShowPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editLoading, setEditLoading] = useState(isEdit);

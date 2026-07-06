@@ -56,6 +56,14 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [connectBusy, setConnectBusy] = useState<"google" | "apple" | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState<"google" | "apple" | null>(null);
+  const [showSetPassword, setShowSetPassword] = useState(false);
+  const [pendingDisconnect, setPendingDisconnect] = useState<"google" | "apple" | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [settingPassword, setSettingPassword] = useState(false);
 
   // Escape key to close
   useEffect(() => {
@@ -81,6 +89,12 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
     setEmailSent(false);
     setShowDeleteConfirm(false);
     setDeleteConfirmInput("");
+    setConfirmDisconnect(null);
+    setShowSetPassword(false);
+    setPendingDisconnect(null);
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordError("");
     fetch("/api/profile")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => data && setBio(data.bio ?? ""))
@@ -159,6 +173,86 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const googleAccount = user?.verifiedExternalAccounts.find((a) => a.provider === "google") ?? null;
+  const appleAccount  = user?.verifiedExternalAccounts.find((a) => a.provider === "apple")  ?? null;
+
+  // A provider can only be disconnected if another sign-in method survives it —
+  // a password, or another connected SSO account — otherwise the user is locked out.
+  const canUnlink = (provider: "google" | "apple") => {
+    if (!user) return false;
+    if (user.passwordEnabled) return true;
+    return user.verifiedExternalAccounts.some((a) => a.provider !== provider);
+  };
+
+  const closeSetPassword = () => {
+    setShowSetPassword(false);
+    setPendingDisconnect(null);
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordError("");
+  };
+
+  const performDisconnect = async (provider: "google" | "apple") => {
+    const acct = provider === "google" ? googleAccount : appleAccount;
+    if (!acct) return;
+    setConnectBusy(provider);
+    try {
+      await acct.destroy();
+      await user?.reload();
+      toast(`${provider === "google" ? "Google" : "Apple"} account disconnected`);
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : "Failed to disconnect account", "error");
+    } finally {
+      setConnectBusy(null);
+    }
+  };
+
+  const handleDisconnectPress = (provider: "google" | "apple") => {
+    if (!canUnlink(provider)) {
+      setPendingDisconnect(provider);
+      setShowSetPassword(true);
+      return;
+    }
+    setConfirmDisconnect(provider);
+  };
+
+  const handleConnect = async (provider: "google" | "apple") => {
+    if (!user) return;
+    setConnectBusy(provider);
+    try {
+      sessionStorage.setItem("pq_link_return", window.location.pathname);
+      const acct = await user.createExternalAccount({
+        strategy: provider === "google" ? "oauth_google" : "oauth_apple",
+        redirectUrl: `${window.location.origin}/account/link-callback`,
+      });
+      const url = acct.verification?.externalVerificationRedirectURL;
+      if (!url) throw new Error("Could not start sign-in");
+      router.push(url.href);
+    } catch (err: unknown) {
+      setConnectBusy(null);
+      toast(err instanceof Error ? err.message : "Failed to connect account", "error");
+    }
+  };
+
+  const handleSetPassword = async () => {
+    if (!user) return;
+    if (newPassword.length < 8) { setPasswordError("Password must be at least 8 characters"); return; }
+    if (newPassword !== confirmPassword) { setPasswordError("Passwords do not match"); return; }
+    setPasswordError("");
+    setSettingPassword(true);
+    try {
+      await user.updatePassword({ newPassword });
+      const provider = pendingDisconnect;
+      closeSetPassword();
+      toast("Password set");
+      if (provider) await performDisconnect(provider);
+    } catch (err: unknown) {
+      setPasswordError(err instanceof Error ? err.message : "Failed to set password");
+    } finally {
+      setSettingPassword(false);
     }
   };
 
@@ -328,6 +422,123 @@ export default function EditProfileDialog({ open, onOpenChange, onSaved }: Props
               />
             </Field>
           )}
+
+          {/* Connected accounts */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontWeight: 600, fontSize: 12, color: "var(--ink)" }}>Connected accounts</label>
+            {(["google", "apple"] as const).map((provider) => {
+              const acct = provider === "google" ? googleAccount : appleAccount;
+              const busy = connectBusy === provider;
+              const label = provider === "google" ? "Google" : "Apple";
+              return (
+                <div key={provider} style={{ display: "flex", flexDirection: "column", gap: 8, background: "var(--surface-alt)", border: "0.5px solid var(--hairline)", borderRadius: 10, padding: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 22, display: "flex", justifyContent: "center", flexShrink: 0 }}>
+                      {provider === "google" ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--ink)">
+                          <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
+                        </svg>
+                      )}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>{label}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--ink-mute)" }}>{acct ? "Connected" : "Not connected"}</div>
+                    </div>
+                    <button
+                      onClick={() => (acct ? handleDisconnectPress(provider) : handleConnect(provider))}
+                      disabled={busy}
+                      style={{
+                        padding: "7px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                        border: `1.5px solid ${acct ? "#C04040" : "var(--primary)"}`,
+                        background: "transparent",
+                        color: acct ? "#C04040" : "var(--primary)",
+                        cursor: busy ? "wait" : "pointer",
+                        opacity: busy ? 0.5 : 1,
+                        display: "flex", alignItems: "center", gap: 6,
+                      }}
+                    >
+                      {busy && <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />}
+                      {acct ? "Disconnect" : "Connect"}
+                    </button>
+                  </div>
+                  {confirmDisconnect === provider && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 11.5, color: "var(--ink-mute)", flex: 1 }}>
+                        Sign in with {label} will no longer work.
+                      </span>
+                      <button
+                        onClick={() => setConfirmDisconnect(null)}
+                        style={{ padding: "6px 12px", borderRadius: 7, border: "0.5px solid var(--hairline)", background: "var(--surface)", color: "var(--ink)", fontWeight: 600, fontSize: 11.5, cursor: "pointer" }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => { setConfirmDisconnect(null); performDisconnect(provider); }}
+                        style={{ padding: "6px 12px", borderRadius: 7, border: "none", background: "#C04040", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer" }}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {showSetPassword && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14, background: "rgba(47,122,74,0.05)", border: "0.5px solid rgba(47,122,74,0.25)", borderRadius: 10 }}>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--ink)", lineHeight: 1.5 }}>
+                  That&apos;s your only way to sign in right now. Set a password first so disconnecting it doesn&apos;t lock you out.
+                </p>
+                <Field label="New password">
+                  <input
+                    type="password"
+                    style={INPUT}
+                    value={newPassword}
+                    onChange={(e) => { setNewPassword(e.target.value); setPasswordError(""); }}
+                    placeholder="At least 8 characters"
+                  />
+                </Field>
+                <Field label="Confirm password">
+                  <input
+                    type="password"
+                    style={INPUT}
+                    value={confirmPassword}
+                    onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(""); }}
+                    placeholder="Re-enter password"
+                  />
+                </Field>
+                {passwordError && <span style={{ fontSize: 11, color: "#C04040" }}>{passwordError}</span>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={closeSetPassword}
+                    disabled={settingPassword}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "0.5px solid var(--hairline)", background: "var(--surface-alt)", color: "var(--ink)", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSetPassword}
+                    disabled={settingPassword || !newPassword || !confirmPassword}
+                    style={{
+                      flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: "var(--primary)", color: "#FFFBF1", fontWeight: 700, fontSize: 12.5,
+                      cursor: (settingPassword || !newPassword || !confirmPassword) ? "not-allowed" : "pointer",
+                      opacity: (settingPassword || !newPassword || !confirmPassword) ? 0.5 : 1,
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    }}
+                  >
+                    {settingPassword && <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />}
+                    {settingPassword ? "Setting…" : "Set password"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Danger zone */}
           <div style={{ borderTop: "0.5px solid var(--hairline-soft)", paddingTop: 16 }}>

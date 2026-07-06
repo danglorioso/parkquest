@@ -231,11 +231,16 @@ function _broadcastCount(n: number) {
   _countSetters.forEach(s => s(n));
 }
 
-async function _fetchCount() {
+async function _fetchCount(retriesLeft = 4) {
   if (!_getTokenFn) return;
   try {
     const tok = await _getTokenFn();
-    if (!tok) return;
+    if (!tok) {
+      // Cold launch: Clerk may not have restored the session yet. Retry briefly
+      // instead of leaving the badge stuck at 0 until the user opens the panel.
+      if (retriesLeft > 0) setTimeout(() => _fetchCount(retriesLeft - 1), 750);
+      return;
+    }
     const d = await getUnreadNotificationCount(tok);
     _broadcastCount(d.unread_count ?? 0);
   } catch { /* silent */ }
@@ -576,7 +581,7 @@ const makeStyles = (T: Colors) => StyleSheet.create({
     backgroundColor: C.surface,
   },
   rowUnread: {
-    backgroundColor: `${T.primary}0F`,
+    backgroundColor: C.surfaceAlt,
   },
   unreadBar: {
     position: 'absolute',

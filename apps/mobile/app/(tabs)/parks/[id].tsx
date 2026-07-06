@@ -110,6 +110,12 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   return res.json();
 }
 
+// Carries the park's name/states/image along so the log-visit modal can render its
+// "Where" banner filled in on the first frame, instead of waiting on its own /api/parks fetch.
+function logVisitParams(park: { park_code: string; name: string; states: string; image_url?: string | null }) {
+  return { parkCode: park.park_code, parkName: park.name, parkStates: park.states, parkImageUrl: park.image_url ?? '' };
+}
+
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
@@ -575,7 +581,7 @@ export default function ParkDetailScreen() {
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: C.primary }]}
-            onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
+            onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
             onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
             activeOpacity={0.8}
           >
@@ -831,7 +837,7 @@ export default function ParkDetailScreen() {
               </Text>
               <TouchableOpacity
                 style={[styles.journalEmptyBtn, { backgroundColor: C.primary }]}
-                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
                 activeOpacity={0.8}
               >
                 <Ionicons name="pencil" size={14} color="#FFFBF1" />
@@ -866,7 +872,7 @@ export default function ParkDetailScreen() {
               }
               <TouchableOpacity
                 style={[styles.actionBtnOutline, { borderColor: C.primary, marginTop: 4 }]}
-                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { parkCode: id } } as never)}
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
                 activeOpacity={0.8}
               >
                 <Ionicons name="add" size={16} color={C.primary} />

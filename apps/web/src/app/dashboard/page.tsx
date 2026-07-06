@@ -13,6 +13,7 @@ import { DesktopButton } from "@/components/desktop/DesktopButton";
 import { FindFriendsDialog } from "@/components/desktop/FindFriendsDialog";
 import type { MapPark } from "@/components/USAMapGL";
 import EditProfileDialog from "@/components/EditProfileDialog";
+import { useToast } from "@/components/ToastProvider";
 
 const USAMap = dynamic(() => import("@/components/USAMapGL"), {
   ssr: false,
@@ -323,6 +324,7 @@ function ActivityItem({ event }: { event: ActivityEvent }) {
 export default function DashboardPage() {
   const { user, isLoaded, isSignedIn } = useUser();
   const router = useRouter();
+  const { toast } = useToast();
 
   const [visitedCount,   setVisitedCount]   = useState(0);
   const [bucketCount,    setBucketCount]    = useState(0);
@@ -339,6 +341,18 @@ export default function DashboardPage() {
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
   }, [isLoaded, isSignedIn, router]);
+
+  // Returning from the "connect Google/Apple" OAuth round-trip (see
+  // /account/link-callback) — reopen the edit dialog and confirm the link.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("linkedAccount") === "1") {
+      setEditOpen(true);
+      toast("Account connected");
+      router.replace("/dashboard");
+    }
+  }, [isLoaded, isSignedIn, router, toast]);
 
   useEffect(() => {
     if (!isSignedIn) return;

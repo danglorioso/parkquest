@@ -237,11 +237,24 @@ export default function UserProfileScreen() {
         if (res.ok) setProfile(p => p ? { ...p, friendship_status: 'pending_sent' } : p);
 
       } else if (status === 'pending_sent') {
-        const res = await fetch(`${BASE}/api/friends?userId=${profile.clerk_user_id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tok}` },
-        });
-        if (res.ok) setProfile(p => p ? { ...p, friendship_status: 'none' } : p);
+        Alert.alert(
+          'Cancel request',
+          `Cancel your friend request to ${profile.display_name ?? profile.username}?`,
+          [
+            { text: 'Keep', style: 'cancel' },
+            { text: 'Cancel Request', style: 'destructive', onPress: async () => {
+              setFriendBusy(true);
+              const res = await fetch(`${BASE}/api/friends?userId=${profile.clerk_user_id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${tok}` },
+              });
+              if (res.ok) setProfile(p => p ? { ...p, friendship_status: 'none' } : p);
+              setFriendBusy(false);
+            }},
+          ]
+        );
+        setFriendBusy(false);
+        return;
 
       } else if (status === 'pending_received') {
         Alert.alert(
@@ -310,6 +323,7 @@ export default function UserProfileScreen() {
   };
 
   const isFriend = profile?.friendship_status === 'accepted';
+  const isPending = profile?.friendship_status === 'pending_sent';
   const displayName = profile?.display_name ?? profile?.username ?? 'Explorer';
   const joinedDate = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -383,8 +397,11 @@ export default function UserProfileScreen() {
                 <TouchableOpacity
                   style={[
                     styles.friendButton,
-                    { backgroundColor: T.primary },
-                    isFriend && styles.friendButtonSecondary,
+                    isFriend
+                      ? styles.friendButtonSecondary
+                      : isPending
+                        ? [styles.friendButtonOutline, { borderColor: T.primary }]
+                        : { backgroundColor: T.primary },
                     friendBusy && { opacity: 0.6 },
                   ]}
                   onPress={handleFriendAction}
@@ -392,16 +409,22 @@ export default function UserProfileScreen() {
                   activeOpacity={0.8}
                 >
                   {friendBusy ? (
-                    <ActivityIndicator size="small" color={isFriend ? C.inkMute : C.onPrimary} />
+                    <ActivityIndicator size="small" color={isFriend ? C.inkMute : isPending ? T.primary : C.onPrimary} />
                   ) : (
                     <>
                       <Ionicons
                         name={friendButtonIcon()}
                         size={16}
-                        color={isFriend ? C.inkSoft : C.onPrimary}
+                        color={isFriend ? C.inkSoft : isPending ? T.primary : C.onPrimary}
                         style={{ marginRight: 7 }}
                       />
-                      <Text style={[styles.friendButtonText, isFriend && styles.friendButtonTextSecondary]}>
+                      <Text
+                        style={[
+                          styles.friendButtonText,
+                          isFriend && styles.friendButtonTextSecondary,
+                          isPending && { color: T.primary },
+                        ]}
+                      >
                         {friendButtonLabel()}
                       </Text>
                     </>
@@ -633,6 +656,10 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface,
     borderWidth: 0.5,
     borderColor: C.hairline,
+  },
+  friendButtonOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
   },
   friendButtonText: {
     color: C.onPrimary,

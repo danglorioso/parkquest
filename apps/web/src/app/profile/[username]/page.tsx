@@ -669,6 +669,7 @@ export default function ProfilePage() {
     }
   });
   const handleCancelRequest = withBusy(async () => {
+    if (!confirm(`Cancel your friend request to ${profile!.display_name ?? profile!.username}?`)) return;
     setProfile((p) => p ? { ...p, friendship_status: "none" } : p);
     const res = await fetch(`/api/friends?userId=${profile!.clerk_user_id}`, { method: "DELETE" });
     if (!res.ok) setProfile((p) => p ? { ...p, friendship_status: "pending_sent" } : p);
