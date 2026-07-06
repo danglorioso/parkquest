@@ -87,11 +87,18 @@ function SwipeableRow({ children, onDismiss }: { children: React.ReactNode; onDi
   );
 }
 
+// Outcome of *our own* response to a friend-request notification. Deliberately
+// separate from `n.type` (the notification's type describes the event that created
+// it — "X sent you a friend request" — and never changes); tracking the response
+// in its own field is what lets the settled state keep rendering after Accept/Decline
+// instead of the whole friend-request block vanishing.
+type FriendReqStatus = 'pending' | 'accepted' | 'declined';
+
 function NotificationRow({
-  n, responded, onRespond, onNavigateToUser,
+  n, status, onRespond, onNavigateToUser,
 }: {
   n: NotificationItem;
-  responded: boolean;
+  status: FriendReqStatus;
   onRespond: (friendshipId: number, action: 'accept' | 'reject') => Promise<void>;
   onNavigateToUser: (userId: string) => void;
 }) {
@@ -135,10 +142,27 @@ function NotificationRow({
       {/* Content */}
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <Text style={styles.rowText} numberOfLines={3}>
-          {actorName ? (
-            <Text style={styles.rowTextBold}>{actorName}</Text>
-          ) : null}
-          <Text>{rest}</Text>
+          {n.type === 'friend_request' && status !== 'pending' ? (
+            // Settled state replaces the request prompt entirely — the request
+            // itself was already resolved, so "sent you a friend request" no
+            // longer describes what's true.
+            <Text>
+              {status === 'accepted' ? 'You are now friends' : 'You declined the friend request'}
+              {actorName ? (
+                <>
+                  {status === 'accepted' ? ' with ' : ' from '}
+                  <Text style={styles.rowTextBold}>{actorName}</Text>
+                </>
+              ) : null}
+            </Text>
+          ) : (
+            <>
+              {actorName ? (
+                <Text style={styles.rowTextBold}>{actorName}</Text>
+              ) : null}
+              <Text>{rest}</Text>
+            </>
+          )}
         </Text>
 
         {n.type === 'comment' && n.metadata?.excerpt ? (
@@ -150,12 +174,7 @@ function NotificationRow({
         ) : null}
 
         {n.type === 'friend_request' && n.metadata?.friendship_id ? (
-          responded ? (
-            <View style={styles.respondedRow}>
-              <Ionicons name="checkmark-circle" size={12} color={C.inkMute} />
-              <Text style={styles.respondedText}>Responded</Text>
-            </View>
-          ) : (
+          status === 'pending' ? (
             <View style={styles.actionRow}>
               <TouchableOpacity
                 onPress={() => handleRespond('accept')}
@@ -173,6 +192,19 @@ function NotificationRow({
               >
                 <Text style={styles.declineText}>Decline</Text>
               </TouchableOpacity>
+            </View>
+          ) : (
+            // Settled indicator — green for accepted, red reserved for declined.
+            // No buttons: the choice has already been made.
+            <View style={styles.respondedRow}>
+              <Ionicons
+                name={status === 'accepted' ? 'checkmark-circle' : 'close-circle'}
+                size={12}
+                color={status === 'accepted' ? C.visited : C.liked}
+              />
+              <Text style={[styles.respondedText, { color: status === 'accepted' ? C.visited : C.liked }]}>
+                {status === 'accepted' ? 'Friends now' : 'Declined'}
+              </Text>
             </View>
           )
         ) : null}
@@ -220,6 +252,9 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  // Our own accept/decline outcome per friend request, keyed by friendship_id — kept
+  // out of `items` so responding never touches (or hides) the underlying notification.
+  const [friendReqStatus, setFriendReqStatus] = useState<Record<number, 'accepted' | 'declined'>>({});
   const [pushStatus, setPushStatus] = useState<PushStatus>('undetermined');
 
   const getTokenRef = useRef(getToken);
@@ -326,19 +361,16 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const handleRespond = useCallback(async (friendshipId: number, action: 'accept' | 'reject') => {
     const tok = await getTokenRef.current();
     if (!tok) return;
-    setItems(prev => prev.map(n =>
-      n.metadata?.friendship_id === friendshipId
-        ? { ...n, type: action === 'accept' ? 'friend_accepted' : ('friend_rejected' as NotificationType) }
-        : n
-    ));
+    setFriendReqStatus(prev => ({ ...prev, [friendshipId]: action === 'accept' ? 'accepted' : 'declined' }));
     try {
       await respondFriendRequest(tok, friendshipId, action);
     } catch {
-      setItems(prev => prev.map(n =>
-        n.metadata?.friendship_id === friendshipId
-          ? { ...n, type: 'friend_request' as NotificationType }
-          : n
-      ));
+      // Roll back to pending so Accept/Decline reappear — the request is still live.
+      setFriendReqStatus(prev => {
+        const next = { ...prev };
+        delete next[friendshipId];
+        return next;
+      });
     }
   }, []);
 
@@ -432,7 +464,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                   <SwipeableRow onDismiss={() => handleDismiss(item.id)}>
                     <NotificationRow
                       n={item}
-                      responded={item.type !== 'friend_request'}
+                      status={item.metadata?.friendship_id != null ? (friendReqStatus[item.metadata.friendship_id] ?? 'pending') : 'pending'}
                       onRespond={handleRespond}
                       onNavigateToUser={(userId) => {
                         dismiss();

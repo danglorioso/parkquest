@@ -13,6 +13,10 @@ import { STATIC as C, useColors } from '@/lib/palette';
 
 const DANGER = '#DC2626';
 
+// Cap on "People you may know" — keeps the section skimmable and bounds the
+// suggestions query/response size. Bump this if product wants a longer list.
+const MAX_SUGGESTIONS = 8;
+
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -334,7 +338,7 @@ export default function FriendsScreen() {
     if (out.status === 'fulfilled') setOutgoing(out.value ?? []);
 
     setSugLoading(true);
-    fetch(`${BASE}/api/users/suggestions?limit=8`, { headers: h })
+    fetch(`${BASE}/api/users/suggestions?limit=${MAX_SUGGESTIONS}`, { headers: h })
       .then(r => r.ok ? r.json() : [])
       .then(setSuggested)
       .catch(() => {})
@@ -476,7 +480,9 @@ export default function FriendsScreen() {
       if (sugLoading) {
         rows.push({ _t: 'skeleton' }, { _t: 'skeleton' }, { _t: 'skeleton' });
       } else {
-        suggested.forEach(u => rows.push({ _t: 'suggested', item: u }));
+        // Defensive cap in addition to the `limit` query param — keeps the section
+        // bounded even if the API ever returns more than asked.
+        suggested.slice(0, MAX_SUGGESTIONS).forEach(u => rows.push({ _t: 'suggested', item: u }));
       }
     }
 

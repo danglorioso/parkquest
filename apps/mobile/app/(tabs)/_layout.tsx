@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../../lib/palette';
 import FloatingTabBar from '../../components/FloatingTabBar';
 import { hasDrafts, onDraftsChanged } from '../../lib/drafts';
+import { OnboardingWalkthrough } from '../../components/OnboardingWalkthrough';
 
 const STATIC = {
   inkMute: '#7A746A',
@@ -65,68 +66,71 @@ export default function TabsLayout() {
   const C = useColors();
 
   return (
-    <Tabs
-      tabBar={(props) => <FloatingTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
-      <Tabs.Screen
-        name="feed"
-        listeners={({ navigation }) => ({
-          tabPress: () => {
-            if (navigation.isFocused()) {
-              DeviceEventEmitter.emit('feedTabPress');
-            }
-          },
-        })}
-        options={{
-          title: 'Feed',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="newspaper-outline" activeName="newspaper" primary={C.primary} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="map"
-        listeners={({ navigation }) => ({
-          tabPress: () => {
-            if (navigation.isFocused()) {
-              DeviceEventEmitter.emit('mapTabPress');
-            }
-          },
-        })}
-        options={{
-          title: 'Map',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="map-outline" activeName="map" primary={C.primary} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="log-visit-placeholder"
-        options={{
-          title: '',
-          tabBarButton: () => <LogVisitButton />,
-        }}
-      />
-      <Tabs.Screen
-        name="parks"
-        options={{
-          title: 'Parks',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="compass-outline" activeName="compass" size={27} primary={C.primary} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="person-outline" activeName="person" primary={C.primary} />
-          ),
-        }}
-      />
-    </Tabs>
+    <>
+      <Tabs
+        tabBar={(props) => <FloatingTabBar {...props} />}
+        screenOptions={{ headerShown: false }}
+      >
+        <Tabs.Screen
+          name="feed"
+          listeners={({ navigation }) => ({
+            tabPress: () => {
+              if (navigation.isFocused()) {
+                DeviceEventEmitter.emit('feedTabPress');
+              }
+            },
+          })}
+          options={{
+            title: 'Feed',
+            tabBarIcon: ({ focused }) => (
+              <TabIcon focused={focused} name="newspaper-outline" activeName="newspaper" primary={C.primary} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="map"
+          listeners={({ navigation }) => ({
+            tabPress: () => {
+              if (navigation.isFocused()) {
+                DeviceEventEmitter.emit('mapTabPress');
+              }
+            },
+          })}
+          options={{
+            title: 'Map',
+            tabBarIcon: ({ focused }) => (
+              <TabIcon focused={focused} name="map-outline" activeName="map" primary={C.primary} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="log-visit-placeholder"
+          options={{
+            title: '',
+            tabBarButton: () => <LogVisitButton />,
+          }}
+        />
+        <Tabs.Screen
+          name="parks"
+          options={{
+            title: 'Parks',
+            tabBarIcon: ({ focused }) => (
+              <TabIcon focused={focused} name="compass-outline" activeName="compass" size={27} primary={C.primary} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ focused }) => (
+              <TabIcon focused={focused} name="person-outline" activeName="person" primary={C.primary} />
+            ),
+          }}
+        />
+      </Tabs>
+      <OnboardingWalkthrough />
+    </>
   );
 }
 

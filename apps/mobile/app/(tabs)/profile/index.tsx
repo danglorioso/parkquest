@@ -13,6 +13,7 @@ import { Wordmark } from '@/components/Wordmark';
 import { ParkStamp } from '@/components/ParkStamp';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
+import { EmptyState } from '@/components/EmptyState';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
@@ -654,8 +655,17 @@ export default function ProfileScreen() {
               </MapView>
             ) : visitsLoaded ? (
               <View style={styles.mapEmpty}>
-                <Ionicons name="map-outline" size={22} color={C.inkMute} />
-                <Text style={styles.mapEmptyText}>No park visits yet</Text>
+                <EmptyState
+                  icon="map-outline"
+                  title="No park visits yet"
+                  action={{
+                    label: 'Add a visit',
+                    // Nested TouchableOpacity — claims the touch itself, so this
+                    // doesn't also trigger the card's own onPress (which pushes
+                    // to the full map view).
+                    onPress: () => router.push('/(modals)/log-visit' as never),
+                  }}
+                />
               </View>
             ) : (
               <View style={styles.mapEmpty}>

@@ -126,13 +126,16 @@ export default function FeedScreen() {
   // position once the native side has applied its own offset.
   const triggerRefresh = useCallback(() => {
     if (refreshingRef.current) return;
+    // Fire the haptic + actual refetch immediately — this used to be gated behind
+    // the 260ms scroll-reveal animation below, so a second tap on the feed tab
+    // looked like it did nothing for a beat before anything happened. The reveal
+    // is purely cosmetic and can run in parallel with the real reload instead of
+    // in front of it.
+    loadFeedRef.current(true);
     const list = flatListRef.current;
     list?.scrollToOffset({ offset: 0, animated: false });
     list?.scrollToOffset({ offset: -70, animated: true });
-    setTimeout(() => {
-      loadFeedRef.current(true);
-      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: -60, animated: true }), 120);
-    }, 260);
+    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: -60, animated: true }), 380);
   }, []);
 
   useEffect(() => {

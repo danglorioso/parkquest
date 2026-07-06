@@ -195,7 +195,13 @@ function valueFromX(x: number): number {
   return posInStar < STAR_SIZE / 2 ? starIdx + 0.5 : starIdx + 1;
 }
 
-function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function StarRating({ value, onChange, onDragChange }: {
+  value: number; onChange: (v: number) => void;
+  // Lets the parent sheet know a touch is actively dragging this control, so it can
+  // suspend its own swipe-to-dismiss gesture for the duration (see ScaleRow for the
+  // same pattern — a stray vertical component in the drag was closing the sheet).
+  onDragChange?: (dragging: boolean) => void;
+}) {
   const C = useColors();
   const containerX = useRef(0);
   const isDragging = useRef(false);
@@ -205,6 +211,7 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (e) => {
       isDragging.current = true;
+      onDragChange?.(true);
       const x = e.nativeEvent.pageX - containerX.current;
       onChange(valueFromX(x));
     },
@@ -212,8 +219,8 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
       const x = e.nativeEvent.pageX - containerX.current;
       onChange(valueFromX(x));
     },
-    onPanResponderRelease: () => { isDragging.current = false; },
-    onPanResponderTerminate: () => { isDragging.current = false; },
+    onPanResponderRelease: () => { isDragging.current = false; onDragChange?.(false); },
+    onPanResponderTerminate: () => { isDragging.current = false; onDragChange?.(false); },
   })).current;
 
   return (
@@ -256,7 +263,14 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
 const SLIDER_THUMB = 22;
 const SLIDER_TRACK_H = 6;
 
-function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: number) => void; labels: string[] }) {
+function ScaleRow({ value, onChange, labels, onDragChange }: {
+  value: number; onChange: (v: number) => void; labels: string[];
+  // See StarRating — reports active-drag state so the parent sheet can disable its
+  // swipe-to-dismiss gesture while a touch is dragging this slider. Without this, a
+  // drag that isn't perfectly horizontal registers as vertical pan-down and the
+  // enclosing modal sheet starts closing instead of just moving the thumb.
+  onDragChange?: (dragging: boolean) => void;
+}) {
   const C = useColors();
   const containerX = useRef(0);
   const trackWidth = useRef(0);
@@ -275,6 +289,7 @@ function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: nu
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (e) => {
+      onDragChange?.(true);
       const x = e.nativeEvent.pageX - containerX.current;
       onChange(valueFromX(x));
     },
@@ -282,6 +297,8 @@ function ScaleRow({ value, onChange, labels }: { value: number; onChange: (v: nu
       const x = e.nativeEvent.pageX - containerX.current;
       onChange(valueFromX(x));
     },
+    onPanResponderRelease: () => { onDragChange?.(false); },
+    onPanResponderTerminate: () => { onDragChange?.(false); },
   })).current;
 
   const pct = value > 0 ? ((value - 1) / (steps - 1)) * 100 : 0;
@@ -1540,13 +1557,18 @@ function StepWhere({ draft, set, parks, onPickPark }: {
   );
 }
 
-function StepVisit({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void }) {
+function StepVisit({ draft, set, onSliderDragChange }: {
+  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
+  // Forwarded down to every slider control on this step so the sheet can suspend its
+  // swipe-to-dismiss gesture while any of them is actively being dragged.
+  onSliderDragChange?: (dragging: boolean) => void;
+}) {
   const C = useColors();
   return (
     <View>
       <Section title="How was it?" tag="optional">
         <View style={styles.card}>
-          <StarRating value={draft.rating} onChange={v => set('rating', v)} />
+          <StarRating value={draft.rating} onChange={v => set('rating', v)} onDragChange={onSliderDragChange} />
         </View>
       </Section>
 
@@ -1557,14 +1579,14 @@ function StepVisit({ draft, set }: { draft: Draft; set: <K extends keyof Draft>(
               <Ionicons name="people-outline" size={15} color={C.inkMute} />
               <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>Crowd level</Text>
             </View>
-            <ScaleRow value={draft.crowd} onChange={v => set('crowd', v)} labels={CROWD_LABELS} />
+            <ScaleRow value={draft.crowd} onChange={v => set('crowd', v)} labels={CROWD_LABELS} onDragChange={onSliderDragChange} />
           </View>
           <View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <Ionicons name="walk-outline" size={15} color={C.inkMute} />
               <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>Trail difficulty</Text>
             </View>
-            <ScaleRow value={draft.difficulty} onChange={v => set('difficulty', v)} labels={DIFF_LABELS} />
+            <ScaleRow value={draft.difficulty} onChange={v => set('difficulty', v)} labels={DIFF_LABELS} onDragChange={onSliderDragChange} />
           </View>
         </View>
       </Section>
@@ -1907,6 +1929,18 @@ export default function LogVisitModal() {
   // the screen is being torn down by something we didn't drive, i.e. the native swipe-down
   // gesture, so the listener below saves the draft and reassures the user it's not lost.
   const leavingViaAction = useRef(false);
+
+  // The sheet dismisses via the native swipe-down-to-close gesture on this `presentation:
+  // 'modal'` screen (see app/_layout.tsx). That gesture and the slider controls on the
+  // "visit" step both claim vertical drags, so a slightly-off-horizontal drag on a slider
+  // was also dragging the sheet closed. Sliders report drag start/end here via
+  // onDragChange, and we toggle the screen's native gesture off for the duration — a
+  // counter (not a plain boolean) in case drag start/end ever overlaps across sliders.
+  const activeSliderDrags = useRef(0);
+  const setSliderDragging = useCallback((dragging: boolean) => {
+    activeSliderDrags.current = Math.max(0, activeSliderDrags.current + (dragging ? 1 : -1));
+    navigation.setOptions({ gestureEnabled: activeSliderDrags.current === 0 });
+  }, [navigation]);
 
   useEffect(() => {
     if (isEdit) return;
@@ -2266,7 +2300,7 @@ export default function LogVisitModal() {
         {!editLoading && step === 0 && (
           <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} />
         )}
-        {step === 1 && <StepVisit draft={draft} set={set} />}
+        {step === 1 && <StepVisit draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
         {step === 2 && token && <StepJournal draft={draft} set={set} token={token} getToken={getFreshToken} npsActivityNames={npsActivityNames} originalPhotos={originalPhotos.current} />}
         {step === 3 && (
           <StepShare
