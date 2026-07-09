@@ -16,6 +16,7 @@ import { STATIC as C, useColors } from '@/lib/palette';
 import { relTime } from '@/lib/dates';
 import { parkColor } from '@/lib/parkColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { ReportTargetType, ReportReason } from '@parkquest/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -185,6 +186,113 @@ function LikersSheet({
           )}
         </Animated.View>
       </View>
+    </Modal>
+  );
+}
+
+// ── ReportSheet ───────────────────────────────────────────────────────────────
+
+const REPORT_REASONS: { key: ReportReason; label: string }[] = [
+  { key: 'spam', label: 'Spam' },
+  { key: 'harassment', label: 'Harassment or bullying' },
+  { key: 'inappropriate', label: 'Inappropriate content' },
+  { key: 'other', label: 'Other' },
+];
+
+function ReportSheet({
+  token, targetType, targetId, onClose, onSubmitted,
+}: {
+  token: string;
+  targetType: ReportTargetType;
+  targetId: number | string;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const C = useColors();
+  const [reason, setReason] = useState<(typeof REPORT_REASONS)[number]['key'] | null>(null);
+  const [details, setDetails] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const slide = useRef(new Animated.Value(400)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 0, duration: 260, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 260, useNativeDriver: true }),
+    ]).start();
+  }, [slide, backdropOpacity]);
+
+  const dismiss = () => {
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 400, duration: 200, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => onClose());
+  };
+
+  const submit = async () => {
+    if (!reason || submitting) return;
+    setSubmitting(true);
+    try {
+      await apiReq('/api/reports', token, {
+        method: 'POST',
+        body: JSON.stringify({ targetType, targetId, reason, details: details.trim() || undefined }),
+      });
+      onSubmitted();
+      dismiss();
+    } catch {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={dismiss} statusBarTranslucent>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.sheetBackdrop, { opacity: backdropOpacity }]}
+          pointerEvents="none"
+        />
+        <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
+        <Animated.View style={[styles.sheet, { transform: [{ translateY: slide }] }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>{targetType === 'comment' ? 'REPORT COMMENT' : 'REPORT POST'}</Text>
+
+          {REPORT_REASONS.map(r => (
+            <TouchableOpacity
+              key={r.key}
+              style={styles.reportReasonRow}
+              activeOpacity={0.7}
+              onPress={() => setReason(r.key)}
+            >
+              <Text style={styles.reportReasonText}>{r.label}</Text>
+              <Ionicons
+                name={reason === r.key ? 'radio-button-on' : 'radio-button-off'}
+                size={18}
+                color={reason === r.key ? C.primary : C.inkMute}
+              />
+            </TouchableOpacity>
+          ))}
+
+          <TextInput
+            value={details}
+            onChangeText={t => setDetails(t.slice(0, 500))}
+            placeholder="Additional details (optional)"
+            placeholderTextColor={C.inkMute}
+            style={styles.reportDetailsInput}
+            multiline
+          />
+
+          <TouchableOpacity
+            style={[styles.reportSubmitBtn, { backgroundColor: reason ? C.primary : C.hairline }]}
+            disabled={!reason || submitting}
+            onPress={submit}
+          >
+            {submitting
+              ? <ActivityIndicator size="small" color="#FFFBF1" />
+              : <Text style={styles.reportSubmitText}>Submit report</Text>}
+          </TouchableOpacity>
+        </Animated.View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -512,6 +620,7 @@ function CommentsSheet({
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeCommentMenu, setActiveCommentMenu] = useState<number | null>(null);
+  const [reportingCommentId, setReportingCommentId] = useState<number | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: number; text: string } | null>(null);
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
   const scrollRef = useRef<ScrollView>(null);
@@ -713,34 +822,43 @@ function CommentsSheet({
                         )}
                         <Text style={[styles.commentTime, { marginTop: 3 }]}>{relTime(c.created_at)}</Text>
                       </View>
-                      {isOwn && (
-                        <View style={{ position: 'relative' }}>
-                          <TouchableOpacity
-                            onPress={() => setActiveCommentMenu(menuOpen ? null : c.id)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            style={{ paddingLeft: 6, paddingTop: 2 }}
-                          >
-                            <Ionicons name="ellipsis-horizontal" size={15} color={C.inkMute} />
-                          </TouchableOpacity>
-                          {menuOpen && (
-                            <View style={styles.commentMenu}>
+                      <View style={{ position: 'relative' }}>
+                        <TouchableOpacity
+                          onPress={() => setActiveCommentMenu(menuOpen ? null : c.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          style={{ paddingLeft: 6, paddingTop: 2 }}
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={15} color={C.inkMute} />
+                        </TouchableOpacity>
+                        {menuOpen && (
+                          <View style={styles.commentMenu}>
+                            {isOwn ? (
+                              <>
+                                <TouchableOpacity
+                                  style={styles.menuItem}
+                                  onPress={() => {
+                                    setActiveCommentMenu(null);
+                                    setEditingComment({ id: c.id, text: c.content });
+                                  }}
+                                >
+                                  <Text style={styles.menuItemText}>Edit</Text>
+                                </TouchableOpacity>
+                                <View style={styles.menuDivider} />
+                                <TouchableOpacity style={styles.menuItem} onPress={() => deleteComment(c.id)}>
+                                  <Text style={[styles.menuItemText, { color: C.liked }]}>Delete</Text>
+                                </TouchableOpacity>
+                              </>
+                            ) : (
                               <TouchableOpacity
                                 style={styles.menuItem}
-                                onPress={() => {
-                                  setActiveCommentMenu(null);
-                                  setEditingComment({ id: c.id, text: c.content });
-                                }}
+                                onPress={() => { setActiveCommentMenu(null); setReportingCommentId(c.id); }}
                               >
-                                <Text style={styles.menuItemText}>Edit</Text>
+                                <Text style={[styles.menuItemText, { color: C.liked }]}>Report</Text>
                               </TouchableOpacity>
-                              <View style={styles.menuDivider} />
-                              <TouchableOpacity style={styles.menuItem} onPress={() => deleteComment(c.id)}>
-                                <Text style={[styles.menuItemText, { color: C.liked }]}>Delete</Text>
-                              </TouchableOpacity>
-                            </View>
-                          )}
-                        </View>
-                      )}
+                            )}
+                          </View>
+                        )}
+                      </View>
                     </View>
                   );
                 })
@@ -779,6 +897,16 @@ function CommentsSheet({
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
+
+      {reportingCommentId != null && (
+        <ReportSheet
+          token={token}
+          targetType="comment"
+          targetId={reportingCommentId}
+          onClose={() => setReportingCommentId(null)}
+          onSubmitted={() => Alert.alert('Report submitted', "Thanks — we'll review this.")}
+        />
+      )}
     </Modal>
   );
 }
@@ -819,6 +947,8 @@ export function PostCard({
   const [showLikers, setShowLikers] = useState(false);
   const [commentDelta, setCommentDelta] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
+  const [showReportSheet, setShowReportSheet] = useState(false);
+  const [reported, setReported] = useState(false);
   const [previewComments, setPreviewComments] = useState<CommentRow[]>([]);
 
   useEffect(() => {
@@ -959,48 +1089,60 @@ export function PostCard({
             </View>
           </View>
         </TouchableOpacity>
-        {isOwnPost && (
-          <View style={{ position: 'relative' }}>
-            {showMenu && (
-              <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
-            )}
-            <TouchableOpacity
-              onPress={() => setShowMenu(v => !v)}
-              hitSlop={8}
-              style={[styles.menuBtn, showMenu && [styles.menuBtnActive, { backgroundColor: C.primary + '14' }]]}
-            >
-              <Ionicons name="ellipsis-horizontal" size={18} color={showMenu ? C.primary : C.inkMute} />
-            </TouchableOpacity>
-            {showMenu && (
-              <View style={styles.menu}>
-                {post.visit_id != null && (
-                  <>
-                    <TouchableOpacity
-                      style={styles.menuItem}
-                      onPress={() => {
-                        setShowMenu(false);
-                        router.push(`/(modals)/log-visit?visitId=${post.visit_id}&postId=${post.id}` as never);
-                      }}
-                    >
-                      <Text style={styles.menuItemText}>Edit visit</Text>
-                    </TouchableOpacity>
-                    <View style={styles.menuDivider} />
-                  </>
-                )}
+        <View style={{ position: 'relative' }}>
+          {showMenu && (
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
+          )}
+          <TouchableOpacity
+            onPress={() => setShowMenu(v => !v)}
+            hitSlop={8}
+            style={[styles.menuBtn, showMenu && [styles.menuBtnActive, { backgroundColor: C.primary + '14' }]]}
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color={showMenu ? C.primary : C.inkMute} />
+          </TouchableOpacity>
+          {showMenu && (
+            <View style={styles.menu}>
+              {isOwnPost ? (
+                <>
+                  {post.visit_id != null && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() => {
+                          setShowMenu(false);
+                          router.push(`/(modals)/log-visit?visitId=${post.visit_id}&postId=${post.id}` as never);
+                        }}
+                      >
+                        <Text style={styles.menuItemText}>Edit visit</Text>
+                      </TouchableOpacity>
+                      <View style={styles.menuDivider} />
+                    </>
+                  )}
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => { setCaptionDraft(currentCaption ?? ''); setVisDraft(visibility ?? 'public'); setEditingCaption(true); setShowMenu(false); }}
+                  >
+                    <Text style={styles.menuItemText}>Edit caption</Text>
+                  </TouchableOpacity>
+                  <View style={styles.menuDivider} />
+                  <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
+                    <Text style={[styles.menuItemText, { color: C.liked }]}>Delete post</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
                 <TouchableOpacity
                   style={styles.menuItem}
-                  onPress={() => { setCaptionDraft(currentCaption ?? ''); setVisDraft(visibility ?? 'public'); setEditingCaption(true); setShowMenu(false); }}
+                  disabled={reported}
+                  onPress={() => { setShowMenu(false); setShowReportSheet(true); }}
                 >
-                  <Text style={styles.menuItemText}>Edit caption</Text>
+                  <Text style={[styles.menuItemText, { color: reported ? C.inkMute : C.liked }]}>
+                    {reported ? 'Reported' : 'Report post'}
+                  </Text>
                 </TouchableOpacity>
-                <View style={styles.menuDivider} />
-                <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
-                  <Text style={[styles.menuItemText, { color: C.liked }]}>Delete post</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        )}
+              )}
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Park chip */}
@@ -1203,6 +1345,17 @@ export function PostCard({
         />
       )}
 
+      {/* Report sheet */}
+      {showReportSheet && (
+        <ReportSheet
+          token={token}
+          targetType="post"
+          targetId={post.id}
+          onClose={() => setShowReportSheet(false)}
+          onSubmitted={() => { setReported(true); Alert.alert('Report submitted', "Thanks — we'll review this."); }}
+        />
+      )}
+
     </View>
   );
 }
@@ -1260,6 +1413,24 @@ const styles = StyleSheet.create({
   },
   likerName: { fontSize: 14, fontWeight: '600', color: C.ink },
   likerSub: { fontSize: 13, color: C.inkMute, marginTop: 1 },
+
+  reportReasonRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 18, paddingVertical: 13,
+    borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
+  },
+  reportReasonText: { fontSize: 14, color: C.ink, fontWeight: '500' },
+  reportDetailsInput: {
+    marginHorizontal: 18, marginTop: 12, minHeight: 64,
+    fontSize: 14, color: C.ink, textAlignVertical: 'top',
+    backgroundColor: C.hairlineSoft, borderRadius: 10, padding: 12,
+  },
+  reportSubmitBtn: {
+    marginHorizontal: 18, marginTop: 16, marginBottom: 8,
+    borderRadius: 12, paddingVertical: 13,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  reportSubmitText: { fontSize: 14, fontWeight: '700', color: '#FFFBF1' },
 
   // Badge post body
   parkHero: {

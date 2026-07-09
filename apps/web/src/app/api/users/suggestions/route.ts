@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, or, ne, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { friendships, userProfiles, visits } from '@/lib/db/schema';
+import { getBlockedIds } from '@/lib/blocks';
 
 const W_MUTUAL_FRIEND  = 3;
 const W_SHARED_PARK    = 2;
@@ -27,7 +28,8 @@ export async function GET(request: Request) {
       .where(or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId)));
 
     const myFriendIds  = myRelationships.filter(r => r.status === 'accepted').map(r => r.other_id);
-    const excludeIds   = new Set([userId, ...myRelationships.map(r => r.other_id)]);
+    const blockedIds   = await getBlockedIds(userId);
+    const excludeIds   = new Set([userId, ...myRelationships.map(r => r.other_id), ...blockedIds]);
     const myFriendSet  = new Set(myFriendIds);
 
     const scores = new Map<string, { mutual_friends: number; shared_parks: number }>();

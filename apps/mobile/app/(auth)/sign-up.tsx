@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSignUp, useUser } from '@clerk/clerk-expo';
 import { useNavigation, useRouter } from 'expo-router';
 import {
-  clerkMsg, ErrorBox, FField, MONO, PrimaryBtn, SecondaryBtn,
+  clerkMsg, ErrorBox, FField, MONO, PrimaryBtn, SecondaryBtn, TermsCheckbox,
 } from '@/components/AuthAtoms';
 import { STATIC as C, useColors } from '@/lib/palette';
 
@@ -41,6 +41,7 @@ export default function SignUpScreen() {
   const [lastName,  setLastName]  = useState('');
   const [busy,     setBusy]     = useState(false);
   const [error,    setError]    = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const toggleShowName = () => {
     animateReveal();
@@ -208,8 +209,15 @@ export default function SignUpScreen() {
                 <Text style={st.helperText}>Optional · shown on your profile</Text>
               </>}
 
+              <TermsCheckbox checked={agreedToTerms} onToggle={() => setAgreedToTerms(v => !v)} />
+
               {error ? <ErrorBox msg={error} /> : null}
-              <PrimaryBtn label="Enter ParkQuest" onPress={handleUsername} loading={busy} disabled={username.length < 3} />
+              <PrimaryBtn
+                label="Enter ParkQuest"
+                onPress={handleUsername}
+                loading={busy}
+                disabled={username.length < 3 || !agreedToTerms}
+              />
             </>}
           </View>
 

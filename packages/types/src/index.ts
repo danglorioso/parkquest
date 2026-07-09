@@ -98,6 +98,39 @@ export interface EnrichedComment {
   avatar_url: string | null;
 }
 
+export type ReportTargetType = 'post' | 'comment' | 'user';
+export type ReportReason = 'spam' | 'harassment' | 'inappropriate' | 'other';
+export type ReportStatus = 'open' | 'actioned' | 'dismissed';
+
+export interface Report {
+  id: number;
+  reporter_id: string;
+  target_type: ReportTargetType;
+  target_id: string;
+  reason: ReportReason;
+  details: string | null;
+  status: ReportStatus;
+  reviewed_by: string | null;
+  reviewed_at: Date | null;
+  created_at: Date | null;
+}
+
+export interface EnrichedReport extends Report {
+  reporter_username: string | null;
+  target_user_id: string | null; // clerk id of the reported user / content author
+  target_username: string | null;
+  target_display_name: string | null;
+  target_content: string | null; // post caption / comment content, when applicable
+}
+
+export interface BlockedUser {
+  clerk_user_id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  blocked_at: Date | null;
+}
+
 export interface Badge {
   id: string;
   name: string;

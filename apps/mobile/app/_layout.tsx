@@ -124,8 +124,16 @@ function RootStack() {
         options={{ ...HEADER, title: 'Edit Profile', headerBackTitle: 'Profile' }}
       />
       <Stack.Screen
+        name="profile/blocked"
+        options={{ ...HEADER, title: 'Blocked Users', headerBackTitle: 'Profile' }}
+      />
+      <Stack.Screen
         name="user/[id]"
         options={{ ...HEADER, headerBackTitle: 'Back' }}
+      />
+      <Stack.Screen
+        name="admin/index"
+        options={{ ...HEADER, title: 'Admin', headerBackTitle: 'Profile' }}
       />
     </Stack>
   );

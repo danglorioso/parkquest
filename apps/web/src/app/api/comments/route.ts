@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, notInArray, and } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { comments, userProfiles, posts, notifications } from '@/lib/db/schema';
 import { sendPushToUser } from '@/lib/push';
+import { getBlockedIds } from '@/lib/blocks';
 
 export async function GET(request: Request) {
   try {
+    const { userId: viewerId } = await auth();
     const { searchParams } = new URL(request.url);
     const postId = searchParams.get('postId');
     if (!postId) return NextResponse.json({ error: 'postId is required' }, { status: 400 });
+
+    const blockedIds = viewerId ? await getBlockedIds(viewerId) : [];
 
     const rows = await db
       .select({
@@ -23,7 +27,11 @@ export async function GET(request: Request) {
       })
       .from(comments)
       .leftJoin(userProfiles, eq(comments.user_id, userProfiles.clerk_user_id))
-      .where(eq(comments.post_id, Number(postId)))
+      .where(
+        blockedIds.length > 0
+          ? and(eq(comments.post_id, Number(postId)), notInArray(comments.user_id, blockedIds))
+          : eq(comments.post_id, Number(postId))
+      )
       .orderBy(asc(comments.created_at));
 
     return NextResponse.json(rows);

@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOAuth, useSignUp, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { AppleIcon, clerkMsg, ErrorBox, FField, GoogleG, MONO, PrimaryBtn } from '@/components/AuthAtoms';
+import { AppleIcon, clerkMsg, ErrorBox, FField, GoogleG, MONO, PrimaryBtn, TermsCheckbox } from '@/components/AuthAtoms';
 import { STATIC as C, useColors } from '@/lib/palette';
 const WEB      = process.env.EXPO_PUBLIC_API_URL ?? 'https://www.parkquest.me';
 const SCREEN_W = Dimensions.get('window').width;
@@ -292,6 +292,7 @@ export default function LandingScreen() {
   const [oauthBusy, setOauthBusy] = useState<'google' | 'apple' | null>(null);
   const [busy,      setBusy]      = useState(false);
   const [error,     setError]     = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   // Stores the OAuth sign-up object that needs a username to complete.
   const pendingOAuthSignUpRef = useRef<any>(null);
   const pendingSetActiveRef   = useRef<((params: any) => Promise<void>) | null>(null);
@@ -398,8 +399,15 @@ export default function LandingScreen() {
                     <Text style={styles.helperText}>Optional · shown on your profile</Text>
                   </>}
 
+                  <TermsCheckbox checked={agreedToTerms} onToggle={() => setAgreedToTerms(v => !v)} />
+
                   {error ? <ErrorBox msg={error} /> : null}
-                  <PrimaryBtn label="Enter ParkQuest" onPress={handleUsername} loading={busy} disabled={username.length < 3} />
+                  <PrimaryBtn
+                    label="Enter ParkQuest"
+                    onPress={handleUsername}
+                    loading={busy}
+                    disabled={username.length < 3 || !agreedToTerms}
+                  />
                 </View>
               </>
             ) : (

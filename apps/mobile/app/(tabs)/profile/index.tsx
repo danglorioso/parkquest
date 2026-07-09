@@ -730,6 +730,12 @@ export default function ProfileScreen() {
             />
             <View style={styles.rowDivider} />
             <NavRow
+              icon="ban-outline"
+              label="Blocked Users"
+              onPress={() => router.push('/profile/blocked' as never)}
+            />
+            <View style={styles.rowDivider} />
+            <NavRow
               icon="log-out-outline"
               label="Sign Out"
               danger
@@ -737,6 +743,23 @@ export default function ProfileScreen() {
             />
           </View>
         </View>
+
+        {user?.publicMetadata?.role === 'admin' && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="shield-outline" size={13} color={C.inkMute} />
+              <Text style={styles.sectionKicker}>ADMIN</Text>
+            </View>
+            <View style={styles.card}>
+              <NavRow
+                icon="analytics-outline"
+                label="Admin Dashboard"
+                subtitle="Reports queue and app stats"
+                onPress={() => router.push('/admin' as never)}
+              />
+            </View>
+          </View>
+        )}
 
         {/* Attribution */}
         <Text style={styles.attribution}>

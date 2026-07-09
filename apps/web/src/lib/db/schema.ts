@@ -109,6 +109,32 @@ export type Comment = typeof comments.$inferSelect;
 export type NewComment = typeof comments.$inferInsert;
 export type UserBadge = typeof userBadges.$inferSelect;
 
+export const blocks = pgTable('blocks', {
+  id: serial('id').primaryKey(),
+  blocker_id: varchar('blocker_id', { length: 255 }).notNull(),
+  blocked_id: varchar('blocked_id', { length: 255 }).notNull(),
+  reason: text('reason'),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [unique().on(t.blocker_id, t.blocked_id)]);
+
+export const reports = pgTable('reports', {
+  id: serial('id').primaryKey(),
+  reporter_id: varchar('reporter_id', { length: 255 }).notNull(),
+  target_type: varchar('target_type', { length: 20 }).notNull(), // 'post' | 'comment' | 'user'
+  target_id: varchar('target_id', { length: 255 }).notNull(),    // post.id / comment.id / clerk_user_id, stringified
+  reason: varchar('reason', { length: 40 }).notNull(),           // 'spam' | 'harassment' | 'inappropriate' | 'other'
+  details: text('details'),
+  status: varchar('status', { length: 20 }).notNull().default('open'), // 'open' | 'actioned' | 'dismissed'
+  reviewed_by: varchar('reviewed_by', { length: 255 }),
+  reviewed_at: timestamp('reviewed_at'),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type Block = typeof blocks.$inferSelect;
+export type NewBlock = typeof blocks.$inferInsert;
+export type Report = typeof reports.$inferSelect;
+export type NewReport = typeof reports.$inferInsert;
+
 export const notifications = pgTable('notifications', {
   id: serial('id').primaryKey(),
   recipient_id: varchar('recipient_id', { length: 255 }).notNull(),

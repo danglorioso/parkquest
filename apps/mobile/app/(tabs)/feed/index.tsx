@@ -19,6 +19,7 @@ import { STATIC as C, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { useIsOnline } from '@/lib/network';
 import { loadOfflineFeed, saveOfflineFeed } from '@/lib/offlineFeed';
+import { onUserBlocked } from '@/lib/blocking';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -68,7 +69,7 @@ export default function FeedScreen() {
   const palette = useColors();
   const insets = useSafeAreaInsets();
   const tabBarSpace = useTabBarSpace();
-  const TOP_BAR_H = insets.top + 56;
+  const TOP_BAR_H = insets.top + 56.5;
 
   const [token, setToken]         = useState<string | null>(null);
   const [posts, setPosts]         = useState<FeedPost[]>([]);
@@ -205,6 +206,15 @@ export default function FeedScreen() {
 
   const handleDelete = useCallback((id: number) => {
     setPosts(prev => prev.filter(p => p.id !== id));
+  }, []);
+
+  // Blocking a user should hide their posts from the feed instantly, without
+  // waiting on a refetch.
+  useEffect(() => {
+    const unsubscribe = onUserBlocked(blockedId => {
+      setPosts(prev => prev.filter(p => p.clerk_user_id !== blockedId));
+    });
+    return unsubscribe;
   }, []);
 
   const filtered = posts.filter(p =>
@@ -379,12 +389,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(242,235,219,0.88)',
   },
   topBarInner: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingVertical: 10,
   },
   topBarHairline: {
     height: 0.5,

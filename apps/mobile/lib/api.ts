@@ -1,4 +1,4 @@
-import type { EnrichedPost, EnrichedComment, PublicProfile, UserProfile, ParkWithStatus, BadgesResponse, Friend, FriendRequest } from '@parkquest/types';
+import type { EnrichedPost, EnrichedComment, PublicProfile, UserProfile, ParkWithStatus, BadgesResponse, Friend, FriendRequest, BlockedUser, ReportTargetType, ReportReason, EnrichedReport } from '@parkquest/types';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -106,6 +106,49 @@ export const respondFriendRequest = (token: string, friendshipId: number, action
 
 export const removeFriend = (token: string, userId: string) =>
   req(`/api/friends?userId=${userId}`, token, { method: 'DELETE' });
+
+// ── Reports & Blocks ───────────────────────────────────────────────────────────
+
+export const reportContent = (
+  token: string,
+  targetType: ReportTargetType,
+  targetId: string | number,
+  reason: ReportReason,
+  details?: string,
+) => req('/api/reports', token, {
+  method: 'POST',
+  body: JSON.stringify({ targetType, targetId, reason, details }),
+});
+
+export const getBlockedUsers = (token: string) =>
+  req<BlockedUser[]>('/api/blocks', token);
+
+export const blockUser = (token: string, userId: string, reason?: string) =>
+  req('/api/blocks', token, { method: 'POST', body: JSON.stringify({ userId, reason }) });
+
+export const unblockUser = (token: string, userId: string) =>
+  req(`/api/blocks?userId=${userId}`, token, { method: 'DELETE' });
+
+// ── Admin ──────────────────────────────────────────────────────────────────────
+
+export interface AdminStats {
+  total_users: number;
+  total_posts: number;
+  total_visits: number;
+  total_badges: number;
+  active_users_7d: number;
+  active_users_30d: number;
+  signups_by_day: { day: string; count: number }[];
+}
+
+export const getAdminStats = (token: string) =>
+  req<AdminStats>('/api/admin/stats', token);
+
+export const getAdminReports = (token: string) =>
+  req<EnrichedReport[]>('/api/admin/reports?status=open', token);
+
+export const actOnReport = (token: string, id: number, action: 'dismiss' | 'remove_content' | 'ban_user') =>
+  req(`/api/admin/reports/${id}`, token, { method: 'PATCH', body: JSON.stringify({ action }) });
 
 // ── Parks ──────────────────────────────────────────────────────────────────────
 

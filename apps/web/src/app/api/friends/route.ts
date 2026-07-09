@@ -4,6 +4,7 @@ import { eq, and, or, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { friendships, userProfiles, notifications } from '@/lib/db/schema';
 import { sendPushToUser } from '@/lib/push';
+import { getBlockedIds } from '@/lib/blocks';
 
 // GET /api/friends?userId=...&type=friends|pending_incoming|pending_outgoing
 export async function GET(request: Request) {
@@ -101,6 +102,11 @@ export async function POST(request: Request) {
     const { userId: targetId } = await request.json();
     if (!targetId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     if (targetId === userId) return NextResponse.json({ error: 'Cannot friend yourself' }, { status: 400 });
+
+    const blockedIds = await getBlockedIds(userId);
+    if (blockedIds.includes(targetId)) {
+      return NextResponse.json({ error: 'Cannot friend a blocked user' }, { status: 403 });
+    }
 
     const existing = await db
       .select()

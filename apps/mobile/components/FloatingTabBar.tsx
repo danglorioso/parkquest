@@ -94,6 +94,13 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
         .filter((i) => i >= 0),
     [routes, descriptors],
   );
+  // The FAB (log-visit) slot — excluded from `navigable` since it's not a
+  // real tab, but it still sits visually on top of the bar, so a drag
+  // passing under it should still get a haptic tick.
+  const fabIndex = useMemo(
+    () => routes.findIndex((r) => descriptors[r.key].options.tabBarButton),
+    [routes, descriptors],
+  );
 
   const bubbleCx = useSharedValue(-1000);
   const bubbleScale = useSharedValue(1);
@@ -101,6 +108,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   const stretch = useSharedValue(1);
   const dragging = useSharedValue(0);
   const slot = useSharedValue(state.index);
+  const overFab = useSharedValue(0);
 
   useEffect(() => {
     slot.value = state.index;
@@ -131,6 +139,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
     .failOffsetY([-16, 16])
     .onStart(() => {
       dragging.value = 1;
+      overFab.value = 0;
       bubbleScale.value = withSpring(1.15, SPRING);
     })
     .onUpdate((e) => {
@@ -156,6 +165,17 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
         slot.value = best;
         runOnJS(tick)();
       }
+      // FAB sits on top of the bar but has no navigable slot of its own —
+      // fire a tick when the drag crosses under it so it still reads as a
+      // real button in the sweep.
+      if (fabIndex >= 0) {
+        const fabStart = PILL_PADDING_H + slotW * fabIndex;
+        const isOverFab = x >= fabStart && x <= fabStart + slotW ? 1 : 0;
+        if (isOverFab !== overFab.value) {
+          overFab.value = isOverFab;
+          if (isOverFab === 1) runOnJS(tick)();
+        }
+      }
     })
     .onEnd(() => {
       // Navigate only once the finger lifts, not while sliding
@@ -163,6 +183,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
     })
     .onFinalize(() => {
       dragging.value = 0;
+      overFab.value = 0;
       bubbleScale.value = withSpring(1, SPRING);
       stretch.value = withSpring(1, SPRING);
       if (slotW > 0) {

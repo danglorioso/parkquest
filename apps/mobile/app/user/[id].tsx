@@ -15,6 +15,7 @@ import { Avatar } from '@/components/Avatar';
 import { BadgeInfoModal } from '@/components/BadgeInfoModal';
 import { EmptyState } from '@/components/EmptyState';
 import { STATIC as C, useColors } from '@/lib/palette';
+import { emitUserBlocked } from '@/lib/blocking';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -156,6 +157,7 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [friendBusy, setFriendBusy] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<ProfileBadge | null>(null);
   const [showFriendsModal, setShowFriendsModal] = useState(false);
 
@@ -304,6 +306,37 @@ export default function UserProfileScreen() {
     }
   };
 
+  const handleBlock = () => {
+    if (!profile || blockBusy) return;
+    const name = profile.display_name ?? profile.username;
+    Alert.alert(
+      'Block user',
+      `${name} won't be able to see your posts or contact you, and you won't see theirs. This also flags them for review.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block', style: 'destructive', onPress: async () => {
+            setBlockBusy(true);
+            const tok = await getToken();
+            if (!tok) { setBlockBusy(false); return; }
+            const res = await fetch(`${BASE}/api/blocks`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: profile.clerk_user_id }),
+            });
+            setBlockBusy(false);
+            if (res.ok) {
+              emitUserBlocked(profile.clerk_user_id);
+              router.back();
+            } else {
+              Alert.alert('Error', 'Could not block this user. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const friendButtonLabel = () => {
     switch (profile?.friendship_status) {
       case 'accepted':       return 'Friends';
@@ -429,6 +462,16 @@ export default function UserProfileScreen() {
                       </Text>
                     </>
                   )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleBlock}
+                  disabled={blockBusy}
+                  hitSlop={8}
+                  style={{ alignSelf: 'center', marginTop: 12 }}
+                >
+                  <Text style={{ fontSize: 13, color: C.inkMute, textDecorationLine: 'underline' }}>
+                    Block user
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : null}

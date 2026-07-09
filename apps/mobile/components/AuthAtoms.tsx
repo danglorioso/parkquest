@@ -1,8 +1,11 @@
 import {
-  ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import { STATIC as C, useColors } from '@/lib/palette';
+
+const WEB = process.env.EXPO_PUBLIC_API_URL ?? 'https://www.parkquest.me';
 
 // Shared form atoms for the auth flow (sign-in landing, login, sign-up).
 // One source of truth so fields, buttons, and error boxes look identical
@@ -87,6 +90,26 @@ export function InfoText({ children }: { children: React.ReactNode }) {
   return <Text style={st.infoText}>{children}</Text>;
 }
 
+// Required acceptance gate shown right before an account is created — Apple
+// Guideline 1.2 requires terms be presented and agreed to before registration,
+// not just linked to in passing.
+export function TermsCheckbox({ checked, onToggle }: { checked: boolean; onToggle: () => void }) {
+  const T = useColors();
+  return (
+    <TouchableOpacity onPress={onToggle} style={st.termsRow} activeOpacity={0.7}>
+      <View style={[st.checkbox, checked && { backgroundColor: T.primary, borderColor: T.primary }]}>
+        {checked && <Ionicons name="checkmark" size={13} color={C.onPrimary} />}
+      </View>
+      <Text style={st.termsText}>
+        I agree to the{' '}
+        <Text style={{ color: T.primary, fontWeight: '600' }} onPress={() => Linking.openURL(`${WEB}/terms`)}>Terms of Use</Text>
+        {' '}and{' '}
+        <Text style={{ color: T.primary, fontWeight: '600' }} onPress={() => Linking.openURL(`${WEB}/privacy`)}>Privacy Policy</Text>
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 export function GoogleG({ size = 16 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
@@ -124,4 +147,12 @@ const st = StyleSheet.create({
   errorBox:     { backgroundColor: 'rgba(192,64,64,0.08)', borderRadius: 10, borderWidth: 0.5, borderColor: 'rgba(192,64,64,0.25)', padding: 12, marginBottom: 12 },
   errorBoxText: { fontSize: 13, color: '#C04040' },
   infoText:     { fontSize: 13.5, color: C.inkMute, lineHeight: 20, marginBottom: 14 },
+
+  termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 16 },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 5, marginTop: 1,
+    borderWidth: 1.5, borderColor: C.hairline,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  termsText: { fontSize: 13, color: C.inkMute, lineHeight: 19, flex: 1 },
 });

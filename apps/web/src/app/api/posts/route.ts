@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, desc, and, or, inArray, sql, isNotNull } from 'drizzle-orm';
+import { eq, desc, and, or, inArray, notInArray, sql, isNotNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, parks, userProfiles, friendships, notifications, visits } from '@/lib/db/schema';
+import { getBlockedIds } from '@/lib/blocks';
 
 const VISIBILITIES = ['public', 'friends', 'private'] as const;
 
@@ -67,6 +68,10 @@ export async function GET(request: Request) {
     if (userId) conditions.push(eq(posts.clerk_user_id, userId));
     if (parkCode) conditions.push(eq(posts.park_code, parkCode));
     if (badgeId) conditions.push(eq(posts.badge_id, badgeId));
+    if (viewerId) {
+      const blockedIds = await getBlockedIds(viewerId);
+      if (blockedIds.length > 0) conditions.push(notInArray(posts.clerk_user_id, blockedIds));
+    }
 
     const results = await query
       .where(and(...conditions))
