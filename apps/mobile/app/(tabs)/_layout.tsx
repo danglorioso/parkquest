@@ -75,8 +75,17 @@ export default function TabsLayout() {
           name="feed"
           listeners={({ navigation }) => ({
             tabPress: () => {
+              // Nested feed stack: only refresh when already sitting on the
+              // feed list itself. If we're pushed into a park detail screen,
+              // let the default tabPress action pop the stack back to the
+              // list without also refetching/scroll-animating the feed.
               if (navigation.isFocused()) {
-                DeviceEventEmitter.emit('feedTabPress');
+                const state = navigation.getState();
+                const feedRoute = state.routes[state.index];
+                const nestedIndex = (feedRoute as { state?: { index?: number } }).state?.index ?? 0;
+                if (nestedIndex === 0) {
+                  DeviceEventEmitter.emit('feedTabPress');
+                }
               }
             },
           })}

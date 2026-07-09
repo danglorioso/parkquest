@@ -1,7 +1,7 @@
 import {
   ActivityIndicator, Animated, Dimensions, Easing, KeyboardAvoidingView,
-  Linking, Platform, ScrollView, StyleSheet, Text,
-  TouchableOpacity, View,
+  LayoutAnimation, Linking, Platform, ScrollView, StyleSheet, Text,
+  TouchableOpacity, UIManager, View,
 } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -42,6 +42,14 @@ const SHOOTS: [number, number, number, number, number][] = [
 // Topo watermark — same swirling contour lines as the web hero, tiled 420px
 const TOPO_TILE = 420;
 const TOPO_ROWS = [60, 110, 160, 210, 260, 310, 360, 410];
+
+// LayoutAnimation needs an explicit opt-in on Android's old architecture
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const animateReveal = () =>
+  LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
 
 // Module-level animated values — created once
 const _starOp   = STARS.map(([,, op])  => new Animated.Value(op));
@@ -278,12 +286,20 @@ export default function LandingScreen() {
 
   const [mode,      setMode]      = useState<'landing' | 'username'>('landing');
   const [username,  setUsername]  = useState('');
+  const [showName,  setShowName]  = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName,  setLastName]  = useState('');
   const [oauthBusy, setOauthBusy] = useState<'google' | 'apple' | null>(null);
   const [busy,      setBusy]      = useState(false);
   const [error,     setError]     = useState('');
   // Stores the OAuth sign-up object that needs a username to complete.
   const pendingOAuthSignUpRef = useRef<any>(null);
   const pendingSetActiveRef   = useRef<((params: any) => Promise<void>) | null>(null);
+
+  const toggleShowName = () => {
+    animateReveal();
+    setShowName(v => !v);
+  };
 
   const handleOAuth = async (provider: 'google' | 'apple') => {
     setError('');
@@ -318,6 +334,9 @@ export default function LandingScreen() {
     if (uname.length < 3) return;
     setError('');
     setBusy(true);
+    const nameFields = showName
+      ? { firstName: firstName.trim() || undefined, lastName: lastName.trim() || undefined }
+      : {};
     try {
       // Prefer the stored OAuth sign-up object; fall back to useSignUp()'s signUp.
       const pendingSU = pendingOAuthSignUpRef.current ?? signUp;
@@ -325,14 +344,14 @@ export default function LandingScreen() {
       if (pendingSU && pendingSU.status === 'missing_requirements') {
         // OAuth sign-up paused on required fields — no session exists yet,
         // so user.update() is unavailable; finish the sign-up instead.
-        const result = await pendingSU.update({ username: uname });
+        const result = await pendingSU.update({ username: uname, ...nameFields });
         if (result.status !== 'complete') {
           setError('Could not finish sign-up. Please try again.');
           return;
         }
         await sa!({ session: result.createdSessionId });
       } else if (user) {
-        await user.update({ username: uname });
+        await user.update({ username: uname, ...nameFields });
       } else {
         setError('Account not ready yet. Please try again.');
         return;
@@ -347,15 +366,15 @@ export default function LandingScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <HeroSection />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <HeroSection />
 
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <View style={styles.panel}>
 
             {mode === 'username' ? (
@@ -366,6 +385,19 @@ export default function LandingScreen() {
                 <View style={{ marginTop: 24 }}>
                   <FField label="USERNAME" value={username} onChange={v => setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoFocus />
                   <Text style={styles.helperText}>Lowercase letters, numbers, underscores · min 3 chars</Text>
+
+                  <TouchableOpacity onPress={toggleShowName} style={styles.nameToggle} activeOpacity={0.7}>
+                    <Text style={[styles.nameToggleText, { color: T.primary }]}>
+                      {showName ? 'Hide name' : '+ Add your name'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showName && <>
+                    <FField label="FIRST NAME" value={firstName} onChange={setFirstName} autoCapitalize="words" autoFocus />
+                    <FField label="LAST NAME" value={lastName} onChange={setLastName} autoCapitalize="words" />
+                    <Text style={styles.helperText}>Optional · shown on your profile</Text>
+                  </>}
+
                   {error ? <ErrorBox msg={error} /> : null}
                   <PrimaryBtn label="Enter ParkQuest" onPress={handleUsername} loading={busy} disabled={username.length < 3} />
                 </View>
@@ -427,8 +459,8 @@ export default function LandingScreen() {
             )}
 
           </View>
-        </KeyboardAvoidingView>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -481,4 +513,7 @@ const styles = StyleSheet.create({
   terms: { fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 12, lineHeight: 17 },
 
   helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
+
+  nameToggle:     { marginBottom: 14, marginTop: -4 },
+  nameToggleText: { fontSize: 13, fontWeight: '700' },
 });

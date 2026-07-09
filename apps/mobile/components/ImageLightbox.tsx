@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import {
-  Dimensions, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View,
+  Dimensions, FlatList, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,38 +25,58 @@ export function ImageLightbox({
   const listRef = useRef<FlatList<LightboxImage>>(null);
   const n = images.length;
 
+  // For wrap-around swiping, pad the real data with a clone of the last image
+  // up front and a clone of the first image at the end. List index `k` maps
+  // to real image index `k - 1`. Landing on a clone snaps silently (no
+  // animation) to its real counterpart, giving the illusion of an infinite loop.
+  const loopData = n > 1 ? [images[n - 1], ...images, images[0]] : images;
+  const initialListIndex = n > 1 ? initialIndex + 1 : initialIndex;
+
   const goTo = (k: number) => {
-    const next = Math.max(0, Math.min(n - 1, k));
-    listRef.current?.scrollToIndex({ index: next, animated: true });
-    setIdx(next);
+    if (n <= 1) return;
+    const real = ((k % n) + n) % n;
+    listRef.current?.scrollToIndex({ index: real + 1, animated: true });
+    setIdx(real);
   };
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.bg}>
-        {/* Fullscreen pager — swipe anywhere to change image */}
+        {/* Fullscreen pager — swipe anywhere to change image, wraps at the ends */}
         <FlatList
           ref={listRef}
-          data={images}
+          data={loopData}
           keyExtractor={(_, k) => String(k)}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           style={StyleSheet.absoluteFill}
-          initialScrollIndex={initialIndex}
+          initialScrollIndex={initialListIndex}
           getItemLayout={(_, index) => ({ length: W, offset: W * index, index })}
           onMomentumScrollEnd={e => {
-            setIdx(Math.round(e.nativeEvent.contentOffset.x / W));
+            if (n <= 1) return;
+            const listIndex = Math.round(e.nativeEvent.contentOffset.x / W);
+            if (listIndex === 0) {
+              listRef.current?.scrollToIndex({ index: n, animated: false });
+              setIdx(n - 1);
+            } else if (listIndex === n + 1) {
+              listRef.current?.scrollToIndex({ index: 1, animated: false });
+              setIdx(0);
+            } else {
+              setIdx(listIndex - 1);
+            }
           }}
           renderItem={({ item }) => (
-            <View style={styles.page}>
-              <Image
-                source={{ uri: item.url }}
-                style={styles.img}
-                contentFit="contain"
-                cachePolicy="memory-disk"
-              />
-            </View>
+            <Pressable style={styles.page} onPress={onClose}>
+              <Pressable style={styles.img} onPress={() => {}}>
+                <Image
+                  source={{ uri: item.url }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                />
+              </Pressable>
+            </Pressable>
           )}
         />
 
@@ -76,8 +96,8 @@ export function ImageLightbox({
           <Ionicons name="close" size={22} color="#FFFBF1" />
         </TouchableOpacity>
 
-        {/* Prev arrow */}
-        {idx > 0 && (
+        {/* Prev arrow — wraps to the last image */}
+        {n > 1 && (
           <TouchableOpacity
             style={[styles.nav, { left: 16 }]}
             onPress={() => goTo(idx - 1)}
@@ -86,8 +106,8 @@ export function ImageLightbox({
           </TouchableOpacity>
         )}
 
-        {/* Next arrow */}
-        {idx < n - 1 && (
+        {/* Next arrow — wraps to the first image */}
+        {n > 1 && (
           <TouchableOpacity
             style={[styles.nav, { right: 16 }]}
             onPress={() => goTo(idx + 1)}
