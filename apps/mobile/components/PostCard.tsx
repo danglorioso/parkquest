@@ -939,6 +939,7 @@ export function PostCard({
   onParkPress,
   openOnPress = true,
   autoOpenComments = false,
+  autoOpenLikers = false,
 }: {
   post: FeedPost;
   token: string;
@@ -951,6 +952,7 @@ export function PostCard({
   // dedicated focus view. Disabled when the card is already rendered there.
   openOnPress?: boolean;
   autoOpenComments?: boolean;
+  autoOpenLikers?: boolean;
 }) {
   const router = useRouter();
   const C = useColors();
@@ -970,6 +972,10 @@ export function PostCard({
   useEffect(() => {
     if (autoOpenComments) setShowComments(true);
   }, [autoOpenComments]);
+
+  useEffect(() => {
+    if (autoOpenLikers && likeCount > 0) setShowLikers(true);
+  }, [autoOpenLikers]);
 
   // Server comment_count is the source of truth; drop the optimistic local
   // delta once a fresh count arrives so counts don't double-add after a
@@ -1076,7 +1082,7 @@ export function PostCard({
   return (
     <CardContainer
       style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}
-      {...(openOnPress ? { onPress: () => router.push(`/p/${post.id}` as never) } : {})}
+      {...(openOnPress ? { onPress: () => router.push(`/(tabs)/feed/post/${post.id}` as never) } : {})}
     >
       {/* Badge banner */}
       {isBadge && (

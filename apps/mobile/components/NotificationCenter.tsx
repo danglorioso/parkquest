@@ -102,7 +102,7 @@ function NotificationRow({
   onRespond: (friendshipId: number, action: 'accept' | 'reject') => Promise<void>;
   onNavigateToUser: (userId: string) => void;
   onNavigateToBadge: (badgeId: string) => void;
-  onNavigateToPost: (postId: number) => void;
+  onNavigateToPost: (postId: number, openMode?: 'likes' | 'comments') => void;
   onNavigateToPark: (parkCode: string) => void;
 }) {
   const styles = useThemedStyles(makeStyles);
@@ -124,12 +124,14 @@ function NotificationRow({
   const handlePress = badgeId
     ? () => onNavigateToBadge(badgeId)
     : postTypes && n.post_id != null
-      ? () => onNavigateToPost(n.post_id!)
+      ? () => onNavigateToPost(n.post_id!, n.type === 'like' ? 'likes' : n.type === 'comment' ? 'comments' : undefined)
       : n.type === 'visit_logged' && n.park_code
         ? () => onNavigateToPark(n.park_code!)
         : n.actor_id
           ? () => onNavigateToUser(String(n.actor_id))
           : undefined;
+
+  const goToActor = n.actor_id ? () => onNavigateToUser(String(n.actor_id)) : undefined;
 
   return (
     <TouchableOpacity
@@ -143,7 +145,9 @@ function NotificationRow({
       {/* Avatar / type icon */}
       <View style={{ flexShrink: 0, alignSelf: 'flex-start', position: 'relative' }}>
         {n.actor_id ? (
-          <Avatar url={n.actor_avatar_url} name={actorName ?? undefined} size={40} />
+          <TouchableOpacity onPress={goToActor} activeOpacity={0.7} hitSlop={4}>
+            <Avatar url={n.actor_avatar_url} name={actorName ?? undefined} size={40} />
+          </TouchableOpacity>
         ) : (
           <View style={[styles.typeCircle, { backgroundColor: cfg.bg }]}>
             <Ionicons name={cfg.icon} size={18} color={cfg.color} />
@@ -168,7 +172,7 @@ function NotificationRow({
               {actorName ? (
                 <>
                   {status === 'accepted' ? ' with ' : ' from '}
-                  <Text style={styles.rowTextBold}>{actorName}</Text>
+                  <Text style={styles.rowTextBold} onPress={goToActor}>{actorName}</Text>
                 </>
               ) : null}
             </Text>
@@ -182,7 +186,7 @@ function NotificationRow({
           ) : (n.type === 'post' || n.type === 'visit_logged') && n.park_name ? (
             <>
               {actorName ? (
-                <Text style={styles.rowTextBold}>{actorName}</Text>
+                <Text style={styles.rowTextBold} onPress={goToActor}>{actorName}</Text>
               ) : null}
               <Text>{n.type === 'post' ? ' posted at ' : ' visited '}</Text>
               <Text style={styles.rowTextBold}>{n.park_name}</Text>
@@ -190,7 +194,7 @@ function NotificationRow({
           ) : (
             <>
               {actorName ? (
-                <Text style={styles.rowTextBold}>{actorName}</Text>
+                <Text style={styles.rowTextBold} onPress={goToActor}>{actorName}</Text>
               ) : null}
               <Text>{rest}</Text>
             </>
@@ -511,9 +515,9 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                         dismiss();
                         router.push(`/profile/badges?badgeId=${badgeId}` as any);
                       }}
-                      onNavigateToPost={(postId) => {
+                      onNavigateToPost={(postId, openMode) => {
                         dismiss();
-                        router.push(`/p/${postId}` as any);
+                        router.push(`/(tabs)/feed/post/${postId}${openMode ? `?open=${openMode}` : ''}` as any);
                       }}
                       onNavigateToPark={(parkCode) => {
                         dismiss();

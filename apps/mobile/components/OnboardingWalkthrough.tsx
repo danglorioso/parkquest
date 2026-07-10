@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { Wordmark } from '@/components/Wordmark';
 
@@ -45,6 +46,7 @@ const STEPS: Step[] = [
 
 export function OnboardingWalkthrough() {
   const T = useColors();
+  const router = useRouter();
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
 
@@ -85,6 +87,11 @@ export function OnboardingWalkthrough() {
   const finish = () => {
     setVisible(false);
     AsyncStorage.setItem(SEEN_KEY, 'true').catch(() => {});
+  };
+
+  const findFriends = () => {
+    finish();
+    router.push('/(tabs)/profile/friends' as never);
   };
 
   if (!visible) return null;
@@ -134,6 +141,17 @@ export function OnboardingWalkthrough() {
             ))}
           </View>
 
+          {isLast && (
+            <TouchableOpacity
+              style={[styles.findFriendsBtn, { borderColor: T.primary }]}
+              onPress={findFriends}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="search" size={14} color={T.primary} />
+              <Text style={[styles.findFriendsText, { color: T.primary }]}>Find friends</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[styles.nextBtn, { backgroundColor: T.primary }]}
             onPress={isLast ? finish : () => goToStep(step + 1)}
@@ -177,7 +195,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 6,
   },
   skipText: { fontSize: 13, fontWeight: '600', color: C.inkMute },
-  wordmarkBox: { marginBottom: 16 },
+  wordmarkBox: { height: 64, justifyContent: 'center', marginBottom: 16 },
   iconBox: {
     width: 64, height: 64, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center', marginBottom: 16,
@@ -188,9 +206,16 @@ const styles = StyleSheet.create({
   },
   body: {
     fontSize: 14, color: C.inkMute, textAlign: 'center',
-    lineHeight: 20, marginBottom: 20,
+    lineHeight: 20, minHeight: 60, marginBottom: 20,
   },
   dots: { flexDirection: 'row', gap: 5, marginBottom: 20 },
+  findFriendsBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    alignSelf: 'stretch',
+    paddingHorizontal: 22, paddingVertical: 13, borderRadius: 100,
+    borderWidth: 1.5, marginBottom: 10,
+  },
+  findFriendsText: { fontSize: 14, fontWeight: '800' },
   dot: { height: 6, borderRadius: 3 },
   nextBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,

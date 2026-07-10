@@ -10,6 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, type SharedValue,
+  FadeInDown, FadeIn,
 } from 'react-native-reanimated';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -92,7 +93,9 @@ const RETURN_OPTS   = [
   { id: 'maybe', label: 'Maybe',        color: C.bucket,  icon: 'repeat-outline' as const, iconFilled: 'repeat' as const },
   { id: 'no',    label: 'Probably not', color: C.inkMute, icon: 'cloud-outline' as const,  iconFilled: 'cloud' as const },
 ];
-const STEPS = ['Where & when', 'The visit', 'Journal', 'Share'];
+const STEPS = [
+  'Where & when', 'Rating', 'Crowd', 'Difficulty', 'Weather', 'Would you return?', 'Journal', 'Share',
+];
 const STAR_SIZE = 36;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -206,6 +209,13 @@ function StarRating({ value, onChange, onDragChange }: {
   const C = useColors();
   const containerX = useRef(0);
   const isDragging = useRef(false);
+  // Ticks a light haptic each time the dragged-to value crosses into a new
+  // half-star, instead of firing on every pixel of pan movement.
+  const lastHaptic = useRef(value);
+  const change = (v: number) => {
+    if (v !== lastHaptic.current) { Haptics.selectionAsync(); lastHaptic.current = v; }
+    onChange(v);
+  };
 
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -214,11 +224,11 @@ function StarRating({ value, onChange, onDragChange }: {
       isDragging.current = true;
       onDragChange?.(true);
       const x = e.nativeEvent.pageX - containerX.current;
-      onChange(valueFromX(x));
+      change(valueFromX(x));
     },
     onPanResponderMove: (e) => {
       const x = e.nativeEvent.pageX - containerX.current;
-      onChange(valueFromX(x));
+      change(valueFromX(x));
     },
     onPanResponderRelease: () => { isDragging.current = false; onDragChange?.(false); },
     onPanResponderTerminate: () => { isDragging.current = false; onDragChange?.(false); },
@@ -263,6 +273,7 @@ function StarRating({ value, onChange, onDragChange }: {
 
 const SLIDER_THUMB = 22;
 const SLIDER_TRACK_H = 6;
+const SLIDER_SPRING = { damping: 18, stiffness: 220 };
 
 function ScaleRow({ value, onChange, labels, onDragChange }: {
   value: number; onChange: (v: number) => void; labels: string[];
@@ -278,6 +289,8 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
   const [, forceRender] = useState(0);
   const steps = labels.length;
 
+  const pctFor = (v: number) => (v > 0 ? ((v - 1) / (steps - 1)) * 100 : 0);
+
   const valueFromX = (x: number) => {
     const w = trackWidth.current;
     if (w <= 0) return value;
@@ -286,26 +299,62 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
     return Math.min(steps, Math.max(1, idx + 1));
   };
 
+  // Ticks a light haptic each time the dragged-to value crosses into a new
+  // step, instead of firing on every pixel of pan movement.
+  const lastHaptic = useRef(value);
+  const change = (v: number) => {
+    if (v !== lastHaptic.current) { Haptics.selectionAsync(); lastHaptic.current = v; }
+    onChange(v);
+  };
+
+  // The thumb's visual position tracks the finger continuously (no rounding)
+  // while dragging, then springs to the nearest dot on release — rather than
+  // jumping straight between step positions on every move event.
+  const isDragging = useRef(false);
+  const rawPct = useSharedValue(pctFor(value));
+  useEffect(() => {
+    if (!isDragging.current) rawPct.value = withSpring(pctFor(value), SLIDER_SPRING);
+  }, [value]);
+
+  const rawPctFromX = (x: number) => {
+    const w = trackWidth.current;
+    if (w <= 0) return rawPct.value;
+    const clamped = Math.max(0, Math.min(w, x));
+    return (clamped / w) * 100;
+  };
+
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (e) => {
+      isDragging.current = true;
       onDragChange?.(true);
       const x = e.nativeEvent.pageX - containerX.current;
-      onChange(valueFromX(x));
+      rawPct.value = rawPctFromX(x);
+      change(valueFromX(x));
     },
     onPanResponderMove: (e) => {
       const x = e.nativeEvent.pageX - containerX.current;
-      onChange(valueFromX(x));
+      rawPct.value = rawPctFromX(x);
+      change(valueFromX(x));
     },
-    onPanResponderRelease: () => { onDragChange?.(false); },
-    onPanResponderTerminate: () => { onDragChange?.(false); },
+    onPanResponderRelease: () => {
+      isDragging.current = false;
+      onDragChange?.(false);
+      rawPct.value = withSpring(pctFor(lastHaptic.current), SLIDER_SPRING);
+    },
+    onPanResponderTerminate: () => {
+      isDragging.current = false;
+      onDragChange?.(false);
+      rawPct.value = withSpring(pctFor(lastHaptic.current), SLIDER_SPRING);
+    },
   })).current;
 
-  const pct = value > 0 ? ((value - 1) / (steps - 1)) * 100 : 0;
+  const fillStyle = useAnimatedStyle(() => ({ width: `${rawPct.value}%` }));
+  const thumbStyle = useAnimatedStyle(() => ({ left: `${rawPct.value}%` }));
 
   return (
-    <View>
+    <View style={{ paddingHorizontal: 8 }}>
       <View
         ref={r => { if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; }); }}
         onLayout={e => {
@@ -320,7 +369,7 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
           height: SLIDER_TRACK_H, borderRadius: SLIDER_TRACK_H / 2,
           backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline, overflow: 'hidden',
         }}>
-          <View style={{ height: '100%', width: `${pct}%`, backgroundColor: C.primary, borderRadius: SLIDER_TRACK_H / 2 }} />
+          <Reanimated.View style={[{ height: '100%', backgroundColor: C.primary, borderRadius: SLIDER_TRACK_H / 2 }, fillStyle]} />
         </View>
 
         {/* step ticks */}
@@ -337,12 +386,12 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
         </View>
 
         {/* thumb */}
-        <View pointerEvents="none" style={{
-          position: 'absolute', left: `${pct}%`, marginLeft: -SLIDER_THUMB / 2,
+        <Reanimated.View pointerEvents="none" style={[{
+          position: 'absolute', marginLeft: -SLIDER_THUMB / 2,
           width: SLIDER_THUMB, height: SLIDER_THUMB, borderRadius: SLIDER_THUMB / 2,
           backgroundColor: C.surface, borderWidth: 2, borderColor: value > 0 ? C.primary : C.hairline,
           shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 2.5, shadowOffset: { width: 0, height: 1 }, elevation: 2,
-        }} />
+        }, thumbStyle]} />
       </View>
       <Text style={{ marginTop: 6, fontSize: 13, fontWeight: '600', color: value > 0 ? C.primary : C.inkMute }}>
         {value > 0 ? labels[value - 1] : 'Drag or tap to set'}
@@ -1397,8 +1446,8 @@ function RequirementTag({ kind }: { kind: 'required' | 'optional' }) {
   const C = useColors();
   return (
     <Text style={{
-      fontSize: 13, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase',
-      color: kind === 'required' ? C.primary : C.inkMute,
+      fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase',
+      color: kind === 'required' ? `${C.primary}99` : C.inkMute,
     }}>
       {'  '}{kind}
     </Text>
@@ -1428,6 +1477,26 @@ function Section({ kicker, title, hint, tag, children, mb = 24 }: {
 
 // ── Step screens ──────────────────────────────────────────────────────────────
 
+// TouchableOpacity that also squishes slightly on press, for a more tactile feel
+// on the primary tap targets of the walkthrough-style Where & when step.
+function PressableScale({ onPress, disabled, style, children }: {
+  onPress?: () => void; disabled?: boolean; style?: any; children: React.ReactNode;
+}) {
+  const scale = useSharedValue(1);
+  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.85}
+      onPressIn={() => { scale.value = withSpring(0.97, { damping: 15, stiffness: 400 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+    >
+      <Reanimated.View style={[style, aStyle]}>{children}</Reanimated.View>
+    </TouchableOpacity>
+  );
+}
+
 function StepWhere({ draft, set, parks, onPickPark }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   parks: ParkInfo[]; onPickPark: () => void;
@@ -1438,6 +1507,17 @@ function StepWhere({ draft, set, parks, onPickPark }: {
   const today = new Date();
 
   const days = dayCount(draft.startDate, draft.endDate);
+
+  // Trip title / dates spring open once a park is picked, instead of just
+  // snapping between two fixed opacities.
+  const unlockedSV = useSharedValue(park ? 1 : 0);
+  useEffect(() => {
+    unlockedSV.value = withSpring(park ? 1 : 0, { damping: 18, stiffness: 180 });
+  }, [!!park]);
+  const unlockedStyle = useAnimatedStyle(() => ({
+    opacity: 0.35 + unlockedSV.value * 0.65,
+    transform: [{ translateY: (1 - unlockedSV.value) * 8 }],
+  }));
 
   return (
     <View>
@@ -1450,59 +1530,69 @@ function StepWhere({ draft, set, parks, onPickPark }: {
         onClose={() => setShowCalendar(false)}
       />
 
-      <View style={{ marginBottom: 24 }}>
+      <Reanimated.View entering={FadeInDown.duration(360)} style={{ marginBottom: 24 }}>
         <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Where & when</Text>
-      </View>
+      </Reanimated.View>
 
-      <Section title="Park" tag="required" mb={28}>
-        {/* Park picker */}
-        <TouchableOpacity onPress={onPickPark} activeOpacity={0.7} style={[
-          styles.parkBanner,
-          { backgroundColor: park ? C.primary : C.surfaceAlt, borderStyle: park ? 'solid' : 'dashed' },
-        ]}>
-          {park ? (
-            <>
-              {/* Faint cover photo behind the banner content, like web */}
-              {park.image_url ? (
-                <Image
-                  source={{ uri: park.image_url }}
-                  style={StyleSheet.absoluteFill as any}
-                  resizeMode="cover"
-                />
-              ) : null}
+      <Reanimated.View entering={FadeInDown.delay(80).duration(360)}>
+        <Section title="Park" tag="required" mb={28}>
+          {/* Park picker */}
+          <PressableScale onPress={onPickPark} style={[
+            styles.parkBanner,
+            { backgroundColor: park ? C.primary : C.surfaceAlt, borderStyle: park ? 'solid' : 'dashed' },
+          ]}>
+            {/* Faint cover photo behind the banner content, like web — kept as a
+                direct (non-absolute-wrapped) sibling so absoluteFill bleeds edge
+                to edge past the banner's own padding, same as the text row below. */}
+            {park && park.image_url ? (
+              <Image
+                source={{ uri: park.image_url }}
+                style={StyleSheet.absoluteFill as any}
+                resizeMode="cover"
+              />
+            ) : null}
+            {park && (
               <LinearGradient
                 colors={['rgba(0,0,0,0.58)', 'rgba(0,0,0,0.16)']}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
                 style={StyleSheet.absoluteFillObject}
               />
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '800', color: C.onPrimary, letterSpacing: -0.3 }}>{park.name}</Text>
-                  <Text style={{ fontSize: 13, color: 'rgba(255,251,241,0.8)', marginTop: 1 }}>{fullStateName(park.states.split(',')[0].trim())}</Text>
+            )}
+            <Reanimated.View key={park?.park_code ?? 'empty'} entering={FadeIn.duration(220)}>
+              {park ? (
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '800', color: C.onPrimary, letterSpacing: -0.3 }}>{park.name}</Text>
+                    <Text style={{ fontSize: 13, color: 'rgba(255,251,241,0.8)', marginTop: 1 }}>{fullStateName(park.states.split(',')[0].trim())}</Text>
+                  </View>
+                  <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,251,241,0.92)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
+                    <Ionicons name="pencil" size={11} color={C.ink} />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }}>Change</Text>
+                  </View>
                 </View>
-                <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,251,241,0.92)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
-                  <Ionicons name="pencil" size={11} color={C.ink} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }}>Change</Text>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="search" size={20} color="#FFFBF1" />
+                  </View>
+                  <View>
+                    <Text style={{ fontWeight: '800', fontSize: 16, color: C.ink, letterSpacing: -0.2 }}>Select a park</Text>
+                    <Text style={{ fontSize: 13, color: C.inkMute, marginTop: 2 }}>Search all 63 national parks</Text>
+                  </View>
                 </View>
-              </View>
-            </>
-          ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-              <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="search" size={20} color="#FFFBF1" />
-              </View>
-              <View>
-                <Text style={{ fontWeight: '800', fontSize: 16, color: C.ink, letterSpacing: -0.2 }}>Select a park</Text>
-                <Text style={{ fontSize: 13, color: C.inkMute, marginTop: 2 }}>Search all 63 national parks</Text>
-              </View>
-            </View>
-          )}
-        </TouchableOpacity>
-      </Section>
+              )}
+            </Reanimated.View>
+          </PressableScale>
+        </Section>
+      </Reanimated.View>
 
       {/* Rest locked until park selected */}
-      <View style={{ opacity: park ? 1 : 0.35, pointerEvents: park ? 'auto' : 'none' } as any}>
+      <Reanimated.View
+        entering={FadeInDown.delay(160).duration(360)}
+        style={unlockedStyle}
+        pointerEvents={park ? 'auto' : 'none'}
+      >
         <Section title="Trip title" mb={28}>
           <TextInput
             value={draft.title} onChangeText={v => set('title', v.slice(0, 80))}
@@ -1513,24 +1603,24 @@ function StepWhere({ draft, set, parks, onPickPark }: {
 
         <Section title="Dates" tag="required" mb={0}>
           <View style={[styles.card, { paddingVertical: 4 }]}>
-            <TouchableOpacity
-              onPress={() => setShowCalendar(true)} activeOpacity={0.7}
+            <PressableScale
+              onPress={() => setShowCalendar(true)}
               style={[styles.dateRow, { borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft }]}
             >
               <View style={styles.dateIcon}>
                 <Ionicons name="calendar" size={16} color={C.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.dateLabel}>Start date *</Text>
+                <Text style={styles.dateLabel}>Start *</Text>
                 <Text style={[styles.dateValue, { color: draft.startDate ? C.ink : C.inkMute }]}>
-                  {draft.startDate ? fmtDate(draft.startDate) : 'Pick a date'}
+                  {draft.startDate ? fmtDate(draft.startDate) : 'Select'}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={14} color={C.inkMute} />
-            </TouchableOpacity>
+            </PressableScale>
 
-            <TouchableOpacity
-              onPress={() => setShowCalendar(true)} activeOpacity={0.7}
+            <PressableScale
+              onPress={() => setShowCalendar(true)}
               disabled={!draft.startDate}
               style={[styles.dateRow, { opacity: draft.startDate ? 1 : 0.4 }]}
             >
@@ -1538,69 +1628,116 @@ function StepWhere({ draft, set, parks, onPickPark }: {
                 <Ionicons name="calendar-outline" size={16} color={C.inkMute} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.dateLabel}>End date</Text>
+                <Text style={styles.dateLabel}>End</Text>
                 <Text style={[styles.dateValue, { color: draft.endDate ? C.ink : C.inkMute }]}>
-                  {draft.endDate ? fmtDate(draft.endDate) : 'Optional multi-day trip'}
+                  {draft.endDate ? fmtDate(draft.endDate) : 'Optional'}
                 </Text>
               </View>
               {draft.endDate
                 ? <TouchableOpacity onPress={() => set('endDate', null)} hitSlop={8}><Ionicons name="close-circle" size={16} color={C.inkMute} /></TouchableOpacity>
                 : <Ionicons name="chevron-forward" size={14} color={C.inkMute} />
               }
-            </TouchableOpacity>
+            </PressableScale>
           </View>
           {days > 1 && (
             <Text style={{ fontSize: 13, color: C.accent, fontWeight: '700', marginTop: 6 }}>{days} day trip</Text>
           )}
         </Section>
-      </View>
+      </Reanimated.View>
     </View>
   );
 }
 
-function StepVisit({ draft, set, onSliderDragChange }: {
+// "The visit" used to be one screen with five controls stacked on top of each
+// other. Split into one question per screen so nothing competes for attention —
+// each still gets the same fade-in-down entrance the other steps use.
+function StepRating({ draft, set, onSliderDragChange }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
-  // Forwarded down to every slider control on this step so the sheet can suspend its
-  // swipe-to-dismiss gesture while any of them is actively being dragged.
+  onSliderDragChange?: (dragging: boolean) => void;
+}) {
+  return (
+    <View>
+      <Reanimated.View entering={FadeInDown.duration(360)}>
+        <Section title="How was it?">
+          <View style={styles.card}>
+            <StarRating value={draft.rating} onChange={v => set('rating', v)} onDragChange={onSliderDragChange} />
+          </View>
+        </Section>
+      </Reanimated.View>
+    </View>
+  );
+}
+
+function StepCrowd({ draft, set, onSliderDragChange }: {
+  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   onSliderDragChange?: (dragging: boolean) => void;
 }) {
   const C = useColors();
   return (
     <View>
-      <Section title="How was it?">
-        <View style={styles.card}>
-          <StarRating value={draft.rating} onChange={v => set('rating', v)} onDragChange={onSliderDragChange} />
-        </View>
-      </Section>
-
-      <Section title="Conditions">
-        <View style={styles.card}>
-          <View style={{ marginBottom: 14, paddingBottom: 14, borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft }}>
+      <Reanimated.View entering={FadeInDown.duration(360)}>
+        <Section title="Crowd level">
+          <View style={styles.card}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <Ionicons name="people-outline" size={15} color={C.inkMute} />
-              <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>Crowd level</Text>
+              <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>How crowded was it?</Text>
             </View>
             <ScaleRow value={draft.crowd} onChange={v => set('crowd', v)} labels={CROWD_LABELS} onDragChange={onSliderDragChange} />
           </View>
-          <View>
+        </Section>
+      </Reanimated.View>
+    </View>
+  );
+}
+
+function StepDifficulty({ draft, set, onSliderDragChange }: {
+  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
+  onSliderDragChange?: (dragging: boolean) => void;
+}) {
+  const C = useColors();
+  return (
+    <View>
+      <Reanimated.View entering={FadeInDown.duration(360)}>
+        <Section title="Trail difficulty">
+          <View style={styles.card}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <Ionicons name="walk-outline" size={15} color={C.inkMute} />
-              <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>Trail difficulty</Text>
+              <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>How tough was the trail?</Text>
             </View>
             <ScaleRow value={draft.difficulty} onChange={v => set('difficulty', v)} labels={DIFF_LABELS} onDragChange={onSliderDragChange} />
           </View>
-        </View>
-      </Section>
+        </Section>
+      </Reanimated.View>
+    </View>
+  );
+}
 
-      <Section title="Weather">
-        <View style={styles.card}>
-          <WeatherGrid value={draft.weather} onChange={v => set('weather', v)} />
-        </View>
-      </Section>
+function StepWeather({ draft, set }: {
+  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
+}) {
+  return (
+    <View>
+      <Reanimated.View entering={FadeInDown.duration(360)}>
+        <Section title="Weather">
+          <View style={styles.card}>
+            <WeatherGrid value={draft.weather} onChange={v => set('weather', v)} />
+          </View>
+        </Section>
+      </Reanimated.View>
+    </View>
+  );
+}
 
-      <Section title="Would you go back?">
-        <ReturnRow value={draft.wouldReturn} onChange={v => set('wouldReturn', v)} />
-      </Section>
+function StepWouldReturn({ draft, set }: {
+  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
+}) {
+  return (
+    <View>
+      <Reanimated.View entering={FadeInDown.duration(360)}>
+        <Section title="Would you go back?">
+          <ReturnRow value={draft.wouldReturn} onChange={v => set('wouldReturn', v)} />
+        </Section>
+      </Reanimated.View>
     </View>
   );
 }
@@ -1614,54 +1751,64 @@ function StepJournal({ draft, set, token, getToken, npsActivityNames, originalPh
   const C = useColors();
   return (
     <View>
-      <View style={{ marginBottom: 24 }}>
+      <Reanimated.View entering={FadeInDown.duration(360)} style={{ marginBottom: 24 }}>
         <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Journal & photos</Text>
-      </View>
+      </Reanimated.View>
 
-      <Section title="Photos" hint={`${draft.photos.length} of 10`}>
-        <PhotoStrip
-          getToken={getToken} photos={draft.photos}
-          onAdd={urls => set('photos', [...draft.photos, ...urls].slice(0, 10))}
-          onRemove={url => {
-            const next = draft.photos.filter(p => p !== url);
-            set('photos', next);
-            // Only nuke it immediately if it was uploaded this session — photos already
-            // attached to the saved visit stay live until the edit is actually submitted.
-            if (!originalPhotos.has(url)) getToken().then(tok => deletePhotos([url], tok));
-          }}
-          onReorder={next => set('photos', next)}
-        />
-      </Section>
+      <Reanimated.View entering={FadeInDown.delay(80).duration(360)}>
+        <Section title="Photos" hint={`${draft.photos.length} of 10`}>
+          <PhotoStrip
+            getToken={getToken} photos={draft.photos}
+            onAdd={urls => set('photos', [...draft.photos, ...urls].slice(0, 10))}
+            onRemove={url => {
+              const next = draft.photos.filter(p => p !== url);
+              set('photos', next);
+              // Only nuke it immediately if it was uploaded this session — photos already
+              // attached to the saved visit stay live until the edit is actually submitted.
+              if (!originalPhotos.has(url)) getToken().then(tok => deletePhotos([url], tok));
+            }}
+            onReorder={next => set('photos', next)}
+          />
+        </Section>
+      </Reanimated.View>
 
-      <Section title="Highlight">
-        <TextInput
-          value={draft.highlight} onChangeText={v => set('highlight', v.slice(0, 90))}
-          placeholder="The one moment you'll remember" placeholderTextColor={C.inkMute}
-          style={[styles.textField, { marginBottom: 0 }]}
-        />
-        <Text style={styles.charCountOutside}>{draft.highlight.length}/90</Text>
-      </Section>
+      <Reanimated.View entering={FadeInDown.delay(160).duration(360)}>
+        <Section title="Highlight">
+          <TextInput
+            value={draft.highlight} onChangeText={v => set('highlight', v.slice(0, 90))}
+            placeholder="The one moment you'll remember" placeholderTextColor={C.inkMute}
+            style={[styles.textField, { marginBottom: 0 }]}
+          />
+          <Text style={styles.charCountOutside}>{draft.highlight.length}/90</Text>
+        </Section>
+      </Reanimated.View>
 
-      <Section title="Notes">
-        <TextInput
-          value={draft.notes} onChangeText={v => set('notes', v.slice(0, 2000))}
-          placeholder="What did you see, hear, feel?" placeholderTextColor={C.inkMute}
-          multiline style={[styles.textField, styles.textArea]}
-        />
-        <Text style={styles.charCountOutside}>{draft.notes.length}/2000</Text>
-      </Section>
+      <Reanimated.View entering={FadeInDown.delay(240).duration(360)}>
+        <Section title="Notes">
+          <TextInput
+            value={draft.notes} onChangeText={v => set('notes', v.slice(0, 2000))}
+            placeholder="What did you see, hear, feel?" placeholderTextColor={C.inkMute}
+            multiline style={[styles.textField, styles.textArea]}
+          />
+          <Text style={styles.charCountOutside}>{draft.notes.length}/2000</Text>
+        </Section>
+      </Reanimated.View>
 
-      <Section title="Activities">
-        <ActivityChips value={draft.activities} onChange={v => set('activities', v)} npsActivityNames={npsActivityNames} />
-      </Section>
+      <Reanimated.View entering={FadeInDown.delay(320).duration(360)}>
+        <Section title="Activities">
+          <ActivityChips value={draft.activities} onChange={v => set('activities', v)} npsActivityNames={npsActivityNames} />
+        </Section>
+      </Reanimated.View>
 
-      <Section title="Who came along?">
-        <CompanionSearch
-          companions={draft.companions} companionObjs={draft.companionObjs}
-          onChange={(ids, objs) => { set('companions', ids); set('companionObjs', objs); }}
-          token={token}
-        />
-      </Section>
+      <Reanimated.View entering={FadeInDown.delay(400).duration(360)}>
+        <Section title="Who came along?">
+          <CompanionSearch
+            companions={draft.companions} companionObjs={draft.companionObjs}
+            onChange={(ids, objs) => { set('companions', ids); set('companionObjs', objs); }}
+            token={token}
+          />
+        </Section>
+      </Reanimated.View>
     </View>
   );
 }
@@ -1852,22 +1999,28 @@ function StepShare({ draft, set, park, userName, username, avatarUrl }: {
   const C = useColors();
   return (
     <View>
-      <Section title="Add a caption">
-        <TextInput
-          value={draft.caption} onChangeText={v => set('caption', v.slice(0, 500))}
-          placeholder="Share what made this trip special…" placeholderTextColor={C.inkMute}
-          multiline style={[styles.textField, styles.textArea]}
-        />
-        <Text style={styles.charCountOutside}>{draft.caption.length}/500</Text>
-      </Section>
+      <Reanimated.View entering={FadeInDown.duration(360)}>
+        <Section title="Add a caption">
+          <TextInput
+            value={draft.caption} onChangeText={v => set('caption', v.slice(0, 500))}
+            placeholder="Share what made this trip special…" placeholderTextColor={C.inkMute}
+            multiline style={[styles.textField, styles.textArea]}
+          />
+          <Text style={styles.charCountOutside}>{draft.caption.length}/500</Text>
+        </Section>
+      </Reanimated.View>
 
-      <Section title="Who can see this?">
-        <VisibilityPicker value={draft.visibility} onChange={v => set('visibility', v)} />
-      </Section>
+      <Reanimated.View entering={FadeInDown.delay(80).duration(360)}>
+        <Section title="Who can see this?">
+          <VisibilityPicker value={draft.visibility} onChange={v => set('visibility', v)} />
+        </Section>
+      </Reanimated.View>
 
-      <Section title="Preview">
-        <VisitPreview draft={draft} park={park} userName={userName} username={username} avatarUrl={avatarUrl} />
-      </Section>
+      <Reanimated.View entering={FadeInDown.delay(160).duration(360)}>
+        <Section title="Preview">
+          <VisitPreview draft={draft} park={park} userName={userName} username={username} avatarUrl={avatarUrl} />
+        </Section>
+      </Reanimated.View>
     </View>
   );
 }
@@ -2107,6 +2260,13 @@ export default function LogVisitModal() {
     setStep(s => s - 1);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
+  // Jump straight to Share (visibility + optional caption), skipping the
+  // Visit/Journal steps for people who just want to log park + date fast.
+  const goToShare = () => {
+    if (!canContinue) return;
+    setStep(STEPS.length - 1);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
 
   const handleCancel = () => {
     if (isEdit) {
@@ -2334,9 +2494,13 @@ export default function LogVisitModal() {
         {!editLoading && step === 0 && (
           <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} />
         )}
-        {step === 1 && <StepVisit draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
-        {step === 2 && token && <StepJournal draft={draft} set={set} token={token} getToken={getFreshToken} npsActivityNames={npsActivityNames} originalPhotos={originalPhotos.current} />}
-        {step === 3 && (
+        {step === 1 && <StepRating draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
+        {step === 2 && <StepCrowd draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
+        {step === 3 && <StepDifficulty draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
+        {step === 4 && <StepWeather draft={draft} set={set} />}
+        {step === 5 && <StepWouldReturn draft={draft} set={set} />}
+        {step === 6 && token && <StepJournal draft={draft} set={set} token={token} getToken={getFreshToken} npsActivityNames={npsActivityNames} originalPhotos={originalPhotos.current} />}
+        {step === 7 && (
           <StepShare
             draft={draft}
             set={set}
@@ -2356,20 +2520,15 @@ export default function LogVisitModal() {
         pointerEvents="box-none"
       >
         <LinearGradient
-          colors={['rgba(0,0,0,0)', C.bg]}
+          // Same RGB (bg) at both stops, alpha-only ramp — black-transparent
+          // start would tint the fade gray over light content underneath.
+          colors={['rgba(242,235,219,0)', C.bg]}
           style={styles.footerFade}
           pointerEvents="none"
         />
         <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
           <View style={styles.footerTopRow}>
-            {step > 0 ? (
-              <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
-                <Ionicons name="chevron-back" size={15} color={C.ink} />
-                <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>Back</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ width: 80 }} />
-            )}
+            <View style={{ width: 80 }} />
 
             <View style={{ flexDirection: 'row', gap: 5 }}>
               {STEPS.map((_, i) => (
@@ -2383,28 +2542,73 @@ export default function LogVisitModal() {
             <View style={{ width: 80 }} />
           </View>
 
-          <TouchableOpacity
-            onPress={isLast ? handleSubmit : goNext}
-            disabled={!canContinue || submitting}
-            style={[
-              styles.nextBtn,
-              {
-                backgroundColor: canContinue ? C.primary : C.surfaceAlt,
-                borderWidth: canContinue ? 0 : 1,
-                borderColor: C.hairline,
-                shadowColor: C.primary,
-                shadowOpacity: canContinue ? 0.3 : 0,
-                elevation: canContinue ? 4 : 0,
-                opacity: canContinue ? 1 : 0.45,
-              },
-            ]}
-            activeOpacity={0.85}
-          >
-            <Text style={{ fontSize: 15, fontWeight: '800', color: canContinue ? C.onPrimary : C.inkMute }}>
-              {isLast ? (submitting ? 'Saving…' : isEdit ? 'Save' : 'Post') : 'Continue'}
-            </Text>
-            {!isLast && <Ionicons name="arrow-forward" size={15} color={canContinue ? C.onPrimary : C.inkMute} />}
-          </TouchableOpacity>
+          {step > 0 ? (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity onPress={goBack} style={[styles.backBtn, { flex: 1, width: undefined }]} activeOpacity={0.7}>
+                <Ionicons name="chevron-back" size={15} color={C.ink} />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>Back</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={isLast ? handleSubmit : goNext}
+                disabled={!canContinue || submitting}
+                style={[
+                  styles.nextBtn,
+                  { flex: 3, width: undefined },
+                  {
+                    backgroundColor: canContinue ? C.primary : C.surfaceAlt,
+                    borderWidth: canContinue ? 0 : 1,
+                    borderColor: C.hairline,
+                    shadowColor: C.primary,
+                    shadowOpacity: canContinue ? 0.3 : 0,
+                    elevation: canContinue ? 4 : 0,
+                    opacity: canContinue ? 1 : 0.45,
+                  },
+                ]}
+                activeOpacity={0.85}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '800', color: canContinue ? C.onPrimary : C.inkMute }}>
+                  {isLast ? (submitting ? 'Saving…' : isEdit ? 'Save' : 'Post') : 'Continue'}
+                </Text>
+                {!isLast && <Ionicons name="arrow-forward" size={15} color={canContinue ? C.onPrimary : C.inkMute} />}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={goToShare}
+                disabled={!canContinue}
+                style={[styles.backBtn, { flex: 1, width: undefined, opacity: canContinue ? 1 : 0.45 }]}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 13.5, fontWeight: '700', color: C.ink }}>Skip & save</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={goNext}
+                disabled={!canContinue}
+                style={[
+                  styles.nextBtn,
+                  { flex: 3, width: undefined },
+                  {
+                    backgroundColor: canContinue ? C.primary : C.surfaceAlt,
+                    borderWidth: canContinue ? 0 : 1,
+                    borderColor: C.hairline,
+                    shadowColor: C.primary,
+                    shadowOpacity: canContinue ? 0.3 : 0,
+                    elevation: canContinue ? 4 : 0,
+                    opacity: canContinue ? 1 : 0.45,
+                  },
+                ]}
+                activeOpacity={0.85}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '800', color: canContinue ? C.onPrimary : C.inkMute }}>
+                  Continue
+                </Text>
+                <Ionicons name="arrow-forward" size={15} color={canContinue ? C.onPrimary : C.inkMute} />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
 

@@ -162,6 +162,41 @@ function ParkMarker({ park, selected }: { park: ParkForMap; selected: boolean })
   );
 }
 
+// Marker is normally rendered with tracksViewChanges={false} — once placed, its
+// native view is snapshotted to a static bitmap and never re-rendered, which is
+// what keeps a map of 60+ pins smooth. But react-native-maps only refreshes that
+// bitmap while tracksViewChanges is true, so if we leave it permanently false a
+// status flip (e.g. right after logging a visit) never gets painted — worse, on
+// Android the marker can go fully blank mid-transition instead of just staying
+// stale. So: flip tracksViewChanges on for a beat whenever this park's status
+// changes, long enough for react-native-maps to re-snapshot the new color, then
+// drop back to false.
+function ParkMapMarker({
+  park, selected, onSelect,
+}: { park: ParkForMap; selected: boolean; onSelect: (park: ParkForMap) => void }) {
+  const prevStatus = useRef(park.status);
+  const [justChanged, setJustChanged] = useState(false);
+
+  useEffect(() => {
+    if (prevStatus.current === park.status) return;
+    prevStatus.current = park.status;
+    setJustChanged(true);
+    const t = setTimeout(() => setJustChanged(false), 300);
+    return () => clearTimeout(t);
+  }, [park.status]);
+
+  return (
+    <Marker
+      coordinate={{ latitude: park.latitude, longitude: park.longitude }}
+      onPress={e => { e.stopPropagation(); onSelect(park); }}
+      tracksViewChanges={selected || justChanged}
+      anchor={{ x: 0.5, y: 0.5 }}
+    >
+      <ParkMarker park={park} selected={selected} />
+    </Marker>
+  );
+}
+
 // ── FilterPill ────────────────────────────────────────────────────────────────
 
 const FILTERS: Array<{ key: FilterStatus; dot: string; label: string }> = [
@@ -490,6 +525,11 @@ function ParkBottomSheet({
   const [heroLoaded, setHeroLoaded] = useState(false);
   const [prevHeroUrl, setPrevHeroUrl] = useState<string | null>(null);
   const prevHeroRef = useRef<string | null>(null);
+  // Title only needs to clamp to one line once the header has collapsed enough
+  // that a wrapped name would get clipped — full-height it wraps freely, same
+  // as the park detail page.
+  const [titleCollapsed, setTitleCollapsed] = useState(false);
+  const titleCollapsedRef = useRef(false);
   const npsImagesRef = useRef<string[]>(npsImages);
   npsImagesRef.current = npsImages;
 
@@ -824,17 +864,30 @@ function ParkBottomSheet({
 
   // ── Collapsing header animations ─────────────────────────────────────────────
 
-  // Extend by insets.top so the hero image reaches the true top of the screen
-  // (sheet itself goes to y=0) instead of leaving a gap above the status bar.
-  const BANNER_H = 240 + insets.top;
+  // Matches the hero height on the park detail page (parks/[id].tsx), extended
+  // by insets.top so the image reaches the true top of the screen (sheet itself
+  // goes to y=0) instead of leaving a gap above the status bar. Only applies at
+  // full screen — the sheet doesn't reach the top edge at peek, so that image
+  // stays shorter to leave room for the stat row below it.
+  const BANNER_H = 260 + insets.top;
+  const PEEK_BANNER_H = 200;
   // Collapsed bar sits below the status bar / dynamic island
   const COLLAPSED_H = insets.top + 56;
 
-  const headerHeight = scrollY.interpolate({
-    inputRange: [0, BANNER_H - COLLAPSED_H],
-    outputRange: [BANNER_H, COLLAPSED_H],
+  // Grows the banner from its peek size up to full size as the sheet itself
+  // is dragged/snapped from SHEET_PEEK to SHEET_FULL...
+  const sheetBannerH = sheetH.interpolate({
+    inputRange: [SHEET_PEEK, SHEET_FULL],
+    outputRange: [PEEK_BANNER_H, BANNER_H],
     extrapolate: 'clamp',
   });
+  // ...then, once full, collapses further as the user scrolls the body up.
+  const scrollCollapse = scrollY.interpolate({
+    inputRange: [0, BANNER_H - COLLAPSED_H],
+    outputRange: [0, BANNER_H - COLLAPSED_H],
+    extrapolate: 'clamp',
+  });
+  const headerHeight = Animated.subtract(sheetBannerH, scrollCollapse);
   // Scale + translate instead of animating fontSize/paddingLeft directly —
   // those force a native layout + text remeasure on every scroll frame, which
   // is what made the collapse look glitchy/jumpy. Transforms are composited,
@@ -842,7 +895,7 @@ function ParkBottomSheet({
   // `headerHeight` (height) requires above.
   const heroTitleScale = scrollY.interpolate({
     inputRange: [0, (BANNER_H - COLLAPSED_H) * 0.75],
-    outputRange: [1, 20 / 26],
+    outputRange: [1, 20 / 28],
     extrapolate: 'clamp',
   });
   const stateOpacity = scrollY.interpolate({
@@ -851,10 +904,10 @@ function ParkBottomSheet({
     extrapolate: 'clamp',
   });
   // Shift the collapsed title right so it clears the back button — delta only;
-  // the base 16px left padding stays put, this adds the remaining 44px.
+  // the base 20px left padding stays put, this adds the remaining 40px.
   const heroTitleTranslateX = scrollY.interpolate({
     inputRange: [0, (BANNER_H - COLLAPSED_H) * 0.75],
-    outputRange: [0, 44],
+    outputRange: [0, 40],
     extrapolate: 'clamp',
   });
 
@@ -879,11 +932,17 @@ function ParkBottomSheet({
             {
               useNativeDriver: false,
               listener: (e: any) => {
-                scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+                const y = e.nativeEvent.contentOffset.y;
+                scrollOffsetRef.current = y;
+                const collapsed = y > (BANNER_H - COLLAPSED_H) * 0.5;
+                if (collapsed !== titleCollapsedRef.current) {
+                  titleCollapsedRef.current = collapsed;
+                  setTitleCollapsed(collapsed);
+                }
               },
             }
           )}
-          contentContainerStyle={{ paddingTop: BANNER_H }}
+          contentContainerStyle={{ paddingTop: scrollEnabled ? BANNER_H : PEEK_BANNER_H }}
         >
           {/* Body content */}
           <View style={styles.sheetBody}>
@@ -1236,7 +1295,7 @@ function ParkBottomSheet({
             </Animated.Text>
             <Animated.Text
               style={[styles.heroName, { transform: [{ scale: heroTitleScale }], transformOrigin: 'left' }]}
-              numberOfLines={1}
+              numberOfLines={titleCollapsed ? 1 : undefined}
             >
               {park.name}
             </Animated.Text>
@@ -1345,6 +1404,7 @@ export default function MapScreen() {
     description: string | null; image_url: string | null;
   }>>([]);
   const currentRegionRef = useRef({ latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 });
+  const preZoomRegionRef = useRef<typeof currentRegionRef.current | null>(null);
 
   const counts: Record<FilterStatus, number> = {
     all:        parks.length,
@@ -1535,6 +1595,7 @@ export default function MapScreen() {
 
   const handleSelectPark = useCallback((park: ParkForMap) => {
     setSelectedPark(park);
+    preZoomRegionRef.current = currentRegionRef.current;
     const LAT_DELTA = 1.5;
     // Offset center southward so pin appears at vertical center of visible area (above sheet)
     const latOffset = (SHEET_PEEK * LAT_DELTA) / (2 * SCREEN_H);
@@ -1578,10 +1639,19 @@ export default function MapScreen() {
     );
   }, []);
 
+  // Restore the map to its pre-selection view once the sheet closes.
+  useEffect(() => {
+    if (selectedPark === null && preZoomRegionRef.current) {
+      mapRef.current?.animateToRegion(preZoomRegionRef.current, 500);
+      preZoomRegionRef.current = null;
+    }
+  }, [selectedPark]);
+
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('mapTabPress', () => {
       setSelectedPark(null);
       setFilterStatus('all');
+      preZoomRegionRef.current = null; // goHome supersedes the restore-on-close animation
       goHome();
     });
     return () => sub.remove();
@@ -1606,20 +1676,14 @@ export default function MapScreen() {
         onRegionChangeComplete={region => { currentRegionRef.current = region; }}
         onPress={() => { setSelectedPark(null); setMapPressKey(k => k + 1); }}
       >
-        {filteredParks.map(park => {
-          const selected = selectedPark?.park_code === park.park_code;
-          return (
-            <Marker
-              key={park.park_code}
-              coordinate={{ latitude: park.latitude, longitude: park.longitude }}
-              onPress={e => { e.stopPropagation(); handleSelectPark(park); }}
-              tracksViewChanges={selected}
-              anchor={{ x: 0.5, y: 0.5 }}
-            >
-              <ParkMarker park={park} selected={selected} />
-            </Marker>
-          );
-        })}
+        {filteredParks.map(park => (
+          <ParkMapMarker
+            key={park.park_code}
+            park={park}
+            selected={selectedPark?.park_code === park.park_code}
+            onSelect={handleSelectPark}
+          />
+        ))}
       </MapView>
 
       {offlineFetchedAt && (
@@ -1972,8 +2036,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 16,
-    paddingBottom: 14,
+    padding: 20,
+    paddingBottom: 22,
   },
   heroDesignation: {
     fontSize: 13,
@@ -1983,11 +2047,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   heroName: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '900',
     color: C.onPrimary,
     letterSpacing: -0.5,
-    lineHeight: 30,
+    lineHeight: 32,
   },
   // Sticky title bar — compact single-line name when scrolled
   titleBar: {
