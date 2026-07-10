@@ -1,6 +1,7 @@
 import {
   Dimensions, FlatList, Image, LayoutAnimation, Linking, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, UIManager, View,
+  type ColorValue,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScrollToTop } from '@react-navigation/native';
@@ -60,7 +61,7 @@ const REGIONS = [
   { label: 'Territories',   states: ['AS','GU','MP','PR','VI'] },
 ];
 
-const STATUS_FILTERS: Array<{ key: StatusFilter; label: string; color: string }> = [
+const STATUS_FILTERS: Array<{ key: StatusFilter; label: string; color: ColorValue }> = [
   { key: 'all',        label: 'All',         color: C.ink },
   { key: 'visited',    label: 'Visited',     color: C.visited },
   { key: 'bucketList', label: 'Bucket list', color: C.bucket },
@@ -266,7 +267,7 @@ type FilterSection = 'status' | 'location' | 'activities' | 'topics';
 
 function Chip({
   label, active, dot, onPress,
-}: { label: string; active: boolean; dot?: string; onPress: () => void }) {
+}: { label: string; active: boolean; dot?: ColorValue; onPress: () => void }) {
   const { primary } = useColors();
   return (
     <TouchableOpacity

@@ -15,7 +15,7 @@ import { Wordmark } from '@/components/Wordmark';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { STATIC as C, useColors } from '@/lib/palette';
+import { STATIC as C, dyn, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { useIsOnline } from '@/lib/network';
 import { loadOfflineFeed, saveOfflineFeed } from '@/lib/offlineFeed';
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
     overflow: 'hidden',
-    backgroundColor: 'rgba(242,235,219,0.88)',
+    backgroundColor: dyn('rgba(242,235,219,0.88)', 'rgba(23,21,17,0.88)'),
   },
   topBarInner: {
     flexDirection: 'row',
@@ -408,9 +408,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,251,241,0.55)',
+    backgroundColor: dyn('rgba(255,251,241,0.55)', 'rgba(32,29,23,0.55)'),
     borderWidth: 0.5,
-    borderColor: 'rgba(27,26,22,0.12)',
+    borderColor: C.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },

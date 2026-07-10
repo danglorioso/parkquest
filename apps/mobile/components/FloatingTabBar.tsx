@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DeviceEventEmitter, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { DeviceEventEmitter, Platform, Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -11,7 +11,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColors } from '@/lib/palette';
+import { STATIC, colorStr, dyn, useColors } from '@/lib/palette';
 import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 
 const PILL_HEIGHT = 62;
@@ -31,12 +31,6 @@ const SPRING = { damping: 16, stiffness: 220, mass: 0.7 };
 // sliding past it and springing back (critical damping ≈ 2√(k·m) ≈ 25)
 const SLIDE_SPRING = { damping: 26, stiffness: 220, mass: 0.7 };
 
-const STATIC = {
-  surface: '#FFFBF1',
-  inkMute: '#7A746A',
-  hairline: 'rgba(27,26,22,0.10)',
-};
-
 function bottomOffset(insetBottom: number) {
   return Math.max(insetBottom - 8, 12);
 }
@@ -54,6 +48,7 @@ export function useTabBarSpace() {
 export default function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const C = useColors();
+  const isDark = useColorScheme() === 'dark';
   const [pillW, setPillW] = useState(0);
   const glass = liquidGlassAvailable && GlassView != null && GlassContainer != null;
 
@@ -250,7 +245,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
                 {Platform.OS === 'ios' && (
                   <BlurView
                     intensity={90}
-                    tint="systemUltraThinMaterialLight"
+                    tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
                     style={StyleSheet.absoluteFill}
                   />
                 )}
@@ -260,7 +255,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
                     {
                       backgroundColor:
                         Platform.OS === 'ios'
-                          ? 'rgba(255,251,241,0.18)'
+                          ? (isDark ? 'rgba(32,29,23,0.18)' : 'rgba(255,251,241,0.18)')
                           : 'rgba(255,251,241,0.92)',
                     },
                   ]}
@@ -304,7 +299,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
                 >
                   {options.tabBarIcon?.({
                     focused,
-                    color: focused ? C.primary : STATIC.inkMute,
+                    color: focused ? C.primary : colorStr(STATIC.inkMute),
                     size: 25,
                   })}
                   <Text
@@ -351,7 +346,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: STATIC.hairline,
-    backgroundColor: 'rgba(255,251,241,0.3)',
+    backgroundColor: dyn('rgba(255,251,241,0.3)', 'rgba(32,29,23,0.35)'),
   },
   row: {
     flex: 1,

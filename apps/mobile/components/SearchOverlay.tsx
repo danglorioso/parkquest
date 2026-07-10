@@ -3,6 +3,7 @@ import {
   Animated, Keyboard, KeyboardAvoidingView, Modal, PanResponder,
   Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
+  type ColorValue,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,7 +11,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
-import { STATIC as C, useColors } from '@/lib/palette';
+import { STATIC as C, dyn, useColors } from '@/lib/palette';
 
 const UNVISITED = '#A8A29A';
 
@@ -42,13 +43,13 @@ interface ParkWithStatus extends ParkLite {
   status: ParkStatus;
 }
 
-const STATUS_DOT: Record<ParkStatus, string> = {
+const STATUS_DOT: Record<ParkStatus, ColorValue> = {
   visited: C.visited,
   bucketList: C.bucket,
   notVisited: UNVISITED,
 };
 
-const TAB_DEFS: { id: TabFilter; label: string; color: string }[] = [
+const TAB_DEFS: { id: TabFilter; label: string; color: ColorValue }[] = [
   { id: 'all',        label: 'All',        color: C.ink },
   { id: 'visited',    label: 'Visited',    color: C.visited },
   { id: 'bucketList', label: 'Bucket',     color: C.bucket },
@@ -432,7 +433,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(27,26,22,0.15)',
+    backgroundColor: dyn('rgba(27,26,22,0.15)', 'rgba(240,234,217,0.20)'),
   },
 
   header: {

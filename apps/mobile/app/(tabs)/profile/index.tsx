@@ -15,7 +15,7 @@ import { ParkStamp } from '@/components/ParkStamp';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { EmptyState } from '@/components/EmptyState';
-import { STATIC as C, useColors } from '@/lib/palette';
+import { STATIC as C, dyn, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -1007,11 +1007,11 @@ const styles = StyleSheet.create({
   },
   skeletonCircle: {
     width: 52, height: 52, borderRadius: 26,
-    backgroundColor: 'rgba(27,26,22,0.08)', marginBottom: 6,
+    backgroundColor: dyn('rgba(27,26,22,0.08)', 'rgba(240,234,217,0.10)'), marginBottom: 6,
   },
   skeletonLine: {
     width: 48, height: 9, borderRadius: 5,
-    backgroundColor: 'rgba(27,26,22,0.06)',
+    backgroundColor: dyn('rgba(27,26,22,0.06)', 'rgba(240,234,217,0.07)'),
   },
 
   // Attribution

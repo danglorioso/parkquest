@@ -3,6 +3,7 @@ import {
   Animated, DeviceEventEmitter, Dimensions, Keyboard, Linking, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
+  type ColorValue,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Image } from 'expo-image';
@@ -14,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
 import { parkGradient } from '@/lib/parkColors';
 import { ImageLightbox } from '@/components/ImageLightbox';
-import { STATIC as C, useColors } from '@/lib/palette';
+import { STATIC as C, dyn, useColors } from '@/lib/palette';
 import { CompassSpinner } from '@/components/LoadingScreen';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
@@ -199,7 +200,7 @@ function ParkMapMarker({
 
 // ── FilterPill ────────────────────────────────────────────────────────────────
 
-const FILTERS: Array<{ key: FilterStatus; dot: string; label: string }> = [
+const FILTERS: Array<{ key: FilterStatus; dot: ColorValue; label: string }> = [
   { key: 'all',        dot: C.ink,       label: 'ALL'    },
   { key: 'visited',    dot: C.visited,   label: 'VISITED'},
   { key: 'bucketList', dot: C.bucket,    label: 'BUCKET' },
@@ -415,7 +416,7 @@ function Stars({ value }: { value: number }) {
 
 // ── StatCell ──────────────────────────────────────────────────────────────────
 
-function StatCell({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+function StatCell({ label, value, valueColor }: { label: string; value: string; valueColor?: ColorValue }) {
   return (
     <View style={styles.statCell}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -1769,7 +1770,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,251,241,0.95)',
+    backgroundColor: dyn('rgba(255,251,241,0.95)', 'rgba(32,29,23,0.95)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
     borderRadius: 12,
@@ -1860,9 +1861,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 9,
-    backgroundColor: 'rgba(255,251,241,0.93)',
+    backgroundColor: dyn('rgba(255,251,241,0.93)', 'rgba(32,29,23,0.93)'),
     borderWidth: 0.5,
-    borderColor: 'rgba(27,26,22,0.13)',
+    borderColor: C.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1879,10 +1880,10 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   mapLoadingCard: {
-    backgroundColor: 'rgba(255,251,241,0.92)',
+    backgroundColor: dyn('rgba(255,251,241,0.92)', 'rgba(32,29,23,0.92)'),
     borderRadius: 24,
     borderWidth: 0.5,
-    borderColor: 'rgba(27,26,22,0.10)',
+    borderColor: C.hairline,
     padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1894,7 +1895,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     maxWidth: '100%',
-    backgroundColor: 'rgba(255,251,241,0.92)',
+    backgroundColor: dyn('rgba(255,251,241,0.92)', 'rgba(32,29,23,0.92)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
     borderRadius: 100,
@@ -1966,7 +1967,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 30,
-    backgroundColor: 'rgba(255,251,241,0.97)',
+    backgroundColor: dyn('rgba(255,251,241,0.97)', 'rgba(32,29,23,0.97)'),
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderTopWidth: 0.5,

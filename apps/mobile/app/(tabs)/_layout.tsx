@@ -2,17 +2,13 @@ import { useEffect, useState } from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { DeviceEventEmitter, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useColors } from '../../lib/palette';
+import { STATIC, useColors } from '../../lib/palette';
 import FloatingTabBar from '../../components/FloatingTabBar';
 import { hasDrafts, onDraftsChanged } from '../../lib/drafts';
 import { OnboardingWalkthrough } from '../../components/OnboardingWalkthrough';
 import { GlassView, liquidGlassAvailable } from '../../lib/glass';
 
 const glass = liquidGlassAvailable && GlassView != null;
-
-const STATIC = {
-  inkMute: '#7A746A',
-};
 
 // LogVisitButton always uses this orange, independent of the user's chosen
 // park theme (fabAccent varies per theme and can go blue/red/green).

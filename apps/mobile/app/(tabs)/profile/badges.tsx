@@ -704,7 +704,7 @@ const styles = StyleSheet.create({
   // Page header
   pageHeader: {
     paddingHorizontal: H_PAD, paddingTop: 22, paddingBottom: 18,
-    borderBottomWidth: 0.5, borderBottomColor: 'rgba(27,26,22,0.06)',
+    borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
   },
   headerKicker: {
     fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 5,
@@ -882,7 +882,7 @@ const styles = StyleSheet.create({
   },
   shareHeader: {
     paddingHorizontal: 18, paddingVertical: 14,
-    borderBottomWidth: 0.5, borderBottomColor: 'rgba(27,26,22,0.06)',
+    borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   shareTitle: {

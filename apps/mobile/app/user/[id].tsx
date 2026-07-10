@@ -665,7 +665,7 @@ const styles = StyleSheet.create({
   },
   avatar: {
     borderWidth: 2,
-    borderColor: 'rgba(27,26,22,0.12)',
+    borderColor: C.hairline,
     marginBottom: 14,
   },
   name: {

@@ -1,7 +1,7 @@
 import {
   ActivityIndicator, Alert, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput,
-  TouchableOpacity, View,
+  TouchableOpacity, View, useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
-import { STATIC as C, useColors } from '@/lib/palette';
+import { STATIC as C, dyn, useColors } from '@/lib/palette';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { showToast } from '@/lib/toast';
 import { loadRawDrafts, upsertRawDraft, deleteRawDraft, type SavedDraft as SharedSavedDraft } from '@/lib/drafts';
@@ -249,7 +249,7 @@ function StarRating({ value, onChange, onDragChange }: {
             <Ionicons
               name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
               size={STAR_SIZE}
-              color={value >= i + 0.5 ? C.accent : 'rgba(27,26,22,0.28)'}
+              color={value >= i + 0.5 ? C.accent : dyn('rgba(27,26,22,0.28)', 'rgba(240,234,217,0.32)')}
             />
           </View>
         ))}
@@ -2029,6 +2029,7 @@ function StepShare({ draft, set, park, userName, username, avatarUrl }: {
 
 export default function LogVisitModal() {
   const router   = useRouter();
+  const isDark = useColorScheme() === 'dark';
   const navigation = useNavigation();
   const { getToken } = useAuth();
   const { user } = useUser();
@@ -2522,7 +2523,8 @@ export default function LogVisitModal() {
         <LinearGradient
           // Same RGB (bg) at both stops, alpha-only ramp — black-transparent
           // start would tint the fade gray over light content underneath.
-          colors={['rgba(242,235,219,0)', C.bg]}
+          // Literal stops per scheme: LinearGradient can't take DynamicColorIOS.
+          colors={isDark ? ['rgba(23,21,17,0)', '#171511'] : ['rgba(242,235,219,0)', '#F2EBDB']}
           style={styles.footerFade}
           pointerEvents="none"
         />
@@ -2657,7 +2659,7 @@ const styles = StyleSheet.create({
   // Modal chrome
   grabber: {
     width: 36, height: 4.5, borderRadius: 3,
-    backgroundColor: 'rgba(27,26,22,0.18)',
+    backgroundColor: dyn('rgba(27,26,22,0.18)', 'rgba(240,234,217,0.24)'),
   },
   modalTopRow: {
     flexDirection: 'row', alignItems: 'center',

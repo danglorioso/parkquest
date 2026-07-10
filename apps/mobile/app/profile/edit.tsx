@@ -9,7 +9,7 @@ import { useNavigation, useRouter } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import type { EmailAddressResource } from '@clerk/types';
 import { Ionicons } from '@expo/vector-icons';
-import { usePalette, PALETTES, STATIC as BASE_C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
+import { usePalette, PALETTES, STATIC as BASE_C, useColors, useThemedStyles, useThemeMode, type Colors, type ThemeMode } from '@/lib/palette';
 import { Avatar } from '@/components/Avatar';
 import { clerkMsg } from '@/components/AuthAtoms';
 import * as ImagePicker from 'expo-image-picker';
@@ -53,6 +53,7 @@ export default function EditProfileScreen() {
   const { signOut } = useClerk();
   const { user } = useUser();
   const { paletteId, setPalette } = usePalette();
+  const { themeMode, setThemeMode } = useThemeMode();
   const isOnline = useIsOnline();
   const C = useColors();
   const styles = useThemedStyles(makeStyles);
@@ -85,7 +86,7 @@ export default function EditProfileScreen() {
   const [emailError, setEmailError] = useState('');
   const [emailBusy,  setEmailBusy]  = useState(false);
 
-  const original = useRef({ firstName: '', lastName: '', username: '', bio: '', paletteId: '' });
+  const original = useRef({ firstName: '', lastName: '', username: '', bio: '' });
   const bioInputRef = useRef<TextInput>(null);
 
   // Load current values
@@ -119,12 +120,6 @@ export default function EditProfileScreen() {
         .finally(() => setLoading(false));
     });
   }, [user]);
-
-  useEffect(() => {
-    original.current.paletteId = paletteId;
-  // only on mount — paletteId changes after user edits, so capture initial value
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Reflect the offline park cache's state, including background refreshes
   // triggered from the Parks/Map tabs while this screen is mounted.
@@ -245,7 +240,6 @@ export default function EditProfileScreen() {
     lastName  !== original.current.lastName  ||
     username  !== original.current.username  ||
     bio       !== original.current.bio       ||
-    paletteId !== original.current.paletteId ||
     avatarFile !== null ||
     removeAvatarPending;
 
@@ -368,7 +362,6 @@ export default function EditProfileScreen() {
       original.current.lastName  = lastName.trim();
       original.current.username  = username.trim();
       original.current.bio       = bio.trim();
-      original.current.paletteId = paletteId;
       setAvatarFile(null);
       setRemoveAvatarPending(false);
 
@@ -587,6 +580,28 @@ export default function EditProfileScreen() {
           {/* Appearance */}
           <View style={[fieldStyles.field, { gap: 10 }]}>
             <Text style={fieldStyles.fieldLabel}>Appearance</Text>
+            <View style={styles.modeRow}>
+              {([
+                { mode: 'light',  label: 'Light',  icon: 'sunny-outline' },
+                { mode: 'dark',   label: 'Dark',   icon: 'moon-outline' },
+                { mode: 'system', label: 'System', icon: 'contrast-outline' },
+              ] as { mode: ThemeMode; label: string; icon: keyof typeof Ionicons.glyphMap }[]).map(({ mode, label, icon }) => {
+                const selected = mode === themeMode;
+                return (
+                  <TouchableOpacity
+                    key={mode}
+                    onPress={() => setThemeMode(mode)}
+                    activeOpacity={0.7}
+                    style={[styles.modeChip, selected && { borderColor: C.primary, backgroundColor: C.surface }]}
+                  >
+                    <Ionicons name={icon} size={16} color={selected ? C.primary : C.inkMute} />
+                    <Text style={[styles.modeLabel, selected && { color: C.ink, fontWeight: '700' }]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <View style={styles.paletteGrid}>
               {PALETTES.map(({ id, label, colors }) => {
                 const selected = id === paletteId;
@@ -984,6 +999,27 @@ function makeStyles(C: Colors) {
     color: C.onPrimary,
     fontWeight: '700',
     fontSize: 15,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: C.surfaceAlt,
+  },
+  modeLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: C.inkSoft,
   },
   paletteGrid: {
     flexDirection: 'row',

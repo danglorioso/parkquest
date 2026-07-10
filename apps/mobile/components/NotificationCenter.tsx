@@ -12,7 +12,7 @@ import {
   getNotifications, getUnreadNotificationCount, markNotificationsRead,
   respondFriendRequest, dismissNotification, type NotificationItem, type NotificationType,
 } from '@/lib/api';
-import { STATIC as C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
+import { STATIC as C, dyn, useColors, useThemedStyles, type Colors } from '@/lib/palette';
 
 const TYPE_CONFIG: Record<NotificationType, { icon: keyof typeof Ionicons.glyphMap; bg: string; color: string }> = {
   friend_request:  { icon: 'person-add', bg: '#EDE9FE', color: '#7C3AED' },
@@ -596,7 +596,7 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   },
   dragIndicator: {
     width: 36, height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(27,26,22,0.15)',
+    backgroundColor: dyn('rgba(27,26,22,0.15)', 'rgba(240,234,217,0.20)'),
   },
 
   sheetHeader: {
@@ -680,12 +680,12 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   // Push permission
   permBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#FEF3C7',
-    borderBottomWidth: 0.5, borderBottomColor: '#F59E0B',
+    backgroundColor: dyn('#FEF3C7', '#3A2E14'),
+    borderBottomWidth: 0.5, borderBottomColor: dyn('#F59E0B', '#B98A2E'),
     paddingHorizontal: 16, paddingVertical: 9,
   },
-  permBannerText: { flex: 1, fontSize: 13, color: '#92400E', fontWeight: '500' },
-  permBannerCta: { fontSize: 13, color: '#92400E', fontWeight: '700' },
+  permBannerText: { flex: 1, fontSize: 13, color: dyn('#92400E', '#F2CD88'), fontWeight: '500' },
+  permBannerCta: { fontSize: 13, color: dyn('#92400E', '#F2CD88'), fontWeight: '700' },
   permFooter: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 18, paddingVertical: 11,

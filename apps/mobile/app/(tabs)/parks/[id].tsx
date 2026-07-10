@@ -1,6 +1,7 @@
 import {
   ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal,
   Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  type ColorValue,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -903,7 +904,7 @@ export default function ParkDetailScreen() {
 
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 
-function StatCell({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+function StatCell({ label, value, valueColor }: { label: string; value: string; valueColor?: ColorValue }) {
   return (
     <View style={styles.statCell}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -1378,7 +1379,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 0.5,
-    borderColor: 'rgba(27,26,22,0.10)',
+    borderColor: C.hairline,
     height: 200,
   },
   miniMap: {
@@ -1391,10 +1392,10 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 10,
     paddingVertical: 11,
-    backgroundColor: '#FFFBF1',
+    backgroundColor: C.surface,
     borderRadius: 10,
     borderWidth: 0.5,
-    borderColor: 'rgba(27,26,22,0.10)',
+    borderColor: C.hairline,
   },
   viewOnMapBtnText: {
     fontSize: 13,

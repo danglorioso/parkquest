@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { useFonts } from 'expo-font';
-import { PaletteProvider, STATIC, useColors } from '../lib/palette';
+import { PaletteProvider, STATIC, colorStr, useColors } from '../lib/palette';
 import {
   JetBrainsMono_400Regular,
   JetBrainsMono_600SemiBold,
@@ -16,6 +16,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
+import { StatusBar } from 'expo-status-bar';
 import LoadingScreen from '../components/LoadingScreen';
 import { ToastHost } from '../lib/toast';
 
@@ -104,12 +105,13 @@ function RootStack() {
   const T = useColors();
   const HEADER = {
     headerShown: true,
-    headerStyle: { backgroundColor: STATIC.bg },
+    headerStyle: { backgroundColor: colorStr(STATIC.bg) },
+    headerTitleStyle: { color: colorStr(STATIC.ink) },
     headerTintColor: T.primary,
     headerShadowVisible: false,
   };
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: STATIC.bg } }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen
@@ -176,6 +178,7 @@ export default function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <PaletteProvider>
           <SafeAreaProvider>
+            <StatusBar style="auto" />
             <SplashController onReady={() => setAppReady(true)} />
             <ClerkLoaded>
               <AuthSync />

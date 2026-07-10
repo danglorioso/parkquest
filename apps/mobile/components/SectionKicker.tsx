@@ -1,4 +1,5 @@
 import { StyleSheet, Text, TextStyle } from 'react-native';
+import { STATIC } from '@/lib/palette';
 
 // Mono uppercase section label — matches web `<SectionKicker>` used throughout.
 
@@ -15,7 +16,7 @@ const s = StyleSheet.create({
   kicker: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#7A746A',
+    color: STATIC.inkMute,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
     fontVariant: ['tabular-nums'],

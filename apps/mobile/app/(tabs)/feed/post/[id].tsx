@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { PostCard, type FeedPost } from '@/components/PostCard';
 import { EmptyState } from '@/components/EmptyState';
 import { Wordmark } from '@/components/Wordmark';
-import { STATIC, useColors } from '@/lib/palette';
+import { STATIC, dyn, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 
 // Offshoot of the feed tab, so back navigation and the bottom tab bar behave
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
     overflow: 'hidden',
-    backgroundColor: 'rgba(242,235,219,0.88)',
+    backgroundColor: dyn('rgba(242,235,219,0.88)', 'rgba(23,21,17,0.88)'),
   },
   topBarInner: {
     flexDirection: 'row',

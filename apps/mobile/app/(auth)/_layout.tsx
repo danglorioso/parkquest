@@ -1,10 +1,11 @@
 import { Stack } from 'expo-router';
-import { STATIC, useColors } from '@/lib/palette';
+import { STATIC, colorStr, useColors } from '@/lib/palette';
 
 export default function AuthLayout() {
   const T = useColors();
   const HEADER = {
-    headerStyle: { backgroundColor: STATIC.bg },
+    headerStyle: { backgroundColor: colorStr(STATIC.bg) },
+    headerTitleStyle: { color: colorStr(STATIC.ink) },
     headerTintColor: T.primary,
     headerShadowVisible: false,
     headerBackTitle: 'Back',
