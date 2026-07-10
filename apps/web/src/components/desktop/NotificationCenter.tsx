@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import {
   Bell, UserPlus, Heart, MessageCircle, MapPin, Sparkles, X, UserCheck, BellOff, Trophy,
@@ -67,15 +68,33 @@ function NotificationRow({
   n,
   responded,
   onRespond,
+  onNavigateToBadge,
+  onNavigateToPark,
+  onNavigateToUser,
 }: {
   n: NotificationItem;
   responded: boolean;
   onRespond: (friendshipId: number, action: 'accept' | 'reject') => Promise<void>;
+  onNavigateToBadge: (badgeId: string) => void;
+  onNavigateToPark: (parkCode: string) => void;
+  onNavigateToUser: (username: string) => void;
 }) {
   const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.system;
   const Icon = cfg.icon;
   const name = n.actor_display_name || n.actor_username || "Someone";
   const [busy, setBusy] = useState(false);
+  const badgeId = n.type === "badge_earned" ? n.metadata?.badge_id : undefined;
+  // The web app has no standalone post viewer (/p/[id] is the "get the app"
+  // universal-link stub) — send like/comment/post to the actor's profile,
+  // where the post is visible, and visit_logged to the park page when there's
+  // no actor to fall back on.
+  const handleClick = badgeId
+    ? () => onNavigateToBadge(badgeId)
+    : n.actor_username
+      ? () => onNavigateToUser(n.actor_username!)
+      : n.type === "visit_logged" && n.park_code
+        ? () => onNavigateToPark(n.park_code!)
+        : undefined;
 
   const avatarEl = n.actor_avatar_url ? (
     <img
@@ -108,10 +127,14 @@ function NotificationRow({
   };
 
   return (
-    <div style={{
-      display: "flex", gap: 10, padding: "10px 14px",
-      background: n.read ? "transparent" : "var(--surface-alt)",
-    }}>
+    <div
+      onClick={handleClick}
+      style={{
+        display: "flex", gap: 10, padding: "10px 14px",
+        background: n.read ? "transparent" : "var(--surface-alt)",
+        cursor: handleClick ? "pointer" : "default",
+      }}
+    >
       <div style={{ position: "relative", flexShrink: 0, alignSelf: "flex-start" }}>
         {avatarEl}
         {n.actor_id && (
@@ -130,7 +153,18 @@ function NotificationRow({
           fontSize: 12.5, color: "var(--ink)", lineHeight: 1.35,
           fontWeight: n.read ? 400 : 550,
         }}>
-          {notificationText(n)}
+          {n.type === "badge_earned" ? (
+            <>
+              {n.metadata?.badge_emoji ? `${n.metadata.badge_emoji} ` : ""}
+              You earned the <span style={{ fontWeight: 700 }}>{n.metadata?.badge_name ?? "badge"}</span> badge!
+            </>
+          ) : (n.type === "post" || n.type === "visit_logged") && n.park_name ? (
+            <>
+              <span style={{ fontWeight: 700 }}>{name}</span>
+              {n.type === "post" ? " posted at " : " visited "}
+              <span style={{ fontWeight: 700 }}>{n.park_name}</span>
+            </>
+          ) : notificationText(n)}
         </div>
         {n.type === "comment" && n.metadata?.excerpt && (
           <div style={{
@@ -150,7 +184,7 @@ function NotificationRow({
           ) : (
             <div style={{ display: "flex", gap: 6, marginTop: 7 }}>
               <button
-                onClick={() => handleRespond('accept')}
+                onClick={(e) => { e.stopPropagation(); handleRespond('accept'); }}
                 disabled={busy}
                 style={{
                   background: "var(--primary)", color: "#FFFBF1", border: "none",
@@ -161,7 +195,7 @@ function NotificationRow({
                 Accept
               </button>
               <button
-                onClick={() => handleRespond('reject')}
+                onClick={(e) => { e.stopPropagation(); handleRespond('reject'); }}
                 disabled={busy}
                 style={{
                   background: "var(--surface-alt)", color: "var(--ink)", border: "0.5px solid var(--hairline)",
@@ -191,6 +225,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 }
 
 export function NotificationCenter({ compact = false }: { compact?: boolean } = {}) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -270,6 +305,21 @@ export function NotificationCenter({ compact = false }: { compact?: boolean } = 
     if (res.ok) {
       setRespondedTo(prev => new Set([...prev, friendshipId]));
     }
+  };
+
+  const handleNavigateToBadge = (badgeId: string) => {
+    setOpen(false);
+    router.push(`/badges?badgeId=${badgeId}`);
+  };
+
+  const handleNavigateToPark = (parkCode: string) => {
+    setOpen(false);
+    router.push(`/parks/${parkCode}`);
+  };
+
+  const handleNavigateToUser = (username: string) => {
+    setOpen(false);
+    router.push(`/profile/${username}`);
   };
 
   const newCount = items.filter((n) => !n.read).length;
@@ -412,6 +462,9 @@ export function NotificationCenter({ compact = false }: { compact?: boolean } = 
                       ? respondedTo.has(n.metadata.friendship_id)
                       : false}
                     onRespond={handleRespond}
+                    onNavigateToBadge={handleNavigateToBadge}
+                    onNavigateToPark={handleNavigateToPark}
+                    onNavigateToUser={handleNavigateToUser}
                   />
                 </div>
               ))

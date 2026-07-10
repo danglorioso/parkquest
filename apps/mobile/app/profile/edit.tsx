@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { usePalette, PALETTES, STATIC as BASE_C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
@@ -46,6 +46,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 
 export default function EditProfileScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { getToken } = useAuth();
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -231,13 +232,20 @@ export default function EditProfileScreen() {
     setSaving(true);
 
     try {
-      // Upload / remove avatar via Clerk
+      // Upload / remove avatar via Clerk — capture the resulting URL so it can
+      // be pushed to our own DB below. Clerk's user.imageUrl updates locally
+      // too, but our profile API/passport screen read from the DB column.
+      let avatarUrl: string | null | undefined = undefined;
       if (removeAvatarPending) {
-        try { await user.setProfileImage({ file: null as unknown as File }); } catch { /* non-fatal */ }
+        try {
+          await user.setProfileImage({ file: null as unknown as File });
+          avatarUrl = null;
+        } catch { /* non-fatal */ }
       } else if (avatarFile?.base64) {
         try {
           const blob = await fetch(avatarFile.uri).then(r => r.blob());
-          await user.setProfileImage({ file: blob as File });
+          const image = await user.setProfileImage({ file: blob as File });
+          avatarUrl = image.publicUrl ?? null;
         } catch { /* non-fatal */ }
       }
 
@@ -256,6 +264,7 @@ export default function EditProfileScreen() {
           username: username.trim().toLowerCase(),
           display_name: [firstName.trim(), lastName.trim()].filter(Boolean).join(' ') || null,
           bio: bio.trim() || null,
+          ...(avatarUrl !== undefined ? { avatar_url: avatarUrl } : {}),
         }),
       });
 
@@ -278,6 +287,21 @@ export default function EditProfileScreen() {
       setSaving(false);
     }
   };
+
+  // Block navigating away (header back, swipe-back, hardware back) while there
+  // are unsaved changes — same discard/save/cancel choice the sticky save bar implies.
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      if (!hasChanges) return;
+      e.preventDefault();
+      Alert.alert('Unsaved changes', 'You have unsaved changes. Do you want to save them before leaving?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+        { text: 'Save', onPress: handleSave },
+      ]);
+    });
+    return unsub;
+  }, [navigation, hasChanges, handleSave]);
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [

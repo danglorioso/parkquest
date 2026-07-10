@@ -1,8 +1,8 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
-import { useEffect, useId, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useId, useState } from "react";
 import { Sparkles, Share2 } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { DesktopHeader } from "@/components/desktop/DesktopHeader";
@@ -433,8 +433,18 @@ function SectionLabel({ kicker, title }: { kicker: string; title: string }) {
 type TierFilter = "all" | "bronze" | "silver" | "gold" | "platinum" | "legendary";
 
 export default function BadgesPage() {
+  return (
+    <Suspense>
+      <BadgesPageContent />
+    </Suspense>
+  );
+}
+
+function BadgesPageContent() {
   const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const badgeIdParam = searchParams.get("badgeId");
 
   const [badges, setBadges]         = useState<BadgeData[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -461,6 +471,13 @@ export default function BadgesPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [isSignedIn]);
+
+  // Deep-link from a badge_earned notification — open that badge's popup once loaded.
+  useEffect(() => {
+    if (!badgeIdParam || badges.length === 0) return;
+    const match = badges.find((b) => b.id === badgeIdParam);
+    if (match) setSelectedBadge(match);
+  }, [badgeIdParam, badges]);
 
   const earned = badges.filter((b) => b.earned);
   const locked = badges.filter((b) => !b.earned);

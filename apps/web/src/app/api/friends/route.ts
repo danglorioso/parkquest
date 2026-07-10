@@ -198,6 +198,14 @@ export async function PATCH(request: Request) {
 
     if (!friendship) return NextResponse.json({ error: 'Friend request not found' }, { status: 404 });
 
+    // The original "sent you a friend request" notification is now resolved either way
+    await db.delete(notifications).where(
+      and(
+        eq(notifications.type, 'friend_request'),
+        sql`${notifications.metadata}->>'friendship_id' = ${String(friendshipId)}`
+      )
+    ).catch(() => {});
+
     if (action === 'accept') {
       await db.update(friendships).set({ status: 'accepted', updated_at: new Date() }).where(eq(friendships.id, friendshipId));
       await db.insert(notifications).values({
@@ -236,12 +244,22 @@ export async function DELETE(request: Request) {
     const targetId = searchParams.get('userId');
     if (!targetId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
 
-    await db.delete(friendships).where(
+    const deleted = await db.delete(friendships).where(
       or(
         and(eq(friendships.requester_id, userId), eq(friendships.recipient_id, targetId)),
         and(eq(friendships.requester_id, targetId), eq(friendships.recipient_id, userId))
       )
-    );
+    ).returning({ id: friendships.id });
+
+    // Clear any pending "sent you a friend request" notification tied to this friendship
+    for (const f of deleted) {
+      await db.delete(notifications).where(
+        and(
+          eq(notifications.type, 'friend_request'),
+          sql`${notifications.metadata}->>'friendship_id' = ${String(f.id)}`
+        )
+      ).catch(() => {});
+    }
 
     return NextResponse.json({ message: 'Unfriended' });
   } catch (error) {

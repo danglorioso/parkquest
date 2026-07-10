@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
@@ -475,6 +476,7 @@ function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => 
 
 export default function BadgesScreen() {
   const { getToken } = useAuth();
+  const { badgeId } = useLocalSearchParams<{ badgeId?: string }>();
   const tabBarSpace = useTabBarSpace();
   const T = useColors();
   const [badges,        setBadges]        = useState<BadgeData[]>([]);
@@ -513,6 +515,13 @@ export default function BadgesScreen() {
   }, []);
 
   useEffect(() => { loadBadges(); }, [loadBadges]);
+
+  // Deep-link from a badge_earned notification — open that badge's popup once loaded.
+  useEffect(() => {
+    if (!badgeId || badges.length === 0) return;
+    const match = badges.find(b => b.id === badgeId);
+    if (match) setSelectedBadge(match);
+  }, [badgeId, badges]);
 
   const earned  = useMemo(() => badges.filter(b => b.earned), [badges]);
   const visibleEarned = useMemo(() => badges.filter(b => b.earned),  [badges]);

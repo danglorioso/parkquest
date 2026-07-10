@@ -95,17 +95,24 @@ function SwipeableRow({ children, onDismiss }: { children: React.ReactNode; onDi
 type FriendReqStatus = 'pending' | 'accepted' | 'declined';
 
 function NotificationRow({
-  n, status, onRespond, onNavigateToUser,
+  n, status, onRespond, onNavigateToUser, onNavigateToBadge, onNavigateToPost, onNavigateToPark,
 }: {
   n: NotificationItem;
   status: FriendReqStatus;
   onRespond: (friendshipId: number, action: 'accept' | 'reject') => Promise<void>;
   onNavigateToUser: (userId: string) => void;
+  onNavigateToBadge: (badgeId: string) => void;
+  onNavigateToPost: (postId: number) => void;
+  onNavigateToPark: (parkCode: string) => void;
 }) {
   const styles = useThemedStyles(makeStyles);
   const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.system;
   const [busy, setBusy] = useState(false);
   const { actorName, rest } = buildText(n);
+  const badgeId = n.type === 'badge_earned' ? n.metadata?.badge_id : undefined;
+  // Post-anchored types jump straight to the post (comments auto-open there);
+  // visit_logged falls back to the park page when no post was attached.
+  const postTypes = n.type === 'like' || n.type === 'comment' || n.type === 'post' || n.type === 'visit_logged';
 
   const handleRespond = async (action: 'accept' | 'reject') => {
     const fid = n.metadata?.friendship_id;
@@ -114,10 +121,20 @@ function NotificationRow({
     try { await onRespond(fid, action); } finally { setBusy(false); }
   };
 
+  const handlePress = badgeId
+    ? () => onNavigateToBadge(badgeId)
+    : postTypes && n.post_id != null
+      ? () => onNavigateToPost(n.post_id!)
+      : n.type === 'visit_logged' && n.park_code
+        ? () => onNavigateToPark(n.park_code!)
+        : n.actor_id
+          ? () => onNavigateToUser(String(n.actor_id))
+          : undefined;
+
   return (
     <TouchableOpacity
-      activeOpacity={n.actor_id ? 0.7 : 1}
-      onPress={n.actor_id ? () => onNavigateToUser(String(n.actor_id)) : undefined}
+      activeOpacity={handlePress ? 0.7 : 1}
+      onPress={handlePress}
       style={[styles.row, !n.read && styles.rowUnread]}
     >
       {/* Unread accent bar */}
@@ -155,6 +172,21 @@ function NotificationRow({
                 </>
               ) : null}
             </Text>
+          ) : n.type === 'badge_earned' ? (
+            <>
+              {n.metadata?.badge_emoji ? <Text>{n.metadata.badge_emoji} </Text> : null}
+              <Text>You earned the </Text>
+              <Text style={styles.rowTextBold}>{n.metadata?.badge_name ?? 'badge'}</Text>
+              <Text> badge!</Text>
+            </>
+          ) : (n.type === 'post' || n.type === 'visit_logged') && n.park_name ? (
+            <>
+              {actorName ? (
+                <Text style={styles.rowTextBold}>{actorName}</Text>
+              ) : null}
+              <Text>{n.type === 'post' ? ' posted at ' : ' visited '}</Text>
+              <Text style={styles.rowTextBold}>{n.park_name}</Text>
+            </>
           ) : (
             <>
               {actorName ? (
@@ -474,6 +506,18 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                       onNavigateToUser={(userId) => {
                         dismiss();
                         router.push(`/user/${userId}` as any);
+                      }}
+                      onNavigateToBadge={(badgeId) => {
+                        dismiss();
+                        router.push(`/profile/badges?badgeId=${badgeId}` as any);
+                      }}
+                      onNavigateToPost={(postId) => {
+                        dismiss();
+                        router.push(`/p/${postId}` as any);
+                      }}
+                      onNavigateToPark={(parkCode) => {
+                        dismiss();
+                        router.push(`/parks/${parkCode}` as any);
                       }}
                     />
                   </SwipeableRow>
