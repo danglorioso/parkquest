@@ -3,8 +3,6 @@ import {
 } from 'react-native';
 import { useState } from 'react';
 import { useUser } from '@clerk/clerk-expo';
-import type { EmailAddressResource } from '@clerk/types';
-import { Ionicons } from '@expo/vector-icons';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { STATIC as BASE_C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
@@ -32,14 +30,6 @@ export default function SecurityScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [settingPassword, setSettingPassword] = useState(false);
-
-  const [emailModal, setEmailModal] = useState(false);
-  const [emailStep, setEmailStep] = useState<'enter' | 'verify'>('enter');
-  const [newEmail, setNewEmail] = useState('');
-  const [emailCode, setEmailCode] = useState('');
-  const [pendingEmail, setPendingEmail] = useState<EmailAddressResource | null>(null);
-  const [emailError, setEmailError] = useState('');
-  const [emailBusy, setEmailBusy] = useState(false);
 
   const googleAccount = user?.verifiedExternalAccounts.find(a => a.provider === 'google') ?? null;
   const appleAccount  = user?.verifiedExternalAccounts.find(a => a.provider === 'apple')  ?? null;
@@ -135,87 +125,8 @@ export default function SecurityScreen() {
     }
   };
 
-  const closeEmailModal = async () => {
-    // Discard an unverified pending address rather than leaving it orphaned
-    // on the account if the user backs out mid-flow.
-    if (pendingEmail) await pendingEmail.destroy().catch(() => {});
-    setEmailModal(false);
-    setEmailStep('enter');
-    setNewEmail('');
-    setEmailCode('');
-    setPendingEmail(null);
-    setEmailError('');
-  };
-
-  const handleSendEmailCode = async () => {
-    if (!user) return;
-    const trimmed = newEmail.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setEmailError('Enter a valid email address');
-      return;
-    }
-    setEmailError('');
-    setEmailBusy(true);
-    try {
-      const emailAddress = await user.createEmailAddress({ email: trimmed });
-      await emailAddress.prepareVerification({ strategy: 'email_code' });
-      setPendingEmail(emailAddress);
-      setEmailStep('verify');
-    } catch (e) {
-      setEmailError(clerkMsg(e));
-    } finally {
-      setEmailBusy(false);
-    }
-  };
-
-  const handleVerifyEmailCode = async () => {
-    if (!pendingEmail || !user) return;
-    setEmailError('');
-    setEmailBusy(true);
-    try {
-      const verified = await pendingEmail.attemptVerification({ code: emailCode.trim() });
-      await user.update({ primaryEmailAddressId: verified.id });
-      // Drop any other addresses (old primary, other stale pending ones) now
-      // that the new one is verified and primary.
-      await Promise.all(
-        user.emailAddresses.filter(e => e.id !== verified.id).map(e => e.destroy().catch(() => {}))
-      );
-      await user.reload();
-      setEmailModal(false);
-      setEmailStep('enter');
-      setNewEmail('');
-      setEmailCode('');
-      setPendingEmail(null);
-      showToast('Email updated');
-    } catch (e) {
-      setEmailError(clerkMsg(e));
-    } finally {
-      setEmailBusy(false);
-    }
-  };
-
   return (
     <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 20, gap: 16 }}>
-      <View style={{ gap: 10 }}>
-        <Text style={styles.fieldLabel}>Email</Text>
-        <View style={styles.row}>
-          <View style={{ width: 24, alignItems: 'center' }}>
-            <Ionicons name="mail-outline" size={20} color={C.inkSoft} />
-          </View>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={styles.rowTitle}>{user?.primaryEmailAddress?.emailAddress ?? '—'}</Text>
-            <Text style={styles.rowSubtitle}>Primary email</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => setEmailModal(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.buttonText}>Change</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
       <View style={{ gap: 10 }}>
         <Text style={styles.fieldLabel}>Connected accounts</Text>
         {(['google', 'apple'] as const).map(provider => {
@@ -301,75 +212,6 @@ export default function SecurityScreen() {
                 {settingPassword
                   ? <ActivityIndicator color="#FFFBF1" size="small" />
                   : <Text style={{ fontSize: 14, fontWeight: '700', color: BASE_C.onPrimary }}>Set password</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal visible={emailModal} transparent animationType="fade" onRequestClose={() => !emailBusy && closeEmailModal()}>
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
-          onPress={() => !emailBusy && closeEmailModal()}
-        >
-          <Pressable onPress={() => {}} style={{ width: '100%', backgroundColor: BASE_C.surface, borderRadius: 16, padding: 24, gap: 16 }}>
-            <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: BASE_C.ink }}>Change email</Text>
-              <Text style={{ fontSize: 13.5, color: BASE_C.inkMute, lineHeight: 20 }}>
-                {emailStep === 'enter'
-                  ? "We'll send a code to your new address to verify it."
-                  : `Enter the code we sent to ${newEmail.trim()}.`}
-              </Text>
-            </View>
-            {emailStep === 'enter' ? (
-              <Field label="New email">
-                <TextInput
-                  value={newEmail}
-                  onChangeText={v => { setNewEmail(v); setEmailError(''); }}
-                  placeholder="you@example.com"
-                  placeholderTextColor={BASE_C.inkMute}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  style={styles.input}
-                />
-              </Field>
-            ) : (
-              <Field label="Verification code">
-                <TextInput
-                  value={emailCode}
-                  onChangeText={v => { setEmailCode(v); setEmailError(''); }}
-                  placeholder="123456"
-                  placeholderTextColor={BASE_C.inkMute}
-                  keyboardType="number-pad"
-                  style={styles.input}
-                />
-              </Field>
-            )}
-            {emailError ? <Text style={{ fontSize: 13, color: '#C04040' }}>{emailError}</Text> : null}
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity
-                onPress={closeEmailModal}
-                disabled={emailBusy}
-                style={{ flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: BASE_C.hairline, alignItems: 'center' }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '600', color: BASE_C.inkSoft }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={emailStep === 'enter' ? handleSendEmailCode : handleVerifyEmailCode}
-                disabled={emailBusy || (emailStep === 'enter' ? !newEmail.trim() : !emailCode.trim())}
-                style={{
-                  flex: 1, paddingVertical: 13, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: C.primary,
-                  opacity: (emailBusy || (emailStep === 'enter' ? !newEmail.trim() : !emailCode.trim())) ? 0.5 : 1,
-                }}
-              >
-                {emailBusy
-                  ? <ActivityIndicator color="#FFFBF1" size="small" />
-                  : <Text style={{ fontSize: 14, fontWeight: '700', color: BASE_C.onPrimary }}>
-                      {emailStep === 'enter' ? 'Send code' : 'Verify & save'}
-                    </Text>
                 }
               </TouchableOpacity>
             </View>
