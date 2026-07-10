@@ -17,6 +17,7 @@ export default async function AdminVisitsPage({
     .select({
       id: visits.id,
       visited_date: visits.visited_date,
+      created_at: visits.created_at,
       rating: visits.rating,
       visibility: visits.visibility,
       is_bucket_list: visits.is_bucket_list,
@@ -51,6 +52,7 @@ export default async function AdminVisitsPage({
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Rating</th>
               <th className="px-4 py-3">Visibility</th>
+              <th className="px-4 py-3">Logged</th>
             </tr>
           </thead>
           <tbody>
@@ -64,10 +66,11 @@ export default async function AdminVisitsPage({
                 <td className="px-4 py-3 text-ink-soft">{v.visited_date ? new Date(v.visited_date).toLocaleDateString() : '—'}</td>
                 <td className="px-4 py-3 text-ink-soft">{v.rating ?? '—'}</td>
                 <td className="px-4 py-3 text-ink-soft capitalize">{v.visibility}</td>
+                <td className="px-4 py-3 text-ink-soft">{v.created_at ? new Date(v.created_at).toLocaleString() : '—'}</td>
               </tr>
             ))}
             {items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-ink-mute">No visits found.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-ink-mute">No visits found.</td></tr>
             )}
           </tbody>
         </table>

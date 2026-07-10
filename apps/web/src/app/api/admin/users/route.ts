@@ -74,7 +74,7 @@ export async function GET(request: Request) {
   const hasMore = rows.length > PAGE_SIZE;
   const pageRows = rows.slice(0, PAGE_SIZE);
 
-  let clerkById = new Map<string, { email: string | null; login_method: string; banned: boolean }>();
+  let clerkById = new Map<string, { email: string | null; login_method: string; banned: boolean; last_signed_in_at: string | null }>();
   if (pageRows.length > 0) {
     const client = await clerkClient();
     const { data } = await client.users.getUserList({ userId: pageRows.map(r => r.clerk_user_id), limit: pageRows.length });
@@ -84,6 +84,7 @@ export async function GET(request: Request) {
         email: u.primaryEmailAddress?.emailAddress ?? null,
         login_method: loginMethod(u.externalAccounts),
         banned: u.banned,
+        last_signed_in_at: u.lastSignInAt ? new Date(u.lastSignInAt).toISOString() : null,
       },
     ]));
   }
@@ -93,6 +94,7 @@ export async function GET(request: Request) {
     email: clerkById.get(r.clerk_user_id)?.email ?? null,
     login_method: clerkById.get(r.clerk_user_id)?.login_method ?? 'email',
     banned: clerkById.get(r.clerk_user_id)?.banned ?? false,
+    last_signed_in_at: clerkById.get(r.clerk_user_id)?.last_signed_in_at ?? null,
   }));
 
   return NextResponse.json({ users, page, has_more: hasMore });

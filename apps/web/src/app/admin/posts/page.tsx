@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { eq, desc } from 'drizzle-orm';
+import { ImageIcon } from 'lucide-react';
 import { db } from '@/lib/db';
 import { posts, userProfiles, parks } from '@/lib/db/schema';
-import { Card } from '@/components/ui/card';
 import { Pagination } from '../Pagination';
+import { Avatar, parkGradient } from '@/components/PostCard';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 30;
 
 export default async function AdminPostsPage({
   searchParams,
@@ -19,8 +20,11 @@ export default async function AdminPostsPage({
       id: posts.id,
       caption: posts.caption,
       created_at: posts.created_at,
+      photos: posts.photos,
+      park_code: posts.park_code,
       username: userProfiles.username,
       display_name: userProfiles.display_name,
+      avatar_url: userProfiles.avatar_url,
       park_name: parks.name,
     })
     .from(posts)
@@ -40,37 +44,53 @@ export default async function AdminPostsPage({
         <p className="mt-1 text-sm text-ink-mute">Most recent first.</p>
       </div>
 
-      <Card className="border-hairline p-0 shadow-[var(--shadow-card)]">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-hairline text-left text-xs font-bold uppercase tracking-wide text-ink-mute">
-              <th className="px-4 py-3">Author</th>
-              <th className="px-4 py-3">Caption</th>
-              <th className="px-4 py-3">Park</th>
-              <th className="px-4 py-3">Posted</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {items.map(p => (
-              <tr key={p.id} className="border-b border-hairline-soft last:border-0">
-                <td className="px-4 py-3 font-semibold text-ink">
-                  {p.username ? `@${p.username}` : p.display_name ?? '—'}
-                </td>
-                <td className="max-w-xs truncate px-4 py-3 text-ink-soft">{p.caption ?? <span className="text-ink-mute">—</span>}</td>
-                <td className="px-4 py-3 text-ink-soft">{p.park_name ?? '—'}</td>
-                <td className="px-4 py-3 text-ink-soft">{p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
-                <td className="px-4 py-3">
-                  <Link href={`/p/${p.id}`} target="_blank" className="text-xs font-semibold text-primary hover:underline">View →</Link>
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-mute">No posts found.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {items.map(p => {
+          const cover = p.photos?.[0]?.url ?? null;
+          return (
+            <Link
+              key={p.id}
+              href={`/p/${p.id}`}
+              target="_blank"
+              className="group relative block aspect-square overflow-hidden rounded-lg border border-hairline bg-surface-alt"
+            >
+              {cover ? (
+                <img src={cover} alt={p.caption ?? ''} className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center p-3 text-center" style={{ background: parkGradient(p.park_code ?? 'xx') }}>
+                  {p.caption ? (
+                    <span className="line-clamp-5 text-xs font-semibold text-white/90">{p.caption}</span>
+                  ) : (
+                    <ImageIcon size={22} className="text-white/70" />
+                  )}
+                </div>
+              )}
+
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-2.5 pb-2 pt-6">
+                <div className="flex items-center gap-1.5">
+                  <Avatar url={p.avatar_url} name={p.display_name ?? p.username} size={18} />
+                  <span className="truncate text-[11px] font-bold text-white">
+                    {p.username ? `@${p.username}` : p.display_name ?? '—'}
+                  </span>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-white/75">
+                  <span className="truncate">{p.park_name ?? '—'}</span>
+                  <span className="shrink-0">{p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</span>
+                </div>
+              </div>
+
+              {cover && p.caption && (
+                <div className="absolute inset-0 flex items-end bg-black/0 p-2.5 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
+                  <span className="line-clamp-4 text-[11px] font-medium text-white">{p.caption}</span>
+                </div>
+              )}
+            </Link>
+          );
+        })}
+        {items.length === 0 && (
+          <div className="col-span-full py-16 text-center text-sm text-ink-mute">No posts found.</div>
+        )}
+      </div>
 
       <Pagination page={page} hasMore={hasMore} basePath="/admin/posts" />
     </div>

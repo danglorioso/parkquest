@@ -13,6 +13,7 @@ interface UserRow {
   parks_visited: number;
   post_count: number;
   last_active: string | null;
+  last_signed_in_at: string | null;
   email: string | null;
   login_method: 'apple' | 'google' | 'email';
   banned: boolean;
@@ -83,6 +84,7 @@ export default async function AdminUsersPage({
                 <th className="px-4 py-3">Joined</th>
                 <th className="px-4 py-3">Parks</th>
                 <th className="px-4 py-3">Posts</th>
+                <th className="px-4 py-3">Last login</th>
                 {activeWindow && <th className="px-4 py-3">Last active</th>}
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3" />
@@ -108,6 +110,9 @@ export default async function AdminUsersPage({
                     <td className="px-4 py-3 text-ink-soft">{new Date(u.created_at).toLocaleDateString()}</td>
                     <td className="px-4 py-3 text-ink-soft">{u.parks_visited}</td>
                     <td className="px-4 py-3 text-ink-soft">{u.post_count}</td>
+                    <td className="px-4 py-3 text-ink-soft">
+                      {u.last_signed_in_at ? new Date(u.last_signed_in_at).toLocaleString() : '—'}
+                    </td>
                     {activeWindow && (
                       <td className="px-4 py-3 text-ink-soft">
                         {u.last_active ? new Date(u.last_active).toLocaleString() : '—'}
@@ -127,7 +132,7 @@ export default async function AdminUsersPage({
                 );
               })}
               {users.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-ink-mute">No users found.</td></tr>
+                <tr><td colSpan={activeWindow ? 10 : 9} className="px-4 py-8 text-center text-ink-mute">No users found.</td></tr>
               )}
             </tbody>
           </table>

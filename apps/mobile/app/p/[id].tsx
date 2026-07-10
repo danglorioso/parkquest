@@ -72,6 +72,8 @@ export default function SharedPostScreen() {
             myName={me?.fullName ?? me?.username}
             onDelete={() => router.replace('/(tabs)/feed' as never)}
             onParkPress={code => router.push(`/parks/${code}` as never)}
+            openOnPress={false}
+            autoOpenComments={post.comment_count > 0}
           />
         </ScrollView>
       ) : (

@@ -75,6 +75,7 @@ export default function EditProfileScreen() {
   const [downloading,         setDownloading]         = useState(false);
 
   const original = useRef({ firstName: '', lastName: '', username: '', bio: '', paletteId: '' });
+  const bioInputRef = useRef<TextInput>(null);
 
   // Load current values
   useEffect(() => {
@@ -414,14 +415,24 @@ export default function EditProfileScreen() {
           <Field label="Bio">
             <View>
               <TextInput
+                ref={bioInputRef}
                 style={[styles.input, styles.bioInput]}
                 value={bio}
-                onChangeText={setBio}
+                onChangeText={v => {
+                  // Enter key on a multiline input inserts "\n" instead of firing
+                  // onSubmitEditing — strip it and dismiss the keyboard ourselves.
+                  if (v.includes('\n')) {
+                    bioInputRef.current?.blur();
+                    return;
+                  }
+                  setBio(v);
+                }}
                 maxLength={200}
                 placeholder="A short description about yourself…"
                 placeholderTextColor={C.inkMute}
                 multiline
                 returnKeyType="done"
+                blurOnSubmit
               />
               <Text style={styles.charCount}>{bio.length}/200</Text>
             </View>

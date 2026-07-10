@@ -38,15 +38,15 @@ function StatCard({
 }: { href: string; icon: React.ElementType; label: string; value: number; accent?: boolean }) {
   return (
     <Link href={href}>
-      <Card className="group cursor-pointer flex-row items-center gap-3 border-hairline p-3 shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5">
-        <span className={`shrink-0 rounded-md p-2 ${accent ? 'bg-destructive/10 text-destructive' : 'bg-surface-alt text-primary'}`}>
-          <Icon size={15} strokeWidth={2.25} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-xl font-extrabold leading-tight tracking-tight text-ink">{value.toLocaleString()}</div>
-          <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-ink-mute">{label}</div>
+      <Card className="group relative cursor-pointer items-start gap-2 border-hairline p-3.5 shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5">
+        <div className="flex w-full items-start justify-between">
+          <span className={`shrink-0 rounded-md p-2 ${accent ? 'bg-destructive/10 text-destructive' : 'bg-surface-alt text-primary'}`}>
+            <Icon size={15} strokeWidth={2.25} />
+          </span>
+          <ChevronRight size={14} className="shrink-0 text-ink-mute opacity-0 transition-opacity group-hover:opacity-100" />
         </div>
-        <ChevronRight size={14} className="shrink-0 text-ink-mute opacity-0 transition-opacity group-hover:opacity-100" />
+        <div className="text-xl font-extrabold leading-tight tracking-tight text-ink">{value.toLocaleString()}</div>
+        <div className="text-[11px] font-semibold uppercase leading-snug tracking-wide text-ink-mute">{label}</div>
       </Card>
     </Link>
   );

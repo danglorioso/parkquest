@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View, Alert,
+  Text, TouchableOpacity, View, Alert, Pressable,
 } from 'react-native';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
 import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline';
-import { PostCard, type FeedPost } from '@/components/PostCard';
+import { PostCard, ReportSheet, type FeedPost } from '@/components/PostCard';
 import { Avatar } from '@/components/Avatar';
 import { BadgeInfoModal } from '@/components/BadgeInfoModal';
 import { EmptyState } from '@/components/EmptyState';
@@ -160,6 +160,9 @@ export default function UserProfileScreen() {
   const [blockBusy, setBlockBusy] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<ProfileBadge | null>(null);
   const [showFriendsModal, setShowFriendsModal] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showReportUserSheet, setShowReportUserSheet] = useState(false);
+  const [reportedUser, setReportedUser] = useState(false);
 
   const isOwnProfile = me?.id === id;
 
@@ -364,7 +367,45 @@ export default function UserProfileScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: profile ? (profile.display_name ?? `@${profile.username}`) : 'Profile' }} />
+      <Stack.Screen
+        options={{
+          title: profile ? (profile.display_name ?? `@${profile.username}`) : 'Profile',
+          headerRight: (!isOwnProfile && profile) ? () => (
+            <View style={{ position: 'relative' }}>
+              {showProfileMenu && (
+                <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowProfileMenu(false)} />
+              )}
+              <TouchableOpacity
+                onPress={() => setShowProfileMenu(v => !v)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="ellipsis-horizontal" size={20} color={showProfileMenu ? T.primary : C.inkMute} />
+              </TouchableOpacity>
+              {showProfileMenu && (
+                <View style={styles.profileMenu}>
+                  <TouchableOpacity
+                    style={styles.profileMenuItem}
+                    disabled={blockBusy}
+                    onPress={() => { setShowProfileMenu(false); handleBlock(); }}
+                  >
+                    <Text style={[styles.profileMenuItemText, { color: C.liked }]}>Block user</Text>
+                  </TouchableOpacity>
+                  <View style={styles.profileMenuDivider} />
+                  <TouchableOpacity
+                    style={styles.profileMenuItem}
+                    disabled={reportedUser}
+                    onPress={() => { setShowProfileMenu(false); setShowReportUserSheet(true); }}
+                  >
+                    <Text style={[styles.profileMenuItemText, { color: reportedUser ? C.inkMute : C.liked }]}>
+                      {reportedUser ? 'Reported' : 'Report user'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ) : undefined,
+        }}
+      />
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['bottom']}>
         {loading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -463,16 +504,6 @@ export default function UserProfileScreen() {
                     </>
                   )}
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleBlock}
-                  disabled={blockBusy}
-                  hitSlop={8}
-                  style={{ alignSelf: 'center', marginTop: 12 }}
-                >
-                  <Text style={{ fontSize: 13, color: C.inkMute, textDecorationLine: 'underline' }}>
-                    Block user
-                  </Text>
-                </TouchableOpacity>
               </View>
             ) : null}
 
@@ -542,14 +573,6 @@ export default function UserProfileScreen() {
               </View>
             ) : null}
 
-            {/* Journal timeline */}
-            {profile.journal && profile.journal.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader icon="journal-outline" title="JOURNAL" />
-                <JournalTimeline entries={profile.journal ?? []} />
-              </View>
-            ) : null}
-
             {/* Recent posts — same cards as the feed */}
             {token && posts.length > 0 ? (
               <View style={styles.section}>
@@ -566,6 +589,14 @@ export default function UserProfileScreen() {
                     onParkPress={code => router.push(`/parks/${code}` as never)}
                   />
                 ))}
+              </View>
+            ) : null}
+
+            {/* Journal timeline */}
+            {profile.journal && profile.journal.length > 0 ? (
+              <View style={styles.section}>
+                <SectionHeader icon="journal-outline" title="JOURNAL" />
+                <JournalTimeline entries={profile.journal ?? []} />
               </View>
             ) : null}
 
@@ -595,6 +626,16 @@ export default function UserProfileScreen() {
             }}
           />
         ) : null}
+
+        {showReportUserSheet && token && profile ? (
+          <ReportSheet
+            token={token}
+            targetType="user"
+            targetId={profile.clerk_user_id}
+            onClose={() => setShowReportUserSheet(false)}
+            onSubmitted={() => { setReportedUser(true); Alert.alert('Report submitted', "Thanks — we'll review this."); }}
+          />
+        ) : null}
       </SafeAreaView>
     </>
   );
@@ -606,6 +647,16 @@ const styles = StyleSheet.create({
   scroll: {
     paddingBottom: 48,
   },
+  profileMenu: {
+    position: 'absolute', top: 30, right: 0, zIndex: 100,
+    backgroundColor: C.surface, borderWidth: 1, borderColor: C.hairline,
+    borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18, shadowRadius: 20, elevation: 12,
+    minWidth: 150, overflow: 'hidden',
+  },
+  profileMenuItem: { paddingHorizontal: 14, paddingVertical: 11 },
+  profileMenuItemText: { fontSize: 14, fontWeight: '600' },
+  profileMenuDivider: { height: 0.5, backgroundColor: C.hairline },
   hero: {
     alignItems: 'center',
     paddingTop: 32,

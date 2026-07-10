@@ -199,7 +199,7 @@ const REPORT_REASONS: { key: ReportReason; label: string }[] = [
   { key: 'other', label: 'Other' },
 ];
 
-function ReportSheet({
+export function ReportSheet({
   token, targetType, targetId, onClose, onSubmitted,
 }: {
   token: string;
@@ -930,6 +930,8 @@ export function PostCard({
   myName,
   onDelete,
   onParkPress,
+  openOnPress = true,
+  autoOpenComments = false,
 }: {
   post: FeedPost;
   token: string;
@@ -938,6 +940,10 @@ export function PostCard({
   myName?: string | null;
   onDelete?: (id: number) => void;
   onParkPress?: (parkCode: string) => void;
+  // Tapping anywhere on the card (outside links/buttons) opens the post's
+  // dedicated focus view. Disabled when the card is already rendered there.
+  openOnPress?: boolean;
+  autoOpenComments?: boolean;
 }) {
   const router = useRouter();
   const C = useColors();
@@ -950,6 +956,10 @@ export function PostCard({
   const [showReportSheet, setShowReportSheet] = useState(false);
   const [reported, setReported] = useState(false);
   const [previewComments, setPreviewComments] = useState<CommentRow[]>([]);
+
+  useEffect(() => {
+    if (autoOpenComments) setShowComments(true);
+  }, [autoOpenComments]);
 
   useEffect(() => {
     if (post.comment_count <= 0) return;
@@ -1044,9 +1054,13 @@ export function PostCard({
   };
 
   const isFirstVisit = !isBadge && !!post.visit_id && Number(post.visit_ordinal) === 1;
+  const CardContainer = openOnPress ? Pressable : View;
 
   return (
-    <View style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}>
+    <CardContainer
+      style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}
+      {...(openOnPress ? { onPress: () => router.push(`/p/${post.id}` as never) } : {})}
+    >
       {/* Badge banner */}
       {isBadge && (
         <View style={[styles.badgeBanner, { borderBottomColor: C.primary + '60' }]}>
@@ -1356,7 +1370,7 @@ export function PostCard({
         />
       )}
 
-    </View>
+    </CardContainer>
   );
 }
 

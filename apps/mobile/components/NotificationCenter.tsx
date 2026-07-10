@@ -464,7 +464,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                 data={items}
                 keyExtractor={n => String(n.id)}
                 style={{ maxHeight: 500 }}
-                contentContainerStyle={{ paddingVertical: 6 }}
+                contentContainerStyle={{ paddingTop: 6 }}
                 renderItem={({ item }) => (
                   <SwipeableRow onDismiss={() => handleDismiss(item.id)}>
                     <NotificationRow
@@ -528,7 +528,7 @@ const makeStyles = (T: Colors) => StyleSheet.create({
 
   swipeBg: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: C.liked,
+    backgroundColor: C.surfaceAlt,
   },
 
   overlayContainer: {

@@ -3,7 +3,7 @@ import { requireAdmin } from '@/lib/admin';
 import { Wordmark } from '@/components/Wordmark';
 import { AdminNav } from './AdminNav';
 
-export const metadata = { title: 'Admin — ParkQuest' };
+export const metadata = { title: 'Admin' };
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const admin = await requireAdmin();

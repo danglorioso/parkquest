@@ -17,27 +17,25 @@ export function ActiveUsersCard({
   const values = { today, '7d': d7, '30d': d30 };
 
   return (
-    <Card className="flex-row items-center gap-3 border-hairline p-3 shadow-[var(--shadow-card)]">
+    <Card className="items-start gap-2 border-hairline p-3.5 shadow-[var(--shadow-card)]">
       <span className="shrink-0 rounded-md bg-surface-alt p-2 text-primary">
         <Activity size={15} strokeWidth={2.25} />
       </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-xl font-extrabold leading-tight tracking-tight text-ink">{values[windowKey].toLocaleString()}</div>
-        <div className="flex items-center justify-between gap-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-mute">Active</span>
-          <div className="flex gap-0.5 rounded-md bg-surface-alt p-0.5">
-            {WINDOWS.map(w => (
-              <button
-                key={w.key}
-                onClick={() => setWindowKey(w.key)}
-                className={`rounded px-1 py-0.5 text-[9.5px] font-bold ${
-                  windowKey === w.key ? 'bg-primary text-primary-foreground' : 'text-ink-mute'
-                }`}
-              >
-                {w.label}
-              </button>
-            ))}
-          </div>
+      <div className="text-xl font-extrabold leading-tight tracking-tight text-ink">{values[windowKey].toLocaleString()}</div>
+      <div className="flex w-full items-center justify-between gap-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-mute">Active</span>
+        <div className="flex gap-0.5 rounded-md bg-surface-alt p-0.5">
+          {WINDOWS.map(w => (
+            <button
+              key={w.key}
+              onClick={() => setWindowKey(w.key)}
+              className={`rounded px-1 py-0.5 text-[9.5px] font-bold ${
+                windowKey === w.key ? 'bg-primary text-primary-foreground' : 'text-ink-mute'
+              }`}
+            >
+              {w.label}
+            </button>
+          ))}
         </div>
       </div>
     </Card>

@@ -483,6 +483,9 @@ function ParkBottomSheet({
   const [npsImages, setNpsImages] = useState<string[]>(
     park.image_url ? [park.image_url] : []
   );
+  // Parallel to npsImages (same order/length) — captions for the lightbox, same
+  // source data as the park detail page's gallery.
+  const [npsImageTitles, setNpsImageTitles] = useState<(string | null)[]>([]);
   const [imgIdx, setImgIdx] = useState(0);
   const [heroLoaded, setHeroLoaded] = useState(false);
   const [prevHeroUrl, setPrevHeroUrl] = useState<string | null>(null);
@@ -545,6 +548,7 @@ function ParkBottomSheet({
   useEffect(() => {
     if (park.image_url) setNpsImages([park.image_url]);
     else setNpsImages([]);
+    setNpsImageTitles([]);
     setImgIdx(0);
     setHeroLoaded(false);
     setPrevHeroUrl(null);
@@ -567,10 +571,12 @@ function ParkBottomSheet({
     })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        const urls: string[] = (data?.images ?? [])
-          .map((img: { url: string }) => img.url)
-          .filter(Boolean);
-        if (urls.length > 0) setNpsImages(urls);
+        const rawImages: { url: string; title?: string | null }[] = (data?.images ?? []).filter((img: { url?: string }) => img?.url);
+        const urls = rawImages.map(img => img.url);
+        if (urls.length > 0) {
+          setNpsImages(urls);
+          setNpsImageTitles(rawImages.map(img => img.title ?? null));
+        }
       })
       .catch(() => {});
 
@@ -827,9 +833,14 @@ function ParkBottomSheet({
     outputRange: [BANNER_H, COLLAPSED_H],
     extrapolate: 'clamp',
   });
-  const heroTitleFontSize = scrollY.interpolate({
+  // Scale + translate instead of animating fontSize/paddingLeft directly —
+  // those force a native layout + text remeasure on every scroll frame, which
+  // is what made the collapse look glitchy/jumpy. Transforms are composited,
+  // no layout pass involved, so this reaches 60fps even under the JS driver
+  // `headerHeight` (height) requires above.
+  const heroTitleScale = scrollY.interpolate({
     inputRange: [0, (BANNER_H - COLLAPSED_H) * 0.75],
-    outputRange: [26, 20],
+    outputRange: [1, 20 / 26],
     extrapolate: 'clamp',
   });
   const stateOpacity = scrollY.interpolate({
@@ -837,10 +848,11 @@ function ParkBottomSheet({
     outputRange: [1, 0],
     extrapolate: 'clamp',
   });
-  // Shift the collapsed title right so it clears the back button
-  const heroPadLeft = scrollY.interpolate({
+  // Shift the collapsed title right so it clears the back button — delta only;
+  // the base 16px left padding stays put, this adds the remaining 44px.
+  const heroTitleTranslateX = scrollY.interpolate({
     inputRange: [0, (BANNER_H - COLLAPSED_H) * 0.75],
-    outputRange: [16, 60],
+    outputRange: [0, 44],
     extrapolate: 'clamp',
   });
 
@@ -1213,11 +1225,17 @@ function ParkBottomSheet({
               <View style={styles.handleBar} />
             </View>
           </View>
-          <Animated.View style={[styles.heroContent, { paddingLeft: heroPadLeft }]} pointerEvents="none">
+          <Animated.View
+            style={[styles.heroContent, { transform: [{ translateX: heroTitleTranslateX }] }]}
+            pointerEvents="none"
+          >
             <Animated.Text style={[styles.heroDesignation, { opacity: stateOpacity }]}>
               {stateLabel.toUpperCase()}
             </Animated.Text>
-            <Animated.Text style={[styles.heroName, { fontSize: heroTitleFontSize }]} numberOfLines={1}>
+            <Animated.Text
+              style={[styles.heroName, { transform: [{ scale: heroTitleScale }], transformOrigin: 'left' }]}
+              numberOfLines={1}
+            >
               {park.name}
             </Animated.Text>
           </Animated.View>
@@ -1289,7 +1307,7 @@ function ParkBottomSheet({
 
       {lightboxIdx != null && (
         <ImageLightbox
-          images={npsImages.map(url => ({ url }))}
+          images={npsImages.map((url, i) => ({ url, title: npsImageTitles[i] ?? null }))}
           initialIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
         />
@@ -1590,7 +1608,7 @@ export default function MapScreen() {
           const selected = selectedPark?.park_code === park.park_code;
           return (
             <Marker
-              key={`${park.park_code}-${park.status}-${selected ? 's' : 'u'}`}
+              key={park.park_code}
               coordinate={{ latitude: park.latitude, longitude: park.longitude }}
               onPress={e => { e.stopPropagation(); handleSelectPark(park); }}
               tracksViewChanges={selected}

@@ -5,6 +5,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
@@ -150,7 +151,7 @@ export default function ProfileScreen() {
 
   const [profile,      setProfile]      = useState<ProfileInfo | null>(null);
   const [parksVisited, setParksVisited] = useState(0);
-  const [bucketList,   setBucketList]   = useState(0);
+  const [tripsCount,   setTripsCount]   = useState(0);
   const [badgesEarned, setBadgesEarned] = useState(0);
   const [totalBadges,  setTotalBadges]  = useState(0);
   const [friendCount,  setFriendCount]  = useState(0);
@@ -171,6 +172,10 @@ export default function ProfileScreen() {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
+  // Re-pressing the Profile tab while already on it scrolls back to the top.
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
+
   const loadData = useCallback(async () => {
     const tok = await getTokenRef.current();
     if (!tok) { setLoading(false); return; }
@@ -181,7 +186,7 @@ export default function ProfileScreen() {
         apiFetch<ProfileInfo>('/api/profile', tok),
         apiFetch<any[]>('/api/visits', tok),
         apiFetch<{ badges: BadgeSummary[] }>('/api/badges', tok),
-        apiFetch<any[]>('/api/friends?type=friends', tok),
+        apiFetch<any[]>(`/api/friends?userId=${user?.id}&type=friends`, tok),
       ]);
 
       if ([profRes, visitsRes, badgesRes, friendsRes].every(r => r.status === 'rejected')) {
@@ -193,7 +198,7 @@ export default function ProfileScreen() {
         const vs = visitsRes.value;
         const visited = [...new Set(vs.filter((v: any) => !v.is_bucket_list && v.visited_date).map((v: any) => v.park_code))];
         setParksVisited(visited.length);
-        setBucketList(vs.filter((v: any) => v.is_bucket_list).length);
+        setTripsCount(vs.filter((v: any) => !v.is_bucket_list && v.visited_date).length);
         setRawVisits(vs);
         setVisitsLoaded(true);
       }
@@ -215,7 +220,7 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
@@ -383,7 +388,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       {topBar}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}>
 
         {/* ── Passport hero card ───────────────────────────────────────────── */}
         <TouchableOpacity
@@ -463,7 +468,7 @@ export default function ProfileScreen() {
           <View style={styles.passportStats}>
             {([
               { label: 'VISITED', value: visitsLoaded ? `${parksVisited}/63` : '–' },
-              { label: 'BUCKET',  value: visitsLoaded ? String(bucketList) : '–' },
+              { label: 'TRIPS',   value: visitsLoaded ? String(tripsCount) : '–' },
               { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–' },
               { label: 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–' },
             ] as { label: string; value: string }[]).map(s => (

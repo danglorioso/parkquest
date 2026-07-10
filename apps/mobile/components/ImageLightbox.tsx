@@ -1,17 +1,154 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Dimensions, FlatList, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View,
+  Animated, Dimensions, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, {
+  useSharedValue, useAnimatedStyle, withTiming,
+} from 'react-native-reanimated';
 
-const { width: W } = Dimensions.get('window');
+const { width: W, height: H } = Dimensions.get('window');
+const FRAME_W = W * 0.9;
+const FRAME_H = H * 0.75;
+const FRAME_LEFT = W * 0.05;
+const FRAME_TOP = (H - FRAME_H) / 2;
+const ARROW_FADE_DELAY = 2500;
 
 export interface LightboxImage {
   url: string;
   title?: string | null;
 }
+
+// ── Single page — owns its own zoom/pan so pinching one image never affects
+// its neighbors, and un-zooms itself the moment it's swiped off-screen ───────
+
+function LightboxPage({
+  image, active, onRequestClose, onZoomChange, onTouch,
+}: {
+  image: LightboxImage;
+  active: boolean;
+  onRequestClose: () => void;
+  onZoomChange: (zoomed: boolean) => void;
+  onTouch: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+  const [zoomed, setZoomed] = useState(false);
+  const naturalSize = useRef<{ w: number; h: number } | null>(null);
+
+  // Swiped away — snap back to a clean 1x for next time this page is visible.
+  useEffect(() => {
+    if (active) return;
+    scale.value = withTiming(1);
+    savedScale.value = 1;
+    translateX.value = withTiming(0);
+    translateY.value = withTiming(0);
+    savedTranslateX.value = 0;
+    savedTranslateY.value = 0;
+    if (zoomed) { setZoomed(false); onZoomChange(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
+  const imageRect = useCallback(() => {
+    const n = naturalSize.current;
+    if (!n || !n.w || !n.h) {
+      return { left: FRAME_LEFT, top: FRAME_TOP, right: FRAME_LEFT + FRAME_W, bottom: FRAME_TOP + FRAME_H };
+    }
+    const fit = Math.min(FRAME_W / n.w, FRAME_H / n.h);
+    const dispW = n.w * fit;
+    const dispH = n.h * fit;
+    const left = FRAME_LEFT + (FRAME_W - dispW) / 2;
+    const top = FRAME_TOP + (FRAME_H - dispH) / 2;
+    return { left, top, right: left + dispW, bottom: top + dispH };
+  }, []);
+
+  const handleTapAt = useCallback((x: number, y: number) => {
+    if (zoomed) return; // must un-zoom first — a stray tap shouldn't dismiss a zoomed-in view
+    const r = imageRect();
+    const inside = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    if (!inside) onRequestClose();
+  }, [zoomed, imageRect, onRequestClose]);
+
+  const pinch = Gesture.Pinch()
+    .runOnJS(true)
+    .onUpdate(e => {
+      scale.value = Math.min(Math.max(savedScale.value * e.scale, 1), 5);
+      onTouch();
+    })
+    .onEnd(() => {
+      if (scale.value <= 1.02) {
+        scale.value = withTiming(1);
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
+        savedScale.value = 1;
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+        setZoomed(false);
+        onZoomChange(false);
+      } else {
+        savedScale.value = scale.value;
+        setZoomed(true);
+        onZoomChange(true);
+      }
+    });
+
+  const pan = Gesture.Pan()
+    .enabled(zoomed)
+    .runOnJS(true)
+    .onUpdate(e => {
+      translateX.value = savedTranslateX.value + e.translationX;
+      translateY.value = savedTranslateY.value + e.translationY;
+      onTouch();
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  const tap = Gesture.Tap()
+    .runOnJS(true)
+    .maxDuration(250)
+    .onEnd((e, success) => {
+      if (!success) return;
+      onTouch();
+      handleTapAt(e.x, e.y);
+    });
+
+  const composed = Gesture.Simultaneous(pinch, pan, tap);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  return (
+    <GestureDetector gesture={composed}>
+      <View style={styles.page}>
+        <Reanimated.View style={[styles.img, animatedStyle]}>
+          <Image
+            source={{ uri: image.url }}
+            style={StyleSheet.absoluteFill}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            onLoad={e => { naturalSize.current = { w: e.source.width, h: e.source.height }; }}
+          />
+        </Reanimated.View>
+      </View>
+    </GestureDetector>
+  );
+}
+
+// ── Lightbox ──────────────────────────────────────────────────────────────────
 
 export function ImageLightbox({
   images, initialIndex = 0, onClose,
@@ -22,6 +159,7 @@ export function ImageLightbox({
 }) {
   const insets = useSafeAreaInsets();
   const [idx, setIdx] = useState(initialIndex);
+  const [zoomed, setZoomed] = useState(false);
   const listRef = useRef<FlatList<LightboxImage>>(null);
   const n = images.length;
 
@@ -39,16 +177,40 @@ export function ImageLightbox({
     setIdx(real);
   };
 
+  // Arrows fade out after a few seconds of no interaction, and reappear
+  // briefly whenever the visible image changes or the user touches anything.
+  const arrowsOpacity = useRef(new Animated.Value(1)).current;
+  const [arrowsVisible, setArrowsVisible] = useState(true);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showArrowsBriefly = useCallback(() => {
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    setArrowsVisible(true);
+    arrowsOpacity.setValue(1);
+    fadeTimer.current = setTimeout(() => {
+      Animated.timing(arrowsOpacity, { toValue: 0, duration: 400, useNativeDriver: true })
+        .start(() => setArrowsVisible(false));
+    }, ARROW_FADE_DELAY);
+  }, [arrowsOpacity]);
+
+  useEffect(() => {
+    showArrowsBriefly();
+    return () => { if (fadeTimer.current) clearTimeout(fadeTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx]);
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.bg}>
-        {/* Fullscreen pager — swipe anywhere to change image, wraps at the ends */}
+      <View style={styles.bg} onTouchStart={showArrowsBriefly}>
+        {/* Fullscreen pager — swipe anywhere to change image, wraps at the ends.
+            Disabled while zoomed in so a pan-to-inspect never also flips pages. */}
         <FlatList
           ref={listRef}
           data={loopData}
           keyExtractor={(_, k) => String(k)}
           horizontal
           pagingEnabled
+          scrollEnabled={!zoomed}
           showsHorizontalScrollIndicator={false}
           style={StyleSheet.absoluteFill}
           initialScrollIndex={initialListIndex}
@@ -66,17 +228,14 @@ export function ImageLightbox({
               setIdx(listIndex - 1);
             }
           }}
-          renderItem={({ item }) => (
-            <Pressable style={styles.page} onPress={onClose}>
-              <Pressable style={styles.img} onPress={() => {}}>
-                <Image
-                  source={{ uri: item.url }}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="contain"
-                  cachePolicy="memory-disk"
-                />
-              </Pressable>
-            </Pressable>
+          renderItem={({ item, index }) => (
+            <LightboxPage
+              image={item}
+              active={n <= 1 ? index === idx : index === idx + 1}
+              onRequestClose={onClose}
+              onZoomChange={setZoomed}
+              onTouch={showArrowsBriefly}
+            />
           )}
         />
 
@@ -96,24 +255,26 @@ export function ImageLightbox({
           <Ionicons name="close" size={22} color="#FFFBF1" />
         </TouchableOpacity>
 
-        {/* Prev arrow — wraps to the last image */}
+        {/* Prev / next arrows — fade after a few seconds of inactivity */}
         {n > 1 && (
-          <TouchableOpacity
-            style={[styles.nav, { left: 16 }]}
-            onPress={() => goTo(idx - 1)}
+          <Animated.View
+            pointerEvents={arrowsVisible ? 'auto' : 'none'}
+            style={[styles.nav, { left: 16, opacity: arrowsOpacity }]}
           >
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </TouchableOpacity>
+            <TouchableOpacity onPress={() => goTo(idx - 1)} style={styles.navBtn}>
+              <Ionicons name="chevron-back" size={24} color="#fff" />
+            </TouchableOpacity>
+          </Animated.View>
         )}
-
-        {/* Next arrow — wraps to the first image */}
         {n > 1 && (
-          <TouchableOpacity
-            style={[styles.nav, { right: 16 }]}
-            onPress={() => goTo(idx + 1)}
+          <Animated.View
+            pointerEvents={arrowsVisible ? 'auto' : 'none'}
+            style={[styles.nav, { right: 16, opacity: arrowsOpacity }]}
           >
-            <Ionicons name="chevron-forward" size={24} color="#fff" />
-          </TouchableOpacity>
+            <TouchableOpacity onPress={() => goTo(idx + 1)} style={styles.navBtn}>
+              <Ionicons name="chevron-forward" size={24} color="#fff" />
+            </TouchableOpacity>
+          </Animated.View>
         )}
 
         {/* Caption */}
@@ -150,8 +311,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   img: {
-    width: '90%',
-    height: '75%',
+    width: FRAME_W,
+    height: FRAME_H,
   },
   counter: {
     position: 'absolute',
@@ -181,6 +342,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '50%',
     marginTop: -24,
+  },
+  navBtn: {
     width: 48,
     height: 48,
     borderRadius: 24,
