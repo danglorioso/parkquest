@@ -23,6 +23,7 @@ import { showToast } from '@/lib/toast';
 import { loadRawDrafts, upsertRawDraft, deleteRawDraft, type SavedDraft as SharedSavedDraft } from '@/lib/drafts';
 import { parkColor } from '@/lib/parkColors';
 import { relTime } from '@/lib/dates';
+import { getDefaultVisibility } from '@/lib/settings';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -1957,6 +1958,17 @@ export default function LogVisitModal() {
   useEffect(() => {
     if (isEdit) return;
     loadDrafts().then(d => { if (d.length > 0) setRestoreBanner(d[0]); });
+  }, [isEdit]);
+
+  // Seed a fresh visit's visibility from the user's saved default (Privacy &
+  // Moderation settings) — a restored draft or edit still wins since this only
+  // runs once, before either of those can have set anything else.
+  useEffect(() => {
+    if (isEdit) return;
+    getDefaultVisibility().then(v => {
+      const capitalized = (v.charAt(0).toUpperCase() + v.slice(1)) as Draft['visibility'];
+      setDraftState(prev => ({ ...prev, visibility: capitalized }));
+    });
   }, [isEdit]);
 
   // Autosave while editing (debounced) — not when editing an existing visit

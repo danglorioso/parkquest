@@ -188,11 +188,6 @@ function BadgeCell({ badge, onPress }: { badge: BadgeData; onPress: () => void }
 
 function FeaturedCard({ badge, onPress, onShare }: { badge: BadgeData; onPress: () => void; onShare: () => void }) {
   const t = TIERS[badge.tier] ?? TIERS.bronze;
-  const dateStr = badge.earned_at
-    ? new Date(badge.earned_at)
-        .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        .toUpperCase()
-    : 'RECENTLY';
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.featured}>
@@ -204,7 +199,7 @@ function FeaturedCard({ badge, onPress, onShare }: { badge: BadgeData; onPress: 
       </View>
       <View style={{ flex: 1, gap: 5, position: 'relative' }}>
         <Text style={styles.featuredKicker}>
-          LATEST UNLOCK · {dateStr}
+          LATEST UNLOCK
         </Text>
         <Text style={styles.featuredName}>{badge.name}</Text>
         <Text style={styles.featuredDesc} numberOfLines={2}>{badge.description}</Text>

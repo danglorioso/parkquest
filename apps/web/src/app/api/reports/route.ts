@@ -1,11 +1,27 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { eq, desc } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { reports } from '@/lib/db/schema';
 import { notifyAdmin } from '@/lib/notifyAdmin';
 
 const TARGET_TYPES = ['post', 'comment', 'user'] as const;
 const REASONS = ['spam', 'harassment', 'inappropriate', 'other'] as const;
+
+// GET /api/reports — reports the current user has submitted
+export async function GET() {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rows = await db
+    .select()
+    .from(reports)
+    .where(eq(reports.reporter_id, userId))
+    .orderBy(desc(reports.created_at))
+    .limit(100);
+
+  return NextResponse.json(rows);
+}
 
 // POST /api/reports { targetType, targetId, reason, details? } — flag content or a user
 export async function POST(request: Request) {

@@ -8,11 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
 import { usePalette, PALETTES, STATIC as BASE_C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
 import { Avatar } from '@/components/Avatar';
-import { AppleIcon, clerkMsg, GoogleG } from '@/components/AuthAtoms';
 import * as ImagePicker from 'expo-image-picker';
 import { showToast } from '@/lib/toast';
 import { getParks, getParksNpsAll } from '@/lib/api';
@@ -75,13 +72,6 @@ export default function EditProfileScreen() {
   const [offlineFetchedAt,    setOfflineFetchedAt]    = useState<string | null>(null);
   const [offlineCount,        setOfflineCount]        = useState(0);
   const [downloading,         setDownloading]         = useState(false);
-  const [connectBusy,         setConnectBusy]         = useState<'google' | 'apple' | null>(null);
-  const [passwordModal,       setPasswordModal]       = useState(false);
-  const [pendingDisconnect,   setPendingDisconnect]   = useState<'google' | 'apple' | null>(null);
-  const [newPassword,         setNewPassword]         = useState('');
-  const [confirmPassword,     setConfirmPassword]     = useState('');
-  const [passwordError,       setPasswordError]       = useState('');
-  const [settingPassword,     setSettingPassword]     = useState(false);
 
   const original = useRef({ firstName: '', lastName: '', username: '', bio: '', paletteId: '' });
 
@@ -166,100 +156,6 @@ export default function EditProfileScreen() {
       showToast('Failed to download park data', 'error');
     } finally {
       setDownloading(false);
-    }
-  };
-
-  const googleAccount = user?.verifiedExternalAccounts.find(a => a.provider === 'google') ?? null;
-  const appleAccount  = user?.verifiedExternalAccounts.find(a => a.provider === 'apple')  ?? null;
-
-  // A provider can only be disconnected if another sign-in method survives it —
-  // a password, or another connected SSO account — otherwise the user is locked out.
-  const canUnlink = (provider: 'google' | 'apple') => {
-    if (!user) return false;
-    if (user.passwordEnabled) return true;
-    return user.verifiedExternalAccounts.some(a => a.provider !== provider);
-  };
-
-  const closePasswordModal = () => {
-    setPasswordModal(false);
-    setPendingDisconnect(null);
-    setNewPassword('');
-    setConfirmPassword('');
-    setPasswordError('');
-  };
-
-  const performDisconnect = async (provider: 'google' | 'apple') => {
-    const acct = provider === 'google' ? googleAccount : appleAccount;
-    if (!acct) return;
-    setConnectBusy(provider);
-    try {
-      await acct.destroy();
-      await user?.reload();
-      showToast(`${provider === 'google' ? 'Google' : 'Apple'} account disconnected`);
-    } catch (e) {
-      showToast(clerkMsg(e), 'error');
-    } finally {
-      setConnectBusy(null);
-    }
-  };
-
-  const handleDisconnectPress = (provider: 'google' | 'apple') => {
-    if (!canUnlink(provider)) {
-      setPendingDisconnect(provider);
-      setPasswordModal(true);
-      return;
-    }
-    const label = provider === 'google' ? 'Google' : 'Apple';
-    Alert.alert(`Disconnect ${label}`, `Sign in with ${label} will no longer work for this account.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Disconnect', style: 'destructive', onPress: () => performDisconnect(provider) },
-    ]);
-  };
-
-  const handleConnect = async (provider: 'google' | 'apple') => {
-    if (!user) return;
-    setConnectBusy(provider);
-    try {
-      const redirectUrl = AuthSession.makeRedirectUri({ path: 'sso-callback' });
-      const acct = await user.createExternalAccount({
-        strategy: provider === 'google' ? 'oauth_google' : 'oauth_apple',
-        redirectUrl,
-      });
-      const url = acct.verification?.externalVerificationRedirectURL;
-      if (!url) {
-        await acct.destroy().catch(() => {});
-        throw new Error('Could not start sign-in');
-      }
-      const result = await WebBrowser.openAuthSessionAsync(url.toString(), redirectUrl);
-      if (result.type === 'success') {
-        await user.reload();
-        showToast(`${provider === 'google' ? 'Google' : 'Apple'} account connected`);
-      } else {
-        await acct.destroy().catch(() => {});
-      }
-    } catch (e) {
-      showToast(clerkMsg(e), 'error');
-    } finally {
-      setConnectBusy(null);
-    }
-  };
-
-  const handleSetPassword = async () => {
-    if (!user) return;
-    if (newPassword.length < 8) { setPasswordError('Password must be at least 8 characters'); return; }
-    if (newPassword !== confirmPassword) { setPasswordError('Passwords do not match'); return; }
-    setPasswordError('');
-    setSettingPassword(true);
-    try {
-      await user.updatePassword({ newPassword });
-      const provider = pendingDisconnect;
-      closePasswordModal();
-      showToast('Password set');
-      if (provider) await performDisconnect(provider);
-    } catch (e) {
-      setPasswordError(clerkMsg(e));
-    } finally {
-      setSettingPassword(false);
     }
   };
 
@@ -519,41 +415,25 @@ export default function EditProfileScreen() {
             </View>
           </Field>
 
-          {/* Connected accounts */}
+          {/* More settings */}
           <View style={[fieldStyles.field, { gap: 10 }]}>
-            <Text style={fieldStyles.fieldLabel}>Connected accounts</Text>
-            {(['google', 'apple'] as const).map(provider => {
-              const acct = provider === 'google' ? googleAccount : appleAccount;
-              const busy = connectBusy === provider;
-              return (
-                <View key={provider} style={styles.offlineRow}>
-                  <View style={{ width: 24, alignItems: 'center' }}>
-                    {provider === 'google' ? <GoogleG size={20} /> : <AppleIcon size={20} />}
-                  </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={styles.offlineTitle}>{provider === 'google' ? 'Google' : 'Apple'}</Text>
-                    <Text style={styles.offlineSubtitle}>{acct ? 'Connected' : 'Not connected'}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[
-                      styles.offlineButton,
-                      acct ? { borderColor: '#C04040' } : null,
-                      busy && { opacity: 0.4 },
-                    ]}
-                    onPress={() => acct ? handleDisconnectPress(provider) : handleConnect(provider)}
-                    disabled={busy}
-                    activeOpacity={0.7}
-                  >
-                    {busy
-                      ? <ActivityIndicator color={acct ? '#C04040' : C.primary} size="small" />
-                      : <Text style={[styles.offlineButtonText, acct ? { color: '#C04040' } : null]}>
-                          {acct ? 'Disconnect' : 'Connect'}
-                        </Text>
-                    }
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
+            <Text style={fieldStyles.fieldLabel}>More settings</Text>
+            <TouchableOpacity style={styles.offlineRow} onPress={() => router.push('/profile/security' as never)} activeOpacity={0.7}>
+              <Ionicons name="key-outline" size={18} color={C.inkSoft} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.offlineTitle}>Sign-in & security</Text>
+                <Text style={styles.offlineSubtitle}>Connected Google & Apple accounts</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={C.inkMute} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.offlineRow} onPress={() => router.push('/profile/moderation' as never)} activeOpacity={0.7}>
+              <Ionicons name="shield-outline" size={18} color={C.inkSoft} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.offlineTitle}>Privacy & moderation</Text>
+                <Text style={styles.offlineSubtitle}>Blocked users, reports you've sent</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={C.inkMute} />
+            </TouchableOpacity>
           </View>
 
           {/* Appearance */}
@@ -650,17 +530,19 @@ export default function EditProfileScreen() {
             <Text style={styles.signOutText}>Sign out</Text>
           </TouchableOpacity>
 
+          {/* Delete account — deliberately out of the way, at the very end of the
+              scroll, so it's never in the same thumb-reach zone as Save/Sign out */}
+          <TouchableOpacity
+            style={styles.deleteBtn}
+            onPress={handleDeleteAccount}
+            activeOpacity={0.5}
+            hitSlop={4}
+          >
+            <Text style={styles.deleteBtnText}>Delete account</Text>
+          </TouchableOpacity>
+
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Delete account — fixed footer */}
-      <TouchableOpacity
-        style={styles.deleteBtn}
-        onPress={handleDeleteAccount}
-        activeOpacity={0.5}
-      >
-        <Text style={styles.deleteBtnText}>Delete account</Text>
-      </TouchableOpacity>
 
       {/* Fullscreen avatar */}
       <Modal visible={fullscreenAvatar} transparent animationType="fade" onRequestClose={() => setFullscreenAvatar(false)}>
@@ -745,66 +627,6 @@ export default function EditProfileScreen() {
         </Pressable>
       </Modal>
 
-      {/* Set password modal — gates disconnecting a user's last sign-in method */}
-      <Modal visible={passwordModal} transparent animationType="fade" onRequestClose={() => !settingPassword && closePasswordModal()}>
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
-          onPress={() => !settingPassword && closePasswordModal()}
-        >
-          <Pressable onPress={() => {}} style={{ width: '100%', backgroundColor: BASE_C.surface, borderRadius: 16, padding: 24, gap: 16 }}>
-            <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: BASE_C.ink }}>Set a password</Text>
-              <Text style={{ fontSize: 13.5, color: BASE_C.inkMute, lineHeight: 20 }}>
-                That's your only way to sign in right now. Set a password first so disconnecting it doesn't lock you out.
-              </Text>
-            </View>
-            <Field label="New password">
-              <TextInput
-                value={newPassword}
-                onChangeText={v => { setNewPassword(v); setPasswordError(''); }}
-                secureTextEntry
-                placeholder="At least 8 characters"
-                placeholderTextColor={BASE_C.inkMute}
-                style={styles.input}
-              />
-            </Field>
-            <Field label="Confirm password">
-              <TextInput
-                value={confirmPassword}
-                onChangeText={v => { setConfirmPassword(v); setPasswordError(''); }}
-                secureTextEntry
-                placeholder="Re-enter password"
-                placeholderTextColor={BASE_C.inkMute}
-                style={styles.input}
-              />
-            </Field>
-            {passwordError ? <Text style={{ fontSize: 13, color: '#C04040' }}>{passwordError}</Text> : null}
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity
-                onPress={closePasswordModal}
-                disabled={settingPassword}
-                style={{ flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: BASE_C.hairline, alignItems: 'center' }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '600', color: BASE_C.inkSoft }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSetPassword}
-                disabled={settingPassword || !newPassword || !confirmPassword}
-                style={{
-                  flex: 1, paddingVertical: 13, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: C.primary,
-                  opacity: (settingPassword || !newPassword || !confirmPassword) ? 0.5 : 1,
-                }}
-              >
-                {settingPassword
-                  ? <ActivityIndicator color="#FFFBF1" size="small" />
-                  : <Text style={{ fontSize: 14, fontWeight: '700', color: BASE_C.onPrimary }}>Set password</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -911,16 +733,21 @@ function makeStyles(C: Colors) {
   },
   saveButton: {
     backgroundColor: C.primary,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 16,
-    minHeight: 46,
+    minHeight: 50,
+    shadowColor: C.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   saveText: {
     color: C.onPrimary,
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 15,
   },
   paletteGrid: {
     flexDirection: 'row',
@@ -998,15 +825,14 @@ function makeStyles(C: Colors) {
   deleteBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderTopWidth: 0.5,
-    borderTopColor: BASE_C.hairline,
-    backgroundColor: BASE_C.bg,
+    paddingVertical: 10,
+    marginTop: 28,
   },
   deleteBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#C04040',
+    fontSize: 11.5,
+    fontWeight: '500',
+    color: C.inkMute,
+    textDecorationLine: 'underline',
   },
   });
 }

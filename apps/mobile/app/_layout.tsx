@@ -121,11 +121,15 @@ function RootStack() {
       />
       <Stack.Screen
         name="profile/edit"
-        options={{ ...HEADER, title: 'Edit Profile', headerBackTitle: 'Profile' }}
+        options={{ ...HEADER, title: 'Settings', headerBackTitle: 'Profile' }}
       />
       <Stack.Screen
-        name="profile/blocked"
-        options={{ ...HEADER, title: 'Blocked Users', headerBackTitle: 'Profile' }}
+        name="profile/security"
+        options={{ ...HEADER, title: 'Sign-in & Security', headerBackTitle: 'Settings' }}
+      />
+      <Stack.Screen
+        name="profile/moderation"
+        options={{ ...HEADER, title: 'Privacy & Moderation', headerBackTitle: 'Settings' }}
       />
       <Stack.Screen
         name="user/[id]"
@@ -134,6 +138,30 @@ function RootStack() {
       <Stack.Screen
         name="admin/index"
         options={{ ...HEADER, title: 'Admin', headerBackTitle: 'Profile' }}
+      />
+      <Stack.Screen
+        name="admin/reports"
+        options={{ ...HEADER, title: 'Reports', headerBackTitle: 'Admin' }}
+      />
+      <Stack.Screen
+        name="admin/users"
+        options={{ ...HEADER, title: 'Users', headerBackTitle: 'Admin' }}
+      />
+      <Stack.Screen
+        name="admin/posts"
+        options={{ ...HEADER, title: 'Posts', headerBackTitle: 'Admin' }}
+      />
+      <Stack.Screen
+        name="admin/visits"
+        options={{ ...HEADER, title: 'Visits', headerBackTitle: 'Admin' }}
+      />
+      <Stack.Screen
+        name="admin/badges"
+        options={{ ...HEADER, title: 'Badges', headerBackTitle: 'Admin' }}
+      />
+      <Stack.Screen
+        name="admin/parks"
+        options={{ ...HEADER, title: 'Parks', headerBackTitle: 'Admin' }}
       />
     </Stack>
   );

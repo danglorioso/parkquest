@@ -1,4 +1,4 @@
-import type { EnrichedPost, EnrichedComment, PublicProfile, UserProfile, ParkWithStatus, BadgesResponse, Friend, FriendRequest, BlockedUser, ReportTargetType, ReportReason, EnrichedReport } from '@parkquest/types';
+import type { EnrichedPost, EnrichedComment, PublicProfile, UserProfile, ParkWithStatus, BadgesResponse, Friend, FriendRequest, BlockedUser, ReportTargetType, ReportReason, EnrichedReport, Report } from '@parkquest/types';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -136,9 +136,13 @@ export interface AdminStats {
   total_posts: number;
   total_visits: number;
   total_badges: number;
+  active_users_today: number;
   active_users_7d: number;
   active_users_30d: number;
   signups_by_day: { day: string; count: number }[];
+  activity_by_day: { day: string; count: number }[];
+  reports_by_status: { open: number; actioned: number; dismissed: number };
+  top_parks: { park_code: string; name: string; visit_count: number }[];
 }
 
 export const getAdminStats = (token: string) =>
@@ -149,6 +153,85 @@ export const getAdminReports = (token: string) =>
 
 export const actOnReport = (token: string, id: number, action: 'dismiss' | 'remove_content' | 'ban_user') =>
   req(`/api/admin/reports/${id}`, token, { method: 'PATCH', body: JSON.stringify({ action }) });
+
+export interface AdminUserRow {
+  clerk_user_id: string;
+  username: string;
+  display_name: string | null;
+  created_at: string;
+  parks_visited: number;
+  post_count: number;
+  last_active: string | null;
+  email: string | null;
+  login_method: 'apple' | 'google' | 'email';
+  banned: boolean;
+}
+
+export const getAdminUsers = (token: string, page = 1, activeWindow?: number) => {
+  const qs = new URLSearchParams({ page: String(page) });
+  if (activeWindow) qs.set('active', String(activeWindow));
+  return req<{ users: AdminUserRow[]; has_more: boolean }>(`/api/admin/users?${qs}`, token);
+};
+
+export const setUserBanned = (token: string, userId: string, banned: boolean) =>
+  req(`/api/admin/users/${userId}`, token, { method: 'PATCH', body: JSON.stringify({ action: banned ? 'ban' : 'unban' }) });
+
+export interface AdminPostRow {
+  id: number;
+  caption: string | null;
+  created_at: string;
+  clerk_user_id: string;
+  username: string | null;
+  display_name: string | null;
+  park_name: string | null;
+}
+
+export const getAdminPosts = (token: string, page = 1) =>
+  req<{ posts: AdminPostRow[]; has_more: boolean }>(`/api/admin/posts?page=${page}`, token);
+
+export interface AdminVisitRow {
+  id: number;
+  visited_date: string | null;
+  rating: number | null;
+  visibility: string | null;
+  is_bucket_list: boolean;
+  clerk_user_id: string;
+  username: string | null;
+  display_name: string | null;
+  park_name: string | null;
+}
+
+export const getAdminVisits = (token: string, page = 1) =>
+  req<{ visits: AdminVisitRow[]; has_more: boolean }>(`/api/admin/visits?page=${page}`, token);
+
+export interface AdminBadgeRow {
+  id: string;
+  name: string;
+  emoji: string;
+  tier: string;
+  count: number;
+  pct_of_active: number;
+}
+
+export const getAdminBadges = (token: string) =>
+  req<{ badges: AdminBadgeRow[]; active_users: number }>('/api/admin/badges', token);
+
+export interface AdminParkRow {
+  park_code: string;
+  name: string;
+  visit_count: number;
+  post_count: number;
+  avg_rating: string | null;
+  avg_crowd: string | null;
+  avg_difficulty: string | null;
+  pct_would_return: string | null;
+}
+
+export const getAdminParks = (token: string, sort = 'visit_count', dir: 'asc' | 'desc' = 'desc') =>
+  req<{ parks: AdminParkRow[] }>(`/api/admin/parks?sort=${sort}&dir=${dir}`, token);
+
+export const getMyReports = (token: string) =>
+  req<Report[]>('/api/reports', token);
 
 // ── Parks ──────────────────────────────────────────────────────────────────────
 

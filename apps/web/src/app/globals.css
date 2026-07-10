@@ -36,6 +36,14 @@
   --status-warning: #8A5D1B;
   --status-muted:   #7A746A;
 
+  /* ── Categorical series (admin hourly-activity chart) — dataviz skill's
+     validated reference palette, slots 1-5, fixed order, never reassigned ── */
+  --series-1: #2a78d6;
+  --series-2: #1baf7a;
+  --series-3: #eda100;
+  --series-4: #008300;
+  --series-5: #4a3aa7;
+
   /* ── Alternate palettes (only primary/primary-deep/accent/accent-2 change) */
   /* Canyon:  #7B3A1F / #582410 / #D89A3A / #3F6B5A */
   /* Glacier: #2D4F66 / #1A3548 / #C7864B / #7FA6B8 */
@@ -125,6 +133,12 @@
   --status-good:    #5DA572;
   --status-warning: #E0B454;
   --status-muted:   #8C8678;
+
+  --series-1: #3987e5;
+  --series-2: #199e70;
+  --series-3: #c98500;
+  --series-4: #008300;
+  --series-5: #9085e9;
 }
 
 body {
@@ -168,6 +182,11 @@ button, [role="button"], a {
   --color-status-good:    var(--status-good);
   --color-status-warning: var(--status-warning);
   --color-status-muted:   var(--status-muted);
+  --color-series-1:       var(--series-1);
+  --color-series-2:       var(--series-2);
+  --color-series-3:       var(--series-3);
+  --color-series-4:       var(--series-4);
+  --color-series-5:       var(--series-5);
 
   /* ── Badge tier colors ───────────────────────────────────────── */
   --color-tier-bronze:    var(--tier-bronze-fill);

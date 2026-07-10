@@ -724,15 +724,9 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.card}>
             <NavRow
-              icon="create-outline"
-              label="Edit Profile"
+              icon="settings-outline"
+              label="Settings"
               onPress={() => router.push('/profile/edit' as never)}
-            />
-            <View style={styles.rowDivider} />
-            <NavRow
-              icon="ban-outline"
-              label="Blocked Users"
-              onPress={() => router.push('/profile/blocked' as never)}
             />
             <View style={styles.rowDivider} />
             <NavRow
