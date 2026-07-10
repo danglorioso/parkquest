@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSignUp, useUser } from '@clerk/clerk-expo';
 import { useNavigation, useRouter } from 'expo-router';
 import {
-  clerkMsg, ErrorBox, FField, MONO, PrimaryBtn, SecondaryBtn, TermsCheckbox,
+  clerkMsg, ErrorBox, FField, MONO, NameField, PrimaryBtn, SecondaryBtn, TermsCheckbox,
 } from '@/components/AuthAtoms';
 import { STATIC as C, useColors } from '@/lib/palette';
 
@@ -197,17 +197,11 @@ export default function SignUpScreen() {
               />
               <Text style={st.helperText}>Lowercase letters, numbers, underscores · min 3 chars</Text>
 
-              <TouchableOpacity onPress={toggleShowName} style={st.nameToggle} activeOpacity={0.7}>
-                <Text style={[st.nameToggleText, { color: T.primary }]}>
-                  {showName ? 'Hide name' : '+ Add your name'}
-                </Text>
-              </TouchableOpacity>
-
-              {showName && <>
-                <FField label="FIRST NAME" value={firstName} onChange={setFirstName} autoCapitalize="words" />
-                <FField label="LAST NAME" value={lastName} onChange={setLastName} autoCapitalize="words" />
-                <Text style={st.helperText}>Optional · shown on your profile</Text>
-              </>}
+              <NameField
+                open={showName} onToggle={toggleShowName}
+                firstName={firstName} lastName={lastName}
+                onFirstName={setFirstName} onLastName={setLastName}
+              />
 
               <TermsCheckbox checked={agreedToTerms} onToggle={() => setAgreedToTerms(v => !v)} />
 
@@ -247,8 +241,6 @@ const st = StyleSheet.create({
 
   helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
 
-  nameToggle:     { marginBottom: 14, marginTop: -4 },
-  nameToggleText: { fontSize: 13, fontWeight: '700' },
 
   switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
   switchText: { fontSize: 13, color: C.inkMute },

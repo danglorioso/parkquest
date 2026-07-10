@@ -602,23 +602,25 @@ const COMMENT_LIMIT = 500;
 const COMMENT_PREVIEW_CHARS = 200;
 
 function CommentsSheet({
-  postId, token, myUserId, myAvatarUrl, myName, onCountChange, onClose,
+  postId, token, myUserId, myAvatarUrl, myName, initialRows, onCountChange, onClose,
 }: {
   postId: number;
   token: string;
   myUserId?: string | null;
   myAvatarUrl?: string | null;
   myName?: string | null;
+  initialRows?: CommentRow[] | null;
   onCountChange: (delta: number) => void;
   onClose: () => void;
 }) {
   const router = useRouter();
   const C = useColors();
   const insets = useSafeAreaInsets();
-  const [rows, setRows] = useState<CommentRow[]>([]);
+  const [rows, setRows] = useState<CommentRow[]>(initialRows ?? []);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // Preloaded from the feed scroll — already have the full list, no fetch needed.
+  const [loading, setLoading] = useState(!initialRows);
   const [activeCommentMenu, setActiveCommentMenu] = useState<number | null>(null);
   const [reportingCommentId, setReportingCommentId] = useState<number | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: number; text: string } | null>(null);
@@ -631,10 +633,13 @@ function CommentsSheet({
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (initialRows) return;
     apiReq(`/api/comments?postId=${postId}`, token)
       .then(setRows)
       .catch(() => {})
       .finally(() => setLoading(false));
+  // initialRows only matters on mount (whether we already have the full list)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId, token]);
 
   useEffect(() => {
@@ -798,27 +803,29 @@ function CommentsSheet({
                             </View>
                           </View>
                         ) : (
-                          <Text style={styles.commentInlineText}>
+                          <>
                             <Text
                               style={styles.commentAuthor}
                               onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}
                             >
-                              {cname}{' '}
+                              {cname}
                             </Text>
-                            {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
-                              ? c.content
-                              : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
-                            {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
-                              <Text
-                                style={styles.commentMore}
-                                onPress={() => setExpandedComments(prev => {
-                                  const next = new Set(prev); next.add(c.id); return next;
-                                })}
-                              >
-                                {'… more'}
-                              </Text>
-                            )}
-                          </Text>
+                            <Text style={[styles.commentInlineText, { marginTop: 2 }]}>
+                              {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
+                                ? c.content
+                                : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
+                              {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
+                                <Text
+                                  style={styles.commentMore}
+                                  onPress={() => setExpandedComments(prev => {
+                                    const next = new Set(prev); next.add(c.id); return next;
+                                  })}
+                                >
+                                  {'… more'}
+                                </Text>
+                              )}
+                            </Text>
+                          </>
                         )}
                         <Text style={[styles.commentTime, { marginTop: 3 }]}>{relTime(c.created_at)}</Text>
                       </View>
@@ -955,22 +962,32 @@ export function PostCard({
   const [showMenu, setShowMenu] = useState(false);
   const [showReportSheet, setShowReportSheet] = useState(false);
   const [reported, setReported] = useState(false);
-  const [previewComments, setPreviewComments] = useState<CommentRow[]>([]);
+  // Full comment list, preloaded as the card scrolls into view so the sheet
+  // opens instantly instead of showing a spinner.
+  const [allComments, setAllComments] = useState<CommentRow[] | null>(null);
+  const previewComments = allComments?.slice(-2) ?? [];
 
   useEffect(() => {
     if (autoOpenComments) setShowComments(true);
   }, [autoOpenComments]);
 
+  // Server comment_count is the source of truth; drop the optimistic local
+  // delta once a fresh count arrives so counts don't double-add after a
+  // feed refetch picks up the comment we already added locally.
   useEffect(() => {
-    if (post.comment_count <= 0) return;
+    setCommentDelta(0);
+  }, [post.comment_count]);
+
+  useEffect(() => {
+    if (post.comment_count + commentDelta <= 0) { setAllComments([]); return; }
     let active = true;
     apiReq(`/api/comments?postId=${post.id}`, token)
-      .then((rows: CommentRow[]) => { if (active) setPreviewComments(rows.slice(-2)); })
+      .then((rows: CommentRow[]) => { if (active) setAllComments(rows); })
       .catch(() => {});
     return () => { active = false; };
   // token is stable per-render of the feed screen; post.id never changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [post.id]);
+  }, [post.id, post.comment_count, commentDelta]);
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionDraft, setCaptionDraft] = useState(post.caption ?? '');
   const [currentCaption, setCurrentCaption] = useState<string | null>(post.caption ?? null);
@@ -1354,6 +1371,7 @@ export function PostCard({
           myUserId={myUserId}
           myAvatarUrl={myAvatarUrl}
           myName={myName}
+          initialRows={allComments}
           onCountChange={delta => setCommentDelta(prev => prev + delta)}
           onClose={() => setShowComments(false)}
         />

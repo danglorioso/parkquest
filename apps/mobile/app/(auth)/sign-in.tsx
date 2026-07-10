@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOAuth, useSignUp, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { AppleIcon, clerkMsg, ErrorBox, FField, GoogleG, MONO, PrimaryBtn, TermsCheckbox } from '@/components/AuthAtoms';
+import { AppleIcon, clerkMsg, ErrorBox, FField, GoogleG, MONO, NameField, PrimaryBtn, TermsCheckbox } from '@/components/AuthAtoms';
 import { STATIC as C, useColors } from '@/lib/palette';
 const WEB      = process.env.EXPO_PUBLIC_API_URL ?? 'https://www.parkquest.me';
 const SCREEN_W = Dimensions.get('window').width;
@@ -387,17 +387,11 @@ export default function LandingScreen() {
                   <FField label="USERNAME" value={username} onChange={v => setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoFocus />
                   <Text style={styles.helperText}>Lowercase letters, numbers, underscores · min 3 chars</Text>
 
-                  <TouchableOpacity onPress={toggleShowName} style={styles.nameToggle} activeOpacity={0.7}>
-                    <Text style={[styles.nameToggleText, { color: T.primary }]}>
-                      {showName ? 'Hide name' : '+ Add your name'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {showName && <>
-                    <FField label="FIRST NAME" value={firstName} onChange={setFirstName} autoCapitalize="words" autoFocus />
-                    <FField label="LAST NAME" value={lastName} onChange={setLastName} autoCapitalize="words" />
-                    <Text style={styles.helperText}>Optional · shown on your profile</Text>
-                  </>}
+                  <NameField
+                    open={showName} onToggle={toggleShowName}
+                    firstName={firstName} lastName={lastName}
+                    onFirstName={setFirstName} onLastName={setLastName}
+                  />
 
                   <TermsCheckbox checked={agreedToTerms} onToggle={() => setAgreedToTerms(v => !v)} />
 
@@ -522,6 +516,4 @@ const styles = StyleSheet.create({
 
   helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
 
-  nameToggle:     { marginBottom: 14, marginTop: -4 },
-  nameToggleText: { fontSize: 13, fontWeight: '700' },
 });

@@ -53,6 +53,50 @@ export function FField({
   );
 }
 
+// Collapsible FIRST/LAST NAME card — chevron flips open/closed, "Optional"
+// badge sits in the header (above the fields) instead of as helper text below.
+export function NameField({
+  open, onToggle, firstName, lastName, onFirstName, onLastName,
+}: {
+  open: boolean; onToggle: () => void;
+  firstName: string; lastName: string;
+  onFirstName: (v: string) => void; onLastName: (v: string) => void;
+}) {
+  const T = useColors();
+  return (
+    <View style={st.nameField}>
+      <TouchableOpacity onPress={onToggle} style={st.nameFieldHeader} activeOpacity={0.7}>
+        <View style={st.nameFieldHeaderLeft}>
+          <Text style={st.fFieldLabel}>FULL NAME</Text>
+          <Text style={st.nameFieldOptional}>Optional</Text>
+        </View>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={T.primary} />
+      </TouchableOpacity>
+      {open && (
+        <View style={st.nameFieldBody}>
+          <View style={st.nameFieldRow}>
+            <Text style={st.nameFieldRowLabel}>FIRST NAME</Text>
+            <TextInput
+              style={st.fFieldInput}
+              value={firstName} onChangeText={onFirstName}
+              autoCapitalize="words" autoCorrect={false}
+            />
+          </View>
+          <View style={st.nameFieldDivider} />
+          <View style={st.nameFieldRow}>
+            <Text style={st.nameFieldRowLabel}>LAST NAME</Text>
+            <TextInput
+              style={st.fFieldInput}
+              value={lastName} onChangeText={onLastName}
+              autoCapitalize="words" autoCorrect={false}
+            />
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export function PrimaryBtn({ label, onPress, loading = false, disabled = false }: {
   label: string; onPress: () => void; loading?: boolean; disabled?: boolean;
 }) {
@@ -138,6 +182,25 @@ const st = StyleSheet.create({
   fFieldLabel:  { fontFamily: MONO, fontSize: 13, letterSpacing: 1.4, color: C.inkMute, fontWeight: '600' },
   fFieldInput:  { fontSize: 15, color: C.ink, paddingTop: 4 },
   trailingText: { fontSize: 13, fontWeight: '600' },
+
+  nameField: {
+    backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 12, marginBottom: 14, overflow: 'hidden',
+  },
+  nameFieldHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  nameFieldHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nameFieldOptional: {
+    fontSize: 11, fontWeight: '600', color: C.inkMute,
+    backgroundColor: C.hairline, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  nameFieldBody: { borderTopWidth: 0.5, borderTopColor: C.hairline },
+  nameFieldRow: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 10 },
+  nameFieldRowLabel: { fontFamily: MONO, fontSize: 11, letterSpacing: 1.2, color: C.inkMute, fontWeight: '600', marginBottom: 2 },
+  nameFieldDivider: { height: StyleSheet.hairlineWidth, backgroundColor: C.hairline, marginHorizontal: 14 },
 
   primaryBtn:       { borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 10, minHeight: 50 },
   primaryBtnText:   { fontSize: 15, fontWeight: '700', color: C.onPrimary },

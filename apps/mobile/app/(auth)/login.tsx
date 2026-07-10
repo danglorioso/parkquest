@@ -2,7 +2,7 @@ import {
   KeyboardAvoidingView, Platform,
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
-import { useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSignIn } from '@clerk/clerk-expo';
 import { useNavigation, useRouter } from 'expo-router';
@@ -33,6 +33,9 @@ export default function LoginScreen() {
   const [busy,      setBusy]      = useState(false);
   const [error,     setError]     = useState('');
 
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+
   useLayoutEffect(() => {
     navigation.setOptions({ headerLeft: step === 'form' ? undefined : () => null });
   }, [navigation, step]);
@@ -43,6 +46,7 @@ export default function LoginScreen() {
     setBusy(true);
     try {
       const result = await signIn!.create({ identifier: email, password });
+      if (!mounted.current) return;
       if (result.status === 'complete') {
         await setActive!({ session: result.createdSessionId });
         router.replace('/(tabs)/feed' as never);
@@ -55,10 +59,11 @@ export default function LoginScreen() {
         } else if (phoneF) {
           await signIn!.prepareSecondFactor({ strategy: 'phone_code', phoneNumberId: phoneF.phoneNumberId });
         }
+        if (!mounted.current) return;
         setStep('mfa');
       }
-    } catch (e) { setError(clerkMsg(e)); }
-    finally { setBusy(false); }
+    } catch (e) { if (mounted.current) setError(clerkMsg(e)); }
+    finally { if (mounted.current) setBusy(false); }
   };
 
   const handleMfa = async () => {
@@ -67,12 +72,13 @@ export default function LoginScreen() {
     setBusy(true);
     try {
       const result = await signIn!.attemptSecondFactor({ strategy: 'email_code', code: mfaCode });
+      if (!mounted.current) return;
       if (result.status === 'complete') {
         await setActive!({ session: result.createdSessionId });
         router.replace('/(tabs)/feed' as never);
       }
-    } catch (e) { setError(clerkMsg(e)); }
-    finally { setBusy(false); }
+    } catch (e) { if (mounted.current) setError(clerkMsg(e)); }
+    finally { if (mounted.current) setBusy(false); }
   };
 
   const handleForgotSend = async () => {
