@@ -36,7 +36,7 @@ export default function SignUpScreen() {
   const [showPw,   setShowPw]   = useState(false);
   const [code,     setCode]     = useState('');
   const [username, setUsername] = useState('');
-  const [showName, setShowName] = useState(false);
+  const [showName, setShowName] = useState(true);
   const [firstName, setFirstName] = useState('');
   const [lastName,  setLastName]  = useState('');
   const [busy,     setBusy]     = useState(false);
@@ -204,7 +204,7 @@ export default function SignUpScreen() {
               </TouchableOpacity>
 
               {showName && <>
-                <FField label="FIRST NAME" value={firstName} onChange={setFirstName} autoCapitalize="words" autoFocus />
+                <FField label="FIRST NAME" value={firstName} onChange={setFirstName} autoCapitalize="words" />
                 <FField label="LAST NAME" value={lastName} onChange={setLastName} autoCapitalize="words" />
                 <Text style={st.helperText}>Optional · shown on your profile</Text>
               </>}

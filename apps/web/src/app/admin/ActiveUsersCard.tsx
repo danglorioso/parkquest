@@ -22,14 +22,14 @@ export function ActiveUsersCard({
         <Activity size={15} strokeWidth={2.25} />
       </span>
       <div className="text-xl font-extrabold leading-tight tracking-tight text-ink">{values[windowKey].toLocaleString()}</div>
-      <div className="flex w-full items-center justify-between gap-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-mute">Active</span>
-        <div className="flex gap-0.5 rounded-md bg-surface-alt p-0.5">
+      <div className="flex w-full flex-col gap-1.5">
+        <span className="text-[11px] font-semibold uppercase leading-snug tracking-wide text-ink-mute">Active</span>
+        <div className="flex w-full gap-0.5 rounded-md bg-surface-alt p-0.5">
           {WINDOWS.map(w => (
             <button
               key={w.key}
               onClick={() => setWindowKey(w.key)}
-              className={`rounded px-1 py-0.5 text-[9.5px] font-bold ${
+              className={`flex-1 rounded px-1 py-1 text-[10px] font-bold ${
                 windowKey === w.key ? 'bg-primary text-primary-foreground' : 'text-ink-mute'
               }`}
             >

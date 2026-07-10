@@ -61,7 +61,7 @@ export default function EditProfileScreen() {
   const [username,      setUsername]      = useState('');
   const [bio,           setBio]           = useState('');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [avatarFile,    setAvatarFile]    = useState<{ uri: string; base64: string | null | undefined } | null>(null);
+  const [avatarFile,    setAvatarFile]    = useState<{ uri: string; base64: string | null | undefined; mimeType?: string } | null>(null);
   const [saving,        setSaving]        = useState(false);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState('');
@@ -198,7 +198,7 @@ export default function EditProfileScreen() {
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       setAvatarPreview(asset.uri);
-      setAvatarFile({ uri: asset.uri, base64: asset.base64 });
+      setAvatarFile({ uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType });
       setRemoveAvatarPending(false);
     }
   };
@@ -243,10 +243,15 @@ export default function EditProfileScreen() {
         } catch { /* non-fatal */ }
       } else if (avatarFile?.base64) {
         try {
-          const blob = await fetch(avatarFile.uri).then(r => r.blob());
-          const image = await user.setProfileImage({ file: blob as File });
+          // A real Blob from fetch(uri).blob() is unreliable in React Native —
+          // Clerk's own RN/Expo docs use a base64 data URI string instead, which
+          // its backend decodes directly (see SetProfileImageParams `file: string`).
+          const mime = avatarFile.mimeType ?? 'image/jpeg';
+          const image = await user.setProfileImage({ file: `data:${mime};base64,${avatarFile.base64}` });
           avatarUrl = image.publicUrl ?? null;
-        } catch { /* non-fatal */ }
+        } catch (e) {
+          console.error('Avatar upload failed:', e);
+        }
       }
 
       // Update name via Clerk
@@ -278,6 +283,16 @@ export default function EditProfileScreen() {
         }
         return;
       }
+
+      // Sync the "original" baseline so hasChanges goes false — otherwise the
+      // beforeRemove guard below sees stale values and blocks this very back().
+      original.current.firstName = firstName.trim();
+      original.current.lastName  = lastName.trim();
+      original.current.username  = username.trim();
+      original.current.bio       = bio.trim();
+      original.current.paletteId = paletteId;
+      setAvatarFile(null);
+      setRemoveAvatarPending(false);
 
       showToast('Settings updated');
       router.back();
