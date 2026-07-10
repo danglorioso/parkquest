@@ -1,10 +1,10 @@
 import {
-  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal,
+  ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, Modal,
   Platform, Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -53,6 +53,7 @@ export default function EditProfileScreen() {
   const isOnline = useIsOnline();
   const C = useColors();
   const styles = useThemedStyles(makeStyles);
+  const insets = useSafeAreaInsets();
 
   const [firstName,     setFirstName]     = useState('');
   const [lastName,      setLastName]      = useState('');
@@ -167,6 +168,17 @@ export default function EditProfileScreen() {
     paletteId !== original.current.paletteId ||
     avatarFile !== null ||
     removeAvatarPending;
+
+  // Sticky save bar slides in from the bottom the moment there's something
+  // unsaved, and back out once changes are saved or reverted.
+  const saveBarAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(saveBarAnim, {
+      toValue: hasChanges ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [hasChanges, saveBarAnim]);
 
   const pickAvatar = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -504,23 +516,6 @@ export default function EditProfileScreen() {
             </View>
           ) : null}
 
-          {/* Save button */}
-          <TouchableOpacity
-            style={[
-              styles.saveButton,
-              !hasChanges && { backgroundColor: C.inkMute, opacity: 0.45 },
-              (saving || username.trim().length < 3) && { opacity: 0.55 },
-            ]}
-            onPress={handleSave}
-            disabled={saving || username.trim().length < 3 || !hasChanges}
-            activeOpacity={0.8}
-          >
-            {saving
-              ? <ActivityIndicator color="#FFFBF1" size="small" />
-              : <Text style={styles.saveText}>Save changes</Text>
-            }
-          </TouchableOpacity>
-
           {/* Sign out — quiet text button */}
           <TouchableOpacity
             style={styles.signOutBtn}
@@ -543,6 +538,31 @@ export default function EditProfileScreen() {
 
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Sticky save bar — only intercepts touches while it's actually shown */}
+      <Animated.View
+        pointerEvents={hasChanges ? 'auto' : 'none'}
+        style={[
+          styles.saveBar,
+          {
+            paddingBottom: insets.bottom + 12,
+            opacity: saveBarAnim,
+            transform: [{ translateY: saveBarAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }],
+          },
+        ]}
+      >
+        <TouchableOpacity
+          style={[styles.saveButton, (saving || username.trim().length < 3) && { opacity: 0.55 }]}
+          onPress={handleSave}
+          disabled={saving || username.trim().length < 3 || !hasChanges}
+          activeOpacity={0.8}
+        >
+          {saving
+            ? <ActivityIndicator color="#FFFBF1" size="small" />
+            : <Text style={styles.saveText}>Save changes</Text>
+          }
+        </TouchableOpacity>
+      </Animated.View>
 
       {/* Fullscreen avatar */}
       <Modal visible={fullscreenAvatar} transparent animationType="fade" onRequestClose={() => setFullscreenAvatar(false)}>
@@ -637,7 +657,7 @@ function makeStyles(C: Colors) {
   return StyleSheet.create({
   scroll: {
     padding: 20,
-    paddingBottom: 32,
+    paddingBottom: 96,
     gap: 16,
   },
   avatarNameRow: {
@@ -731,12 +751,22 @@ function makeStyles(C: Colors) {
     fontSize: 13,
     color: ERROR,
   },
+  saveBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    backgroundColor: C.bg,
+    borderTopWidth: 0.5,
+    borderTopColor: C.hairline,
+  },
   saveButton: {
     backgroundColor: C.primary,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
     minHeight: 50,
     shadowColor: C.primary,
     shadowOpacity: 0.25,
