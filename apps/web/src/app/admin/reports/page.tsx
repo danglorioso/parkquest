@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Flag, Trash2, ShieldOff } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 import type { EnrichedReport } from '@parkquest/types';
 
 const REASON_LABELS: Record<string, string> = {
@@ -9,6 +11,9 @@ const REASON_LABELS: Record<string, string> = {
   inappropriate: 'Inappropriate content',
   other: 'Other',
 };
+
+const btnBase =
+  'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50';
 
 export default function AdminReportsPage() {
   const [reports, setReports] = useState<EnrichedReport[] | null>(null);
@@ -35,59 +40,71 @@ export default function AdminReportsPage() {
     }
   };
 
-  if (reports === null) return <p>Loading…</p>;
+  if (reports === null) return <p className="text-sm text-ink-mute">Loading…</p>;
 
   return (
-    <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Reports queue</h1>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight text-ink">Reports queue</h1>
+        <p className="mt-1 text-sm text-ink-mute">{reports.length} open report{reports.length !== 1 ? 's' : ''} awaiting review.</p>
+      </div>
+
       {reports.length === 0 ? (
-        <p style={{ color: '#888', fontSize: 14 }}>No open reports. All clear.</p>
+        <Card className="items-center gap-2 border-hairline py-10 text-center shadow-[var(--shadow-card)]">
+          <Flag className="mx-auto text-ink-mute" size={22} />
+          <p className="text-sm text-ink-mute">No open reports. All clear.</p>
+        </Card>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="flex flex-col gap-3">
           {reports.map(r => (
-            <div key={r.id} style={{ border: '1px solid #e5e5e5', borderRadius: 10, padding: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>
-                  {r.target_type.toUpperCase()} · {REASON_LABELS[r.reason] ?? r.reason}
+            <Card key={r.id} className="gap-2 border-hairline p-4 shadow-[var(--shadow-card)]">
+              <div className="flex items-center justify-between">
+                <span className="rounded-full bg-surface-alt px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-ink-soft">
+                  {r.target_type} · {REASON_LABELS[r.reason] ?? r.reason}
                 </span>
-                <span style={{ fontSize: 12, color: '#888' }}>
+                <span className="text-xs text-ink-mute">
                   {r.created_at ? new Date(r.created_at).toLocaleString() : ''}
                 </span>
               </div>
-              <p style={{ fontSize: 13, color: '#555', marginBottom: 6 }}>
-                Reported by <strong>@{r.reporter_username ?? r.reporter_id}</strong>
-                {r.target_username ? <> — target: <strong>@{r.target_username}</strong></> : null}
+              <p className="text-sm text-ink-soft">
+                Reported by <strong className="text-ink">@{r.reporter_username ?? r.reporter_id}</strong>
+                {r.target_username ? <> — target: <strong className="text-ink">@{r.target_username}</strong></> : null}
               </p>
               {r.target_content ? (
-                <p style={{ fontSize: 13, background: '#f7f7f7', borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                  {r.target_content}
-                </p>
+                <p className="rounded-lg bg-surface-alt p-2.5 text-sm text-ink-soft">{r.target_content}</p>
               ) : null}
               {r.details ? (
-                <p style={{ fontSize: 13, color: '#555', marginBottom: 8 }}>Details: {r.details}</p>
+                <p className="text-sm text-ink-mute">Details: {r.details}</p>
               ) : null}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button disabled={busyId === r.id} onClick={() => act(r.id, 'dismiss')} style={btnStyle}>
+              <div className="mt-1 flex gap-2">
+                <button
+                  disabled={busyId === r.id}
+                  onClick={() => act(r.id, 'dismiss')}
+                  className={`${btnBase} border-hairline bg-surface text-ink-soft hover:bg-surface-alt`}
+                >
                   Dismiss
                 </button>
                 {r.target_type !== 'user' && (
-                  <button disabled={busyId === r.id} onClick={() => act(r.id, 'remove_content')} style={btnStyle}>
-                    Remove content
+                  <button
+                    disabled={busyId === r.id}
+                    onClick={() => act(r.id, 'remove_content')}
+                    className={`${btnBase} border-hairline bg-surface text-ink-soft hover:bg-surface-alt`}
+                  >
+                    <Trash2 size={12} /> Remove content
                   </button>
                 )}
-                <button disabled={busyId === r.id} onClick={() => act(r.id, 'ban_user')} style={{ ...btnStyle, color: '#C04040', borderColor: '#C04040' }}>
-                  Ban user
+                <button
+                  disabled={busyId === r.id}
+                  onClick={() => act(r.id, 'ban_user')}
+                  className={`${btnBase} border-destructive/40 bg-surface text-destructive hover:bg-destructive/10`}
+                >
+                  <ShieldOff size={12} /> Ban user
                 </button>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
     </div>
   );
 }
-
-const btnStyle: React.CSSProperties = {
-  fontSize: 13, fontWeight: 600, padding: '6px 12px',
-  borderRadius: 8, border: '1px solid #ccc', background: 'white', cursor: 'pointer',
-};

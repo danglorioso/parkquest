@@ -1,4 +1,8 @@
+import Link from 'next/link';
 import { headers } from 'next/headers';
+import { Users, Image as ImageIcon, MapPin, Award, Activity, TrendingUp } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { SignupsChart, ContributionHeatmap, ReportsStatusBar, TopParksList } from './AdminCharts';
 
 interface Stats {
   total_users: number;
@@ -8,6 +12,9 @@ interface Stats {
   active_users_7d: number;
   active_users_30d: number;
   signups_by_day: { day: string; count: number }[];
+  activity_by_day: { day: string; count: number }[];
+  reports_by_status: { open: number; actioned: number; dismissed: number };
+  top_parks: { park_code: string; name: string; visit_count: number }[];
 }
 
 async function getStats(): Promise<Stats> {
@@ -21,12 +28,22 @@ async function getStats(): Promise<Stats> {
   return res.json();
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({
+  href, icon: Icon, label, value,
+}: { href: string; icon: React.ElementType; label: string; value: number }) {
   return (
-    <div style={{ border: '1px solid #e5e5e5', borderRadius: 10, padding: 16, minWidth: 140 }}>
-      <div style={{ fontSize: 13, color: '#888', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 700 }}>{value.toLocaleString()}</div>
-    </div>
+    <Link href={href}>
+      <Card className="group cursor-pointer gap-2 border-hairline p-4 shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5">
+        <div className="flex items-center justify-between">
+          <span className="rounded-md bg-surface-alt p-1.5 text-primary">
+            <Icon size={16} strokeWidth={2.25} />
+          </span>
+          <TrendingUp size={13} className="text-ink-mute opacity-0 transition-opacity group-hover:opacity-100" />
+        </div>
+        <div className="text-2xl font-extrabold tracking-tight text-ink">{value.toLocaleString()}</div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-ink-mute">{label}</div>
+      </Card>
+    </Link>
   );
 }
 
@@ -34,33 +51,45 @@ export default async function AdminDashboardPage() {
   const stats = await getStats();
 
   return (
-    <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Dashboard</h1>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 32 }}>
-        <StatCard label="Total users" value={stats.total_users} />
-        <StatCard label="Total posts" value={stats.total_posts} />
-        <StatCard label="Total visits" value={stats.total_visits} />
-        <StatCard label="Badges earned" value={stats.total_badges} />
-        <StatCard label="Active users (7d)" value={stats.active_users_7d} />
-        <StatCard label="Active users (30d)" value={stats.active_users_30d} />
+    <div className="flex flex-col gap-8">
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight text-ink">Dashboard</h1>
+        <p className="mt-1 text-sm text-ink-mute">Click any card for the full breakdown.</p>
       </div>
 
-      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Signups — last 30 days</h2>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 120, border: '1px solid #e5e5e5', borderRadius: 10, padding: 12 }}>
-        {stats.signups_by_day.length === 0 ? (
-          <span style={{ fontSize: 13, color: '#888' }}>No signups in this window.</span>
-        ) : (
-          (() => {
-            const max = Math.max(...stats.signups_by_day.map(d => d.count), 1);
-            return stats.signups_by_day.map(d => (
-              <div key={d.day} title={`${d.day}: ${d.count}`} style={{ flex: 1, display: 'flex', alignItems: 'flex-end' }}>
-                <div style={{ width: '100%', height: `${(d.count / max) * 100}%`, minHeight: 2, background: '#333', borderRadius: 2 }} />
-              </div>
-            ));
-          })()
-        )}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+        <StatCard href="/admin/users" icon={Users} label="Total users" value={stats.total_users} />
+        <StatCard href="/admin/posts" icon={ImageIcon} label="Total posts" value={stats.total_posts} />
+        <StatCard href="/admin/visits" icon={MapPin} label="Total visits" value={stats.total_visits} />
+        <StatCard href="/admin/badges" icon={Award} label="Badges earned" value={stats.total_badges} />
+        <StatCard href="/admin/users?active=7" icon={Activity} label="Active (7d)" value={stats.active_users_7d} />
+        <StatCard href="/admin/users?active=30" icon={Activity} label="Active (30d)" value={stats.active_users_30d} />
       </div>
+
+      <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Activity — last 12 months</h2>
+        <ContributionHeatmap data={stats.activity_by_day} />
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Signups — last 30 days</h2>
+          <SignupsChart data={stats.signups_by_day} />
+        </Card>
+
+        <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Moderation queue</h2>
+          <ReportsStatusBar status={stats.reports_by_status} />
+          <Link href="/admin/reports" className="mt-4 inline-block text-xs font-semibold text-primary hover:underline">
+            View reports queue →
+          </Link>
+        </Card>
+      </div>
+
+      <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Top parks by visits</h2>
+        <TopParksList parks={stats.top_parks} />
+      </Card>
     </div>
   );
 }

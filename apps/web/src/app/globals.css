@@ -22,6 +22,20 @@
   --shadow-panel:  0 12px 36px rgba(0,0,0,0.18);
   --shadow-modal:  0 24px 60px rgba(0,0,0,0.40);
 
+  /* ── Sequential ramp (magnitude — admin charts/heatmap), one hue, light→dark.
+     Validated: node scripts/validate_palette.js --ordinal against --surface #F2EBDB */
+  --heat-0: var(--hairline-soft);
+  --heat-1: #5FB08B;
+  --heat-2: #4C9975;
+  --heat-3: #397D5E;
+  --heat-4: #295D47;
+  --heat-5: #1F3D2E;
+
+  /* ── Status scale (admin moderation) — reserved, always icon+label ────── */
+  --status-good:    #2F7A4A;
+  --status-warning: #8A5D1B;
+  --status-muted:   #7A746A;
+
   /* ── Alternate palettes (only primary/primary-deep/accent/accent-2 change) */
   /* Canyon:  #7B3A1F / #582410 / #D89A3A / #3F6B5A */
   /* Glacier: #2D4F66 / #1A3548 / #C7864B / #7FA6B8 */
@@ -98,6 +112,19 @@
   --bucket:        #E0B454;
   --unvisited:     #5A554C;
   --shadow-card:   0 6px 18px rgba(0,0,0,0.50), 0 1px 0 rgba(255,255,255,0.04) inset;
+
+  /* Sequential ramp — anchor flips in dark: dim→bright instead of light→dark.
+     Validated: node scripts/validate_palette.js --ordinal --mode dark --surface #1C1A15 */
+  --heat-0: var(--hairline-soft);
+  --heat-1: #3C5345;
+  --heat-2: #4C7359;
+  --heat-3: #5DA572;
+  --heat-4: #6ECB8E;
+  --heat-5: #8FE0AC;
+
+  --status-good:    #5DA572;
+  --status-warning: #E0B454;
+  --status-muted:   #8C8678;
 }
 
 body {
@@ -130,6 +157,17 @@ button, [role="button"], a {
   --color-visited:        var(--visited);
   --color-bucket:         var(--bucket);
   --color-unvisited:      var(--unvisited);
+
+  /* ── Admin: sequential ramp + status scale ──────────────────── */
+  --color-heat-0:         var(--heat-0);
+  --color-heat-1:         var(--heat-1);
+  --color-heat-2:         var(--heat-2);
+  --color-heat-3:         var(--heat-3);
+  --color-heat-4:         var(--heat-4);
+  --color-heat-5:         var(--heat-5);
+  --color-status-good:    var(--status-good);
+  --color-status-warning: var(--status-warning);
+  --color-status-muted:   var(--status-muted);
 
   /* ── Badge tier colors ───────────────────────────────────────── */
   --color-tier-bronze:    var(--tier-bronze-fill);
