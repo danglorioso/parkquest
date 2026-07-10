@@ -6,6 +6,9 @@ import { useColors } from '../../lib/palette';
 import FloatingTabBar from '../../components/FloatingTabBar';
 import { hasDrafts, onDraftsChanged } from '../../lib/drafts';
 import { OnboardingWalkthrough } from '../../components/OnboardingWalkthrough';
+import { GlassView, liquidGlassAvailable } from '../../lib/glass';
+
+const glass = liquidGlassAvailable && GlassView != null;
 
 const STATIC = {
   inkMute: '#7A746A',
@@ -47,15 +50,29 @@ function LogVisitButton() {
 
   return (
     <TouchableOpacity
-      onPress={() => router.push('/(modals)/log-visit')}
+      onPress={() => {
+        DeviceEventEmitter.emit('logVisitFabPress');
+        router.push('/(modals)/log-visit');
+      }}
       accessibilityLabel={hasDraft ? 'Log a park visit — draft saved' : 'Log a park visit'}
       accessibilityRole="button"
       style={styles.fabWrapper}
     >
-      <View style={[styles.fabGlow, { backgroundColor: C.fabAccent }]}>
-        <View style={[styles.fab, { backgroundColor: C.fabAccent }]}>
-          <Ionicons name="add" size={26} color="#FFFBF1" />
-        </View>
+      <View style={[styles.fabGlow, !glass && { backgroundColor: C.fabAccent }]}>
+        {glass && GlassView ? (
+          <GlassView
+            style={styles.fab}
+            glassEffectStyle="regular"
+            tintColor={C.fabAccent}
+            isInteractive
+          >
+            <Ionicons name="add" size={26} color="#FFFBF1" />
+          </GlassView>
+        ) : (
+          <View style={[styles.fab, styles.fabFallback, { backgroundColor: C.fabAccent }]}>
+            <Ionicons name="add" size={26} color="#FFFBF1" />
+          </View>
+        )}
         {hasDraft && <View style={styles.draftDot} />}
       </View>
     </TouchableOpacity>
@@ -170,11 +187,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  // Only used where real liquid glass isn't available (Expo Go, pre-glass
+  // dev clients, Android). Hand-painted convex glass: crisp rim light
+  // hugging the top edge, a broad soft sheen below it, then a crisp dark
+  // inner edge and deep falloff at the bottom — tight blurs read as a
+  // curved surface, big blurs as a wash.
+  fabFallback: {
     borderWidth: 0.75,
     borderColor: 'rgba(255,255,255,0.28)',
-    // macOS-style convex glass: crisp rim light hugging the top edge, a broad
-    // soft sheen below it, then a crisp dark inner edge and deep falloff at
-    // the bottom — tight blurs read as a curved surface, big blurs as a wash
     boxShadow: [
       'inset 0 1.5 1 rgba(255,255,255,0.6)',
       'inset 0 8 12 rgba(255,255,255,0.16)',

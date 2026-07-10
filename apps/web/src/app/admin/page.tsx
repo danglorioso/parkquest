@@ -96,9 +96,12 @@ export default async function AdminDashboardPage() {
       </Card>
 
       <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">
-          Activity by time of day — last 30 days
+        <h2 className="text-sm font-bold uppercase tracking-wide text-ink-mute">
+          Activity by hour of day
         </h2>
+        <p className="mb-4 mt-1 text-xs text-ink-mute">
+          All actions from the last 30 days, summed into each hour of day — not a single day&apos;s timeline.
+        </p>
         <HourlyActivityChart data={stats.hourly_activity} />
       </Card>
 

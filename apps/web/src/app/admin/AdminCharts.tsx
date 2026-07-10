@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, CheckCircle2, XCircle } from 'lucide-react';
 
 // ── Shared tooltip ──────────────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ function ChartTooltip({ tip }: { tip: TooltipState | null }) {
   if (!tip) return null;
   return (
     <div
-      className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-md border border-hairline bg-surface px-2.5 py-1.5 text-xs shadow-panel"
+      className="pointer-events-none absolute z-10 w-max -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-hairline bg-surface px-2.5 py-1.5 text-xs shadow-panel"
       style={{ left: tip.x, top: tip.y - 8 }}
     >
       <div className="font-semibold text-ink">{tip.value}</div>
@@ -76,6 +76,14 @@ function bucketLevel(count: number, max: number): 0 | 1 | 2 | 3 | 4 | 5 {
 
 export function ContributionHeatmap({ data }: { data: { day: string; count: number }[] }) {
   const [tip, setTip] = useState<TooltipState | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Default scroll position is the left (oldest week) — jump to the right
+  // so today's column is visible without the user having to scroll first.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, []);
 
   const { weeks, max } = useMemo(() => {
     const byDay = new Map(data.map(d => [d.day, d.count]));
@@ -117,7 +125,7 @@ export function ContributionHeatmap({ data }: { data: { day: string; count: numb
     // overflow-y as `auto` too, which clipped the tooltip whenever a hovered
     // cell sat in the top row.
     <div className="relative pt-1">
-      <div className="overflow-x-auto">
+      <div ref={scrollRef} className="overflow-x-auto">
         <div className="inline-block min-w-full">
           <div className="mb-1 flex gap-[3px] pl-6" style={{ width: weeks.length * 13 }}>
             {weeks.map((_, i) => {

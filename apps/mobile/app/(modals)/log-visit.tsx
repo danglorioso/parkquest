@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Alert, Animated, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform,
+  ActivityIndicator, Alert, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
@@ -1959,6 +1959,13 @@ export default function LogVisitModal() {
     if (isEdit) return;
     loadDrafts().then(d => { if (d.length > 0) setRestoreBanner(d[0]); });
   }, [isEdit]);
+
+  // Tab bar's liquid-glass highlight slides onto the FAB slot when this modal
+  // opens (see LogVisitButton's press handler) — slide it back once we close,
+  // regardless of how (success, X, swipe-down).
+  useEffect(() => {
+    return () => DeviceEventEmitter.emit('logVisitFabDismiss');
+  }, []);
 
   // Seed a fresh visit's visibility from the user's saved default (Privacy &
   // Moderation settings) — a restored draft or edit still wins since this only

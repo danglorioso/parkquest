@@ -101,7 +101,9 @@ export default async function AdminUsersPage({
                       </Link>
                       <div className="text-xs text-ink-mute">@{u.username}</div>
                     </td>
-                    <td className="px-4 py-3 text-ink-soft">{u.email ?? '—'}</td>
+                    <td className="px-4 py-3 text-ink-soft">
+                      <div className="max-w-[160px] overflow-x-auto whitespace-nowrap">{u.email ?? '—'}</div>
+                    </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 text-ink-soft">
                         <LoginIcon size={13} /> <span className="capitalize">{u.login_method}</span>

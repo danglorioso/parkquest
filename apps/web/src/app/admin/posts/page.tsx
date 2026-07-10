@@ -4,7 +4,8 @@ import { ImageIcon } from 'lucide-react';
 import { db } from '@/lib/db';
 import { posts, userProfiles, parks } from '@/lib/db/schema';
 import { Pagination } from '../Pagination';
-import { Avatar, parkGradient } from '@/components/PostCard';
+import { Avatar } from '@/components/PostCard';
+import { parkGradient } from '@/lib/parkGradient';
 
 const PAGE_SIZE = 30;
 

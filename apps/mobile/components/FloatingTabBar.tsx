@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { DeviceEventEmitter, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -12,29 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/lib/palette';
-
-// expo-glass-effect's native module is absent in Expo Go (and in dev clients
-// built before it was added), and its import throws in that case — guard it
-// and fall back to the tinted-bubble pill.
-let GlassView: ComponentType<{
-  style?: object;
-  glassEffectStyle?: string;
-  isInteractive?: boolean;
-}> | null = null;
-let GlassContainer: ComponentType<{
-  style?: object;
-  pointerEvents?: 'none' | 'auto' | 'box-none' | 'box-only';
-  children?: React.ReactNode;
-}> | null = null;
-let liquidGlassAvailable = false;
-try {
-  const glassEffect = require('expo-glass-effect');
-  GlassView = glassEffect.GlassView;
-  GlassContainer = glassEffect.GlassContainer;
-  liquidGlassAvailable = glassEffect.isLiquidGlassAvailable();
-} catch {
-  // keep fallbacks
-}
+import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 
 const PILL_HEIGHT = 62;
 const PILL_MARGIN_H = 18;
@@ -121,6 +99,25 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
       bubbleCx.value = withSpring(cx, SLIDE_SPRING);
     }
   }, [state.index, slotW]);
+
+  // The FAB isn't a real tab (no route/index of its own), so it can't drive
+  // the effect above. LogVisitButton and the log-visit modal emit these
+  // directly so the glass highlight slides onto the FAB while it's open and
+  // back onto the actual current tab once it closes.
+  useEffect(() => {
+    const pressSub = DeviceEventEmitter.addListener('logVisitFabPress', () => {
+      if (slotW === 0 || fabIndex < 0) return;
+      bubbleCx.value = withSpring(PILL_PADDING_H + slotW * (fabIndex + 0.5), SLIDE_SPRING);
+    });
+    const dismissSub = DeviceEventEmitter.addListener('logVisitFabDismiss', () => {
+      if (slotW === 0) return;
+      bubbleCx.value = withSpring(PILL_PADDING_H + slotW * (state.index + 0.5), SLIDE_SPRING);
+    });
+    return () => {
+      pressSub.remove();
+      dismissSub.remove();
+    };
+  }, [fabIndex, slotW, state.index]);
 
   const switchTo = useCallback(
     (index: number) => {
