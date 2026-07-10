@@ -14,6 +14,10 @@ const STATIC = {
   inkMute: '#7A746A',
 };
 
+// LogVisitButton always uses this orange, independent of the user's chosen
+// park theme (fabAccent varies per theme and can go blue/red/green).
+const FAB_ACCENT = '#C56B3D';
+
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 function TabIcon({
@@ -40,7 +44,6 @@ function TabIcon({
 
 function LogVisitButton() {
   const router = useRouter();
-  const C = useColors();
   const [hasDraft, setHasDraft] = useState(false);
 
   useEffect(() => {
@@ -58,18 +61,18 @@ function LogVisitButton() {
       accessibilityRole="button"
       style={styles.fabWrapper}
     >
-      <View style={[styles.fabGlow, !glass && { backgroundColor: C.fabAccent }]}>
+      <View style={[styles.fabGlow, !glass && { backgroundColor: FAB_ACCENT }]}>
         {glass && GlassView ? (
           <GlassView
             style={styles.fab}
             glassEffectStyle="regular"
-            tintColor={C.fabAccent}
+            tintColor={FAB_ACCENT}
             isInteractive
           >
             <Ionicons name="add" size={26} color="#FFFBF1" />
           </GlassView>
         ) : (
-          <View style={[styles.fab, styles.fabFallback, { backgroundColor: C.fabAccent }]}>
+          <View style={[styles.fab, styles.fabFallback, { backgroundColor: FAB_ACCENT }]}>
             <Ionicons name="add" size={26} color="#FFFBF1" />
           </View>
         )}

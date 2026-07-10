@@ -209,6 +209,8 @@ function SunGlow() {
 
 export default function LoadingScreen({ visible }: { visible: boolean }) {
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const contentFade = useRef(new Animated.Value(0)).current;
+  const contentRise = useRef(new Animated.Value(16)).current;
 
   useEffect(() => {
     if (!visible) {
@@ -219,6 +221,12 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
       }).start();
     } else {
       fadeAnim.setValue(1);
+      contentFade.setValue(0);
+      contentRise.setValue(16);
+      Animated.parallel([
+        Animated.timing(contentFade, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.spring(contentRise, { toValue: 0, friction: 7, tension: 40, useNativeDriver: true }),
+      ]).start();
     }
   }, [visible]);
 
@@ -271,7 +279,12 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
       </View>
 
       {/* Center content — wordmark + spinner */}
-      <View style={styles.center}>
+      <Animated.View
+        style={[
+          styles.center,
+          { opacity: contentFade, transform: [{ translateY: contentRise }] },
+        ]}
+      >
         {/* Wordmark */}
         <View style={styles.wordmark}>
           <Svg width={28} height={28} viewBox="0 0 24 24" style={{ marginTop: -2 }}>
@@ -300,7 +313,7 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
         <View style={{ marginTop: 48 }}>
           <CompassSpinner />
         </View>
-      </View>
+      </Animated.View>
 
       {/* Copyright */}
       <Animated.Text style={styles.copyright}>

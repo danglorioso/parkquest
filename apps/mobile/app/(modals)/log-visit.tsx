@@ -524,9 +524,9 @@ function ReturnRow({ value, onChange }: { value: Draft['wouldReturn']; onChange:
 // ── VisibilityPicker ──────────────────────────────────────────────────────────
 
 const VIS_OPTS: Array<{ v: Draft['visibility']; icon: string; desc: string }> = [
-  { v: 'Private', icon: 'lock-closed',  desc: 'Only you. Not posted to the feed.' },
-  { v: 'Friends', icon: 'people',       desc: 'Posted to your friends\' feeds.' },
-  { v: 'Public',  icon: 'globe',        desc: 'Posted publicly for all explorers.' },
+  { v: 'Private', icon: 'lock-closed',  desc: 'Just for you' },
+  { v: 'Friends', icon: 'people',       desc: 'Visible to friends' },
+  { v: 'Public',  icon: 'globe',        desc: 'Visible to everyone' },
 ];
 
 function VisibilityPicker({ value, onChange }: { value: Draft['visibility']; onChange: (v: Draft['visibility']) => void }) {
@@ -1503,7 +1503,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
 
       {/* Rest locked until park selected */}
       <View style={{ opacity: park ? 1 : 0.35, pointerEvents: park ? 'auto' : 'none' } as any}>
-        <Section title="Trip title" tag="optional" mb={28}>
+        <Section title="Trip title" mb={28}>
           <TextInput
             value={draft.title} onChangeText={v => set('title', v.slice(0, 80))}
             placeholder="Give this trip a name" placeholderTextColor={C.inkMute}
@@ -1567,13 +1567,13 @@ function StepVisit({ draft, set, onSliderDragChange }: {
   const C = useColors();
   return (
     <View>
-      <Section title="How was it?" tag="optional">
+      <Section title="How was it?">
         <View style={styles.card}>
           <StarRating value={draft.rating} onChange={v => set('rating', v)} onDragChange={onSliderDragChange} />
         </View>
       </Section>
 
-      <Section title="Conditions" tag="optional">
+      <Section title="Conditions">
         <View style={styles.card}>
           <View style={{ marginBottom: 14, paddingBottom: 14, borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
@@ -1592,13 +1592,13 @@ function StepVisit({ draft, set, onSliderDragChange }: {
         </View>
       </Section>
 
-      <Section title="Weather" tag="optional">
+      <Section title="Weather">
         <View style={styles.card}>
           <WeatherGrid value={draft.weather} onChange={v => set('weather', v)} />
         </View>
       </Section>
 
-      <Section title="Would you go back?" tag="optional">
+      <Section title="Would you go back?">
         <ReturnRow value={draft.wouldReturn} onChange={v => set('wouldReturn', v)} />
       </Section>
     </View>
@@ -1618,7 +1618,7 @@ function StepJournal({ draft, set, token, getToken, npsActivityNames, originalPh
         <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Journal & photos</Text>
       </View>
 
-      <Section title="Photos" tag="optional" hint={`${draft.photos.length} of 10`}>
+      <Section title="Photos" hint={`${draft.photos.length} of 10`}>
         <PhotoStrip
           getToken={getToken} photos={draft.photos}
           onAdd={urls => set('photos', [...draft.photos, ...urls].slice(0, 10))}
@@ -1633,7 +1633,7 @@ function StepJournal({ draft, set, token, getToken, npsActivityNames, originalPh
         />
       </Section>
 
-      <Section title="Highlight" tag="optional">
+      <Section title="Highlight">
         <TextInput
           value={draft.highlight} onChangeText={v => set('highlight', v.slice(0, 90))}
           placeholder="The one moment you'll remember" placeholderTextColor={C.inkMute}
@@ -1642,7 +1642,7 @@ function StepJournal({ draft, set, token, getToken, npsActivityNames, originalPh
         <Text style={styles.charCountOutside}>{draft.highlight.length}/90</Text>
       </Section>
 
-      <Section title="Notes" tag="optional">
+      <Section title="Notes">
         <TextInput
           value={draft.notes} onChangeText={v => set('notes', v.slice(0, 2000))}
           placeholder="What did you see, hear, feel?" placeholderTextColor={C.inkMute}
@@ -1651,11 +1651,11 @@ function StepJournal({ draft, set, token, getToken, npsActivityNames, originalPh
         <Text style={styles.charCountOutside}>{draft.notes.length}/2000</Text>
       </Section>
 
-      <Section title="Activities" tag="optional">
+      <Section title="Activities">
         <ActivityChips value={draft.activities} onChange={v => set('activities', v)} npsActivityNames={npsActivityNames} />
       </Section>
 
-      <Section title="Who came along?" tag="optional">
+      <Section title="Who came along?">
         <CompanionSearch
           companions={draft.companions} companionObjs={draft.companionObjs}
           onChange={(ids, objs) => { set('companions', ids); set('companionObjs', objs); }}
@@ -1852,7 +1852,7 @@ function StepShare({ draft, set, park, userName, username, avatarUrl }: {
   const C = useColors();
   return (
     <View>
-      <Section title="Add a caption" tag="optional">
+      <Section title="Add a caption">
         <TextInput
           value={draft.caption} onChangeText={v => set('caption', v.slice(0, 500))}
           placeholder="Share what made this trip special…" placeholderTextColor={C.inkMute}
@@ -1912,6 +1912,9 @@ export default function LogVisitModal() {
     return blank;
   });
   const [step,       setStep]       = useState(0);
+  // Measured height of the floating footer bar, so the scroll content can reserve
+  // enough bottom padding not to end up hidden underneath it.
+  const [footerH,    setFooterH]    = useState(0);
   // Seed with the park we were opened from (passed via route params) so the "Where"
   // step's park banner renders filled on the very first frame instead of flashing
   // an empty "Select a park" state while the full /api/parks list is still loading.
@@ -2301,7 +2304,7 @@ export default function LogVisitModal() {
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 20, paddingBottom: 24 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 24 + footerH }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -2345,37 +2348,64 @@ export default function LogVisitModal() {
         )}
       </ScrollView>
 
-      {/* Footer nav */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
-        {step > 0 ? (
-          <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
-            <Ionicons name="chevron-back" size={15} color={C.ink} />
-            <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>Back</Text>
+      {/* Footer nav — floats over the scroll content, so it needs its own fade so
+          text scrolling underneath doesn't cut off hard against the button bar. */}
+      <View
+        style={styles.footerFloat}
+        onLayout={e => setFooterH(e.nativeEvent.layout.height)}
+        pointerEvents="box-none"
+      >
+        <LinearGradient
+          colors={['rgba(0,0,0,0)', C.bg]}
+          style={styles.footerFade}
+          pointerEvents="none"
+        />
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+          <View style={styles.footerTopRow}>
+            {step > 0 ? (
+              <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
+                <Ionicons name="chevron-back" size={15} color={C.ink} />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>Back</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 80 }} />
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 5 }}>
+              {STEPS.map((_, i) => (
+                <View key={i} style={[styles.progDot, {
+                  width: i === step ? 18 : 6,
+                  backgroundColor: i <= step ? C.primary : C.hairline,
+                }]} />
+              ))}
+            </View>
+
+            <View style={{ width: 80 }} />
+          </View>
+
+          <TouchableOpacity
+            onPress={isLast ? handleSubmit : goNext}
+            disabled={!canContinue || submitting}
+            style={[
+              styles.nextBtn,
+              {
+                backgroundColor: canContinue ? C.primary : C.surfaceAlt,
+                borderWidth: canContinue ? 0 : 1,
+                borderColor: C.hairline,
+                shadowColor: C.primary,
+                shadowOpacity: canContinue ? 0.3 : 0,
+                elevation: canContinue ? 4 : 0,
+                opacity: canContinue ? 1 : 0.45,
+              },
+            ]}
+            activeOpacity={0.85}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '800', color: canContinue ? C.onPrimary : C.inkMute }}>
+              {isLast ? (submitting ? 'Saving…' : isEdit ? 'Save' : 'Post') : 'Continue'}
+            </Text>
+            {!isLast && <Ionicons name="arrow-forward" size={15} color={canContinue ? C.onPrimary : C.inkMute} />}
           </TouchableOpacity>
-        ) : (
-          <View style={{ width: 80 }} />
-        )}
-
-        <View style={{ flexDirection: 'row', gap: 5 }}>
-          {STEPS.map((_, i) => (
-            <View key={i} style={[styles.progDot, {
-              width: i === step ? 18 : 6,
-              backgroundColor: i <= step ? C.primary : C.hairline,
-            }]} />
-          ))}
         </View>
-
-        <TouchableOpacity
-          onPress={isLast ? handleSubmit : goNext}
-          disabled={!canContinue || submitting}
-          style={[styles.nextBtn, { backgroundColor: canContinue ? C.primary : C.surfaceAlt, shadowColor: C.primary }]}
-          activeOpacity={0.8}
-        >
-          <Text style={{ fontSize: 14, fontWeight: '800', color: canContinue ? C.onPrimary : C.inkMute }}>
-            {isLast ? (submitting ? 'Saving…' : isEdit ? 'Save' : 'Post') : 'Continue'}
-          </Text>
-          {!isLast && <Ionicons name="arrow-forward" size={14} color={canContinue ? C.onPrimary : C.inkMute} />}
-        </TouchableOpacity>
       </View>
 
       <ParkPickerSheet
@@ -2752,12 +2782,19 @@ const styles = StyleSheet.create({
     fontSize: 15, fontWeight: '600', marginTop: 1,
   },
 
-  // Footer
+  // Footer — floats over the scroll content instead of docking in normal flow.
+  footerFloat: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+  },
+  footerFade: {
+    position: 'absolute', left: 0, right: 0, top: -28, height: 28,
+  },
   footer: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 12,
-    borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
+    paddingHorizontal: 20, paddingTop: 10, gap: 12,
     backgroundColor: C.bg,
+  },
+  footerTopRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   backBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -2769,10 +2806,10 @@ const styles = StyleSheet.create({
     height: 6, borderRadius: 3,
   },
   nextBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 18, paddingVertical: 11, borderRadius: 10,
-    width: 120, justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 15, borderRadius: 14,
+    width: '100%',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+    shadowRadius: 8, elevation: 4,
   },
 });

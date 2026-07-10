@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { STATIC as C, useColors } from '@/lib/palette';
@@ -48,11 +48,39 @@ export function OnboardingWalkthrough() {
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
 
+  const cardScale = useRef(new Animated.Value(0.9)).current;
+  const cardFade = useRef(new Animated.Value(0)).current;
+  const stepFade = useRef(new Animated.Value(1)).current;
+  const stepRise = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     AsyncStorage.getItem(SEEN_KEY).then(seen => {
       if (!seen) setVisible(true);
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(cardFade, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.spring(cardScale, { toValue: 1, friction: 8, tension: 60, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible]);
+
+  const goToStep = (next: number) => {
+    Animated.parallel([
+      Animated.timing(stepFade, { toValue: 0, duration: 120, useNativeDriver: true }),
+      Animated.timing(stepRise, { toValue: -8, duration: 120, useNativeDriver: true }),
+    ]).start(() => {
+      setStep(next);
+      stepRise.setValue(8);
+      Animated.parallel([
+        Animated.timing(stepFade, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.timing(stepRise, { toValue: 0, duration: 220, useNativeDriver: true }),
+      ]).start();
+    });
+  };
 
   const finish = () => {
     setVisible(false);
@@ -67,23 +95,32 @@ export function OnboardingWalkthrough() {
   return (
     <Modal visible transparent animationType="fade" onRequestClose={finish}>
       <View style={styles.backdrop}>
-        <View style={styles.card}>
+        <Animated.View
+          style={[
+            styles.card,
+            { opacity: cardFade, transform: [{ scale: cardScale }] },
+          ]}
+        >
           <TouchableOpacity style={styles.skip} onPress={finish} hitSlop={10}>
             <Text style={styles.skipText}>Skip</Text>
           </TouchableOpacity>
 
-          {step === 0 ? (
-            <View style={styles.wordmarkBox}>
-              <Wordmark size={30} />
-            </View>
-          ) : (
-            <View style={[styles.iconBox, { backgroundColor: `${T.primary}14` }]}>
-              <Ionicons name={current.icon!} size={28} color={T.primary} />
-            </View>
-          )}
+          <Animated.View
+            style={{ opacity: stepFade, transform: [{ translateY: stepRise }], alignItems: 'center' }}
+          >
+            {step === 0 ? (
+              <View style={styles.wordmarkBox}>
+                <Wordmark size={30} />
+              </View>
+            ) : (
+              <View style={[styles.iconBox, { backgroundColor: `${T.primary}14` }]}>
+                <Ionicons name={current.icon!} size={28} color={T.primary} />
+              </View>
+            )}
 
-          <Text style={styles.title}>{current.title}</Text>
-          <Text style={styles.body}>{current.body}</Text>
+            <Text style={styles.title}>{current.title}</Text>
+            <Text style={styles.body}>{current.body}</Text>
+          </Animated.View>
 
           <View style={styles.dots}>
             {STEPS.map((_, i) => (
@@ -99,13 +136,13 @@ export function OnboardingWalkthrough() {
 
           <TouchableOpacity
             style={[styles.nextBtn, { backgroundColor: T.primary }]}
-            onPress={isLast ? finish : () => setStep(s => s + 1)}
+            onPress={isLast ? finish : () => goToStep(step + 1)}
             activeOpacity={0.85}
           >
             <Text style={styles.nextText}>{isLast ? 'Get started' : 'Next'}</Text>
             {!isLast && <Ionicons name="arrow-forward" size={14} color={C.onPrimary} />}
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

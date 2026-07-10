@@ -156,6 +156,15 @@ export default function EditProfileScreen() {
         getParks(tok),
         getParksNpsAll(tok),
       ]);
+      // /api/parks/nps-all silently returns {} if the upstream NPS_API_KEY is
+      // missing or the NPS API call fails — without this check that empty blob
+      // gets cached as "success" and permanently overwrites any previously-good
+      // richer cache, leaving offline park pages with only the About text (which
+      // comes from `parks`, not `npsByCode`) and none of the images/hours/fees/etc.
+      const npsCount = Object.keys(npsByCode).length;
+      if (npsCount === 0 && parks.length > 0) {
+        throw new Error('Park detail data unavailable');
+      }
       await Promise.all([
         saveOfflineParks(parks),
         saveOfflineParksNps(npsByCode),

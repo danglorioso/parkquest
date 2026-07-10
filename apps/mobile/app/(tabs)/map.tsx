@@ -824,7 +824,9 @@ function ParkBottomSheet({
 
   // ── Collapsing header animations ─────────────────────────────────────────────
 
-  const BANNER_H = 240;
+  // Extend by insets.top so the hero image reaches the true top of the screen
+  // (sheet itself goes to y=0) instead of leaving a gap above the status bar.
+  const BANNER_H = 240 + insets.top;
   // Collapsed bar sits below the status bar / dynamic island
   const COLLAPSED_H = insets.top + 56;
 
