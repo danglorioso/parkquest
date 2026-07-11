@@ -18,7 +18,9 @@
       "bundleIdentifier": "com.danglorioso.parkquest",
       "buildNumber": "58",
       "developmentTeam": "U8AK9PG243",
-      "associatedDomains": ["applinks:parkquest.me"],
+      "associatedDomains": [
+        "applinks:parkquest.me"
+      ],
       "infoPlist": {
         "NSCameraUsageDescription": "ParkQuest uses your camera to capture and share photos from your park visits.",
         "ITSAppUsesNonExemptEncryption": false
@@ -30,7 +32,12 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.parkquest.app",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -41,20 +48,32 @@
         {
           "icon": "./assets/icon.png",
           "color": "#1F3D2E",
-          "sounds": []
+          "sounds": [],
+          "mode": "production"
         }
       ],
       [
         "expo-image-picker",
-        { "photosPermission": "ParkQuest needs access to your photos to share your adventures." }
+        {
+          "photosPermission": "ParkQuest needs access to your photos to share your adventures."
+        }
       ],
       [
         "expo-location",
-        { "locationWhenInUsePermission": "ParkQuest uses your location to show nearby parks." }
+        {
+          "locationWhenInUsePermission": "ParkQuest uses your location to show nearby parks."
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2689b440-3af8-4807-9f93-e606c68556bb"
+      }
+    },
+    "owner": "danglorioso"
   }
 }

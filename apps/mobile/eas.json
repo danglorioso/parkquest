@@ -18,7 +18,8 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://parkquest.me",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cXVhbGl0eS1kb2UtMjIuY2xlcmsuYWNjb3VudHMuZGV2JA"
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cXVhbGl0eS1kb2UtMjIuY2xlcmsuYWNjb3VudHMuZGV2JA",
+        "EXPO_PUBLIC_PROJECT_ID": "2689b440-3af8-4807-9f93-e606c68556bb"
       }
     }
   },
@@ -26,7 +27,6 @@
     "production": {
       "ios": {
         "appleId": "danglorioso@icloud.com",
-        "ascAppId": "",
         "appleTeamId": "U8AK9PG243"
       }
     }

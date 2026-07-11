@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DeviceEventEmitter, Platform, Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -94,25 +94,6 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
       bubbleCx.value = withSpring(cx, SLIDE_SPRING);
     }
   }, [state.index, slotW]);
-
-  // The FAB isn't a real tab (no route/index of its own), so it can't drive
-  // the effect above. LogVisitButton and the log-visit modal emit these
-  // directly so the glass highlight slides onto the FAB while it's open and
-  // back onto the actual current tab once it closes.
-  useEffect(() => {
-    const pressSub = DeviceEventEmitter.addListener('logVisitFabPress', () => {
-      if (slotW === 0 || fabIndex < 0) return;
-      bubbleCx.value = withSpring(PILL_PADDING_H + slotW * (fabIndex + 0.5), SLIDE_SPRING);
-    });
-    const dismissSub = DeviceEventEmitter.addListener('logVisitFabDismiss', () => {
-      if (slotW === 0) return;
-      bubbleCx.value = withSpring(PILL_PADDING_H + slotW * (state.index + 0.5), SLIDE_SPRING);
-    });
-    return () => {
-      pressSub.remove();
-      dismissSub.remove();
-    };
-  }, [fabIndex, slotW, state.index]);
 
   const switchTo = useCallback(
     (index: number) => {

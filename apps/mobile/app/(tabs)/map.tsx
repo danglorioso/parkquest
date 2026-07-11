@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated, DeviceEventEmitter, Dimensions, Keyboard, Linking, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  Text, TextInput, TouchableOpacity, View, useColorScheme,
   type ColorValue,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -103,14 +103,19 @@ function logVisitParams(park: { park_code: string; name: string; states: string;
 }
 
 
-function markerConfig(status: ParkStatus, selected: boolean) {
+// Concrete hex strings only — markers render into static bitmaps
+// (tracksViewChanges={false}), and a DynamicColorIOS resolves at whatever
+// theme was active when each marker happened to be snapshotted, leaving a
+// mix of light- and dark-resolved borders after a theme change.
+function markerConfig(status: ParkStatus, selected: boolean, dark: boolean) {
   const color =
-    status === 'visited'    ? C.visited :
-    status === 'bucketList' ? C.bucket  : UNVISITED;
+    status === 'visited'    ? (dark ? '#4FA76C' : '#2F7A4A') :
+    status === 'bucketList' ? (dark ? '#D9A63E' : '#C48A20') : UNVISITED;
+  const border = dark ? '#201D17' : '#FFFBF1';
   const dotR  = selected ? 10 : status === 'visited' ? 7.5 : 6;
   const haloR = selected ? 17 : status === 'visited' ? 13  : 10;
   const haloOpacity = selected ? 0.24 : 0.15;
-  return { color, dotR, haloR, haloOpacity };
+  return { color, border, dotR, haloR, haloOpacity };
 }
 
 function formatDateRange(start: string, end?: string | null): string {
@@ -144,7 +149,10 @@ function weatherEmoji(shortForecast: string): string {
 // ── ParkMarker ────────────────────────────────────────────────────────────────
 
 function ParkMarker({ park, selected }: { park: ParkForMap; selected: boolean }) {
-  const { color, dotR, haloR, haloOpacity } = markerConfig(park.status, selected);
+  // Android is pinned to the light theme app-wide (see palette.tsx), so only
+  // iOS ever resolves dark marker colors.
+  const dark = useColorScheme() === 'dark' && Platform.OS === 'ios';
+  const { color, border, dotR, haloR, haloOpacity } = markerConfig(park.status, selected, dark);
   const sz = haloR * 2;
   return (
     <View style={{ width: sz, height: sz, alignItems: 'center', justifyContent: 'center' }}>
@@ -157,7 +165,7 @@ function ParkMarker({ park, selected }: { park: ParkForMap; selected: boolean })
         width: dotR * 2, height: dotR * 2, borderRadius: dotR,
         backgroundColor: color,
         borderWidth: selected ? 2 : 1.5,
-        borderColor: C.surface,
+        borderColor: border,
       }} />
     </View>
   );
@@ -175,16 +183,21 @@ function ParkMarker({ park, selected }: { park: ParkForMap; selected: boolean })
 function ParkMapMarker({
   park, selected, onSelect,
 }: { park: ParkForMap; selected: boolean; onSelect: (park: ParkForMap) => void }) {
-  const prevStatus = useRef(park.status);
+  // Theme is part of the snapshot key too — marker colors are resolved per
+  // scheme (see markerConfig), so a light/dark flip needs a re-snapshot just
+  // like a status flip.
+  const scheme = useColorScheme();
+  const snapshotKey = `${park.status}:${scheme}`;
+  const prevKey = useRef(snapshotKey);
   const [justChanged, setJustChanged] = useState(false);
 
   useEffect(() => {
-    if (prevStatus.current === park.status) return;
-    prevStatus.current = park.status;
+    if (prevKey.current === snapshotKey) return;
+    prevKey.current = snapshotKey;
     setJustChanged(true);
     const t = setTimeout(() => setJustChanged(false), 300);
     return () => clearTimeout(t);
-  }, [park.status]);
+  }, [snapshotKey]);
 
   return (
     <Marker
@@ -1721,13 +1734,13 @@ export default function MapScreen() {
       {/* Map controls */}
       <Animated.View style={[styles.mapControls, { bottom: controlsBottomAnim }]}>
         <TouchableOpacity style={styles.mapControlBtn} onPress={zoomIn} activeOpacity={0.75}>
-          <Ionicons name="add" size={18} color="#4A4535" />
+          <Ionicons name="add" size={18} color={dyn('#4A4535', '#F0EAD9')} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.mapControlBtn} onPress={zoomOut} activeOpacity={0.75}>
-          <Ionicons name="remove" size={18} color="#4A4535" />
+          <Ionicons name="remove" size={18} color={dyn('#4A4535', '#F0EAD9')} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.mapControlBtn} onPress={goHome} activeOpacity={0.75}>
-          <Ionicons name="home-outline" size={14} color="#4A4535" />
+          <Ionicons name="home-outline" size={14} color={dyn('#4A4535', '#F0EAD9')} />
         </TouchableOpacity>
       </Animated.View>
 

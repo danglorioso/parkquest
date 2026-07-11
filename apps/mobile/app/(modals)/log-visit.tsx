@@ -1,7 +1,7 @@
 import {
   ActivityIndicator, Alert, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput,
-  TouchableOpacity, View, useColorScheme,
+  TouchableOpacity, View, useColorScheme, useWindowDimensions,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,7 +9,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
-  useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, type SharedValue,
+  useSharedValue, useAnimatedStyle, withTiming, withSpring, withSequence, runOnJS, type SharedValue,
   FadeInDown, FadeIn,
 } from 'react-native-reanimated';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
@@ -96,7 +96,13 @@ const RETURN_OPTS   = [
 const STEPS = [
   'Where & when', 'Rating', 'Crowd', 'Difficulty', 'Weather', 'Would you return?', 'Journal', 'Share',
 ];
-const STAR_SIZE = 36;
+const STAR_SIZE = 56;
+
+// Reactive emoji for the hero-slide steps — index 0 is the "unset" state for
+// Rating (0..5 stars), Crowd/Difficulty index directly by (value - 1).
+const RATING_EMOJI = ['🤔', '😞', '😕', '🙂', '😃', '🤩'];
+const CROWD_EMOJI  = ['🦗', '🧍', '🚶', '👥', '🏟️'];
+const DIFF_EMOJI   = ['🌱', '🚶', '⛰️', '🥵', '💀'];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -188,8 +194,8 @@ const HALF_LABELS: Record<number, string> = {
   4:'Great', 4.5:'Amazing', 5:'Unreal',
 };
 
-const STAR_GAP = 4;
-const STAR_TOTAL = STAR_SIZE + STAR_GAP; // 40px per star slot
+const STAR_GAP = 10;
+const STAR_TOTAL = STAR_SIZE + STAR_GAP;
 
 function valueFromX(x: number): number {
   const clamped = Math.max(0, x);
@@ -235,35 +241,27 @@ function StarRating({ value, onChange, onDragChange }: {
   })).current;
 
   return (
-    <View>
-      <View
-        onLayout={e => { containerX.current = e.nativeEvent.layout.x; }}
-        ref={r => {
-          if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; });
-        }}
-        style={{ flexDirection: 'row', gap: STAR_GAP, marginBottom: 8 }}
-        {...panResponder.panHandlers}
-      >
-        {Array.from({ length: 5 }).map((_, i) => (
-          <View key={i} style={{ width: STAR_SIZE, height: STAR_SIZE }} pointerEvents="none">
-            <Ionicons
-              name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
-              size={STAR_SIZE}
-              color={value >= i + 0.5 ? C.accent : dyn('rgba(27,26,22,0.28)', 'rgba(240,234,217,0.32)')}
-            />
-          </View>
-        ))}
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, minHeight: 22 }}>
-        {value > 0 ? (
-          <>
-            <Text style={{ fontSize: 22, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }}>{value}</Text>
-            <Text style={{ fontSize: 13, color: C.inkMute, fontWeight: '600' }}>/ 5</Text>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: C.accent }}>{HALF_LABELS[value]}</Text>
-          </>
-        ) : (
-          <Text style={{ fontSize: 13, color: C.inkMute }}>Tap or swipe to rate</Text>
-        )}
+    <View style={{ alignItems: 'center' }}>
+      {/* Padded hit area — drags starting a bit outside the stars still rate.
+          Touch x maps off the inner row's pageX, so the padding is pure slack. */}
+      <View style={{ paddingVertical: 16, paddingHorizontal: 20 }} {...panResponder.panHandlers}>
+        <View
+          ref={r => {
+            if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; });
+          }}
+          style={{ flexDirection: 'row', gap: STAR_GAP }}
+          pointerEvents="none"
+        >
+          {Array.from({ length: 5 }).map((_, i) => (
+            <View key={i} style={{ width: STAR_SIZE, height: STAR_SIZE }}>
+              <Ionicons
+                name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
+                size={STAR_SIZE}
+                color={value >= i + 0.5 ? C.accent : dyn('rgba(27,26,22,0.28)', 'rgba(240,234,217,0.32)')}
+              />
+            </View>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -271,9 +269,11 @@ function StarRating({ value, onChange, onDragChange }: {
 
 // ── ScaleRow (slider) ───────────────────────────────────────────────────────────
 
-const SLIDER_THUMB = 22;
-const SLIDER_TRACK_H = 6;
-const SLIDER_SPRING = { damping: 18, stiffness: 220 };
+const SLIDER_THUMB = 28;
+const SLIDER_TRACK_H = 12;
+// overshootClamping: settle onto the dot directly instead of swinging past it
+// and springing back on every snap.
+const SLIDER_SPRING = { damping: 22, stiffness: 260, overshootClamping: true };
 
 function ScaleRow({ value, onChange, labels, onDragChange }: {
   value: number; onChange: (v: number) => void; labels: string[];
@@ -291,12 +291,18 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
 
   const pctFor = (v: number) => (v > 0 ? ((v - 1) / (steps - 1)) * 100 : 0);
 
+  // The thumb's travel is inset half a thumb-width from each track end so its
+  // center lands exactly on the tick dots (which share the same inset) and it
+  // never hangs past the track — pct 0..100 maps over [THUMB/2, W - THUMB/2].
+  const relFromX = (x: number) => {
+    const usable = trackWidth.current - SLIDER_THUMB;
+    if (usable <= 0) return 0;
+    return Math.max(0, Math.min(1, (x - SLIDER_THUMB / 2) / usable));
+  };
+
   const valueFromX = (x: number) => {
-    const w = trackWidth.current;
-    if (w <= 0) return value;
-    const clamped = Math.max(0, Math.min(w, x));
-    const idx = Math.round((clamped / w) * (steps - 1));
-    return Math.min(steps, Math.max(1, idx + 1));
+    if (trackWidth.current <= 0) return value;
+    return Math.round(relFromX(x) * (steps - 1)) + 1;
   };
 
   // Ticks a light haptic each time the dragged-to value crosses into a new
@@ -312,15 +318,14 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
   // jumping straight between step positions on every move event.
   const isDragging = useRef(false);
   const rawPct = useSharedValue(pctFor(value));
+  const trackW = useSharedValue(0);
   useEffect(() => {
     if (!isDragging.current) rawPct.value = withSpring(pctFor(value), SLIDER_SPRING);
   }, [value]);
 
   const rawPctFromX = (x: number) => {
-    const w = trackWidth.current;
-    if (w <= 0) return rawPct.value;
-    const clamped = Math.max(0, Math.min(w, x));
-    return (clamped / w) * 100;
+    if (trackWidth.current <= 0) return rawPct.value;
+    return relFromX(x) * 100;
   };
 
   const panResponder = useRef(PanResponder.create({
@@ -329,9 +334,12 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
     onPanResponderGrant: (e) => {
       isDragging.current = true;
       onDragChange?.(true);
-      const x = e.nativeEvent.pageX - containerX.current;
-      rawPct.value = rawPctFromX(x);
-      change(valueFromX(x));
+      // A plain tap glides straight to the snapped dot — jumping the thumb to
+      // the finger first (often past the dot) read as an overshoot-and-return.
+      // Finger tracking takes over on the first real move event below.
+      const v = valueFromX(e.nativeEvent.pageX - containerX.current);
+      rawPct.value = withSpring(pctFor(v), SLIDER_SPRING);
+      change(v);
     },
     onPanResponderMove: (e) => {
       const x = e.nativeEvent.pageX - containerX.current;
@@ -350,19 +358,30 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
     },
   })).current;
 
-  const fillStyle = useAnimatedStyle(() => ({ width: `${rawPct.value}%` }));
-  const thumbStyle = useAnimatedStyle(() => ({ left: `${rawPct.value}%` }));
+  // Pixel-based positions (not %) so thumb center and fill edge land exactly on
+  // the inset tick positions regardless of track width.
+  const fillStyle = useAnimatedStyle(() => ({
+    width: trackW.value > 0 ? SLIDER_THUMB / 2 + (rawPct.value / 100) * (trackW.value - SLIDER_THUMB) : 0,
+  }));
+  const thumbStyle = useAnimatedStyle(() => ({
+    left: trackW.value > 0 ? (rawPct.value / 100) * (trackW.value - SLIDER_THUMB) : 0,
+  }));
 
   return (
-    <View style={{ paddingHorizontal: 8 }}>
+    // Handlers live on this padded wrapper, not the track itself — drags that
+    // start slightly above/below/beside the track still drive the slider (and
+    // still suppress vertical scroll), since touch x maps off the inner
+    // track's own measured pageX.
+    <View style={{ paddingHorizontal: 10, paddingVertical: 16 }} {...panResponder.panHandlers}>
       <View
         ref={r => { if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; }); }}
         onLayout={e => {
           trackWidth.current = e.nativeEvent.layout.width;
+          trackW.value = e.nativeEvent.layout.width;
           forceRender(n => n + 1);
         }}
         style={{ height: SLIDER_THUMB + 8, justifyContent: 'center' }}
-        {...panResponder.panHandlers}
+        pointerEvents="none"
       >
         {/* track */}
         <View style={{
@@ -372,30 +391,34 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
           <Reanimated.View style={[{ height: '100%', backgroundColor: C.primary, borderRadius: SLIDER_TRACK_H / 2 }, fillStyle]} />
         </View>
 
-        {/* step ticks */}
+        {/* step ticks — same half-thumb inset as the thumb's travel, so the
+            track always runs past the first/last dots and the thumb centers
+            on each dot */}
         <View pointerEvents="none" style={{
           position: 'absolute', left: SLIDER_THUMB / 2, right: SLIDER_THUMB / 2,
           flexDirection: 'row', justifyContent: 'space-between',
         }}>
           {labels.map((l, i) => (
             <View key={l} style={{
-              width: 3, height: 3, borderRadius: 1.5, marginLeft: -1.5,
+              width: 6, height: 6, borderRadius: 3, marginLeft: -3,
               backgroundColor: value >= i + 1 ? C.onPrimary : C.hairline,
             }} />
           ))}
         </View>
 
-        {/* thumb */}
+        {/* thumb — colors live on the inner plain View because DynamicColorIOS
+            values crash Reanimated when placed on an animated style */}
         <Reanimated.View pointerEvents="none" style={[{
-          position: 'absolute', marginLeft: -SLIDER_THUMB / 2,
-          width: SLIDER_THUMB, height: SLIDER_THUMB, borderRadius: SLIDER_THUMB / 2,
-          backgroundColor: C.surface, borderWidth: 2, borderColor: value > 0 ? C.primary : C.hairline,
-          shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 2.5, shadowOffset: { width: 0, height: 1 }, elevation: 2,
-        }, thumbStyle]} />
+          position: 'absolute',
+          width: SLIDER_THUMB, height: SLIDER_THUMB, justifyContent: 'center',
+        }, thumbStyle]}>
+          <View style={{
+            width: SLIDER_THUMB, height: SLIDER_THUMB, borderRadius: SLIDER_THUMB / 2,
+            backgroundColor: C.surface, borderWidth: 2, borderColor: value > 0 ? C.primary : C.hairline,
+            shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 2.5, shadowOffset: { width: 0, height: 1 }, elevation: 2,
+          }} />
+        </Reanimated.View>
       </View>
-      <Text style={{ marginTop: 6, fontSize: 13, fontWeight: '600', color: value > 0 ? C.primary : C.inkMute }}>
-        {value > 0 ? labels[value - 1] : 'Drag or tap to set'}
-      </Text>
     </View>
   );
 }
@@ -404,20 +427,23 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
 
 function WeatherGrid({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
   const C = useColors();
-  const toggle = (id: string) =>
+  const toggle = (id: string) => {
+    Haptics.selectionAsync();
     onChange(value.includes(id) ? value.filter(w => w !== id) : [...value, id]);
+  };
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
       {WEATHER_OPTS.map(w => {
         const on = value.includes(w.id);
         return (
-          <TouchableOpacity
-            key={w.id} onPress={() => toggle(w.id)} activeOpacity={0.7}
+          <PressableScale
+            key={w.id} onPress={() => toggle(w.id)}
+            containerStyle={{ width: '47%' }}
             style={[styles.weatherChip, { backgroundColor: on ? C.primary : C.surfaceAlt, borderColor: on ? C.primary : C.hairline }]}
           >
-            <Text style={{ fontSize: 18, lineHeight: 22 }}>{w.emoji}</Text>
+            <Text style={{ fontSize: 34, lineHeight: 40 }}>{w.emoji}</Text>
             <Text style={[styles.weatherLabel, { color: on ? C.onPrimary : C.inkSoft }]}>{w.label}</Text>
-          </TouchableOpacity>
+          </PressableScale>
         );
       })}
     </View>
@@ -552,18 +578,20 @@ function ActivityChips({ value, onChange, npsActivityNames = [] }: {
 function ReturnRow({ value, onChange }: { value: Draft['wouldReturn']; onChange: (v: Draft['wouldReturn']) => void }) {
   const C = useColors();
   return (
-    <View style={{ flexDirection: 'row', gap: 7 }}>
+    <View style={{ gap: 10 }}>
       {RETURN_OPTS.map(o => {
         const on = value === o.id;
-        const textCol = on ? C.onPrimary : C.inkSoft;
         return (
-          <TouchableOpacity
-            key={o.id} onPress={() => onChange(on ? null : o.id as Draft['wouldReturn'])} activeOpacity={0.7}
-            style={[styles.returnBtn, { backgroundColor: on ? o.color : C.surfaceAlt, borderColor: on ? o.color : C.hairline }]}
+          <PressableScale
+            key={o.id}
+            onPress={() => { Haptics.selectionAsync(); onChange(on ? null : o.id as Draft['wouldReturn']); }}
+            style={[styles.returnBtn, { backgroundColor: on ? o.color : C.surface, borderColor: on ? o.color : C.hairline }]}
           >
-            <Ionicons name={on ? o.iconFilled : o.icon} size={14} color={textCol} />
-            <Text style={[styles.returnBtnText, { color: textCol }]}>{o.label}</Text>
-          </TouchableOpacity>
+            <View style={[styles.returnBadge, { backgroundColor: on ? 'rgba(255,255,255,0.25)' : C.surfaceAlt }]}>
+              <Ionicons name={on ? o.iconFilled : o.icon} size={20} color={on ? C.onPrimary : C.inkMute} />
+            </View>
+            <Text style={[styles.returnBtnText, { color: on ? C.onPrimary : C.inkSoft }]}>{o.label}</Text>
+          </PressableScale>
         );
       })}
     </View>
@@ -1475,24 +1503,82 @@ function Section({ kicker, title, hint, tag, children, mb = 24 }: {
   );
 }
 
+// ── HeroSlide ─────────────────────────────────────────────────────────────────
+
+// Big emoji that pops with a spring whenever it changes — used to react live
+// to slider/star drags and chip taps on the hero-slide steps below.
+function ReactiveEmoji({ emoji, size = 60 }: { emoji: string; size?: number }) {
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    scale.value = withSequence(
+      withSpring(1.08, { damping: 12, stiffness: 280 }),
+      withSpring(1, { damping: 14, stiffness: 240 }),
+    );
+  }, [emoji]);
+  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Reanimated.View style={aStyle}>
+      <Text style={{ fontSize: size, lineHeight: size * 1.15 }}>{emoji}</Text>
+    </Reanimated.View>
+  );
+}
+
+// Full-slide "one big question" layout used by the Rating/Crowd/Difficulty/
+// Weather/WouldReturn steps — a big reactive emoji, a big headline question,
+// a live value readout, then the control. Unlike `Section`, this owns the
+// value label itself so StarRating/ScaleRow/WeatherGrid/ReturnRow stay pure
+// controls with no embedded text.
+function HeroSlide({ emoji, title, subtitle, children }: {
+  emoji: string; title: string; subtitle: string; children: React.ReactNode;
+}) {
+  const C = useColors();
+  const { height: winH } = useWindowDimensions();
+  return (
+    <View style={{ flex: 1, minHeight: Math.min(440, winH * 0.55), justifyContent: 'center', alignItems: 'center' }}>
+      <Reanimated.View entering={FadeInDown.delay(40).duration(320)} style={{ marginBottom: 14 }}>
+        <ReactiveEmoji emoji={emoji} />
+      </Reanimated.View>
+
+      <Reanimated.View entering={FadeInDown.delay(120).duration(340)} style={{ alignItems: 'center', marginBottom: 28 }}>
+        <Text numberOfLines={2} style={{ fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.4, textAlign: 'center' }}>
+          {title}
+        </Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: C.primary, marginTop: 8, minHeight: 20 }}>
+          {subtitle}
+        </Text>
+      </Reanimated.View>
+
+      <Reanimated.View entering={FadeInDown.delay(200).duration(380)} style={{ width: '100%' }}>
+        {children}
+      </Reanimated.View>
+    </View>
+  );
+}
+
 // ── Step screens ──────────────────────────────────────────────────────────────
 
 // TouchableOpacity that also squishes slightly on press, for a more tactile feel
-// on the primary tap targets of the walkthrough-style Where & when step.
-function PressableScale({ onPress, disabled, style, children }: {
-  onPress?: () => void; disabled?: boolean; style?: any; children: React.ReactNode;
+// on the primary tap targets of the wizard steps. Uses the classic Animated API
+// (not Reanimated) because the caller styles carry DynamicColorIOS colors,
+// which Reanimated rejects ("Invalid color value") in animated styles.
+// `containerStyle` lands on the outer touchable — use it for flex-row sizing
+// (e.g. percentage widths in a wrapping grid), which must live on the flex child.
+function PressableScale({ onPress, disabled, style, containerStyle, children }: {
+  onPress?: () => void; disabled?: boolean; style?: any; containerStyle?: any; children: React.ReactNode;
 }) {
-  const scale = useSharedValue(1);
-  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const scale = useRef(new Animated.Value(1)).current;
+  const springTo = (v: number) =>
+    Animated.spring(scale, { toValue: v, speed: 40, bounciness: 5, useNativeDriver: true }).start();
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.85}
-      onPressIn={() => { scale.value = withSpring(0.97, { damping: 15, stiffness: 400 }); }}
-      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      style={containerStyle}
+      onPressIn={() => springTo(0.97)}
+      onPressOut={() => springTo(1)}
     >
-      <Reanimated.View style={[style, aStyle]}>{children}</Reanimated.View>
+      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
     </TouchableOpacity>
   );
 }
@@ -1514,9 +1600,10 @@ function StepWhere({ draft, set, parks, onPickPark }: {
   useEffect(() => {
     unlockedSV.value = withSpring(park ? 1 : 0, { damping: 18, stiffness: 180 });
   }, [!!park]);
+  // Opacity-only unlock — no translate, these fields are already on screen
+  // (dimmed) before the park is picked, so floating them in reads as a reload.
   const unlockedStyle = useAnimatedStyle(() => ({
     opacity: 0.35 + unlockedSV.value * 0.65,
-    transform: [{ translateY: (1 - unlockedSV.value) * 8 }],
   }));
 
   return (
@@ -1539,7 +1626,11 @@ function StepWhere({ draft, set, parks, onPickPark }: {
           {/* Park picker */}
           <PressableScale onPress={onPickPark} style={[
             styles.parkBanner,
-            { backgroundColor: park ? C.primary : C.surfaceAlt, borderStyle: park ? 'solid' : 'dashed' },
+            // Selected state drops the container border — the primary-colored
+            // background bleeds through a container border at the rounded
+            // corners (visibly in dark mode), so a uniform hairline ring is
+            // overlaid on top of the image instead (below).
+            { backgroundColor: park ? C.primaryDeep : C.surfaceAlt, borderWidth: park ? 0 : 1.5, borderStyle: park ? 'solid' : 'dashed' },
           ]}>
             {/* Faint cover photo behind the banner content, like web — kept as a
                 direct (non-absolute-wrapped) sibling so absoluteFill bleeds edge
@@ -1559,6 +1650,11 @@ function StepWhere({ draft, set, parks, onPickPark }: {
                 style={StyleSheet.absoluteFillObject}
               />
             )}
+            {park && (
+              <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, {
+                borderRadius: 16, borderWidth: 1, borderColor: C.hairline,
+              }]} />
+            )}
             <Reanimated.View key={park?.park_code ?? 'empty'} entering={FadeIn.duration(220)}>
               {park ? (
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -1566,9 +1662,10 @@ function StepWhere({ draft, set, parks, onPickPark }: {
                     <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '800', color: C.onPrimary, letterSpacing: -0.3 }}>{park.name}</Text>
                     <Text style={{ fontSize: 13, color: 'rgba(255,251,241,0.8)', marginTop: 1 }}>{fullStateName(park.states.split(',')[0].trim())}</Text>
                   </View>
+                  {/* Pill is always light cream, so its ink stays dark in both themes */}
                   <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,251,241,0.92)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
-                    <Ionicons name="pencil" size={11} color={C.ink} />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }}>Change</Text>
+                    <Ionicons name="pencil" size={11} color="#1B1A16" />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#1B1A16' }}>Change</Text>
                   </View>
                 </View>
               ) : (
@@ -1655,16 +1752,15 @@ function StepRating({ draft, set, onSliderDragChange }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   onSliderDragChange?: (dragging: boolean) => void;
 }) {
+  const r = draft.rating;
   return (
-    <View>
-      <Reanimated.View entering={FadeInDown.duration(360)}>
-        <Section title="How was it?">
-          <View style={styles.card}>
-            <StarRating value={draft.rating} onChange={v => set('rating', v)} onDragChange={onSliderDragChange} />
-          </View>
-        </Section>
-      </Reanimated.View>
-    </View>
+    <HeroSlide
+      emoji={RATING_EMOJI[Math.min(5, Math.max(0, Math.ceil(r)))]}
+      title="How was it?"
+      subtitle={r > 0 ? `${r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)} / 5 · ${HALF_LABELS[r]}` : 'Tap or swipe to rate'}
+    >
+      <StarRating value={r} onChange={v => set('rating', v)} onDragChange={onSliderDragChange} />
+    </HeroSlide>
   );
 }
 
@@ -1672,21 +1768,15 @@ function StepCrowd({ draft, set, onSliderDragChange }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   onSliderDragChange?: (dragging: boolean) => void;
 }) {
-  const C = useColors();
+  const v = draft.crowd;
   return (
-    <View>
-      <Reanimated.View entering={FadeInDown.duration(360)}>
-        <Section title="Crowd level">
-          <View style={styles.card}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <Ionicons name="people-outline" size={15} color={C.inkMute} />
-              <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>How crowded was it?</Text>
-            </View>
-            <ScaleRow value={draft.crowd} onChange={v => set('crowd', v)} labels={CROWD_LABELS} onDragChange={onSliderDragChange} />
-          </View>
-        </Section>
-      </Reanimated.View>
-    </View>
+    <HeroSlide
+      emoji={v > 0 ? CROWD_EMOJI[v - 1] : '🏞️'}
+      title="How crowded was it?"
+      subtitle={v > 0 ? CROWD_LABELS[v - 1] : 'Drag or tap to set'}
+    >
+      <ScaleRow value={v} onChange={x => set('crowd', x)} labels={CROWD_LABELS} onDragChange={onSliderDragChange} />
+    </HeroSlide>
   );
 }
 
@@ -1694,51 +1784,49 @@ function StepDifficulty({ draft, set, onSliderDragChange }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   onSliderDragChange?: (dragging: boolean) => void;
 }) {
-  const C = useColors();
+  const v = draft.difficulty;
   return (
-    <View>
-      <Reanimated.View entering={FadeInDown.duration(360)}>
-        <Section title="Trail difficulty">
-          <View style={styles.card}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <Ionicons name="walk-outline" size={15} color={C.inkMute} />
-              <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>How tough was the trail?</Text>
-            </View>
-            <ScaleRow value={draft.difficulty} onChange={v => set('difficulty', v)} labels={DIFF_LABELS} onDragChange={onSliderDragChange} />
-          </View>
-        </Section>
-      </Reanimated.View>
-    </View>
+    <HeroSlide
+      emoji={v > 0 ? DIFF_EMOJI[v - 1] : '🥾'}
+      title="How tough was the trail?"
+      subtitle={v > 0 ? DIFF_LABELS[v - 1] : 'Drag or tap to set'}
+    >
+      <ScaleRow value={v} onChange={x => set('difficulty', x)} labels={DIFF_LABELS} onDragChange={onSliderDragChange} />
+    </HeroSlide>
   );
 }
 
 function StepWeather({ draft, set }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
 }) {
+  const sel = draft.weather;
+  // Hero emoji mirrors the most recent pick (last item in the selection array).
+  const lastPicked = WEATHER_OPTS.find(w => w.id === sel[sel.length - 1]);
   return (
-    <View>
-      <Reanimated.View entering={FadeInDown.duration(360)}>
-        <Section title="Weather">
-          <View style={styles.card}>
-            <WeatherGrid value={draft.weather} onChange={v => set('weather', v)} />
-          </View>
-        </Section>
-      </Reanimated.View>
-    </View>
+    <HeroSlide
+      emoji={lastPicked?.emoji ?? '🌦️'}
+      title="What was the weather like?"
+      subtitle={sel.length > 0 ? `${sel.length} selected` : 'Pick all that apply'}
+    >
+      <WeatherGrid value={sel} onChange={v => set('weather', v)} />
+    </HeroSlide>
   );
 }
 
 function StepWouldReturn({ draft, set }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
 }) {
+  const picked = RETURN_OPTS.find(o => o.id === draft.wouldReturn);
   return (
-    <View>
-      <Reanimated.View entering={FadeInDown.duration(360)}>
-        <Section title="Would you go back?">
-          <ReturnRow value={draft.wouldReturn} onChange={v => set('wouldReturn', v)} />
-        </Section>
-      </Reanimated.View>
-    </View>
+    // Hero emoji stays static here — the options carry their own icons, so a
+    // reactive swap up top would just duplicate the selection feedback.
+    <HeroSlide
+      emoji="🧭"
+      title="Would you go back?"
+      subtitle={picked?.label ?? 'Pick one'}
+    >
+      <ReturnRow value={draft.wouldReturn} onChange={v => set('wouldReturn', v)} />
+    </HeroSlide>
   );
 }
 
@@ -2101,28 +2189,32 @@ export default function LogVisitModal() {
   const leavingViaAction = useRef(false);
 
   // The sheet dismisses via the native swipe-down-to-close gesture on this `presentation:
-  // 'modal'` screen (see app/_layout.tsx). That gesture and the slider controls on the
-  // "visit" step both claim vertical drags, so a slightly-off-horizontal drag on a slider
-  // was also dragging the sheet closed. Sliders report drag start/end here via
-  // onDragChange, and we toggle the screen's native gesture off for the duration — a
-  // counter (not a plain boolean) in case drag start/end ever overlaps across sliders.
+  // 'modal'` screen (see app/_layout.tsx). That gesture and the star/slider controls both
+  // claim vertical drags, and toggling gestureEnabled from a drag's Grant callback loses
+  // the race — the native recognizer has often already begun by the time setOptions lands.
+  // So the native gesture is switched off for the whole duration of the drag-driven steps
+  // (Rating/Crowd/Difficulty) and the per-drag counter is kept as a belt-and-braces signal
+  // for any other step that hosts a draggable control.
   const activeSliderDrags = useRef(0);
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  const isDragStep = (s: number) => s >= 1 && s <= 3;
+  // Also freezes the step ScrollView while a slider drag is live — a slightly
+  // off-horizontal swipe on a slider was scrolling the content vertically.
+  const [controlDragging, setControlDragging] = useState(false);
   const setSliderDragging = useCallback((dragging: boolean) => {
     activeSliderDrags.current = Math.max(0, activeSliderDrags.current + (dragging ? 1 : -1));
-    navigation.setOptions({ gestureEnabled: activeSliderDrags.current === 0 });
+    setControlDragging(activeSliderDrags.current > 0);
+    navigation.setOptions({ gestureEnabled: activeSliderDrags.current === 0 && !isDragStep(stepRef.current) });
   }, [navigation]);
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !isDragStep(step) && activeSliderDrags.current === 0 });
+  }, [step, navigation]);
 
   useEffect(() => {
     if (isEdit) return;
     loadDrafts().then(d => { if (d.length > 0) setRestoreBanner(d[0]); });
   }, [isEdit]);
-
-  // Tab bar's liquid-glass highlight slides onto the FAB slot when this modal
-  // opens (see LogVisitButton's press handler) — slide it back once we close,
-  // regardless of how (success, X, swipe-down).
-  useEffect(() => {
-    return () => DeviceEventEmitter.emit('logVisitFabDismiss');
-  }, []);
 
   // Seed a fresh visit's visibility from the user's saved default (Privacy &
   // Moderation settings) — a restored draft or edit still wins since this only
@@ -2465,9 +2557,10 @@ export default function LogVisitModal() {
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 20, paddingBottom: 24 + footerH }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 24 + footerH, flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!controlDragging}
       >
         {step === 0 && restoreBanner && restoreBanner.id !== draftId.current && (
           <View style={styles.draftBanner}>
@@ -2705,11 +2798,11 @@ const styles = StyleSheet.create({
 
   // Weather
   weatherChip: {
-    width: '22.5%', paddingVertical: 10, borderRadius: 13, borderWidth: 0.5,
-    alignItems: 'center', gap: 4,
+    paddingVertical: 18, borderRadius: 20, borderWidth: 0.5,
+    alignItems: 'center', gap: 6,
   },
   weatherLabel: {
-    fontSize: 13, fontWeight: '600',
+    fontSize: 15, fontWeight: '700',
   },
 
   // Activity
@@ -2723,11 +2816,15 @@ const styles = StyleSheet.create({
 
   // Would return
   returnBtn: {
-    flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 0.5,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+  },
+  returnBadge: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   returnBtnText: {
-    fontSize: 13, fontWeight: '700',
+    fontSize: 16, fontWeight: '700',
   },
 
   // Visibility
@@ -2770,9 +2867,10 @@ const styles = StyleSheet.create({
   },
 
   // Photos
+  // No backgroundColor here — this style lands on a Reanimated.View, and
+  // DynamicColorIOS values crash Reanimated. The Image itself covers the cell.
   photoThumb: {
     width: PHOTO_THUMB, height: PHOTO_THUMB, borderRadius: 14, overflow: 'hidden',
-    backgroundColor: C.surfaceAlt,
   },
   photoRemoveBtn: {
     position: 'absolute', top: 6, right: 6,

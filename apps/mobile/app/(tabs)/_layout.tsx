@@ -49,10 +49,7 @@ function LogVisitButton() {
 
   return (
     <TouchableOpacity
-      onPress={() => {
-        DeviceEventEmitter.emit('logVisitFabPress');
-        router.push('/(modals)/log-visit');
-      }}
+      onPress={() => router.push('/(modals)/log-visit')}
       accessibilityLabel={hasDraft ? 'Log a park visit — draft saved' : 'Log a park visit'}
       accessibilityRole="button"
       style={styles.fabWrapper}

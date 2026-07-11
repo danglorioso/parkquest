@@ -68,13 +68,17 @@ function AuthSync() {
           const apiBase = process.env.EXPO_PUBLIC_API_URL ?? '';
           const tok = await getToken();
           if (tok) {
-            fetch(`${apiBase}/api/push-tokens`, {
+            const res = await fetch(`${apiBase}/api/push-tokens`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
               body: JSON.stringify({ token: tokenData.data }),
-            }).catch(() => {});
+            });
+            if (!res.ok) console.warn('[push] token registration rejected by server', res.status);
           }
-        } catch { /* simulator or missing projectId — ignore */ }
+        } catch (err) {
+          // Also fires on the simulator (no APNs token available) — expected there.
+          console.warn('[push] failed to register push token', err);
+        }
       }
     };
 

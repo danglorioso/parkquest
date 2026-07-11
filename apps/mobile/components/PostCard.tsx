@@ -1115,7 +1115,7 @@ export function PostCard({
                 {post.username ? `@${post.username} · ` : ''}
                 {relTime(post.created_at)}
               </Text>
-              {isOwnPost && visibility != null && (
+              {visibility != null && (
                 <Ionicons
                   name={VIS_ICONS[visibility] ?? VIS_ICONS.public}
                   size={10.5}

@@ -43,6 +43,7 @@ export async function GET(request: Request) {
         photos: posts.photos,
         park_code: posts.park_code,
         visit_id: posts.visit_id,
+        visibility: sql<string>`${effectiveVisibility}`,
         quoted_post_id: posts.quoted_post_id,
         badge_id: posts.badge_id,
         created_at: posts.created_at,

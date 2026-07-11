@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColors } from './palette';
+import { dyn, useColors } from './palette';
 
 type ToastKind = 'success' | 'error';
 interface ToastMsg { id: number; text: string; kind: ToastKind }
@@ -48,7 +48,14 @@ export function ToastHost() {
       pointerEvents="none"
       style={[styles.wrap, { top: insets.top + 8, opacity, transform: [{ translateY }] }]}
     >
-      <View style={[styles.pill, { backgroundColor: C.ink }]}>
+      {/* Pill stays dark in both themes (cream text needs a dark backdrop) —
+          in dark mode it's a slightly elevated tone with a hairline ring so it
+          still separates from the near-black background. */}
+      <View style={[styles.pill, {
+        backgroundColor: dyn('#1B1A16', '#2B2720'),
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: dyn('rgba(255,251,241,0.08)', 'rgba(240,234,217,0.18)'),
+      }]}>
         <Ionicons
           name={msg.kind === 'success' ? 'checkmark-circle' : 'alert-circle'}
           size={16}
