@@ -5,7 +5,8 @@ import { Megaphone, Users, MapPin, Send, Eye } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
 interface ParkOption { park_code: string; name: string }
-interface Broadcast { message: string; sent_at: string; recipient_count: number }
+interface Broadcast { message: string; title: string | null; audience_label: string | null; sent_at: string; recipient_count: number }
+interface RecipientPreview { clerk_user_id: string; username: string | null; display_name: string | null; avatar_url: string | null }
 
 const fieldClass =
   'w-full rounded-lg border border-hairline bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-mute focus:outline-none focus:ring-2 focus:ring-primary/40';
@@ -24,6 +25,7 @@ export default function BroadcastPage() {
   const [parks, setParks] = useState<ParkOption[]>([]);
 
   const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [previewUsers, setPreviewUsers] = useState<RecipientPreview[] | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [confirmArmed, setConfirmArmed] = useState(false);
   const [sending, setSending] = useState(false);
@@ -40,10 +42,12 @@ export default function BroadcastPage() {
     loadHistory();
   }, []);
 
-  // Any change to the audience invalidates the last preview count — never let
-  // a stale count be used to justify sending to a now-different group.
+  // Any change to the audience (not the message — that doesn't affect who
+  // matches) invalidates the last preview count — never let a stale count be
+  // used to justify sending to a now-different group.
   const resetPreview = () => {
     setPreviewCount(null);
+    setPreviewUsers(null);
     setConfirmArmed(false);
   };
 
@@ -52,15 +56,26 @@ export default function BroadcastPage() {
     ...(audience === 'segment' && parkOn && parkCode ? [{ type: 'visited_park', park_code: parkCode }] : []),
   ];
 
+  const audienceLabel = audience === 'all'
+    ? 'All users'
+    : filters.length === 0
+      ? 'Segment'
+      : filters.map(f => f.type === 'min_visits'
+          ? `≥${f.value} visits`
+          : `Visited ${parks.find(p => p.park_code === f.park_code)?.name ?? f.park_code}`
+        ).join(' & ');
+
   const requestBody = (dryRun: boolean) => ({
     title: title.trim() || undefined,
     message: message.trim(),
     audience,
+    audience_label: audienceLabel,
     filters,
     dry_run: dryRun,
   });
 
-  const canPreview = message.trim().length > 0 && (audience === 'all' || filters.length > 0);
+  const canPreview = audience === 'all' || filters.length > 0;
+  const canSend = previewCount !== null && previewCount > 0 && message.trim().length > 0;
 
   const preview = async () => {
     if (!canPreview || previewing) return;
@@ -75,13 +90,14 @@ export default function BroadcastPage() {
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? 'Failed to preview audience'); return; }
       setPreviewCount(data.recipient_count);
+      setPreviewUsers(data.preview ?? []);
     } finally {
       setPreviewing(false);
     }
   };
 
   const send = async () => {
-    if (previewCount === null || sending) return;
+    if (!canSend || sending) return;
     setSending(true);
     setError(null);
     try {
@@ -95,6 +111,7 @@ export default function BroadcastPage() {
       setSentBanner(`Sent to ${data.recipient_count} user${data.recipient_count === 1 ? '' : 's'} just now.`);
       setMessage('');
       setPreviewCount(null);
+      setPreviewUsers(null);
       setConfirmArmed(false);
       loadHistory();
     } finally {
@@ -127,7 +144,7 @@ export default function BroadcastPage() {
           <label className="text-xs font-bold uppercase tracking-wide text-ink-mute">Message</label>
           <textarea
             value={message}
-            onChange={e => { setMessage(e.target.value); resetPreview(); }}
+            onChange={e => setMessage(e.target.value)}
             maxLength={300}
             rows={3}
             className={fieldClass}
@@ -209,11 +226,16 @@ export default function BroadcastPage() {
             <button
               type="button"
               onClick={() => setConfirmArmed(true)}
-              disabled={previewCount === 0}
+              disabled={!canSend}
+              title={message.trim().length === 0 ? 'Write a message before sending' : undefined}
               className={`${btnBase} border-primary bg-primary text-primary-foreground disabled:opacity-50`}
             >
               <Send size={14} /> Send to {previewCount} user{previewCount === 1 ? '' : 's'}
             </button>
+          )}
+
+          {previewCount !== null && !confirmArmed && message.trim().length === 0 && (
+            <span className="text-xs text-ink-mute">Write a message before sending.</span>
           )}
 
           {confirmArmed && (
@@ -238,6 +260,33 @@ export default function BroadcastPage() {
             </>
           )}
         </div>
+
+        {previewUsers !== null && (
+          previewUsers.length === 0 ? (
+            <p className="text-sm text-ink-mute">No users match this audience.</p>
+          ) : (
+            <div className="flex flex-col gap-2 rounded-lg border border-hairline bg-surface-alt p-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink-mute">
+                Matching users {previewCount !== null && previewCount > previewUsers.length ? `(showing ${previewUsers.length} of ${previewCount})` : `(${previewUsers.length})`}
+              </p>
+              <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
+                {previewUsers.map(u => (
+                  <div key={u.clerk_user_id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm">
+                    {u.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={u.avatar_url} alt="" className="h-6 w-6 flex-shrink-0 rounded-full object-cover" />
+                    ) : (
+                      <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                        {(u.username ?? '?')[0]?.toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-ink-soft">{u.display_name || (u.username ? `@${u.username}` : u.clerk_user_id)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        )}
       </Card>
 
       <div>
@@ -259,7 +308,13 @@ export default function BroadcastPage() {
                     {b.recipient_count} recipient{b.recipient_count === 1 ? '' : 's'}
                   </span>
                 </div>
+                <p className="text-sm font-semibold text-ink">{b.title || 'ParkQuest'}</p>
                 <p className="text-sm text-ink-soft">{b.message}</p>
+                {b.audience_label && (
+                  <span className="mt-0.5 self-start rounded-full bg-surface-alt px-2 py-0.5 text-xs text-ink-mute">
+                    {b.audience_label}
+                  </span>
+                )}
               </Card>
             ))}
           </div>

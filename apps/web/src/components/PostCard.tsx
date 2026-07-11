@@ -850,12 +850,15 @@ export function PostCard({
   from,
   onDelete,
   onEditVisit,
+  canDelete = false,
 }: {
   post: FeedPost;
   onLike: (id: number, liked: boolean) => void;
   from?: string;
   onDelete?: (id: number) => void;
   onEditVisit?: (visitId: number) => void;
+  // Lets an admin delete any post, not just their own.
+  canDelete?: boolean;
 }) {
   const [showComments, setShowComments] = useState(false);
   const [commentDelta, setCommentDelta] = useState(0);
@@ -866,6 +869,7 @@ export function PostCard({
   const menuRef = useRef<HTMLDivElement>(null);
   const { user } = useUser();
   const isOwnPost = user?.id === post.clerk_user_id;
+  const canOpenMenu = isOwnPost || canDelete;
   const isBadgePost = !!post.badge_id;
   const hasPhotos = !isBadgePost && post.photos && post.photos.length > 0;
   const photos = hasPhotos ? post.photos! : [""];
@@ -938,23 +942,23 @@ export function PostCard({
         </div>
         <div ref={menuRef} style={{ position: "relative" }}>
           <button
-            onClick={() => { if (isOwnPost) setShowMenu(v => !v); }}
+            onClick={() => { if (canOpenMenu) setShowMenu(v => !v); }}
             style={{
               background: "transparent", border: "none",
-              cursor: isOwnPost ? "pointer" : "default",
+              cursor: canOpenMenu ? "pointer" : "default",
               color: "var(--ink-mute)", padding: 6, borderRadius: 6,
             }}
           >
             <MoreHorizontal size={16} strokeWidth={1.8} />
           </button>
-          {showMenu && isOwnPost && (
+          {showMenu && canOpenMenu && (
             <div style={{
               position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 100,
               background: "var(--surface)", border: "0.5px solid var(--hairline)",
               borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
               minWidth: 150, overflow: "hidden",
             }}>
-              {post.visit_id && onEditVisit && (
+              {isOwnPost && post.visit_id && onEditVisit && (
                 <>
                   <button
                     onClick={() => { onEditVisit(post.visit_id!); setShowMenu(false); }}
@@ -969,17 +973,21 @@ export function PostCard({
                   <div style={{ height: "0.5px", background: "var(--hairline)" }} />
                 </>
               )}
-              <button
-                onClick={() => { setEditingCaption(true); setCaptionDraft(currentCaption ?? ""); setShowMenu(false); }}
-                style={{
-                  display: "block", width: "100%", padding: "10px 14px",
-                  background: "transparent", border: "none", cursor: "pointer",
-                  fontSize: 14, color: "var(--ink)", textAlign: "left",
-                }}
-              >
-                Edit caption
-              </button>
-              <div style={{ height: "0.5px", background: "var(--hairline)" }} />
+              {isOwnPost && (
+                <>
+                  <button
+                    onClick={() => { setEditingCaption(true); setCaptionDraft(currentCaption ?? ""); setShowMenu(false); }}
+                    style={{
+                      display: "block", width: "100%", padding: "10px 14px",
+                      background: "transparent", border: "none", cursor: "pointer",
+                      fontSize: 14, color: "var(--ink)", textAlign: "left",
+                    }}
+                  >
+                    Edit caption
+                  </button>
+                  <div style={{ height: "0.5px", background: "var(--hairline)" }} />
+                </>
+              )}
               <button
                 onClick={handleDelete}
                 style={{

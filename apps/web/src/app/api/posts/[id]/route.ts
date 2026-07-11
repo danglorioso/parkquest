@@ -4,6 +4,7 @@ import { eq, and, or, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, parks, userProfiles, visits, friendships } from '@/lib/db/schema';
 import { deleteR2PhotosTrusted, extractPhotoUrls } from '@/lib/photoCleanup';
+import { requireAdmin } from '@/lib/admin';
 
 export async function PATCH(
   req: Request,
@@ -150,9 +151,12 @@ export async function DELETE(
     const postId = Number(id);
     if (isNaN(postId)) return NextResponse.json({ error: 'Invalid post ID' }, { status: 400 });
 
+    const admin = await requireAdmin();
+    const ownershipFilter = admin ? eq(posts.id, postId) : and(eq(posts.id, postId), eq(posts.clerk_user_id, userId));
+
     const deleted = await db
       .delete(posts)
-      .where(and(eq(posts.id, postId), eq(posts.clerk_user_id, userId)))
+      .where(ownershipFilter)
       .returning();
 
     if (deleted.length === 0) return NextResponse.json({ error: 'Post not found' }, { status: 404 });

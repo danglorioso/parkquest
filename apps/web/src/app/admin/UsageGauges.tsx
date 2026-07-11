@@ -4,14 +4,16 @@ import { useEffect, useState } from 'react';
 import { Database, HardDrive } from 'lucide-react';
 
 interface Usage {
-  database: { used_bytes: number; limit_bytes: number };
+  database: { used_bytes: number; limit_bytes: number; approximate: boolean };
   storage: { used_bytes: number; limit_bytes: number; object_count: number };
 }
 
+// Decimal (SI) units, not binary — matches how Neon and Cloudflare display
+// storage in their own dashboards, so this gauge's numbers line up with theirs.
 function formatBytes(bytes: number) {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes >= 1000 ** 3) return `${(bytes / 1000 ** 3).toFixed(2)} GB`;
+  if (bytes >= 1000 ** 2) return `${(bytes / 1000 ** 2).toFixed(1)} MB`;
+  if (bytes >= 1000) return `${(bytes / 1000).toFixed(0)} KB`;
   return `${bytes} B`;
 }
 
@@ -79,7 +81,7 @@ export function UsageGauges() {
       <Gauge
         icon={Database}
         label="Database"
-        detail="Neon free plan"
+        detail={usage.database.approximate ? 'Neon free plan · live data only, set NEON_API_KEY for exact' : 'Neon free plan'}
         used={usage.database.used_bytes}
         limit={usage.database.limit_bytes}
       />

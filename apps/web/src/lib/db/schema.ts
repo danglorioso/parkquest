@@ -161,7 +161,7 @@ export const notifications = pgTable('notifications', {
   post_id: integer('post_id').references(() => posts.id, { onDelete: 'cascade' }),
   visit_id: integer('visit_id').references(() => visits.id, { onDelete: 'cascade' }),
   park_code: varchar('park_code', { length: 10 }).references(() => parks.park_code),
-  metadata: jsonb('metadata').$type<{ message?: string; excerpt?: string; friendship_id?: number; badge_id?: string; badge_name?: string; badge_emoji?: string }>(),
+  metadata: jsonb('metadata').$type<{ message?: string; excerpt?: string; friendship_id?: number; badge_id?: string; badge_name?: string; badge_emoji?: string; title?: string; audience_label?: string }>(),
   read: boolean('read').default(false).notNull(),
   created_at: timestamp('created_at').defaultNow().notNull(),
 });

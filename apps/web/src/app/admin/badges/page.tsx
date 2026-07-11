@@ -1,30 +1,13 @@
-import { headers } from 'next/headers';
 import { Card } from '@/components/ui/card';
 import CustomBadgeManager from './CustomBadgeManager';
-
-interface BadgeRow {
-  id: string;
-  name: string;
-  emoji: string;
-  tier: string;
-  count: number;
-  pct_of_active: number;
-  custom?: boolean;
-}
-
-async function getBadges() {
-  const h = await headers();
-  const proto = h.get('x-forwarded-proto') ?? 'http';
-  const host = h.get('host');
-  const res = await fetch(`${proto}://${host}/api/admin/badges`, {
-    headers: { cookie: h.get('cookie') ?? '' },
-    cache: 'no-store',
-  });
-  return res.json() as Promise<{ badges: BadgeRow[]; active_users: number }>;
-}
+import { getBadgeStats } from '@/lib/badgeStats';
 
 export default async function AdminBadgesPage() {
-  const { badges, active_users: activeUsers } = await getBadges();
+  // Admin access is already gated by the parent /admin layout — query
+  // directly instead of self-fetching our own API route (SSR self-fetch is
+  // fragile: it round-trips through the network for data we already have
+  // in-process, and cookie/auth forwarding across that hop isn't reliable).
+  const { badges, active_users: activeUsers } = await getBadgeStats();
   const totalEarned = badges.reduce((sum, b) => sum + b.count, 0);
   const max = Math.max(...badges.map(b => b.count), 1);
 

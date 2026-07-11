@@ -34,6 +34,7 @@ echo "==> writing .env.local"
 cat > "$CI_PRIMARY_REPOSITORY_PATH/apps/mobile/.env.local" <<EOF
 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=${EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY}
 EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL:-https://www.parkquest.me}
+EXPO_PUBLIC_PROJECT_ID=${EXPO_PUBLIC_PROJECT_ID:-2689b440-3af8-4807-9f93-e606c68556bb}
 EOF
 
 echo "==> pod install"

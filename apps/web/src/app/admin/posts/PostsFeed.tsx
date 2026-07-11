@@ -42,7 +42,7 @@ export function PostsFeed({ initialPosts }: { initialPosts: FeedPost[] }) {
   return (
     <div className="mx-auto flex w-full max-w-[600px] flex-col gap-4">
       {posts.map(post => (
-        <PostCard key={post.id} post={post} onLike={handleLike} onDelete={handleDelete} />
+        <PostCard key={post.id} post={post} onLike={handleLike} onDelete={handleDelete} canDelete />
       ))}
     </div>
   );
