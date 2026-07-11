@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
   const [postRows, commentRows] = await Promise.all([
     postIds.length > 0
-      ? db.select({ id: posts.id, caption: posts.caption, clerk_user_id: posts.clerk_user_id })
+      ? db.select({ id: posts.id, caption: posts.caption, photos: posts.photos, clerk_user_id: posts.clerk_user_id })
           .from(posts).where(inArray(posts.id, postIds))
       : Promise.resolve([]),
     commentIds.length > 0
@@ -57,11 +57,15 @@ export async function GET(request: Request) {
   const enriched = rows.map(r => {
     let targetUserId: string | null = null;
     let target_content: string | null = null;
+    let target_photos: string[] | null = null;
     if (r.target_type === 'user') targetUserId = r.target_id;
     else if (r.target_type === 'post') {
       const p = postMap.get(Number(r.target_id));
       target_content = p?.caption ?? null;
       targetUserId = p?.clerk_user_id ?? null;
+      target_photos = Array.isArray(p?.photos)
+        ? (p.photos as Array<{ url: string } | string>).map(ph => typeof ph === 'string' ? ph : ph.url)
+        : null;
     } else if (r.target_type === 'comment') {
       const c = commentMap.get(Number(r.target_id));
       target_content = c?.content ?? null;
@@ -75,6 +79,7 @@ export async function GET(request: Request) {
       target_username: targetProfile?.username ?? null,
       target_display_name: targetProfile?.display_name ?? null,
       target_content,
+      target_photos,
     };
   });
 

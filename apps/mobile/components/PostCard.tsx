@@ -11,7 +11,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { BADGE_MAP, BADGE_TIER_COLORS } from '@/lib/badges';
+import { BADGE_MAP, BADGE_TIER_COLORS, ensureBadgeDefs } from '@/lib/badges';
+import { blockUser } from '@/lib/api';
+import { emitUserBlocked } from '@/lib/blocking';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { relTime } from '@/lib/dates';
 import { parkColor } from '@/lib/parkColors';
@@ -192,12 +194,28 @@ function LikersSheet({
 
 // ── ReportSheet ───────────────────────────────────────────────────────────────
 
-const REPORT_REASONS: { key: ReportReason; label: string }[] = [
-  { key: 'spam', label: 'Spam' },
-  { key: 'harassment', label: 'Harassment or bullying' },
-  { key: 'inappropriate', label: 'Inappropriate content' },
-  { key: 'other', label: 'Other' },
-];
+const REPORT_REASONS: Record<ReportTargetType, { key: ReportReason; label: string }[]> = {
+  user: [
+    { key: 'harassment', label: 'Harassment or bullying' },
+    { key: 'impersonation', label: 'Impersonation' },
+    { key: 'misleading', label: 'Misleading or fake account' },
+    { key: 'spam', label: 'Spam' },
+    { key: 'inappropriate', label: 'Inappropriate content' },
+    { key: 'other', label: 'Other' },
+  ],
+  post: [
+    { key: 'spam', label: 'Spam' },
+    { key: 'harassment', label: 'Harassment or bullying' },
+    { key: 'inappropriate', label: 'Inappropriate content' },
+    { key: 'other', label: 'Other' },
+  ],
+  comment: [
+    { key: 'spam', label: 'Spam' },
+    { key: 'harassment', label: 'Harassment or bullying' },
+    { key: 'inappropriate', label: 'Inappropriate content' },
+    { key: 'other', label: 'Other' },
+  ],
+};
 
 export function ReportSheet({
   token, targetType, targetId, onClose, onSubmitted,
@@ -209,7 +227,8 @@ export function ReportSheet({
   onSubmitted: () => void;
 }) {
   const C = useColors();
-  const [reason, setReason] = useState<(typeof REPORT_REASONS)[number]['key'] | null>(null);
+  const reasons = REPORT_REASONS[targetType];
+  const [reason, setReason] = useState<ReportReason | null>(null);
   const [details, setDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -255,9 +274,11 @@ export function ReportSheet({
         <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
         <Animated.View style={[styles.sheet, { transform: [{ translateY: slide }] }]}>
           <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>{targetType === 'comment' ? 'REPORT COMMENT' : 'REPORT POST'}</Text>
+          <Text style={styles.sheetTitle}>
+            {targetType === 'comment' ? 'REPORT COMMENT' : targetType === 'user' ? 'REPORT USER' : 'REPORT POST'}
+          </Text>
 
-          {REPORT_REASONS.map(r => (
+          {reasons.map(r => (
             <TouchableOpacity
               key={r.key}
               style={styles.reportReasonRow}
@@ -409,7 +430,16 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
 // ── BadgePostBody ─────────────────────────────────────────────────────────────
 
 function BadgePostBody({ badgeId }: { badgeId: string }) {
-  const badge = BADGE_MAP.get(badgeId);
+  const [badge, setBadge] = useState(() => BADGE_MAP.get(badgeId));
+
+  // Unknown id = admin-defined badge; pull runtime defs then re-read
+  useEffect(() => {
+    if (badge) return;
+    let active = true;
+    ensureBadgeDefs().then(() => { if (active) setBadge(BADGE_MAP.get(badgeId)); });
+    return () => { active = false; };
+  }, [badgeId, badge]);
+
   const tier  = badge?.tier ?? 'bronze';
   const col   = BADGE_TIER_COLORS[tier];
 
@@ -1051,6 +1081,28 @@ export function PostCard({
     setShowMenu(false);
   };
 
+  const handleBlock = () => {
+    setShowMenu(false);
+    Alert.alert(
+      'Block user',
+      `${name} won't be able to see your posts or contact you, and you won't see theirs. This also flags them for review.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block', style: 'destructive',
+          onPress: async () => {
+            try {
+              await blockUser(token, post.clerk_user_id);
+              emitUserBlocked(post.clerk_user_id);
+            } catch {
+              Alert.alert('Error', 'Could not block this user. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleSaveCaption = async () => {
     // Visit posts inherit the visit's visibility, so route the change there;
     // all other posts carry their own
@@ -1167,15 +1219,21 @@ export function PostCard({
                   </TouchableOpacity>
                 </>
               ) : (
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  disabled={reported}
-                  onPress={() => { setShowMenu(false); setShowReportSheet(true); }}
-                >
-                  <Text style={[styles.menuItemText, { color: reported ? C.inkMute : C.liked }]}>
-                    {reported ? 'Reported' : 'Report post'}
-                  </Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    disabled={reported}
+                    onPress={() => { setShowMenu(false); setShowReportSheet(true); }}
+                  >
+                    <Text style={[styles.menuItemText, { color: reported ? C.inkMute : C.liked }]}>
+                      {reported ? 'Reported' : 'Report post'}
+                    </Text>
+                  </TouchableOpacity>
+                  <View style={styles.menuDivider} />
+                  <TouchableOpacity style={styles.menuItem} onPress={handleBlock}>
+                    <Text style={[styles.menuItemText, { color: C.liked }]}>Block user</Text>
+                  </TouchableOpacity>
+                </>
               )}
             </View>
           )}
@@ -1390,7 +1448,13 @@ export function PostCard({
           targetType="post"
           targetId={post.id}
           onClose={() => setShowReportSheet(false)}
-          onSubmitted={() => { setReported(true); Alert.alert('Report submitted', "Thanks — we'll review this."); }}
+          onSubmitted={() => {
+            setReported(true);
+            Alert.alert('Report submitted', "Thanks — we'll review this.");
+            // Wait for the sheet's own close animation so we don't unmount
+            // this card (and its Modal) mid-animation.
+            setTimeout(() => onDelete?.(post.id), 250);
+          }}
         />
       )}
 

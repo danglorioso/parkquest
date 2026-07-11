@@ -6,7 +6,7 @@ import { reports } from '@/lib/db/schema';
 import { notifyAdmin } from '@/lib/notifyAdmin';
 
 const TARGET_TYPES = ['post', 'comment', 'user'] as const;
-const REASONS = ['spam', 'harassment', 'inappropriate', 'other'] as const;
+const REASONS = ['spam', 'harassment', 'inappropriate', 'impersonation', 'misleading', 'blocked', 'other'] as const;
 
 // GET /api/reports — reports the current user has submitted
 export async function GET() {

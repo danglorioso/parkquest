@@ -3,14 +3,14 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, desc, and, or, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { visits, userBadges, posts, friendships, parks, userProfiles } from '@/lib/db/schema';
-import { ALL_BADGES } from '@/lib/badges';
-
-const BADGE_MAP = new Map(ALL_BADGES.map((b) => [b.id, { name: b.name, emoji: b.emoji }]));
+import { getBadgeDisplayMap } from '@/lib/badgeDefs';
 
 export async function GET() {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const BADGE_MAP = await getBadgeDisplayMap();
 
     const friendRows = await db
       .select({

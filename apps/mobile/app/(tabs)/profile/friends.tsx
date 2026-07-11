@@ -718,7 +718,7 @@ const st = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 9,
     backgroundColor: C.surface, borderRadius: 10,
     borderWidth: 0.5, borderColor: C.hairline,
-    padding: 10, paddingHorizontal: 14,
+    height: 40, paddingHorizontal: 14,
   },
   searchInput: { flex: 1, fontSize: 13.5, color: C.ink, padding: 0 },
 

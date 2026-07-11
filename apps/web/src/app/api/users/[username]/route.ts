@@ -3,9 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, count, and, or, isNotNull, sql, desc } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles, visits, friendships, parks, userBadges, posts } from '@/lib/db/schema';
-import { ALL_BADGES } from '@/lib/badges';
-
-const BADGE_MAP = new Map(ALL_BADGES.map((b) => [b.id, { name: b.name, emoji: b.emoji, tier: b.tier }]));
+import { getBadgeDisplayMap } from '@/lib/badgeDefs';
 
 export async function GET(
   _req: Request,
@@ -14,6 +12,7 @@ export async function GET(
   try {
     const { userId: viewerId } = await auth();
     const { username } = await params;
+    const BADGE_MAP = await getBadgeDisplayMap();
 
     const [profile] = await db
       .select()
@@ -212,11 +211,12 @@ export async function GET(
 
     // Badges with metadata, most recent first
     const badges = earnedBadges.map((b) => ({
-      badge_id:  b.badge_id,
-      earned_at: b.earned_at,
-      name:      BADGE_MAP.get(b.badge_id)?.name ?? b.badge_id,
-      emoji:     BADGE_MAP.get(b.badge_id)?.emoji ?? '🏅',
-      tier:      BADGE_MAP.get(b.badge_id)?.tier ?? 'bronze',
+      badge_id:    b.badge_id,
+      earned_at:   b.earned_at,
+      name:        BADGE_MAP.get(b.badge_id)?.name ?? b.badge_id,
+      emoji:       BADGE_MAP.get(b.badge_id)?.emoji ?? '🏅',
+      tier:        BADGE_MAP.get(b.badge_id)?.tier ?? 'bronze',
+      description: BADGE_MAP.get(b.badge_id)?.description ?? null,
     })).reverse();
 
     // Filter posts by visibility: visit posts defer to the linked visit's

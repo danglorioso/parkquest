@@ -43,3 +43,22 @@ const ALL_BADGES: BadgeInfo[] = [
 ];
 
 export const BADGE_MAP = new Map<string, BadgeInfo>(ALL_BADGES.map(b => [b.id, b]));
+
+// ── Admin-defined badges ──────────────────────────────────────────────────────
+// Custom badges live in the server DB, so they can't be mirrored statically.
+// ensureBadgeDefs() merges them into BADGE_MAP at runtime; callers re-read the
+// map once the promise resolves.
+
+const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+let hydrating: Promise<void> | null = null;
+
+export function ensureBadgeDefs(): Promise<void> {
+  hydrating ??= fetch(`${BASE}/api/badges/defs`)
+    .then(r => r.json())
+    .then((d: { badges?: BadgeInfo[] }) => {
+      for (const b of d.badges ?? []) BADGE_MAP.set(b.id, b);
+    })
+    .catch(() => { hydrating = null; }); // allow a retry on next call
+  return hydrating;
+}

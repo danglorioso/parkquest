@@ -2662,9 +2662,13 @@ export default function LogVisitModal() {
                 ]}
                 activeOpacity={0.85}
               >
-                <Text style={{ fontSize: 15, fontWeight: '800', color: canContinue ? C.onPrimary : C.inkMute }}>
-                  {isLast ? (submitting ? 'Saving…' : isEdit ? 'Save' : 'Post') : 'Continue'}
-                </Text>
+                {isLast && submitting ? (
+                  <ActivityIndicator color={C.onPrimary} size="small" />
+                ) : (
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: canContinue ? C.onPrimary : C.inkMute }}>
+                    {isLast ? (isEdit ? 'Save' : 'Post') : 'Continue'}
+                  </Text>
+                )}
                 {!isLast && <Ionicons name="arrow-forward" size={15} color={canContinue ? C.onPrimary : C.inkMute} />}
               </TouchableOpacity>
             </View>

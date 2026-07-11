@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { userBadges } from '@/lib/db/schema';
+import { userBadges, customBadges } from '@/lib/db/schema';
 import { ALL_BADGES } from '@/lib/badges';
 import { requireAdmin } from '@/lib/admin';
 
@@ -9,7 +9,7 @@ export async function GET() {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
-  const [counts, [{ count: activeUsers }]] = await Promise.all([
+  const [counts, [{ count: activeUsers }], customRows] = await Promise.all([
     db.select({ badge_id: userBadges.badge_id, count: sql<number>`COUNT(*)::int` })
       .from(userBadges).groupBy(userBadges.badge_id),
     // "Active users" here = ever engaged (at least one post/visit/like/comment),
@@ -22,17 +22,19 @@ export async function GET() {
         UNION SELECT user_id FROM comments
       ) t
     `).then(r => r.rows as { count: number }[]),
+    db.select().from(customBadges),
   ]);
 
   const countMap = new Map(counts.map(c => [c.badge_id, c.count]));
-  const badges = ALL_BADGES
+  const allDefs = [
+    ...ALL_BADGES.map(b => ({ id: b.id, name: b.name, emoji: b.emoji, tier: b.tier as string, custom: false })),
+    ...customRows.map(b => ({ id: b.badge_id, name: b.name, emoji: b.emoji, tier: b.tier, custom: true })),
+  ];
+  const badges = allDefs
     .map(b => {
       const count = countMap.get(b.id) ?? 0;
       return {
-        id: b.id,
-        name: b.name,
-        emoji: b.emoji,
-        tier: b.tier,
+        ...b,
         count,
         pct_of_active: activeUsers > 0 ? Math.round((count / activeUsers) * 1000) / 10 : 0,
       };

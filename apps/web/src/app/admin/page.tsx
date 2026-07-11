@@ -4,14 +4,17 @@ import { Users, Image as ImageIcon, MapPin, Award, Flag, UserPlus, ChevronRight 
 import { Card } from '@/components/ui/card';
 import {
   SignupsChart, ContributionHeatmap, ActivityInsights, ReportsStatusBar, TopParksList, HourlyActivityChart,
+  DailyActiveUsersChart,
 } from './AdminCharts';
 import { ActiveUsersCard } from './ActiveUsersCard';
+import { UsageGauges } from './UsageGauges';
 
 interface Stats {
   total_users: number;
   total_posts: number;
   total_visits: number;
   total_badges: number;
+  active_users_1h: number;
   active_users_today: number;
   active_users_7d: number;
   active_users_30d: number;
@@ -63,6 +66,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+        <ActiveUsersCard h1={stats.active_users_1h} h24={stats.active_users_today} d7={stats.active_users_7d} d30={stats.active_users_30d} />
         <StatCard href="/admin/users" icon={Users} label="Total users" value={stats.total_users} />
         <StatCard href="/admin/posts" icon={ImageIcon} label="Total posts" value={stats.total_posts} />
         <StatCard href="/admin/visits" icon={MapPin} label="Total visits" value={stats.total_visits} />
@@ -80,8 +84,12 @@ export default async function AdminDashboardPage() {
           label="Signups (30d)"
           value={stats.signups_by_day.reduce((sum, d) => sum + d.count, 0)}
         />
-        <ActiveUsersCard today={stats.active_users_today} d7={stats.active_users_7d} d30={stats.active_users_30d} />
       </div>
+
+      <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Active users — last 30 days</h2>
+        <DailyActiveUsersChart data={stats.activity_by_day} />
+      </Card>
 
       <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Activity — last 12 months</h2>
@@ -126,6 +134,11 @@ export default async function AdminDashboardPage() {
           <Link href="/admin/parks" className="text-xs font-semibold text-primary hover:underline">All parks →</Link>
         </div>
         <TopParksList parks={stats.top_parks} />
+      </Card>
+
+      <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Usage &amp; limits</h2>
+        <UsageGauges />
       </Card>
     </div>
   );

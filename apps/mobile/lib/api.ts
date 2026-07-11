@@ -148,8 +148,8 @@ export interface AdminStats {
 export const getAdminStats = (token: string) =>
   req<AdminStats>('/api/admin/stats', token);
 
-export const getAdminReports = (token: string) =>
-  req<EnrichedReport[]>('/api/admin/reports?status=open', token);
+export const getAdminReports = (token: string, status: 'open' | 'dismissed' | 'actioned' = 'open') =>
+  req<EnrichedReport[]>(`/api/admin/reports?status=${status}`, token);
 
 export const actOnReport = (token: string, id: number, action: 'dismiss' | 'remove_content' | 'ban_user') =>
   req(`/api/admin/reports/${id}`, token, { method: 'PATCH', body: JSON.stringify({ action }) });

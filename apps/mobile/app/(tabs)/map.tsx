@@ -1866,7 +1866,7 @@ const styles = StyleSheet.create({
   mapControls: {
     position: 'absolute',
     right: 14,
-    zIndex: 20,
+    zIndex: 31,
     flexDirection: 'column',
     gap: 4,
   },

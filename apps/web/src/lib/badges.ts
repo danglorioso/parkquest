@@ -1,6 +1,10 @@
 // ─── Badge system ─────────────────────────────────────────────────────────────
 // To add a new badge: add one entry to ALL_BADGES. That's it.
 // The API route will automatically pick it up, evaluate it, and award it.
+// Admins can also define badges at runtime (custom_badges table) — see the
+// condition engine below and /api/admin/custom-badges.
+
+import type { BadgeCondition } from '@parkquest/types';
 
 export type BadgeTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'legendary';
 
@@ -11,6 +15,12 @@ export interface UserStats {
   bucketListCount: number;
   parksThisYear: number;
   maxParksInAYear: number;
+  // Extended stats for admin-defined (custom) badge conditions
+  totalVisits: number;             // all visit logs (trips), repeat parks counted
+  maxVisitsToOnePark: number;      // most trips logged to any single park
+  maxVisitsInAYear: number;        // most visit logs in one calendar year
+  maxUniqueParksInAYear: number;   // most distinct parks visited in one calendar year
+  visitedParkCodes: string[];      // distinct parks visited
 }
 
 export interface BadgeDefinition {
@@ -309,6 +319,75 @@ export const ALL_BADGES: BadgeDefinition[] = [
   },
 ];
 
+// ─── Custom badge condition engine ─────────────────────────────────────────────
+// Admin-defined badges store an array of BadgeCondition (AND semantics) in the
+// custom_badges table; this evaluates them against the same UserStats.
+
+/** current/target progress for one condition against the user's stats */
+export function conditionProgress(c: BadgeCondition, stats: UserStats): { current: number; target: number } {
+  switch (c.type) {
+    case 'parks_visited':         return { current: stats.parksVisited,          target: c.count ?? 1 };
+    case 'states_visited':        return { current: stats.statesVisited,         target: c.count ?? 1 };
+    case 'bucket_list_count':     return { current: stats.bucketListCount,       target: c.count ?? 1 };
+    case 'total_visits':          return { current: stats.totalVisits,           target: c.count ?? 1 };
+    case 'visits_to_single_park': return { current: stats.maxVisitsToOnePark,    target: c.count ?? 1 };
+    case 'parks_in_year':         return { current: stats.maxUniqueParksInAYear, target: c.count ?? 1 };
+    case 'visits_in_year':        return { current: stats.maxVisitsInAYear,      target: c.count ?? 1 };
+    case 'specific_parks': {
+      const wanted = c.parkCodes ?? [];
+      const visited = new Set(stats.visitedParkCodes);
+      const matched = wanted.filter(code => visited.has(code)).length;
+      const target = c.mode === 'any' ? Math.min(c.count ?? wanted.length, wanted.length) : wanted.length;
+      return { current: Math.min(matched, target), target };
+    }
+  }
+}
+
+export function conditionMet(c: BadgeCondition, stats: UserStats): boolean {
+  const { current, target } = conditionProgress(c, stats);
+  return target > 0 && current >= target;
+}
+
+/** All conditions must hold. Empty condition lists never award. */
+export function conditionsMet(conditions: BadgeCondition[], stats: UserStats): boolean {
+  return conditions.length > 0 && conditions.every(c => conditionMet(c, stats));
+}
+
+/** Progress of the least-complete (binding) condition, for locked-badge display. */
+export function conditionsProgress(conditions: BadgeCondition[], stats: UserStats): { current: number; target: number } | null {
+  if (conditions.length === 0) return null;
+  let worst: { current: number; target: number } | null = null;
+  let worstRatio = Infinity;
+  for (const c of conditions) {
+    const p = conditionProgress(c, stats);
+    const ratio = p.target > 0 ? p.current / p.target : 1;
+    if (ratio < worstRatio) { worstRatio = ratio; worst = p; }
+  }
+  return worst;
+}
+
+/** Human-readable summary of one condition (admin UI + badge descriptions). */
+export function describeCondition(c: BadgeCondition, parkNames?: Map<string, string>): string {
+  const n = c.count ?? 1;
+  switch (c.type) {
+    case 'parks_visited':         return `Visit ${n} park${n === 1 ? '' : 's'}`;
+    case 'states_visited':        return `Visit parks in ${n} state${n === 1 ? '' : 's'}`;
+    case 'bucket_list_count':     return `Add ${n} park${n === 1 ? '' : 's'} to your bucket list`;
+    case 'total_visits':          return `Log ${n} total trip${n === 1 ? '' : 's'}`;
+    case 'visits_to_single_park': return `Log ${n} trip${n === 1 ? '' : 's'} to the same park`;
+    case 'parks_in_year':         return `Visit ${n} different park${n === 1 ? '' : 's'} in one calendar year`;
+    case 'visits_in_year':        return `Log ${n} trip${n === 1 ? '' : 's'} in one calendar year`;
+    case 'specific_parks': {
+      const codes = c.parkCodes ?? [];
+      const names = codes.map(code => parkNames?.get(code) ?? code.toUpperCase());
+      const list = names.length <= 4 ? names.join(', ') : `${names.slice(0, 3).join(', ')} +${names.length - 3} more`;
+      return c.mode === 'any'
+        ? `Visit any ${Math.min(c.count ?? codes.length, codes.length)} of: ${list}`
+        : `Visit all of: ${list}`;
+    }
+  }
+}
+
 // ─── Stats computation ─────────────────────────────────────────────────────────
 
 export function computeStats(
@@ -334,13 +413,20 @@ export function computeStats(
   ).length;
 
   const byYear: Record<number, number> = {};
+  const parksByYear: Record<number, Set<string>> = {};
   actualVisits.forEach(v => {
     if (v.visited_date) {
       const y = new Date(v.visited_date).getFullYear();
       byYear[y] = (byYear[y] ?? 0) + 1;
+      (parksByYear[y] ??= new Set()).add(v.park_code);
     }
   });
   const maxParksInAYear = Object.values(byYear).length > 0 ? Math.max(...Object.values(byYear)) : 0;
+  const maxUniqueParksInAYear = Object.values(parksByYear).reduce((m, s) => Math.max(m, s.size), 0);
+
+  const byPark: Record<string, number> = {};
+  actualVisits.forEach(v => { byPark[v.park_code] = (byPark[v.park_code] ?? 0) + 1; });
+  const maxVisitsToOnePark = Object.values(byPark).reduce((m, n) => Math.max(m, n), 0);
 
   return {
     parksVisited: visitedCodes.size,
@@ -349,5 +435,10 @@ export function computeStats(
     bucketListCount: bucketListItems.length,
     parksThisYear,
     maxParksInAYear,
+    totalVisits: actualVisits.length,
+    maxVisitsToOnePark,
+    maxVisitsInAYear: maxParksInAYear, // byYear counts visit logs per year
+    maxUniqueParksInAYear,
+    visitedParkCodes: Array.from(visitedCodes),
   };
 }

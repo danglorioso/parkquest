@@ -13,6 +13,7 @@ export async function GET() {
     [{ count: totalPosts }],
     [{ count: totalVisits }],
     [{ count: totalBadges }],
+    [{ count: activeUsers1h }],
     [{ count: activeUsersToday }],
     [{ count: activeUsers7d }],
     [{ count: activeUsers30d }],
@@ -26,6 +27,14 @@ export async function GET() {
     db.select({ count: sql<number>`COUNT(*)::int` }).from(posts),
     db.select({ count: sql<number>`COUNT(*)::int` }).from(visits),
     db.select({ count: sql<number>`COUNT(*)::int` }).from(userBadges),
+    db.execute(sql`
+      SELECT COUNT(DISTINCT user_id)::int AS count FROM (
+        SELECT clerk_user_id AS user_id FROM posts WHERE created_at > NOW() - INTERVAL '1 hour'
+        UNION SELECT clerk_user_id FROM visits WHERE created_at > NOW() - INTERVAL '1 hour'
+        UNION SELECT user_id FROM likes WHERE created_at > NOW() - INTERVAL '1 hour'
+        UNION SELECT user_id FROM comments WHERE created_at > NOW() - INTERVAL '1 hour'
+      ) t
+    `).then(r => r.rows as { count: number }[]),
     db.execute(sql`
       SELECT COUNT(DISTINCT user_id)::int AS count FROM (
         SELECT clerk_user_id AS user_id FROM posts WHERE created_at > NOW() - INTERVAL '1 day'
@@ -112,6 +121,7 @@ export async function GET() {
     total_posts: totalPosts,
     total_visits: totalVisits,
     total_badges: totalBadges,
+    active_users_1h: activeUsers1h,
     active_users_today: activeUsersToday,
     active_users_7d: activeUsers7d,
     active_users_30d: activeUsers30d,

@@ -163,6 +163,7 @@ export default function UserProfileScreen() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showReportUserSheet, setShowReportUserSheet] = useState(false);
   const [reportedUser, setReportedUser] = useState(false);
+  const [postBlockReport, setPostBlockReport] = useState(false);
 
   const isOwnProfile = me?.id === id;
 
@@ -314,7 +315,7 @@ export default function UserProfileScreen() {
     const name = profile.display_name ?? profile.username;
     Alert.alert(
       'Block user',
-      `${name} won't be able to see your posts or contact you, and you won't see theirs. This also flags them for review.`,
+      `${name} won't be able to see your posts or contact you, and you won't see theirs.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -330,7 +331,14 @@ export default function UserProfileScreen() {
             setBlockBusy(false);
             if (res.ok) {
               emitUserBlocked(profile.clerk_user_id);
-              router.back();
+              Alert.alert(
+                'User blocked',
+                `Would you like to also report ${name}?`,
+                [
+                  { text: 'Not now', style: 'cancel', onPress: () => router.back() },
+                  { text: 'Report', onPress: () => { setPostBlockReport(true); setShowReportUserSheet(true); } },
+                ]
+              );
             } else {
               Alert.alert('Error', 'Could not block this user. Please try again.');
             }
@@ -394,7 +402,7 @@ export default function UserProfileScreen() {
                   <TouchableOpacity
                     style={styles.profileMenuItem}
                     disabled={reportedUser}
-                    onPress={() => { setShowProfileMenu(false); setShowReportUserSheet(true); }}
+                    onPress={() => { setShowProfileMenu(false); setPostBlockReport(false); setShowReportUserSheet(true); }}
                   >
                     <Text style={[styles.profileMenuItemText, { color: reportedUser ? C.inkMute : C.liked }]}>
                       {reportedUser ? 'Reported' : 'Report user'}
@@ -461,7 +469,7 @@ export default function UserProfileScreen() {
                 disabled={profile.friend_count === 0}
               >
                 <Text style={styles.statValue}>{profile.friend_count}</Text>
-                <Text style={styles.statLabel}>FRIENDS</Text>
+                <Text style={styles.statLabel}>{profile.friend_count === 1 ? 'FRIEND' : 'FRIENDS'}</Text>
               </TouchableOpacity>
             </View>
 
@@ -632,7 +640,7 @@ export default function UserProfileScreen() {
             token={token}
             targetType="user"
             targetId={profile.clerk_user_id}
-            onClose={() => setShowReportUserSheet(false)}
+            onClose={() => { setShowReportUserSheet(false); if (postBlockReport) router.back(); }}
             onSubmitted={() => { setReportedUser(true); Alert.alert('Report submitted', "Thanks — we'll review this."); }}
           />
         ) : null}

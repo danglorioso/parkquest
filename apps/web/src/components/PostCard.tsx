@@ -59,7 +59,21 @@ export interface FeedPost {
 
 // ── Badge lookup ──────────────────────────────────────────────────────────────
 
-export const BADGE_MAP = new Map(ALL_BADGES.map(b => [b.id, b]));
+export const BADGE_MAP = new Map<string, { id: string; name: string; description: string; emoji: string; tier: string }>(
+  ALL_BADGES.map(b => [b.id, b]),
+);
+
+// Admin-defined badges aren't in the static list; merge them in at runtime.
+let badgeDefsPromise: Promise<void> | null = null;
+function ensureBadgeDefs(): Promise<void> {
+  badgeDefsPromise ??= fetch('/api/badges/defs')
+    .then(r => r.json())
+    .then((d: { badges?: { id: string; name: string; description: string; emoji: string; tier: string }[] }) => {
+      for (const b of d.badges ?? []) BADGE_MAP.set(b.id, b);
+    })
+    .catch(() => { badgeDefsPromise = null; }); // allow a retry on next call
+  return badgeDefsPromise;
+}
 
 export const BADGE_TIER_COLORS: Record<string, { fill: string; light: string }> = {
   bronze:    { fill: "#B27339", light: "#D4A070" },
@@ -361,7 +375,16 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
 // ── BadgePostBody ─────────────────────────────────────────────────────────────
 
 function BadgePostBody({ badgeId }: { badgeId: string }) {
-  const badge = BADGE_MAP.get(badgeId);
+  const [badge, setBadge] = useState(() => BADGE_MAP.get(badgeId));
+
+  // Unknown id = admin-defined badge; pull runtime defs then re-read
+  useEffect(() => {
+    if (badge) return;
+    let active = true;
+    ensureBadgeDefs().then(() => { if (active) setBadge(BADGE_MAP.get(badgeId)); });
+    return () => { active = false; };
+  }, [badgeId, badge]);
+
   if (!badge) return null;
   const colors = BADGE_TIER_COLORS[badge.tier] ?? BADGE_TIER_COLORS.bronze;
 

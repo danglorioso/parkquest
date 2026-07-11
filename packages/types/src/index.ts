@@ -99,7 +99,7 @@ export interface EnrichedComment {
 }
 
 export type ReportTargetType = 'post' | 'comment' | 'user';
-export type ReportReason = 'spam' | 'harassment' | 'inappropriate' | 'other';
+export type ReportReason = 'spam' | 'harassment' | 'inappropriate' | 'impersonation' | 'misleading' | 'blocked' | 'other';
 export type ReportStatus = 'open' | 'actioned' | 'dismissed';
 
 export interface Report {
@@ -121,6 +121,7 @@ export interface EnrichedReport extends Report {
   target_username: string | null;
   target_display_name: string | null;
   target_content: string | null; // post caption / comment content, when applicable
+  target_photos: string[] | null; // post photos, when target_type is 'post'
 }
 
 export interface BlockedUser {
@@ -155,6 +156,54 @@ export interface UserStats {
 export interface BadgesResponse {
   badges: Badge[];
   stats: UserStats;
+}
+
+// ── Custom badges (admin-defined) ───────────────────────────────────────────
+
+/**
+ * A single earning condition for an admin-defined badge. All conditions on a
+ * badge must hold (AND). Numeric types compare a user stat against `count`.
+ */
+export type BadgeConditionType =
+  | 'parks_visited'          // unique parks visited >= count
+  | 'states_visited'         // unique states visited >= count
+  | 'bucket_list_count'      // bucket list items >= count
+  | 'total_visits'           // total visit logs (trips) >= count
+  | 'visits_to_single_park'  // most trips logged to any one park >= count
+  | 'parks_in_year'          // unique parks visited in one calendar year >= count
+  | 'visits_in_year'         // visit logs in one calendar year >= count
+  | 'specific_parks';        // visited a specific collection of parks
+
+export interface BadgeCondition {
+  type: BadgeConditionType;
+  /** Threshold for numeric types; for specific_parks + mode 'any', how many of the listed parks. */
+  count?: number;
+  /** specific_parks only: the park collection. */
+  parkCodes?: string[];
+  /** specific_parks only: visit 'all' listed parks, or 'any' `count` of them. Defaults to 'all'. */
+  mode?: 'all' | 'any';
+}
+
+export interface CustomBadge {
+  id: number;
+  badge_id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  tier: BadgeTier;
+  conditions: BadgeCondition[];
+  enabled: boolean;
+  created_at: Date | null;
+  updated_at: Date | null;
+}
+
+/** Minimal display info for any badge (static or custom), for rendering share posts etc. */
+export interface BadgeDef {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  tier: BadgeTier;
 }
 
 // Convenience type for park + visit status on map/list views

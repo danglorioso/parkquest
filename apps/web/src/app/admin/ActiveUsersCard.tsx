@@ -5,16 +5,17 @@ import { Activity } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
 const WINDOWS = [
-  { key: 'today', label: 'Today', active: 1 },
-  { key: '7d', label: '7d', active: 7 },
-  { key: '30d', label: '30d', active: 30 },
+  { key: '1h', label: '1h' },
+  { key: '24h', label: '24h' },
+  { key: '7d', label: '7d' },
+  { key: '30d', label: '30d' },
 ] as const;
 
 export function ActiveUsersCard({
-  today, d7, d30,
-}: { today: number; d7: number; d30: number }) {
-  const [windowKey, setWindowKey] = useState<(typeof WINDOWS)[number]['key']>('7d');
-  const values = { today, '7d': d7, '30d': d30 };
+  h1, h24, d7, d30,
+}: { h1: number; h24: number; d7: number; d30: number }) {
+  const [windowKey, setWindowKey] = useState<(typeof WINDOWS)[number]['key']>('1h');
+  const values = { '1h': h1, '24h': h24, '7d': d7, '30d': d30 };
 
   return (
     <Card className="items-start gap-2 border-hairline p-3.5 shadow-[var(--shadow-card)]">

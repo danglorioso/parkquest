@@ -470,7 +470,7 @@ export default function ProfileScreen() {
               { label: 'VISITED', value: visitsLoaded ? `${parksVisited}/63` : '–' },
               { label: 'TRIPS',   value: visitsLoaded ? String(tripsCount) : '–' },
               { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–' },
-              { label: 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–' },
+              { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–' },
             ] as { label: string; value: string }[]).map(s => (
               <View key={s.label} style={styles.passportStatItem}>
                 <Text style={styles.passportStatLabel}>{s.label}</Text>

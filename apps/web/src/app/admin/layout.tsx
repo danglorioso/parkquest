@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { Flag } from 'lucide-react';
 import { requireAdmin } from '@/lib/admin';
 import { db } from '@/lib/db';
@@ -14,14 +14,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const admin = await requireAdmin();
   if (!admin) redirect('/');
 
-  // Presence check only — deliberately not a count. Reports are never deleted,
-  // only dismissed or actioned, so this banner clears itself once every open
-  // report has been reviewed.
-  const [openReport] = await db
-    .select({ id: reports.id })
+  // Reports are never deleted, only dismissed or actioned, so this banner
+  // clears itself once every open report has been reviewed.
+  const [{ openCount }] = await db
+    .select({ openCount: sql<number>`count(*)::int` })
     .from(reports)
-    .where(eq(reports.status, 'open'))
-    .limit(1);
+    .where(eq(reports.status, 'open'));
 
   return (
     <div className="min-h-screen bg-bg">
@@ -36,13 +34,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <AdminNav />
         </div>
       </header>
-      {openReport && (
+      {openCount > 0 && (
         <Link
           href="/admin/reports"
           className="flex items-center justify-center gap-2 border-b border-destructive/30 bg-destructive/10 px-5 py-2.5 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/15"
         >
           <Flag size={14} strokeWidth={2.5} />
-          Unaddressed reports need review — go to reports queue
+          {openCount} unaddressed report{openCount !== 1 ? 's' : ''} {openCount !== 1 ? 'need' : 'needs'} review — go to reports queue
         </Link>
       )}
       <main className="mx-auto max-w-5xl px-5 py-8">{children}</main>

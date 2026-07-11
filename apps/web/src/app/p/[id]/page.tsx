@@ -1,86 +1,65 @@
-import Link from 'next/link';
+import type { Metadata } from 'next';
+import { eq, sql } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { posts, parks, userProfiles, visits } from '@/lib/db/schema';
+import { PostFallbackClient } from './PostFallbackClient';
 
-// Universal Link fallback for shared posts. On iOS devices with ParkQuest
-// installed the app intercepts /p/* and opens the post directly; everyone
-// else lands here. Post content is not rendered — posts can be
-// friends-only, and this page is public.
+// TODO: set once the app is live on the App Store (numeric App Store ID for
+// the apple-itunes-app smart banner, e.g. "6474123456")
+export const APP_STORE_ID: string | null = null;
+export const APP_STORE_URL: string | null = null;
 
-// TODO: set once the app is live on the App Store
-const APP_STORE_URL: string | null = null;
+async function getMetaPost(id: string) {
+  const postId = Number(id);
+  if (isNaN(postId)) return null;
+  const [post] = await db
+    .select({
+      caption: posts.caption,
+      photos: posts.photos,
+      park_name: parks.name,
+      display_name: userProfiles.display_name,
+      username: userProfiles.username,
+      visibility: sql<string>`COALESCE(${visits.visibility}, ${posts.visibility}, 'public')`,
+    })
+    .from(posts)
+    .leftJoin(parks, eq(posts.park_code, parks.park_code))
+    .leftJoin(userProfiles, eq(posts.clerk_user_id, userProfiles.clerk_user_id))
+    .leftJoin(visits, eq(posts.visit_id, visits.id))
+    .where(eq(posts.id, postId))
+    .limit(1);
+  return post ?? null;
+}
 
-export default function SharedPostPage() {
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#F2EBDB',
-        padding: 24,
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 420,
-          width: '100%',
-          background: '#FFFBF1',
-          border: '1px solid rgba(27,26,22,0.10)',
-          borderRadius: 20,
-          padding: '40px 32px',
-          textAlign: 'center',
-        }}
-      >
-        <div style={{ fontSize: 40, marginBottom: 12 }}>🏞️</div>
-        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '2px', color: '#7A746A' }}>
-          PARKQUEST
-        </div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1B1A16', margin: '10px 0 8px', letterSpacing: '-0.5px' }}>
-          This post lives in the app
-        </h1>
-        <p style={{ fontSize: 14, color: '#7A746A', lineHeight: 1.5, margin: '0 0 24px' }}>
-          Download ParkQuest to see this post, log your own park visits, and
-          follow friends&apos; adventures.
-        </p>
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const post = await getMetaPost(id);
 
-        {APP_STORE_URL ? (
-          <a
-            href={APP_STORE_URL}
-            style={{
-              display: 'inline-block',
-              background: '#1F3D2E',
-              color: '#FFFBF1',
-              fontWeight: 700,
-              fontSize: 14,
-              padding: '13px 28px',
-              borderRadius: 12,
-              textDecoration: 'none',
-            }}
-          >
-            Get ParkQuest on the App Store
-          </a>
-        ) : (
-          <div
-            style={{
-              display: 'inline-block',
-              background: 'rgba(31,61,46,0.08)',
-              color: '#1F3D2E',
-              fontWeight: 700,
-              fontSize: 14,
-              padding: '13px 28px',
-              borderRadius: 12,
-            }}
-          >
-            Coming soon to the App Store
-          </div>
-        )}
+  // Only public posts get a real preview — private/friends-only posts (and
+  // missing posts) fall back to a generic teaser so nothing leaks to crawlers.
+  if (!post || post.visibility !== 'public') {
+    return {
+      title: 'A post on ParkQuest',
+      description: "Download ParkQuest to see this post and follow friends' national park adventures.",
+    };
+  }
 
-        <div style={{ marginTop: 20 }}>
-          <Link href="/parks" style={{ fontSize: 13, color: '#7A746A', textDecoration: 'none', fontWeight: 600 }}>
-            Explore national parks on the web →
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
+  const author = post.display_name || (post.username ? `@${post.username}` : 'A ParkQuest explorer');
+  const title = post.park_name ? `${author} at ${post.park_name}` : `A post from ${author}`;
+  const description = post.caption || `See ${author}'s national park adventure on ParkQuest.`;
+  const image = Array.isArray(post.photos) && post.photos.length > 0
+    ? (typeof post.photos[0] === 'string' ? post.photos[0] : (post.photos[0] as { url: string }).url)
+    : undefined;
+
+  return {
+    title,
+    description,
+    openGraph: { title, description, images: image ? [image] : undefined },
+    twitter: { card: image ? 'summary_large_image' : 'summary', title, description, images: image ? [image] : undefined },
+    other: APP_STORE_ID ? { 'apple-itunes-app': `app-id=${APP_STORE_ID}, app-argument=https://parkquest.me/p/${id}` } : {},
+  };
+}
+
+export default async function SharedPostPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <PostFallbackClient id={id} appStoreUrl={APP_STORE_URL} />;
 }

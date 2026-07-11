@@ -1,6 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BADGE_MAP, BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
+import { BADGE_MAP, BADGE_TIER_COLORS, ensureBadgeDefs, type BadgeTier } from '@/lib/badges';
 import { STATIC as C } from '@/lib/palette';
 
 // Light badge detail modal — emoji, tier, how-to-earn, earned date.
@@ -16,7 +17,15 @@ export interface BadgeModalData {
 }
 
 export function BadgeInfoModal({ badge, onClose }: { badge: BadgeModalData; onClose: () => void }) {
-  const def = BADGE_MAP.get(badge.id);
+  const [def, setDef] = useState(() => BADGE_MAP.get(badge.id));
+
+  // Unknown id = admin-defined badge; pull runtime defs then re-read
+  useEffect(() => {
+    if (def) return;
+    let active = true;
+    ensureBadgeDefs().then(() => { if (active) setDef(BADGE_MAP.get(badge.id)); });
+    return () => { active = false; };
+  }, [badge.id, def]);
   const tint = (BADGE_TIER_COLORS[badge.tier as BadgeTier] ?? BADGE_TIER_COLORS.bronze).fill;
   const earnedDate = badge.earned_at
     ? new Date(badge.earned_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })

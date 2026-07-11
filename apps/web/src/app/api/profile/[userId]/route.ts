@@ -3,9 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, count, and, or, isNotNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles, visits, friendships, parks, userBadges } from '@/lib/db/schema';
-import { ALL_BADGES } from '@/lib/badges';
-
-const BADGE_MAP = new Map(ALL_BADGES.map((b) => [b.id, { name: b.name, emoji: b.emoji, tier: b.tier }]));
+import { getBadgeDisplayMap } from '@/lib/badgeDefs';
 
 export async function GET(
   _req: Request,
@@ -14,6 +12,7 @@ export async function GET(
   try {
     const { userId: viewerId } = await auth();
     const { userId } = await params;
+    const BADGE_MAP = await getBadgeDisplayMap();
 
     const [profile] = await db
       .select()

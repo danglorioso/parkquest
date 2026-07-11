@@ -56,13 +56,15 @@ export async function POST(request: Request) {
     if (inserted) {
       // Blocking always produces a developer-visible report so abuse doesn't
       // go unnoticed just because the victim only blocked instead of reporting.
+      // Classified separately from 'harassment' — it's just a block, not an
+      // accusation. Removed automatically if the blocker unblocks (see DELETE below).
       const [report] = await db
         .insert(reports)
         .values({
           reporter_id: userId,
           target_type: 'user',
           target_id: targetId,
-          reason: 'harassment',
+          reason: 'blocked',
           details: reason ?? 'User blocked another user.',
         })
         .returning();
@@ -99,6 +101,19 @@ export async function DELETE(request: Request) {
 
     await db.delete(blocks).where(
       and(eq(blocks.blocker_id, userId), eq(blocks.blocked_id, targetId))
+    );
+
+    // Clear the auto-generated 'blocked' report so it doesn't linger in the
+    // queue once the blocker has reversed their decision. Any real report
+    // the user separately filed (a different reason) is left untouched.
+    await db.delete(reports).where(
+      and(
+        eq(reports.reporter_id, userId),
+        eq(reports.target_type, 'user'),
+        eq(reports.target_id, targetId),
+        eq(reports.reason, 'blocked'),
+        eq(reports.status, 'open'),
+      )
     );
 
     return NextResponse.json({ message: 'Unblocked' });

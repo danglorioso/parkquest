@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { Card } from '@/components/ui/card';
+import CustomBadgeManager from './CustomBadgeManager';
 
 interface BadgeRow {
   id: string;
@@ -8,6 +9,7 @@ interface BadgeRow {
   tier: string;
   count: number;
   pct_of_active: number;
+  custom?: boolean;
 }
 
 async function getBadges() {
@@ -36,12 +38,16 @@ export default async function AdminBadgesPage() {
         </p>
       </div>
 
+      <CustomBadgeManager />
+
       <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
         <div className="flex flex-col gap-3">
           {badges.map(b => (
             <div key={b.id} className="flex items-center gap-3">
               <span className="w-7 shrink-0 text-lg leading-none">{b.emoji}</span>
-              <span className="w-40 shrink-0 truncate text-sm font-medium text-ink-soft">{b.name}</span>
+              <span className="w-40 shrink-0 truncate text-sm font-medium text-ink-soft">
+                {b.name}{b.custom ? <span className="ml-1.5 text-xs font-normal text-ink-mute">(custom)</span> : null}
+              </span>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-alt">
                 <div className="h-full rounded-full bg-primary" style={{ width: `${(b.count / max) * 100}%` }} />
               </div>

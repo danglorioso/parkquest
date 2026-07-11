@@ -5,10 +5,16 @@ import { expoPushTokens } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 
 export async function POST(request: Request) {
+  let userId: string | null;
   try {
-    const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    ({ userId } = await auth());
+  } catch (error) {
+    console.error("[push-tokens] auth() failed:", error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  try {
     const { token } = await request.json();
     if (!token || typeof token !== "string") {
       return NextResponse.json({ error: "token is required" }, { status: 400 });
@@ -24,7 +30,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("Error saving push token:", error);
+    console.error(
+      "[push-tokens] failed to save token:",
+      error instanceof Error ? `${error.name}: ${error.message}` : error
+    );
     return NextResponse.json({ error: "Failed to save token" }, { status: 500 });
   }
 }

@@ -31,6 +31,7 @@ interface BadgeData {
   name: string;
   emoji: string;
   tier: string;
+  description?: string | null;
 }
 
 interface VisitedPark {
@@ -91,7 +92,10 @@ const TIER_BG: Record<string, string> = {
 };
 
 function BadgeModal({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
-  const def = ALL_BADGES.find((b) => b.id === badge.badge_id);
+  // API supplies the description (covers admin-defined badges); static defs are the fallback
+  const def = badge.description
+    ? { description: badge.description }
+    : ALL_BADGES.find((b) => b.id === badge.badge_id);
   const tierColor = TIER_COLOR[badge.tier] ?? "#888";
   const tierBg = TIER_BG[badge.tier] ?? "#F9F9F9";
   const earnedDate = badge.earned_at

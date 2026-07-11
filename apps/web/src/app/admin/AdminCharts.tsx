@@ -62,6 +62,65 @@ export function SignupsChart({ data }: { data: { day: string; count: number }[] 
   );
 }
 
+// ── Daily active users, trailing 30 days ─────────────────────────────────────────
+
+export function DailyActiveUsersChart({ data }: { data: { day: string; count: number }[] }) {
+  const [tip, setTip] = useState<TooltipState | null>(null);
+
+  // `data` is the trailing-year activity feed (one row per day with ≥1 active
+  // user); slice the last 30 calendar days and zero-fill the quiet ones so the
+  // axis is a true 30-day window.
+  const days = useMemo(() => {
+    const byDay = new Map(data.map(d => [d.day, d.count]));
+    const out: { day: string; date: Date; count: number }[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      out.push({ day: key, date: d, count: byDay.get(key) ?? 0 });
+    }
+    return out;
+  }, [data]);
+
+  const max = Math.max(...days.map(d => d.count), 1);
+
+  return (
+    <div className="relative">
+      <div className="flex h-32 items-end gap-[3px]">
+        {days.map(d => (
+          <div
+            key={d.day}
+            className="group flex-1"
+            onMouseEnter={e => {
+              const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+              const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
+              setTip({
+                x: r.left - parent.left + r.width / 2,
+                y: r.top - parent.top,
+                title: d.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                value: `${d.count} active user${d.count !== 1 ? 's' : ''}`,
+              });
+            }}
+            onMouseLeave={() => setTip(null)}
+          >
+            <div
+              className="rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
+              style={{ height: `${Math.max((d.count / max) * 100, d.count > 0 ? 6 : 2)}%`, minHeight: 2 }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 flex justify-between text-[10px] text-ink-mute">
+        <span>{days[0].date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+        <span>Today</span>
+      </div>
+      <ChartTooltip tip={tip} />
+    </div>
+  );
+}
+
 // ── Contribution heatmap ─────────────────────────────────────────────────────────
 
 function bucketLevel(count: number, max: number): 0 | 1 | 2 | 3 | 4 | 5 {

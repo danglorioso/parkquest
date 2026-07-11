@@ -94,6 +94,24 @@ export const userBadges = pgTable('user_badges', {
   earned_at: timestamp('earned_at').defaultNow().notNull(),
 }, (t) => [unique().on(t.clerk_user_id, t.badge_id)]);
 
+// Admin-defined badges. badge_id shares the user_badges.badge_id namespace with
+// the static badges in lib/badges.ts, so custom ids are prefixed 'custom_'.
+export const customBadges = pgTable('custom_badges', {
+  id: serial('id').primaryKey(),
+  badge_id: varchar('badge_id', { length: 100 }).notNull().unique(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description').notNull(),
+  emoji: varchar('emoji', { length: 20 }).notNull(),
+  tier: varchar('tier', { length: 20 }).notNull().default('bronze'), // BadgeTier
+  conditions: jsonb('conditions').$type<import('@parkquest/types').BadgeCondition[]>().notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type CustomBadgeRow = typeof customBadges.$inferSelect;
+export type NewCustomBadgeRow = typeof customBadges.$inferInsert;
+
 export type Park = typeof parks.$inferSelect;
 export type NewPark = typeof parks.$inferInsert;
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -122,7 +140,7 @@ export const reports = pgTable('reports', {
   reporter_id: varchar('reporter_id', { length: 255 }).notNull(),
   target_type: varchar('target_type', { length: 20 }).notNull(), // 'post' | 'comment' | 'user'
   target_id: varchar('target_id', { length: 255 }).notNull(),    // post.id / comment.id / clerk_user_id, stringified
-  reason: varchar('reason', { length: 40 }).notNull(),           // 'spam' | 'harassment' | 'inappropriate' | 'other'
+  reason: varchar('reason', { length: 40 }).notNull(),           // 'spam' | 'harassment' | 'inappropriate' | 'impersonation' | 'misleading' | 'blocked' | 'other'
   details: text('details'),
   status: varchar('status', { length: 20 }).notNull().default('open'), // 'open' | 'actioned' | 'dismissed'
   reviewed_by: varchar('reviewed_by', { length: 255 }),

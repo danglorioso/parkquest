@@ -10,15 +10,16 @@ interface AdminAlert {
   details?: string | null;
 }
 
+const REPORTS_EMAIL = 'support@parkquest.me';
+
 export async function notifyAdmin(alert: AdminAlert) {
   const apiKey = process.env.RESEND_API_KEY;
-  const adminEmail = process.env.ADMIN_EMAIL;
-  if (!apiKey || !adminEmail) return;
+  if (!apiKey) return;
 
   const resend = new Resend(apiKey);
   await resend.emails.send({
     from: 'ParkQuest Moderation <moderation@parkquest.me>',
-    to: adminEmail,
+    to: REPORTS_EMAIL,
     subject: alert.subject,
     text: [
       `Report #${alert.reportId}`,
