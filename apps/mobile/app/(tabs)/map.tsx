@@ -1935,7 +1935,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pillBtnActive: {
-    backgroundColor: 'rgba(31,61,46,0.10)',
+    backgroundColor: dyn('rgba(31,61,46,0.10)', 'rgba(240,234,217,0.16)'),
   },
   pillDot: {
     width: 7,
