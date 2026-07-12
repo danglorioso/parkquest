@@ -5,6 +5,7 @@ import { useUser } from "@clerk/nextjs";
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Eye, Globe, Lock, MapPin, Search, Star, Upload, Users, X } from "lucide-react";
 import { LightboxModal } from "@/components/LightboxModal";
 import { useToast } from "@/components/ToastProvider";
+import { getDefaultVisibility } from "@/lib/settings";
 
 // ── Inline SVG icons matching the design reference exactly ────────────────
 
@@ -302,12 +303,15 @@ function DraftSelector({ drafts, onRestore, onDelete, onStartFresh }: {
 }
 
 function makeBlankDraft(): VisitDraft {
+  // New entries start at the user's default visibility (Settings → Privacy & safety)
+  const dv = getDefaultVisibility();
+  const visibility = (dv.charAt(0).toUpperCase() + dv.slice(1)) as VisitDraft["visibility"];
   return {
     parkCode: "", dates: { start: null, end: null }, title: "",
     rating: 0, crowd: 0, difficulty: 0,
     weather: { conds: [] }, activities: [],
     companions: [], wouldReturn: null,
-    highlight: "", notes: "", photos: [], cover: null, visibility: "Friends", caption: "",
+    highlight: "", notes: "", photos: [], cover: null, visibility, caption: "",
   };
 }
 

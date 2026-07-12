@@ -17,6 +17,7 @@
   --accent-2:      #D89A3A;
   --visited:       #2F7A4A;
   --bucket:        #D89A3A;
+  --liked:         #D45040;
   --unvisited:     #A8A29A;
   --shadow-card:   0 6px 18px rgba(58,42,18,0.07), 0 1px 0 rgba(255,255,255,0.5) inset;
   --shadow-panel:  0 12px 36px rgba(0,0,0,0.18);
@@ -108,16 +109,18 @@
 }
 
 .dark {
-  --bg:            #13120E;
-  --surface:       #1C1A15;
-  --surface-alt:   #262320;
-  --ink:           #F0EADB;
-  --ink-soft:      #C9C2B0;
-  --ink-mute:      #8C8678;
-  --hairline:      rgba(240,234,219,0.10);
-  --hairline-soft: rgba(240,234,219,0.06);
-  --visited:       #5DA572;
-  --bucket:        #E0B454;
+  /* Surface + ink values mirror the mobile app's lib/palette STATIC dark set */
+  --bg:            #171511;
+  --surface:       #201D17;
+  --surface-alt:   #28241C;
+  --ink:           #F0EAD9;
+  --ink-soft:      #CDC6B5;
+  --ink-mute:      #948D7E;
+  --hairline:      rgba(240,234,217,0.14);
+  --hairline-soft: rgba(240,234,217,0.08);
+  --visited:       #4FA76C;
+  --bucket:        #D9A63E;
+  --liked:         #E2685A;
   --unvisited:     #5A554C;
   --shadow-card:   0 6px 18px rgba(0,0,0,0.50), 0 1px 0 rgba(255,255,255,0.04) inset;
 

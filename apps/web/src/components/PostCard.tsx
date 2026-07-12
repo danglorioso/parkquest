@@ -4,13 +4,15 @@ import { useUser } from "@clerk/nextjs";
 import { useId, useRef, useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
-  Heart, MessageCircle, Bookmark,
+  Heart, MessageCircle, Share2,
   MoreHorizontal, MapPin, ChevronLeft, ChevronRight,
-  Award, Send, X, Maximize2,
+  Award, Send, X, Maximize2, Star,
+  Globe, Users, Lock,
 } from "lucide-react";
 import Link from "next/link";
 import { ALL_BADGES } from "@/lib/badges";
 import { parkGradient } from "@/lib/parkGradient";
+import { useToast } from "@/components/ToastProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -45,6 +47,10 @@ export interface FeedPost {
   comment_count: number;
   liked_by_me: boolean;
   is_friend_post: boolean;
+  // Effective visibility — visit posts inherit the visit's setting.
+  // null = API didn't return the field (stale deployment); hide the icon.
+  visibility?: string | null;
+  park_image_url?: string | null;
   // visit metadata (only present on visit posts)
   visit_date: string | null;
   visit_rating: number | null;
@@ -55,6 +61,7 @@ export interface FeedPost {
   visit_companion_count: number | null;
   visit_companion_names: Array<{ username: string; display_name: string | null; avatar_url: string | null }> | null;
   visit_highlight: string | null;
+  visit_ordinal?: number | null;
 }
 
 // ── Badge lookup ──────────────────────────────────────────────────────────────
@@ -123,6 +130,154 @@ export function Avatar({ url, name, size = 40 }: { url?: string | null; name?: s
         initials
       )}
     </div>
+  );
+}
+
+// ── ReportDialog ──────────────────────────────────────────────────────────────
+
+export type ReportTargetType = "post" | "comment" | "user";
+type ReportReason = "spam" | "harassment" | "inappropriate" | "impersonation" | "misleading" | "other";
+
+const REPORT_REASONS: Record<ReportTargetType, { key: ReportReason; label: string }[]> = {
+  user: [
+    { key: "harassment", label: "Harassment or bullying" },
+    { key: "impersonation", label: "Impersonation" },
+    { key: "misleading", label: "Misleading or fake account" },
+    { key: "spam", label: "Spam" },
+    { key: "inappropriate", label: "Inappropriate content" },
+    { key: "other", label: "Other" },
+  ],
+  post: [
+    { key: "spam", label: "Spam" },
+    { key: "harassment", label: "Harassment or bullying" },
+    { key: "inappropriate", label: "Inappropriate content" },
+    { key: "other", label: "Other" },
+  ],
+  comment: [
+    { key: "spam", label: "Spam" },
+    { key: "harassment", label: "Harassment or bullying" },
+    { key: "inappropriate", label: "Inappropriate content" },
+    { key: "other", label: "Other" },
+  ],
+};
+
+export function ReportDialog({
+  targetType, targetId, onClose, onSubmitted,
+}: {
+  targetType: ReportTargetType;
+  targetId: number | string;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const reasons = REPORT_REASONS[targetType];
+  const [reason, setReason] = useState<ReportReason | null>(null);
+  const [details, setDetails] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const submit = async () => {
+    if (!reason || submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetType, targetId, reason, details: details.trim() || undefined }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onSubmitted();
+      onClose();
+    } catch {
+      setSubmitting(false);
+    }
+  };
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 9500,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: "100%", maxWidth: 400,
+          background: "var(--surface)", border: "0.5px solid var(--hairline)",
+          borderRadius: 16, padding: "20px 20px 18px",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.22)",
+        }}
+      >
+        <div style={{
+          fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700,
+          letterSpacing: "1.2px", color: "var(--ink-mute)", marginBottom: 12,
+        }}>
+          {targetType === "comment" ? "REPORT COMMENT" : targetType === "user" ? "REPORT USER" : "REPORT POST"}
+        </div>
+
+        {reasons.map(r => (
+          <button
+            key={r.key}
+            onClick={() => setReason(r.key)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              width: "100%", padding: "10px 2px",
+              background: "transparent", border: "none",
+              borderBottom: "0.5px solid var(--hairline-soft)",
+              cursor: "pointer", fontSize: 14, color: "var(--ink)", textAlign: "left",
+            }}
+          >
+            {r.label}
+            <span style={{
+              width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+              border: `1.5px solid ${reason === r.key ? "var(--primary)" : "var(--ink-mute)"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {reason === r.key && (
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--primary)" }} />
+              )}
+            </span>
+          </button>
+        ))}
+
+        <textarea
+          value={details}
+          onChange={e => setDetails(e.target.value.slice(0, 500))}
+          placeholder="Additional details (optional)"
+          style={{
+            width: "100%", minHeight: 64, marginTop: 12, padding: "8px 10px",
+            borderRadius: 10, border: "0.5px solid var(--hairline)",
+            fontSize: 13.5, color: "var(--ink)", background: "var(--surface-alt)",
+            resize: "vertical", fontFamily: "inherit", boxSizing: "border-box",
+          }}
+        />
+
+        <button
+          onClick={submit}
+          disabled={!reason || submitting}
+          style={{
+            width: "100%", marginTop: 12, padding: "11px 0",
+            borderRadius: 10, border: "none",
+            background: reason ? "var(--primary)" : "var(--hairline)",
+            color: reason ? "#FFFBF1" : "var(--ink-mute)",
+            fontSize: 14, fontWeight: 700,
+            cursor: reason && !submitting ? "pointer" : "default",
+          }}
+        >
+          {submitting ? "Submitting…" : "Submit report"}
+        </button>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -498,20 +653,44 @@ interface CommentRow {
   user_id: string; username: string | null; display_name: string | null; avatar_url: string | null;
 }
 
-function CommentsPanel({ postId, onCountChange }: { postId: number; onCountChange: (delta: number) => void }) {
+const COMMENT_LIMIT = 500;
+const COMMENT_PREVIEW_CHARS = 200;
+
+function CommentsPanel({ postId, initialRows, onCountChange }: {
+  postId: number;
+  // Preloaded by the card for the inline preview — skip the refetch when present.
+  initialRows?: CommentRow[] | null;
+  onCountChange: (delta: number) => void;
+}) {
   const { user } = useUser();
-  const [rows, setRows] = useState<CommentRow[]>([]);
+  const { toast } = useToast();
+  const [rows, setRows] = useState<CommentRow[]>(initialRows ?? []);
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [activeCommentMenu, setActiveCommentMenu] = useState<number | null>(null);
+  const [reportingCommentId, setReportingCommentId] = useState<number | null>(null);
+  const [editingComment, setEditingComment] = useState<{ id: number; text: string } | null>(null);
+  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch(`/api/comments?postId=${postId}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(setRows)
-      .catch(() => {});
+    if (!initialRows) {
+      fetch(`/api/comments?postId=${postId}`)
+        .then(r => r.ok ? r.json() : [])
+        .then(setRows)
+        .catch(() => {});
+    }
     setTimeout(() => inputRef.current?.focus(), 60);
+  // initialRows only matters on mount (whether we already have the full list)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
+
+  useEffect(() => {
+    if (activeCommentMenu === null) return;
+    const close = () => setActiveCommentMenu(null);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [activeCommentMenu]);
 
   const submit = useCallback(async () => {
     const text = draft.trim();
@@ -541,6 +720,35 @@ function CommentsPanel({ postId, onCountChange }: { postId: number; onCountChang
     }
   }, [draft, submitting, postId, user, onCountChange]);
 
+  const deleteComment = useCallback(async (commentId: number) => {
+    setActiveCommentMenu(null);
+    setRows(prev => prev.filter(c => c.id !== commentId));
+    onCountChange(-1);
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      fetch(`/api/comments?postId=${postId}`).then(r => r.ok ? r.json() : []).then(setRows).catch(() => {});
+    }
+  }, [postId, onCountChange]);
+
+  const editComment = useCallback(async (commentId: number, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setEditingComment(null);
+    setRows(prev => prev.map(c => c.id === commentId ? { ...c, content: trimmed } : c));
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: trimmed }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      fetch(`/api/comments?postId=${postId}`).then(r => r.ok ? r.json() : []).then(setRows).catch(() => {});
+    }
+  }, [postId]);
+
   const myName = user?.fullName ?? user?.username ?? "You";
   const myInitials = myName.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
 
@@ -551,6 +759,10 @@ function CommentsPanel({ postId, onCountChange }: { postId: number; onCountChang
           {rows.map(c => {
             const cname = c.display_name ?? c.username ?? "Explorer";
             const initials = cname.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+            const isOwn = user?.id === c.user_id;
+            const isExpanded = expandedComments.has(c.id);
+            const isEditing = editingComment?.id === c.id;
+            const menuOpen = activeCommentMenu === c.id;
             const avatarEl = (
               <div style={{
                 width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
@@ -576,12 +788,116 @@ function CommentsPanel({ postId, onCountChange }: { postId: number; onCountChang
                     flex: 1, minWidth: 0,
                     background: "var(--surface-alt)", borderRadius: "4px 12px 12px 12px",
                     padding: "7px 11px", border: "0.5px solid var(--hairline)",
-                    display: "flex", alignItems: "center",
                   }}>
-                    {c.username
-                      ? <Link href={`/profile/${c.username}`} className="hover:underline" style={{ textDecoration: "none" }}>{nameEl}</Link>
-                      : nameEl}
-                    <span style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1 }}>{c.content}</span>
+                    {isEditing ? (
+                      <div>
+                        <textarea
+                          autoFocus
+                          value={editingComment.text}
+                          onChange={e => setEditingComment({ id: c.id, text: e.target.value.slice(0, COMMENT_LIMIT) })}
+                          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); editComment(c.id, editingComment.text); } }}
+                          style={{
+                            width: "100%", minHeight: 40, background: "transparent",
+                            border: "none", outline: "none", resize: "vertical",
+                            fontSize: 12.5, color: "var(--ink)", fontFamily: "inherit",
+                            lineHeight: 1.45, boxSizing: "border-box", padding: 0,
+                          }}
+                        />
+                        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                          <button
+                            onClick={() => editComment(c.id, editingComment.text)}
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, fontWeight: 700, color: "var(--primary)" }}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setEditingComment(null)}
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, color: "var(--ink-mute)" }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {c.username
+                          ? <Link href={`/profile/${c.username}`} className="hover:underline" style={{ textDecoration: "none" }}>{nameEl}</Link>
+                          : nameEl}
+                        <span style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.45 }}>
+                          {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
+                            ? c.content
+                            : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
+                          {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
+                            <button
+                              onClick={() => setExpandedComments(prev => { const next = new Set(prev); next.add(c.id); return next; })}
+                              style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12.5, color: "var(--ink-mute)" }}
+                            >
+                              … more
+                            </button>
+                          )}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <button
+                      onClick={e => { e.stopPropagation(); setActiveCommentMenu(menuOpen ? null : c.id); }}
+                      onMouseDown={e => e.stopPropagation()}
+                      style={{
+                        background: "transparent", border: "none", cursor: "pointer",
+                        color: "var(--ink-mute)", padding: 4, borderRadius: 6, display: "flex",
+                      }}
+                    >
+                      <MoreHorizontal size={13} strokeWidth={1.8} />
+                    </button>
+                    {menuOpen && (
+                      <div
+                        onMouseDown={e => e.stopPropagation()}
+                        style={{
+                          position: "absolute", top: "calc(100% + 2px)", right: 0, zIndex: 100,
+                          background: "var(--surface)", border: "0.5px solid var(--hairline)",
+                          borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                          minWidth: 110, overflow: "hidden",
+                        }}
+                      >
+                        {isOwn ? (
+                          <>
+                            <button
+                              onClick={() => { setActiveCommentMenu(null); setEditingComment({ id: c.id, text: c.content }); }}
+                              style={{
+                                display: "block", width: "100%", padding: "9px 14px",
+                                background: "transparent", border: "none", cursor: "pointer",
+                                fontSize: 13, color: "var(--ink)", textAlign: "left",
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <div style={{ height: "0.5px", background: "var(--hairline)" }} />
+                            <button
+                              onClick={() => deleteComment(c.id)}
+                              style={{
+                                display: "block", width: "100%", padding: "9px 14px",
+                                background: "transparent", border: "none", cursor: "pointer",
+                                fontSize: 13, color: "var(--liked)", textAlign: "left",
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => { setActiveCommentMenu(null); setReportingCommentId(c.id); }}
+                            style={{
+                              display: "block", width: "100%", padding: "9px 14px",
+                              background: "transparent", border: "none", cursor: "pointer",
+                              fontSize: 13, color: "var(--liked)", textAlign: "left",
+                            }}
+                          >
+                            Report
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div style={{
@@ -594,6 +910,15 @@ function CommentsPanel({ postId, onCountChange }: { postId: number; onCountChang
             );
           })}
         </div>
+      )}
+
+      {reportingCommentId != null && (
+        <ReportDialog
+          targetType="comment"
+          targetId={reportingCommentId}
+          onClose={() => setReportingCommentId(null)}
+          onSubmitted={() => toast("Report submitted — we'll review this.")}
+        />
       )}
 
       <div style={{ display: "flex", gap: 9, alignItems: "center", padding: "10px 18px 14px" }}>
@@ -615,7 +940,7 @@ function CommentsPanel({ postId, onCountChange }: { postId: number; onCountChang
           <input
             ref={inputRef}
             value={draft}
-            onChange={e => setDraft(e.target.value)}
+            onChange={e => setDraft(e.target.value.slice(0, COMMENT_LIMIT))}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
             placeholder="Add a comment…"
             style={{
@@ -623,6 +948,14 @@ function CommentsPanel({ postId, onCountChange }: { postId: number; onCountChang
               fontSize: 13, color: "var(--ink)", fontFamily: "var(--font-sans)", padding: "7px 0",
             }}
           />
+          {draft.length >= COMMENT_LIMIT - 50 && (
+            <span style={{
+              fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)",
+              flexShrink: 0,
+            }}>
+              {COMMENT_LIMIT - draft.length}
+            </span>
+          )}
           <button
             onClick={submit}
             disabled={!draft.trim() || submitting}
@@ -768,7 +1101,7 @@ function MetaChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function VisitMeta({ post }: { post: FeedPost }) {
+function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: boolean }) {
   const hasAny = post.visit_date || post.visit_rating || (post.visit_activities?.length ?? 0) > 0
     || (post.visit_weather?.length ?? 0) > 0 || post.visit_crowd || post.visit_difficulty
     || (post.visit_companion_count ?? 0) > 0 || post.visit_highlight;
@@ -796,7 +1129,7 @@ function VisitMeta({ post }: { post: FeedPost }) {
             {post.visit_rating % 1 === 0 ? post.visit_rating.toFixed(0) : post.visit_rating.toFixed(1)}
           </MetaChip>
         )}
-        {dateLabel && (
+        {dateLabel && !heroDate && (
           <MetaChip>
             <span style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.2px" }}>{dateLabel}</span>
           </MetaChip>
@@ -842,6 +1175,75 @@ function VisitMeta({ post }: { post: FeedPost }) {
   );
 }
 
+// ── ParkHeroBanner — visit posts with no photos ───────────────────────────────
+
+function ParkHeroBanner({ post }: { post: FeedPost }) {
+  const [npsImageUrl, setNpsImageUrl] = useState<string | null>(null);
+  const imageUrl = post.park_image_url ?? npsImageUrl;
+
+  useEffect(() => {
+    if (post.park_image_url || !post.park_code) return;
+    fetch(`/api/parks/${post.park_code}/images`)
+      .then(r => r.json())
+      .then((d: { images?: { url: string }[] }) => {
+        const url = d.images?.[0]?.url ?? null;
+        if (url) setNpsImageUrl(url);
+      })
+      .catch(() => {});
+  }, [post.park_code, post.park_image_url]);
+
+  const inner = (
+    <div style={{
+      position: "relative", height: 190, borderRadius: 14, overflow: "hidden",
+      background: imageUrl ? undefined : parkGradient(post.park_code ?? "xx"),
+    }}>
+      {imageUrl && (
+        <img src={imageUrl} alt={post.park_name ?? ""} style={{
+          position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
+        }} />
+      )}
+      <div style={{
+        position: "absolute", inset: 0,
+        background: "linear-gradient(to bottom, transparent 25%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.82) 100%)",
+      }} />
+      <div style={{ position: "absolute", left: 16, right: 16, bottom: 14 }}>
+        <div style={{
+          fontWeight: 800, fontSize: 19, color: "#FFFBF1",
+          letterSpacing: -0.3, lineHeight: 1.2,
+          textShadow: "0 1px 8px rgba(0,0,0,0.4)",
+        }}>
+          {post.park_name ?? "National Park"}
+        </div>
+        {post.visit_date && (
+          <div style={{
+            fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600,
+            color: "rgba(255,251,241,0.85)", marginTop: 3, letterSpacing: "0.4px",
+          }}>
+            {new Date(post.visit_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "0 18px 14px" }}>
+      {post.park_code
+        ? <Link href={`/parks/${post.park_code}`} style={{ textDecoration: "none", display: "block" }}>{inner}</Link>
+        : inner}
+    </div>
+  );
+}
+
+// ── Visibility icons ──────────────────────────────────────────────────────────
+
+const VIS_ICONS: Record<string, typeof Globe> = {
+  public: Globe,
+  friends: Users,
+  private: Lock,
+};
+const VIS_ORDER = ["public", "friends", "private"] as const;
+
 // ── PostCard ──────────────────────────────────────────────────────────────────
 
 export function PostCard({
@@ -850,6 +1252,7 @@ export function PostCard({
   from,
   onDelete,
   onEditVisit,
+  onUserBlocked,
   canDelete = false,
 }: {
   post: FeedPost;
@@ -857,24 +1260,35 @@ export function PostCard({
   from?: string;
   onDelete?: (id: number) => void;
   onEditVisit?: (visitId: number) => void;
+  // Lets the parent list drop every post by a user the viewer just blocked.
+  onUserBlocked?: (userId: string) => void;
   // Lets an admin delete any post, not just their own.
   canDelete?: boolean;
 }) {
   const [showComments, setShowComments] = useState(false);
   const [commentDelta, setCommentDelta] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reported, setReported] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionDraft, setCaptionDraft] = useState(post.caption ?? "");
   const [currentCaption, setCurrentCaption] = useState<string | null>(post.caption ?? null);
+  // null = API didn't return the field (stale deployment) — hide the icon
+  const [visibility, setVisibility] = useState<string | null>(post.visibility ?? null);
+  const [visDraft, setVisDraft] = useState(post.visibility ?? "public");
+  // Full comment list, preloaded so the inline preview can render and the
+  // panel opens without a spinner.
+  const [allComments, setAllComments] = useState<CommentRow[] | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { user } = useUser();
+  const { toast } = useToast();
   const isOwnPost = user?.id === post.clerk_user_id;
-  const canOpenMenu = isOwnPost || canDelete;
   const isBadgePost = !!post.badge_id;
   const hasPhotos = !isBadgePost && post.photos && post.photos.length > 0;
   const photos = hasPhotos ? post.photos! : [""];
   const name = post.display_name ?? post.username ?? "Explorer";
   const commentCount = post.comment_count + commentDelta;
+  const isFirstVisit = !isBadgePost && !!post.visit_id && Number(post.visit_ordinal) === 1;
 
   useEffect(() => {
     if (!showMenu) return;
@@ -885,6 +1299,28 @@ export function PostCard({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showMenu]);
 
+  // Lists refetch on focus (e.g. after editing a visit) — keep the locally
+  // edited caption/visibility in sync with the fresh server value
+  useEffect(() => {
+    setCurrentCaption(post.caption ?? null);
+  }, [post.caption]);
+
+  useEffect(() => {
+    setVisibility(post.visibility ?? null);
+  }, [post.visibility]);
+
+  useEffect(() => {
+    if (post.comment_count + commentDelta <= 0) { setAllComments([]); return; }
+    let active = true;
+    fetch(`/api/comments?postId=${post.id}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: CommentRow[]) => { if (active) setAllComments(rows); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [post.id, post.comment_count, commentDelta]);
+
+  const previewComments = allComments?.slice(-2) ?? [];
+
   async function handleDelete() {
     if (!confirm("Delete this post?")) return;
     await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
@@ -892,22 +1328,73 @@ export function PostCard({
     setShowMenu(false);
   }
 
+  async function handleBlock() {
+    setShowMenu(false);
+    if (!confirm(`Block ${name}?\n\nThey won't be able to see your posts or contact you, and you won't see theirs. This also flags them for review.`)) return;
+    try {
+      const res = await fetch("/api/blocks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: post.clerk_user_id }),
+      });
+      if (!res.ok) throw new Error();
+      toast(`Blocked ${name}`);
+      onUserBlocked?.(post.clerk_user_id);
+    } catch {
+      toast("Could not block this user. Please try again.", "error");
+    }
+  }
+
+  async function handleShare() {
+    const url = `https://parkquest.me/p/${post.id}`;
+    if (navigator.share) {
+      try { await navigator.share({ url }); } catch { /* user dismissed */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("Link copied");
+    } catch {
+      toast("Could not copy link", "error");
+    }
+  }
+
   async function handleSaveCaption() {
+    // Visit posts inherit the visit's visibility, so route the change there;
+    // all other posts carry their own
     const res = await fetch(`/api/posts/${post.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ caption: captionDraft }),
+      body: JSON.stringify({
+        caption: captionDraft,
+        ...(post.visit_id == null ? { visibility: visDraft } : {}),
+      }),
     });
-    if (res.ok) {
-      setCurrentCaption(captionDraft || null);
-      setEditingCaption(false);
+    if (!res.ok) return;
+
+    if (post.visit_id != null && visDraft !== visibility) {
+      const visRes = await fetch(`/api/visits/${post.visit_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visibility: visDraft }),
+      });
+      if (visRes.ok) setVisibility(visDraft);
+    } else {
+      setVisibility(visDraft);
     }
+    setCurrentCaption(captionDraft || null);
+    setEditingCaption(false);
   }
 
   return (
     <div style={{
       background: "var(--surface)", borderRadius: 16,
-      border: "0.5px solid var(--hairline)", overflow: "hidden",
+      border: isBadgePost
+        ? "1px solid color-mix(in srgb, var(--primary) 38%, transparent)"
+        : isFirstVisit
+          ? "1px solid color-mix(in srgb, var(--accent) 38%, transparent)"
+          : "0.5px solid var(--hairline)",
+      overflow: "hidden",
     }}>
       {/* Badge banner */}
       {isBadgePost && (
@@ -926,6 +1413,24 @@ export function PostCard({
         </div>
       )}
 
+      {/* First visit banner */}
+      {isFirstVisit && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "10px 18px",
+          background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+          borderBottom: "0.5px solid color-mix(in srgb, var(--accent) 38%, transparent)",
+        }}>
+          <Star size={14} strokeWidth={2} fill="var(--accent)" style={{ color: "var(--accent)", flexShrink: 0 }} />
+          <span style={{
+            fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.2px",
+            color: "var(--accent)", fontWeight: 700,
+          }}>
+            FIRST VISIT
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 10px" }}>
         <Link href={`/profile/${post.username}${from ? `?from=${from}` : ""}`} style={{ textDecoration: "none", flexShrink: 0 }}>
@@ -935,23 +1440,29 @@ export function PostCard({
           <Link href={`/profile/${post.username}${from ? `?from=${from}` : ""}`} style={{ textDecoration: "none" }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{name}</div>
           </Link>
-          <div style={{ fontSize: 12, color: "var(--ink-mute)", marginTop: 1 }}>
-            {post.username && <span>@{post.username} · </span>}
-            {relTime(post.created_at)}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-mute)", marginTop: 1 }}>
+            <span>
+              {post.username && <span>@{post.username} · </span>}
+              {relTime(post.created_at)}
+            </span>
+            {visibility != null && (() => {
+              const VisIcon = VIS_ICONS[visibility] ?? Globe;
+              return <VisIcon size={11} strokeWidth={2} style={{ opacity: 0.75, flexShrink: 0 }} />;
+            })()}
           </div>
         </div>
         <div ref={menuRef} style={{ position: "relative" }}>
           <button
-            onClick={() => { if (canOpenMenu) setShowMenu(v => !v); }}
+            onClick={() => setShowMenu(v => !v)}
             style={{
               background: "transparent", border: "none",
-              cursor: canOpenMenu ? "pointer" : "default",
+              cursor: "pointer",
               color: "var(--ink-mute)", padding: 6, borderRadius: 6,
             }}
           >
             <MoreHorizontal size={16} strokeWidth={1.8} />
           </button>
-          {showMenu && canOpenMenu && (
+          {showMenu && (
             <div style={{
               position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 100,
               background: "var(--surface)", border: "0.5px solid var(--hairline)",
@@ -976,7 +1487,7 @@ export function PostCard({
               {isOwnPost && (
                 <>
                   <button
-                    onClick={() => { setEditingCaption(true); setCaptionDraft(currentCaption ?? ""); setShowMenu(false); }}
+                    onClick={() => { setEditingCaption(true); setCaptionDraft(currentCaption ?? ""); setVisDraft(visibility ?? "public"); setShowMenu(false); }}
                     style={{
                       display: "block", width: "100%", padding: "10px 14px",
                       background: "transparent", border: "none", cursor: "pointer",
@@ -988,23 +1499,53 @@ export function PostCard({
                   <div style={{ height: "0.5px", background: "var(--hairline)" }} />
                 </>
               )}
-              <button
-                onClick={handleDelete}
-                style={{
-                  display: "block", width: "100%", padding: "10px 14px",
-                  background: "transparent", border: "none", cursor: "pointer",
-                  fontSize: 14, color: "#D45040", textAlign: "left",
-                }}
-              >
-                Delete post
-              </button>
+              {!isOwnPost && (
+                <>
+                  <button
+                    onClick={() => { setShowMenu(false); if (!reported) setShowReportDialog(true); }}
+                    disabled={reported}
+                    style={{
+                      display: "block", width: "100%", padding: "10px 14px",
+                      background: "transparent", border: "none",
+                      cursor: reported ? "default" : "pointer",
+                      fontSize: 14, color: reported ? "var(--ink-mute)" : "var(--liked)", textAlign: "left",
+                    }}
+                  >
+                    {reported ? "Reported" : "Report post"}
+                  </button>
+                  <div style={{ height: "0.5px", background: "var(--hairline)" }} />
+                  <button
+                    onClick={handleBlock}
+                    style={{
+                      display: "block", width: "100%", padding: "10px 14px",
+                      background: "transparent", border: "none", cursor: "pointer",
+                      fontSize: 14, color: "var(--liked)", textAlign: "left",
+                    }}
+                  >
+                    Block user
+                  </button>
+                  {canDelete && <div style={{ height: "0.5px", background: "var(--hairline)" }} />}
+                </>
+              )}
+              {(isOwnPost || canDelete) && (
+                <button
+                  onClick={handleDelete}
+                  style={{
+                    display: "block", width: "100%", padding: "10px 14px",
+                    background: "transparent", border: "none", cursor: "pointer",
+                    fontSize: 14, color: "var(--liked)", textAlign: "left",
+                  }}
+                >
+                  Delete post
+                </button>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Park location */}
-      {post.park_name && !isBadgePost && (
+      {/* Park location — hidden on photoless visit posts; the hero banner carries it */}
+      {post.park_name && !isBadgePost && !(!hasPhotos && post.visit_id) && (
         <div style={{ padding: "0 18px 10px" }}>
           <Link href={`/parks/${post.park_code}`} style={{ textDecoration: "none" }}>
             <div style={{
@@ -1033,7 +1574,7 @@ export function PostCard({
               boxSizing: "border-box",
             }}
           />
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
             <button
               onClick={handleSaveCaption}
               style={{
@@ -1054,6 +1595,31 @@ export function PostCard({
             >
               Cancel
             </button>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+              {VIS_ORDER.map(v => {
+                const active = visDraft === v;
+                const VisIcon = VIS_ICONS[v];
+                return (
+                  <button
+                    key={v}
+                    onClick={() => setVisDraft(v)}
+                    title={v.charAt(0).toUpperCase() + v.slice(1)}
+                    style={{
+                      width: 28, height: 28, borderRadius: 8,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: active ? "var(--surface-alt)" : "transparent",
+                      border: active
+                        ? "1px solid color-mix(in srgb, var(--primary) 25%, transparent)"
+                        : "1px solid transparent",
+                      cursor: "pointer",
+                      color: active ? "var(--primary)" : "var(--ink-mute)",
+                    }}
+                  >
+                    <VisIcon size={13} strokeWidth={2.2} />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       ) : currentCaption ? (
@@ -1065,8 +1631,11 @@ export function PostCard({
       {/* Badge body */}
       {isBadgePost && post.badge_id && <BadgePostBody badgeId={post.badge_id} />}
 
+      {/* Park hero banner — visit posts with no photos */}
+      {!isBadgePost && !hasPhotos && post.visit_id && <ParkHeroBanner post={post} />}
+
       {/* Visit metadata */}
-      {!isBadgePost && <VisitMeta post={post} />}
+      {!isBadgePost && <VisitMeta post={post} heroDate={!hasPhotos && !!post.visit_id} />}
 
       {/* Photo carousel */}
       {!isBadgePost && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
@@ -1081,16 +1650,16 @@ export function PostCard({
             className="hover:opacity-75 transition-opacity"
             style={{
               display: "flex", alignItems: "center", gap: 6,
-              background: post.liked_by_me ? "rgba(212,80,64,0.10)" : "var(--surface-alt)",
-              border: post.liked_by_me ? "0.5px solid rgba(212,80,64,0.38)" : "0.5px solid var(--hairline)",
+              background: post.liked_by_me ? "color-mix(in srgb, var(--liked) 10%, transparent)" : "var(--surface-alt)",
+              border: post.liked_by_me ? "0.5px solid color-mix(in srgb, var(--liked) 38%, transparent)" : "0.5px solid var(--hairline)",
               borderRadius: 9, padding: "6px 12px", cursor: "pointer",
-              color: post.liked_by_me ? "#D45040" : "var(--ink-soft)",
+              color: post.liked_by_me ? "var(--liked)" : "var(--ink-soft)",
               transition: "background 140ms ease, border-color 140ms ease, color 140ms ease",
             }}
           >
             <Heart
               size={15} strokeWidth={2.2}
-              fill={post.liked_by_me ? "#D45040" : "none"}
+              fill={post.liked_by_me ? "var(--liked)" : "none"}
               style={{ color: "inherit", flexShrink: 0 }}
             />
             <span style={{
@@ -1126,6 +1695,8 @@ export function PostCard({
         <div style={{ flex: 1 }} />
 
         <button
+          onClick={handleShare}
+          aria-label="Share post"
           className="hover:opacity-75 transition-opacity"
           style={{
             display: "flex", alignItems: "center", gap: 6,
@@ -1133,13 +1704,64 @@ export function PostCard({
             borderRadius: 9, padding: "6px 10px", cursor: "pointer", color: "var(--ink-soft)",
           }}
         >
-          <Bookmark size={15} strokeWidth={2.2} style={{ color: "inherit", flexShrink: 0 }} />
+          <Share2 size={15} strokeWidth={2.2} style={{ color: "inherit", flexShrink: 0 }} />
         </button>
       </div>
+
+      {showReportDialog && (
+        <ReportDialog
+          targetType="post"
+          targetId={post.id}
+          onClose={() => setShowReportDialog(false)}
+          onSubmitted={() => { setReported(true); toast("Report submitted — we'll review this."); }}
+        />
+      )}
+
+      {/* Comment preview — last two comments, tap to open the full panel */}
+      {!showComments && commentCount > 0 && previewComments.length > 0 && (
+        <div style={{ padding: "0 18px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
+          {previewComments.map(c => {
+            const cname = c.display_name ?? c.username ?? "Explorer";
+            const truncated = c.content.length > 100 ? `${c.content.slice(0, 100)}…` : c.content;
+            return (
+              <div
+                key={c.id}
+                onClick={() => setShowComments(true)}
+                style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.45, cursor: "pointer" }}
+              >
+                {c.username ? (
+                  <Link
+                    href={`/profile/${c.username}`}
+                    onClick={e => e.stopPropagation()}
+                    style={{ fontWeight: 700, color: "var(--ink)", textDecoration: "none" }}
+                  >
+                    {cname}
+                  </Link>
+                ) : (
+                  <span style={{ fontWeight: 700, color: "var(--ink)" }}>{cname}</span>
+                )}
+                {" "}{truncated}
+              </div>
+            );
+          })}
+          {commentCount > previewComments.length && (
+            <button
+              onClick={() => setShowComments(true)}
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: 0,
+                fontSize: 12, fontWeight: 600, color: "var(--ink-mute)", textAlign: "left",
+              }}
+            >
+              View all {commentCount} comment{commentCount !== 1 ? "s" : ""}
+            </button>
+          )}
+        </div>
+      )}
 
       {showComments && (
         <CommentsPanel
           postId={post.id}
+          initialRows={allComments}
           onCountChange={delta => setCommentDelta(prev => prev + delta)}
         />
       )}

@@ -8,7 +8,7 @@ import {
   Home, Sparkles, Map, User, Award, Compass,
   Check, Bookmark, PenLine, Users, Globe, TreePine,
   Plus, ChevronDown, LogOut, UserCircle, Pencil, Sun, Search,
-  Menu, X,
+  Menu, X, ShieldCheck,
 } from "lucide-react";
 import { Wordmark } from "@/components/Wordmark";
 import { GlobalSpotlight } from "@/components/desktop/GlobalSpotlight";
@@ -89,9 +89,10 @@ export function AccountMenu({ onEditAccount, compact = false }: { onEditAccount:
   ];
 
   const menuItems = [
-    { icon: UserCircle, label: "View profile", sub: "Your passport", onClick: () => { setOpen(false); router.push("/passport"); } },
-    { icon: Pencil,     label: "Edit account",  onClick: () => { setOpen(false); onEditAccount(); } },
-    { icon: Sun,        label: "Appearance",    onClick: () => setShowAppearance(s => !s) },
+    { icon: UserCircle,  label: "View profile", sub: "Your passport", onClick: () => { setOpen(false); router.push("/passport"); } },
+    { icon: Pencil,      label: "Edit account",  onClick: () => { setOpen(false); onEditAccount(); } },
+    { icon: ShieldCheck, label: "Privacy & safety", onClick: () => { setOpen(false); router.push("/settings"); } },
+    { icon: Sun,         label: "Appearance",    onClick: () => setShowAppearance(s => !s) },
     { divider: true },
     { icon: LogOut,     label: "Sign out", danger: true, onClick: () => { setOpen(false); signOut(() => router.push("/")); } },
   ];

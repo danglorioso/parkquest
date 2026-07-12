@@ -8,12 +8,14 @@ import dynamic from "next/dynamic";
 import {
   MapPin, Users, UserCheck, UserPlus, Clock,
   TreePine, Award, ChevronLeft, X, Lock, Pencil,
+  MoreHorizontal,
 } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import Logo from "@/components/Logo";
 import type { MapPark } from "@/components/USAMapGL";
 import { ALL_BADGES } from "@/lib/badges";
-import { PostCard, type FeedPost } from "@/components/PostCard";
+import { PostCard, ReportDialog, type FeedPost } from "@/components/PostCard";
+import { useToast } from "@/components/ToastProvider";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
 
 const USAMap = dynamic(() => import("@/components/USAMapGL"), {
@@ -575,6 +577,36 @@ export default function ProfilePage() {
   const [busy, setBusy] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
   const [editDraft, setEditDraft] = useState<Partial<VisitDraft> | undefined>();
+  const { toast } = useToast();
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showReportUser, setShowReportUser] = useState(false);
+  const [reportedUser, setReportedUser] = useState(false);
+
+  useEffect(() => {
+    if (!showProfileMenu) return;
+    const close = () => setShowProfileMenu(false);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [showProfileMenu]);
+
+  const handleBlockUser = async () => {
+    setShowProfileMenu(false);
+    if (!profile) return;
+    const name = profile.display_name ?? `@${profile.username}`;
+    if (!confirm(`Block ${name}?\n\nThey won't be able to see your posts or contact you, and you won't see theirs. This also flags them for review.`)) return;
+    try {
+      const res = await fetch("/api/blocks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: profile.clerk_user_id }),
+      });
+      if (!res.ok) throw new Error();
+      toast(`Blocked ${name}`);
+      router.push(fromPath);
+    } catch {
+      toast("Could not block this user. Please try again.", "error");
+    }
+  };
 
   const handleEditVisit = async (visitId: number) => {
     const r = await fetch(`/api/visits/${visitId}`);
@@ -789,14 +821,70 @@ export default function ProfilePage() {
         </div>
 
         {!profile.is_own_profile && isSignedIn && (
-          <FriendButton
-            status={profile.friendship_status} busy={busy}
-            onAddFriend={handleAddFriend} onCancelRequest={handleCancelRequest}
-            onAcceptRequest={handleAcceptRequest} onDeclineRequest={handleDeclineRequest}
-            onUnfriend={handleUnfriend}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <FriendButton
+              status={profile.friendship_status} busy={busy}
+              onAddFriend={handleAddFriend} onCancelRequest={handleCancelRequest}
+              onAcceptRequest={handleAcceptRequest} onDeclineRequest={handleDeclineRequest}
+              onUnfriend={handleUnfriend}
+            />
+            <div style={{ position: "relative" }} onMouseDown={e => e.stopPropagation()}>
+              <button
+                onClick={() => setShowProfileMenu(v => !v)}
+                aria-label="Profile options"
+                style={{
+                  background: "transparent", border: "0.5px solid var(--hairline)",
+                  borderRadius: 9, cursor: "pointer",
+                  color: "var(--ink-mute)", padding: "8px 9px", display: "flex",
+                }}
+              >
+                <MoreHorizontal size={16} strokeWidth={1.8} />
+              </button>
+              {showProfileMenu && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 100,
+                  background: "var(--surface)", border: "0.5px solid var(--hairline)",
+                  borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                  minWidth: 150, overflow: "hidden",
+                }}>
+                  <button
+                    onClick={() => { setShowProfileMenu(false); if (!reportedUser) setShowReportUser(true); }}
+                    disabled={reportedUser}
+                    style={{
+                      display: "block", width: "100%", padding: "10px 14px",
+                      background: "transparent", border: "none",
+                      cursor: reportedUser ? "default" : "pointer",
+                      fontSize: 14, color: reportedUser ? "var(--ink-mute)" : "var(--liked)", textAlign: "left",
+                    }}
+                  >
+                    {reportedUser ? "Reported" : "Report user"}
+                  </button>
+                  <div style={{ height: "0.5px", background: "var(--hairline)" }} />
+                  <button
+                    onClick={handleBlockUser}
+                    style={{
+                      display: "block", width: "100%", padding: "10px 14px",
+                      background: "transparent", border: "none", cursor: "pointer",
+                      fontSize: 14, color: "var(--liked)", textAlign: "left",
+                    }}
+                  >
+                    Block user
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
+
+      {showReportUser && (
+        <ReportDialog
+          targetType="user"
+          targetId={profile.clerk_user_id}
+          onClose={() => setShowReportUser(false)}
+          onSubmitted={() => { setReportedUser(true); toast("Report submitted — we'll review this."); }}
+        />
+      )}
 
       {/* ── Stats row ── */}
       <div style={{
@@ -998,7 +1086,7 @@ export default function ProfilePage() {
           <Section title="POSTS" icon={TreePine}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {profile.recent_posts.map((post) => (
-                <PostCard key={post.id} post={post} onLike={handleLike} onDelete={id => setProfile(prev => prev ? { ...prev, recent_posts: prev.recent_posts.filter(p => p.id !== id) } : prev)} onEditVisit={handleEditVisit} />
+                <PostCard key={post.id} post={post} onLike={handleLike} onDelete={id => setProfile(prev => prev ? { ...prev, recent_posts: prev.recent_posts.filter(p => p.id !== id) } : prev)} onEditVisit={handleEditVisit} onUserBlocked={() => router.push(fromPath)} />
               ))}
             </div>
           </Section>

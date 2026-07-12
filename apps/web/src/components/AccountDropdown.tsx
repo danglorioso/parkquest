@@ -1,5 +1,5 @@
 import { useUser } from "@clerk/nextjs";
-import { CheckCircle2, Mail, LogOut, UserRound, Pencil } from "lucide-react";
+import { CheckCircle2, Mail, LogOut, UserRound, Pencil, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 export default function AccountDropdown({
@@ -85,6 +85,13 @@ export default function AccountDropdown({
                         <Pencil className="h-4 w-4" />
                         Edit Profile
                     </button>
+                    <Link
+                        href="/settings"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition font-medium"
+                    >
+                        <ShieldCheck className="h-4 w-4" />
+                        Privacy &amp; Safety
+                    </Link>
                     <button
                         onClick={onSignOut}
                         className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition font-medium"

@@ -503,7 +503,15 @@ export default function FeedPage() {
                   </div>
                 )}
                 {filtered.map((post) => (
-                  <PostCard key={post.id} post={post} onLike={handleLike} from="/feed" onDelete={id => setPosts(prev => prev.filter(p => p.id !== id))} onEditVisit={handleEditVisit} />
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    onLike={handleLike}
+                    from="/feed"
+                    onDelete={id => setPosts(prev => prev.filter(p => p.id !== id))}
+                    onEditVisit={handleEditVisit}
+                    onUserBlocked={userId => setPosts(prev => prev.filter(p => p.clerk_user_id !== userId))}
+                  />
                 ))}
                 {!loading && filtered.length > 0 && (
                   <div style={{
