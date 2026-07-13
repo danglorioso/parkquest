@@ -13,7 +13,6 @@ import {
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import Logo from "@/components/Logo";
 import type { MapPark } from "@/components/USAMapGL";
-import { ALL_BADGES } from "@/lib/badges";
 import { PostCard, ReportDialog, type FeedPost } from "@/components/PostCard";
 import { useToast } from "@/components/ToastProvider";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
@@ -101,10 +100,6 @@ function badgeAccent(b: BadgeData): { color: string; bg: string } {
 }
 
 function BadgeModal({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
-  // API supplies the description (covers admin-defined badges); static defs are the fallback
-  const def = badge.description
-    ? { description: badge.description }
-    : ALL_BADGES.find((b) => b.id === badge.badge_id);
   const { color: tierColor, bg: tierBg } = badgeAccent(badge);
   const earnedDate = badge.earned_at
     ? new Date(badge.earned_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
@@ -169,7 +164,7 @@ function BadgeModal({ badge, onClose }: { badge: BadgeData; onClose: () => void 
         </div>
 
         {/* Description */}
-        {def && (
+        {badge.description && (
           <div style={{
             background: "var(--surface)",
             border: "0.5px solid var(--hairline)",
@@ -181,7 +176,7 @@ function BadgeModal({ badge, onClose }: { badge: BadgeData; onClose: () => void 
               HOW TO EARN
             </div>
             <div style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55 }}>
-              {def.description}
+              {badge.description}
             </div>
           </div>
         )}

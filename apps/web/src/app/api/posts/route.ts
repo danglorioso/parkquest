@@ -4,6 +4,7 @@ import { eq, desc, and, or, inArray, notInArray, sql, isNotNull } from 'drizzle-
 import { db } from '@/lib/db';
 import { posts, parks, userProfiles, friendships, notifications, visits } from '@/lib/db/schema';
 import { getBlockedIds } from '@/lib/blocks';
+import { getReportedPostIds } from '@/lib/reportedContent';
 
 const VISIBILITIES = ['public', 'friends', 'private'] as const;
 
@@ -72,6 +73,8 @@ export async function GET(request: Request) {
     if (viewerId) {
       const blockedIds = await getBlockedIds(viewerId);
       if (blockedIds.length > 0) conditions.push(notInArray(posts.clerk_user_id, blockedIds));
+      const reportedPostIds = await getReportedPostIds(viewerId);
+      if (reportedPostIds.length > 0) conditions.push(notInArray(posts.id, reportedPostIds));
     }
 
     const results = await query

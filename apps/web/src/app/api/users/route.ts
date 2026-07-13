@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { ilike, or, ne, and, sql, inArray } from 'drizzle-orm';
+import { ilike, or, ne, and, sql, inArray, notInArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles } from '@/lib/db/schema';
 import { auth } from '@clerk/nextjs/server';
+import { getBlockedIds } from '@/lib/blocks';
 
 export async function GET(request: Request) {
   try {
@@ -39,6 +40,13 @@ export async function GET(request: Request) {
       sql`coalesce(${userProfiles.display_name}, '') ilike ${pattern}`,
     );
 
+    // Blocked users (either direction) never surface in search — hides their
+    // identity from the blocker and keeps the blocker hidden from them too.
+    const blockedIds = userId ? await getBlockedIds(userId) : [];
+    const conditions = [nameMatch];
+    if (userId) conditions.push(ne(userProfiles.clerk_user_id, userId));
+    if (blockedIds.length > 0) conditions.push(notInArray(userProfiles.clerk_user_id, blockedIds));
+
     const results = await db
       .select({
         clerk_user_id: userProfiles.clerk_user_id,
@@ -47,7 +55,7 @@ export async function GET(request: Request) {
         avatar_url: userProfiles.avatar_url,
       })
       .from(userProfiles)
-      .where(userId ? and(nameMatch, ne(userProfiles.clerk_user_id, userId)) : nameMatch)
+      .where(and(...conditions))
       .limit(limit)
       .offset(offset);
 

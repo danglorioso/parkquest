@@ -173,6 +173,7 @@ export interface BadgesResponse {
  */
 export type BadgeConditionType =
   | 'parks_visited'          // unique parks visited >= count
+  | 'all_parks_visited'      // visited every park in the system (count ignored)
   | 'states_visited'         // unique states visited >= count
   | 'bucket_list_count'      // bucket list items >= count
   | 'total_visits'           // total visit logs (trips) >= count

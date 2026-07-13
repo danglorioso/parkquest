@@ -3,9 +3,9 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { customBadges, userBadges } from '@/lib/db/schema';
 import { requireAdmin } from '@/lib/admin';
-import { validateCustomBadge, slugifyBadgeId } from './validate';
+import { validateBadge, slugifyBadgeId } from './validate';
 
-// GET /api/admin/custom-badges — all custom badges with earned counts
+// GET /api/admin/custom-badges — every badge with its earned count
 export async function GET() {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
@@ -22,12 +22,12 @@ export async function GET() {
   });
 }
 
-// POST /api/admin/custom-badges — create a custom badge
+// POST /api/admin/custom-badges — create a badge
 export async function POST(request: Request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
-  const parsed = validateCustomBadge(await request.json().catch(() => null));
+  const parsed = validateBadge(await request.json().catch(() => null));
   if (typeof parsed === 'string') return NextResponse.json({ error: parsed }, { status: 400 });
 
   // Derive a unique badge_id from the name

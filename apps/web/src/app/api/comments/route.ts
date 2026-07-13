@@ -51,12 +51,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'postId and content are required' }, { status: 400 });
     }
 
+    const [post] = await db.select({ clerk_user_id: posts.clerk_user_id }).from(posts).where(eq(posts.id, Number(postId)));
+    if (post) {
+      const blockedIds = await getBlockedIds(userId);
+      if (blockedIds.includes(post.clerk_user_id)) {
+        return NextResponse.json({ error: 'Cannot interact with this post' }, { status: 403 });
+      }
+    }
+
     const [comment] = await db
       .insert(comments)
       .values({ user_id: userId, post_id: Number(postId), content: content.trim() })
       .returning();
 
-    const [post] = await db.select({ clerk_user_id: posts.clerk_user_id }).from(posts).where(eq(posts.id, Number(postId)));
     if (post && post.clerk_user_id !== userId) {
       await db.insert(notifications).values({ recipient_id: post.clerk_user_id, actor_id: userId, type: 'comment', post_id: Number(postId), metadata: { excerpt: content.trim().slice(0, 100) } }).catch(() => {});
       const [actor] = await db.select({ display_name: userProfiles.display_name, username: userProfiles.username }).from(userProfiles).where(eq(userProfiles.clerk_user_id, userId));

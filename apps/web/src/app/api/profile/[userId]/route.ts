@@ -4,6 +4,7 @@ import { eq, count, and, or, isNotNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles, visits, friendships, parks, userBadges } from '@/lib/db/schema';
 import { getBadgeDisplayMap } from '@/lib/badgeDefs';
+import { getBlockedIds } from '@/lib/blocks';
 
 export async function GET(
   _req: Request,
@@ -24,6 +25,15 @@ export async function GET(
 
     const isOwnProfile = viewerId === userId;
     const isOtherUser = !isOwnProfile && !!viewerId;
+
+    // A block severs visibility in both directions — treat the profile as
+    // gone entirely rather than leaking its existence to either party.
+    if (isOtherUser) {
+      const blockedIds = await getBlockedIds(viewerId!);
+      if (blockedIds.includes(userId)) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+    }
 
     const [[visitStats], [friendCountRow], earnedBadges, allVisitsRaw, friendshipRows] = await Promise.all([
       db

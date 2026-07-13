@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, or, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { blocks, reports, userProfiles } from '@/lib/db/schema';
+import { blocks, reports, userProfiles, friendships } from '@/lib/db/schema';
 import { notifyAdmin } from '@/lib/notifyAdmin';
 
 // GET /api/blocks — list users the current user has blocked
@@ -54,6 +54,16 @@ export async function POST(request: Request) {
       .returning();
 
     if (inserted) {
+      // Blocking severs any existing friendship in both directions — a block
+      // means no interaction anywhere in the app, so staying "friends" while
+      // blocked would keep leaking friends-only visibility.
+      await db.delete(friendships).where(
+        or(
+          and(eq(friendships.requester_id, userId), eq(friendships.recipient_id, targetId)),
+          and(eq(friendships.requester_id, targetId), eq(friendships.recipient_id, userId)),
+        )
+      );
+
       // Blocking always produces a developer-visible report so abuse doesn't
       // go unnoticed just because the victim only blocked instead of reporting.
       // Classified separately from 'harassment' — it's just a block, not an
@@ -70,7 +80,9 @@ export async function POST(request: Request) {
         .returning();
 
       if (report) {
-        notifyAdmin({
+        // Un-awaited work dies when the serverless response returns; after() keeps
+        // the function alive until the email is actually sent.
+        after(() => notifyAdmin({
           subject: 'ParkQuest: user blocked (auto-report)',
           reportId: report.id,
           reporterId: userId,
@@ -78,7 +90,7 @@ export async function POST(request: Request) {
           targetId,
           reason: report.reason,
           details: report.details,
-        }).catch(() => {});
+        }).catch(() => {}));
       }
     }
 

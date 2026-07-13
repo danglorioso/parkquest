@@ -1,11 +1,11 @@
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/components/Avatar';
 import { STATIC as C, useColors } from '@/lib/palette';
-import { getMyReports, getBlockedUsers, unblockUser } from '@/lib/api';
+import { getMyReports, getBlockedUsers, unblockUser, deleteReport } from '@/lib/api';
 import { getDefaultVisibility, setDefaultVisibility, type DefaultVisibility } from '@/lib/settings';
 import type { Report, BlockedUser } from '@parkquest/types';
 
@@ -35,6 +35,7 @@ export default function ModerationScreen() {
   const [reports, setReports] = useState<Report[] | null>(null);
   const [blocked, setBlocked] = useState<BlockedUser[] | null>(null);
   const [unblockBusy, setUnblockBusy] = useState<Set<string>>(new Set());
+  const [deleteBusy, setDeleteBusy] = useState<Set<number>>(new Set());
   const [defaultVis, setDefaultVis] = useState<DefaultVisibility | null>(null);
 
   const load = useCallback(async () => {
@@ -64,6 +65,34 @@ export default function ModerationScreen() {
     } finally {
       setUnblockBusy(s => { const n = new Set(s); n.delete(u.clerk_user_id); return n; });
     }
+  };
+
+  const handleDeleteReport = (r: Report) => {
+    if (deleteBusy.has(r.id)) return;
+    Alert.alert(
+      'Undo report',
+      r.target_type === 'post'
+        ? 'This post will be able to reappear in your feed.'
+        : 'This will withdraw your report.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Undo report', style: 'destructive', onPress: async () => {
+            setDeleteBusy(s => new Set([...s, r.id]));
+            try {
+              const tok = await getToken();
+              if (!tok) return;
+              await deleteReport(tok, r.id);
+              setReports(prev => prev?.filter(x => x.id !== r.id) ?? prev);
+            } catch {
+              Alert.alert('Error', 'Could not undo this report. Please try again.');
+            } finally {
+              setDeleteBusy(s => { const n = new Set(s); n.delete(r.id); return n; });
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -140,15 +169,29 @@ export default function ModerationScreen() {
         ) : reports.length === 0 ? (
           <Text style={st.emptyText}>You haven't reported anything.</Text>
         ) : (
-          reports.map(r => (
-            <View key={r.id} style={st.card}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={st.cardTitle}>{r.target_type.toUpperCase()} · {REASON_LABELS[r.reason] ?? r.reason}</Text>
-                <Text style={st.cardStatus}>{STATUS_LABELS[r.status] ?? r.status}</Text>
+          reports.map(r => {
+            const busy = deleteBusy.has(r.id);
+            return (
+              <View key={r.id} style={st.card}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={st.cardTitle}>{r.target_type.toUpperCase()} · {REASON_LABELS[r.reason] ?? r.reason}</Text>
+                  <Text style={st.cardStatus}>{STATUS_LABELS[r.status] ?? r.status}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={st.cardMeta}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</Text>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteReport(r)}
+                    disabled={busy}
+                    style={[st.deleteBtn, busy && { opacity: 0.5 }]}
+                  >
+                    {busy
+                      ? <ActivityIndicator size="small" color={C.inkSoft} />
+                      : <Text style={st.deleteBtnText}>Undo report</Text>}
+                  </TouchableOpacity>
+                </View>
               </View>
-              <Text style={st.cardMeta}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</Text>
-            </View>
-          ))
+            );
+          })
         )}
       </View>
     </ScrollView>
@@ -187,9 +230,14 @@ const st = StyleSheet.create({
   unblockBtnText: { fontSize: 13, fontWeight: '600', color: C.inkSoft },
   card: {
     backgroundColor: C.surface, borderRadius: 12,
-    borderWidth: 0.5, borderColor: C.hairline, padding: 12,
+    borderWidth: 0.5, borderColor: C.hairline, padding: 12, gap: 6,
   },
   cardTitle: { fontSize: 12.5, fontWeight: '700', color: C.ink },
   cardStatus: { fontSize: 12, color: C.inkMute },
-  cardMeta: { fontSize: 12, color: C.inkMute, marginTop: 3 },
+  cardMeta: { fontSize: 12, color: C.inkMute },
+  deleteBtn: {
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+    backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline,
+  },
+  deleteBtnText: { fontSize: 12, fontWeight: '600', color: C.inkSoft },
 });

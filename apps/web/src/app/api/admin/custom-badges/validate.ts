@@ -9,7 +9,7 @@ const NUMERIC_TYPES: BadgeConditionType[] = [
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
-export interface CustomBadgeInput {
+export interface BadgeInput {
   name: string;
   description: string;
   emoji: string;
@@ -17,15 +17,6 @@ export interface CustomBadgeInput {
   colors: BadgeColors | null;
   conditions: BadgeCondition[];
   enabled: boolean;
-}
-
-/** Shared display fields for custom badges and built-in overrides. */
-export interface BadgeDisplayInput {
-  name: string;
-  description: string;
-  emoji: string;
-  tier: BadgeTier;
-  colors: BadgeColors | null;
 }
 
 /** null/undefined = use tier colors. Returns a string describing what's wrong. */
@@ -51,6 +42,8 @@ export function validateConditions(raw: unknown): BadgeCondition[] | string {
       const count = Number(c.count);
       if (!Number.isInteger(count) || count < 1) return `Condition "${type}" needs a count of at least 1`;
       conditions.push({ type, count });
+    } else if (type === 'all_parks_visited') {
+      conditions.push({ type });
     } else if (type === 'specific_parks') {
       const parkCodes = Array.isArray(c.parkCodes)
         ? c.parkCodes.filter((p): p is string => typeof p === 'string' && p.length > 0)
@@ -73,8 +66,11 @@ export function validateConditions(raw: unknown): BadgeCondition[] | string {
   return conditions;
 }
 
-/** Returns normalized display fields, or a string describing what's wrong. */
-export function validateBadgeDisplay(b: Record<string, unknown>): BadgeDisplayInput | string {
+/** Returns a normalized payload, or a string describing what's wrong. */
+export function validateBadge(body: unknown): BadgeInput | string {
+  if (typeof body !== 'object' || body === null) return 'Invalid payload';
+  const b = body as Record<string, unknown>;
+
   const name = typeof b.name === 'string' ? b.name.trim() : '';
   if (!name || name.length > 100) return 'Name is required (max 100 chars)';
 
@@ -90,29 +86,18 @@ export function validateBadgeDisplay(b: Record<string, unknown>): BadgeDisplayIn
   const colors = validateColors(b.colors);
   if (typeof colors === 'string') return colors;
 
-  return { name, description, emoji, tier, colors };
-}
-
-/** Returns a normalized payload, or a string describing what's wrong. */
-export function validateCustomBadge(body: unknown): CustomBadgeInput | string {
-  if (typeof body !== 'object' || body === null) return 'Invalid payload';
-  const b = body as Record<string, unknown>;
-
-  const display = validateBadgeDisplay(b);
-  if (typeof display === 'string') return display;
-
   const conditions = validateConditions(b.conditions);
   if (typeof conditions === 'string') return conditions;
 
-  return { ...display, conditions, enabled: b.enabled !== false };
+  return { name, description, emoji, tier, colors, conditions, enabled: b.enabled !== false };
 }
 
-/** 'Weekend Warrior' -> 'custom_weekend_warrior' */
+/** 'Weekend Warrior' -> 'weekend_warrior' */
 export function slugifyBadgeId(name: string): string {
   const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 80);
-  return `custom_${slug || 'badge'}`;
+  return slug || 'badge';
 }

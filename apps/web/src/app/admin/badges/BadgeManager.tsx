@@ -9,7 +9,7 @@ import {
   btnBase, badgeGradient, ConditionEditor, DisplayFieldsEditor, type ParkOption,
 } from './editorShared';
 
-interface CustomBadgeRow {
+interface BadgeRow {
   id: number;
   badge_id: string;
   name: string;
@@ -38,8 +38,8 @@ const TIER_LABELS = Object.fromEntries(
   Object.entries(TIER_CONFIG).map(([t, c]) => [t, c.label]),
 ) as Record<BadgeTier, string>;
 
-export default function CustomBadgeManager() {
-  const [badges, setBadges] = useState<CustomBadgeRow[] | null>(null);
+export default function BadgeManager() {
+  const [badges, setBadges] = useState<BadgeRow[] | null>(null);
   const [parks, setParks] = useState<ParkOption[]>([]);
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -58,7 +58,7 @@ export default function CustomBadgeManager() {
   }, []);
 
   const openNew = () => { setForm(EMPTY_FORM); setEditingId('new'); setError(null); };
-  const openEdit = (b: CustomBadgeRow) => {
+  const openEdit = (b: BadgeRow) => {
     setForm({
       name: b.name, description: b.description, emoji: b.emoji, tier: b.tier,
       colors: b.colors ?? null, enabled: b.enabled, conditions: b.conditions,
@@ -89,7 +89,7 @@ export default function CustomBadgeManager() {
     load();
   };
 
-  const remove = async (b: CustomBadgeRow) => {
+  const remove = async (b: BadgeRow) => {
     const ok = window.confirm(
       `Delete "${b.name}"? This removes it from the ${b.earned_count} user${b.earned_count === 1 ? '' : 's'} who earned it and deletes their share posts.`,
     );
@@ -105,9 +105,10 @@ export default function CustomBadgeManager() {
     <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-ink">Custom badges</h2>
+          <h2 className="text-lg font-bold text-ink">Badges</h2>
           <p className="mt-0.5 text-sm text-ink-mute">
-            Admin-defined badges. Users earn them automatically once every condition is met.
+            Edit any badge&apos;s name, description, emoji, tier, colors, or earning
+            criteria. Users earn badges automatically once every condition is met.
           </p>
         </div>
         <button type="button" onClick={openNew} className={`${btnBase} border-primary bg-primary text-white hover:opacity-90`}>
@@ -118,7 +119,7 @@ export default function CustomBadgeManager() {
       {/* List */}
       <div className="mt-4 flex flex-col gap-2">
         {badges === null && <p className="text-sm text-ink-mute">Loading…</p>}
-        {badges?.length === 0 && <p className="text-sm text-ink-mute">No custom badges yet.</p>}
+        {badges?.length === 0 && <p className="text-sm text-ink-mute">No badges yet.</p>}
         {badges?.map(b => (
           <div key={b.id} className="flex items-start gap-3 rounded-lg border border-hairline p-3">
             <span

@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { reports } from '@/lib/db/schema';
 import { notifyAdmin } from '@/lib/notifyAdmin';
@@ -51,7 +51,9 @@ export async function POST(request: Request) {
       .returning();
 
     if (inserted) {
-      notifyAdmin({
+      // Un-awaited work dies when the serverless response returns; after() keeps
+      // the function alive until the email is actually sent.
+      after(() => notifyAdmin({
         subject: `ParkQuest: new ${targetType} report`,
         reportId: inserted.id,
         reporterId: userId,
@@ -59,12 +61,38 @@ export async function POST(request: Request) {
         targetId: String(targetId),
         reason,
         details: inserted.details,
-      }).catch(() => {});
+      }).catch(() => {}));
     }
 
     return NextResponse.json({ message: 'Report submitted' });
   } catch (error) {
     console.error('Error submitting report:', error);
     return NextResponse.json({ error: 'Failed to submit report' }, { status: 500 });
+  }
+}
+
+// DELETE /api/reports?id=123 — withdraw a report you filed ("undo report").
+// Only the reporter can delete their own report; withdrawing a 'post' report
+// lets that post reappear in the reporter's feed again.
+export async function DELETE(request: Request) {
+  try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+
+    const [deleted] = await db
+      .delete(reports)
+      .where(and(eq(reports.id, Number(id)), eq(reports.reporter_id, userId)))
+      .returning();
+
+    if (!deleted) return NextResponse.json({ error: 'Report not found' }, { status: 404 });
+
+    return NextResponse.json({ message: 'Report deleted' });
+  } catch (error) {
+    console.error('Error deleting report:', error);
+    return NextResponse.json({ error: 'Failed to delete report' }, { status: 500 });
   }
 }

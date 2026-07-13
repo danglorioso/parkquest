@@ -1,15 +1,19 @@
 import { NextResponse, after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, notInArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { likes, posts, notifications, userProfiles } from '@/lib/db/schema';
 import { sendPushToUser } from '@/lib/push';
+import { getBlockedIds } from '@/lib/blocks';
 
 export async function GET(request: Request) {
   try {
+    const { userId: viewerId } = await auth();
     const { searchParams } = new URL(request.url);
     const postId = searchParams.get('postId');
     if (!postId) return NextResponse.json({ error: 'postId is required' }, { status: 400 });
+
+    const blockedIds = viewerId ? await getBlockedIds(viewerId) : [];
 
     const rows = await db
       .select({
@@ -20,7 +24,11 @@ export async function GET(request: Request) {
       })
       .from(likes)
       .leftJoin(userProfiles, eq(likes.user_id, userProfiles.clerk_user_id))
-      .where(eq(likes.post_id, Number(postId)))
+      .where(
+        blockedIds.length > 0
+          ? and(eq(likes.post_id, Number(postId)), notInArray(likes.user_id, blockedIds))
+          : eq(likes.post_id, Number(postId))
+      )
       .orderBy(desc(likes.created_at))
       .limit(50);
 
@@ -39,22 +47,27 @@ export async function POST(request: Request) {
     const { postId } = await request.json();
     if (!postId) return NextResponse.json({ error: 'postId is required' }, { status: 400 });
 
+    const [targetPost] = await db.select({ clerk_user_id: posts.clerk_user_id }).from(posts).where(eq(posts.id, Number(postId)));
+    if (targetPost) {
+      const blockedIds = await getBlockedIds(userId);
+      if (blockedIds.includes(targetPost.clerk_user_id)) {
+        return NextResponse.json({ error: 'Cannot interact with this post' }, { status: 403 });
+      }
+    }
+
     const [inserted] = await db
       .insert(likes)
       .values({ user_id: userId, post_id: Number(postId) })
       .onConflictDoNothing()
       .returning();
 
-    if (inserted) {
-      const [post] = await db.select({ clerk_user_id: posts.clerk_user_id }).from(posts).where(eq(posts.id, Number(postId)));
-      if (post && post.clerk_user_id !== userId) {
-        await db.insert(notifications).values({ recipient_id: post.clerk_user_id, actor_id: userId, type: 'like', post_id: Number(postId) }).catch(() => {});
-        const [actor] = await db.select({ display_name: userProfiles.display_name, username: userProfiles.username }).from(userProfiles).where(eq(userProfiles.clerk_user_id, userId));
-        const name = actor?.display_name || actor?.username || "Someone";
-        // Un-awaited work dies when the serverless response returns; after() keeps
-        // the function alive until the push is actually handed to Expo.
-        after(() => sendPushToUser(post.clerk_user_id, { title: "New like", body: `${name} liked your post.`, url: "/map" }).catch(() => {}));
-      }
+    if (inserted && targetPost && targetPost.clerk_user_id !== userId) {
+      await db.insert(notifications).values({ recipient_id: targetPost.clerk_user_id, actor_id: userId, type: 'like', post_id: Number(postId) }).catch(() => {});
+      const [actor] = await db.select({ display_name: userProfiles.display_name, username: userProfiles.username }).from(userProfiles).where(eq(userProfiles.clerk_user_id, userId));
+      const name = actor?.display_name || actor?.username || "Someone";
+      // Un-awaited work dies when the serverless response returns; after() keeps
+      // the function alive until the push is actually handed to Expo.
+      after(() => sendPushToUser(targetPost.clerk_user_id, { title: "New like", body: `${name} liked your post.`, url: "/map" }).catch(() => {}));
     }
 
     return NextResponse.json({ message: 'Liked' });

@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { customBadges, userBadges, posts } from '@/lib/db/schema';
 import { requireAdmin } from '@/lib/admin';
-import { validateCustomBadge } from '../validate';
+import { validateBadge } from '../validate';
 
 async function findBadge(idParam: string) {
   const id = Number(idParam);
@@ -12,9 +12,10 @@ async function findBadge(idParam: string) {
   return badge ?? null;
 }
 
-// PATCH /api/admin/custom-badges/[id] — update a custom badge.
+// PATCH /api/admin/custom-badges/[id] — update a badge.
 // badge_id stays stable so existing user_badges/posts keep pointing at it;
-// criteria changes take effect the next time each user's badges are evaluated.
+// criteria/display changes take effect the next time each user's badges are
+// evaluated (they can award AND revoke).
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
@@ -22,7 +23,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const badge = await findBadge((await params).id);
   if (!badge) return NextResponse.json({ error: 'Badge not found' }, { status: 404 });
 
-  const parsed = validateCustomBadge(await request.json().catch(() => null));
+  const parsed = validateBadge(await request.json().catch(() => null));
   if (typeof parsed === 'string') return NextResponse.json({ error: parsed }, { status: 400 });
 
   const [updated] = await db

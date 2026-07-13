@@ -96,8 +96,20 @@ export default function AdminReportsPage() {
                 </span>
               </div>
               <p className="text-sm text-ink-soft">
-                Reported by <strong className="text-ink">@{r.reporter_username ?? r.reporter_id}</strong>
-                {r.target_username ? <> — target: <strong className="text-ink">@{r.target_username}</strong></> : null}
+                Reported by{' '}
+                <strong className="text-ink">
+                  {r.reporter_username ? `@${r.reporter_username}` : r.reporter_id}
+                </strong>{' '}
+                <span className="text-xs text-ink-mute">({r.reporter_id})</span>
+                {r.target_user_id ? (
+                  <>
+                    {' '}— target:{' '}
+                    <strong className="text-ink">
+                      {r.target_username ? `@${r.target_username}` : r.target_user_id}
+                    </strong>{' '}
+                    <span className="text-xs text-ink-mute">({r.target_user_id})</span>
+                  </>
+                ) : null}
               </p>
               {r.target_photos && r.target_photos.length > 0 ? (
                 <div className="flex gap-2 overflow-x-auto">

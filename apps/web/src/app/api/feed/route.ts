@@ -4,6 +4,7 @@ import { eq, desc, and, or, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, friendships, parks, userProfiles, visits } from '@/lib/db/schema';
 import { getBlockedIds } from '@/lib/blocks';
+import { getReportedPostIds } from '@/lib/reportedContent';
 
 export async function GET(request: Request) {
   try {
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
     const friendIdList = friendRows.map(r => r.friend_id);
     const friendIds = new Set(friendIdList);
     const blockedIds = await getBlockedIds(userId);
+    const reportedPostIds = await getReportedPostIds(userId);
 
     // Fetch only the user's own posts and friends' posts
     const allowedIds = [userId, ...friendIdList];
@@ -75,6 +77,7 @@ export async function GET(request: Request) {
         and(
           author ? eq(posts.clerk_user_id, author) : undefined,
           blockedIds.length > 0 ? notInArray(posts.clerk_user_id, blockedIds) : undefined,
+          reportedPostIds.length > 0 ? notInArray(posts.id, reportedPostIds) : undefined,
           or(
             // Own posts regardless of visibility
             eq(posts.clerk_user_id, userId),

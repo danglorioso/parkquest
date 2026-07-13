@@ -7,10 +7,13 @@ import { sendPushToUser } from '@/lib/push';
 import { getBlockedIds } from '@/lib/blocks';
 
 // GET /api/friends?userId=...&type=friends|pending_incoming|pending_outgoing
+// userId defaults to the authenticated caller — only needed to view someone
+// else's public friends list (e.g. the FriendListModal on a profile page).
 export async function GET(request: Request) {
   try {
+    const { userId: viewerId } = await auth();
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const userId = searchParams.get('userId') ?? viewerId;
     const type = searchParams.get('type') ?? 'friends';
     const limit = Math.min(Number(searchParams.get('limit') ?? '50'), 100);
     const offset = Number(searchParams.get('offset') ?? '0');
@@ -35,6 +38,14 @@ export async function GET(request: Request) {
 
       if (friendIds.length === 0) return NextResponse.json([]);
 
+      // Hide anyone the viewer has blocked (or who has blocked the viewer)
+      // out of any friends list, even one that isn't their own.
+      const blockedIds = viewerId ? await getBlockedIds(viewerId) : [];
+      const visibleFriendIds = blockedIds.length > 0
+        ? friendIds.filter(r => !blockedIds.includes(r.friend_id))
+        : friendIds;
+      if (visibleFriendIds.length === 0) return NextResponse.json([]);
+
       const profiles = await db
         .select({
           clerk_user_id: userProfiles.clerk_user_id,
@@ -43,9 +54,9 @@ export async function GET(request: Request) {
           avatar_url: userProfiles.avatar_url,
         })
         .from(userProfiles)
-        .where(inArray(userProfiles.clerk_user_id, friendIds.map(r => r.friend_id)));
+        .where(inArray(userProfiles.clerk_user_id, visibleFriendIds.map(r => r.friend_id)));
 
-      const sinceMap = new Map(friendIds.map(r => [r.friend_id, r.friends_since]));
+      const sinceMap = new Map(visibleFriendIds.map(r => [r.friend_id, r.friends_since]));
       const rows = profiles.map(p => ({ ...p, friends_since: sinceMap.get(p.clerk_user_id) ?? null }));
       return NextResponse.json(rows);
     }

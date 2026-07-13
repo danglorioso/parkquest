@@ -23,6 +23,7 @@ export const TIER_FILL_LIGHT: Record<BadgeTier, BadgeColors> = {
 
 export const CONDITION_LABELS: Record<BadgeConditionType, string> = {
   parks_visited:         'Parks visited',
+  all_parks_visited:     'Every park visited',
   states_visited:        'States visited',
   bucket_list_count:     'Bucket list size',
   total_visits:          'Total trips logged',
@@ -110,6 +111,7 @@ export function ConditionEditor({
 }) {
   const [parkSearch, setParkSearch] = useState('');
   const isParks = condition.type === 'specific_parks';
+  const isAllParks = condition.type === 'all_parks_visited';
   const selected = useMemo(() => condition.parkCodes ?? [], [condition.parkCodes]);
 
   const matches = useMemo(() => {
@@ -121,9 +123,9 @@ export function ConditionEditor({
   }, [parkSearch, parks, selected]);
 
   const setType = (type: BadgeConditionType) => {
-    onChange(type === 'specific_parks'
-      ? { type, parkCodes: [], mode: 'all' }
-      : { type, count: condition.count && condition.count > 0 ? condition.count : 1 });
+    if (type === 'specific_parks') onChange({ type, parkCodes: [], mode: 'all' });
+    else if (type === 'all_parks_visited') onChange({ type });
+    else onChange({ type, count: condition.count && condition.count > 0 ? condition.count : 1 });
   };
 
   return (
@@ -161,7 +163,7 @@ export function ConditionEditor({
               />
             )}
           </>
-        ) : (
+        ) : isAllParks ? null : (
           <>
             <span className="text-sm text-ink-mute">at least</span>
             <input

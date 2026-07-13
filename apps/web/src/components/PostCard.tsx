@@ -10,7 +10,6 @@ import {
   Globe, Users, Lock,
 } from "lucide-react";
 import Link from "next/link";
-import { ALL_BADGES } from "@/lib/badges";
 import { parkGradient } from "@/lib/parkGradient";
 import { useToast } from "@/components/ToastProvider";
 
@@ -75,12 +74,9 @@ interface BadgeDisplay {
   colors?: { fill: string; light: string } | null;
 }
 
-export const BADGE_MAP = new Map<string, BadgeDisplay>(
-  ALL_BADGES.map(b => [b.id, b]),
-);
+export const BADGE_MAP = new Map<string, BadgeDisplay>();
 
-// Admin-defined badges and edits to built-in ones aren't in the static list;
-// merge the server defs in at runtime.
+// Badge display info lives entirely in the DB; fetch it before first render.
 let badgeDefsPromise: Promise<void> | null = null;
 function ensureBadgeDefs(): Promise<void> {
   badgeDefsPromise ??= fetch('/api/badges/defs')

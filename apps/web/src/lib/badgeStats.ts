@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userBadges, customBadges } from '@/lib/db/schema';
-import { getEffectiveStaticBadges } from '@/lib/badgeDefs';
 
 export interface BadgeStatRow {
   id: string;
@@ -10,11 +9,10 @@ export interface BadgeStatRow {
   tier: string;
   count: number;
   pct_of_active: number;
-  custom: boolean;
 }
 
 export async function getBadgeStats(): Promise<{ badges: BadgeStatRow[]; active_users: number }> {
-  const [counts, [{ count: activeUsers }], customRows, staticDefs] = await Promise.all([
+  const [counts, [{ count: activeUsers }], badgeRows] = await Promise.all([
     db.select({ badge_id: userBadges.badge_id, count: sql<number>`COUNT(*)::int` })
       .from(userBadges).groupBy(userBadges.badge_id),
     // "Active users" here = ever engaged (at least one post/visit/like/comment),
@@ -28,19 +26,17 @@ export async function getBadgeStats(): Promise<{ badges: BadgeStatRow[]; active_
       ) t
     `).then(r => r.rows as { count: number }[]),
     db.select().from(customBadges),
-    getEffectiveStaticBadges(),
   ]);
 
   const countMap = new Map(counts.map(c => [c.badge_id, c.count]));
-  const allDefs = [
-    ...staticDefs.map(b => ({ id: b.id, name: b.name, emoji: b.emoji, tier: b.tier as string, custom: false })),
-    ...customRows.map(b => ({ id: b.badge_id, name: b.name, emoji: b.emoji, tier: b.tier, custom: true })),
-  ];
-  const badges = allDefs
+  const badges = badgeRows
     .map(b => {
-      const count = countMap.get(b.id) ?? 0;
+      const count = countMap.get(b.badge_id) ?? 0;
       return {
-        ...b,
+        id: b.badge_id,
+        name: b.name,
+        emoji: b.emoji,
+        tier: b.tier,
         count,
         pct_of_active: activeUsers > 0 ? Math.round((count / activeUsers) * 1000) / 10 : 0,
       };

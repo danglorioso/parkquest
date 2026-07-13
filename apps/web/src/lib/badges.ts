@@ -1,8 +1,8 @@
 // ─── Badge system ─────────────────────────────────────────────────────────────
-// To add a new badge: add one entry to ALL_BADGES. That's it.
-// The API route will automatically pick it up, evaluate it, and award it.
-// Admins can also define badges at runtime (custom_badges table) — see the
-// condition engine below and /api/admin/custom-badges.
+// Every badge — the original launch set and anything an admin adds later — is a
+// row in the custom_badges table, evaluated through the condition engine below.
+// There's no code-defined badge list; add/edit/delete all happen through
+// /api/admin/badges.
 
 import type { BadgeCondition } from '@parkquest/types';
 
@@ -15,24 +15,12 @@ export interface UserStats {
   bucketListCount: number;
   parksThisYear: number;
   maxParksInAYear: number;
-  // Extended stats for admin-defined (custom) badge conditions
+  // Extended stats for admin-defined badge conditions
   totalVisits: number;             // all visit logs (trips), repeat parks counted
   maxVisitsToOnePark: number;      // most trips logged to any single park
   maxVisitsInAYear: number;        // most visit logs in one calendar year
   maxUniqueParksInAYear: number;   // most distinct parks visited in one calendar year
   visitedParkCodes: string[];      // distinct parks visited
-}
-
-export interface BadgeDefinition {
-  id: string;
-  name: string;
-  description: string;
-  emoji: string;
-  tier: BadgeTier;
-  /** For progress display on locked badges */
-  progressTarget?: (stats: UserStats) => number;
-  progressCurrent?: (stats: UserStats) => number;
-  criteria: (stats: UserStats) => boolean;
 }
 
 // ─── Tier visual config ────────────────────────────────────────────────────────
@@ -87,274 +75,15 @@ export const TIER_CONFIG: Record<BadgeTier, {
   },
 };
 
-// ─── Badge definitions ─────────────────────────────────────────────────────────
-
-export const ALL_BADGES: BadgeDefinition[] = [
-  // ── Parks visited milestones ────────────────────────────────────────────────
-  {
-    id: 'first_steps',
-    name: 'First Steps',
-    description: 'Visited your very first national park',
-    emoji: '🌱',
-    tier: 'bronze',
-    progressTarget: () => 1,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 1,
-  },
-  {
-    id: 'trail_walker',
-    name: 'Trail Walker',
-    description: 'Visited 5 national parks',
-    emoji: '🥾',
-    tier: 'bronze',
-    progressTarget: () => 5,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 5,
-  },
-  {
-    id: 'camp_wanderer',
-    name: 'Camp Wanderer',
-    description: 'Visited 10 national parks',
-    emoji: '🏕️',
-    tier: 'silver',
-    progressTarget: () => 10,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 10,
-  },
-  {
-    id: 'sharp_eye',
-    name: 'Sharp Eye',
-    description: 'Visited 25 national parks',
-    emoji: '🦅',
-    tier: 'silver',
-    progressTarget: () => 25,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 25,
-  },
-  {
-    id: 'true_explorer',
-    name: 'True Explorer',
-    description: 'Visited 50 national parks',
-    emoji: '🗺️',
-    tier: 'gold',
-    progressTarget: () => 50,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 50,
-  },
-  {
-    id: 'peak_climber',
-    name: 'Peak Climber',
-    description: 'Visited 75 national parks',
-    emoji: '🏔️',
-    tier: 'gold',
-    progressTarget: () => 75,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 75,
-  },
-  {
-    id: 'century_club',
-    name: 'Century Club',
-    description: 'Visited 100 national parks',
-    emoji: '⭐',
-    tier: 'gold',
-    progressTarget: () => 100,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 100,
-  },
-  {
-    id: 'star_ranger',
-    name: 'Star Ranger',
-    description: 'Visited 150 national parks',
-    emoji: '🌟',
-    tier: 'platinum',
-    progressTarget: () => 150,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 150,
-  },
-  {
-    id: 'horizon_chaser',
-    name: 'Horizon Chaser',
-    description: 'Visited 200 national parks',
-    emoji: '🌄',
-    tier: 'platinum',
-    progressTarget: () => 200,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 200,
-  },
-  {
-    id: 'wild_at_heart',
-    name: 'Wild At Heart',
-    description: 'Visited 300 national parks',
-    emoji: '🦁',
-    tier: 'legendary',
-    progressTarget: () => 300,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.parksVisited >= 300,
-  },
-  {
-    id: 'park_legend',
-    name: 'Park Legend',
-    description: 'Visited every single national park',
-    emoji: '👑',
-    tier: 'legendary',
-    progressTarget: s => s.totalParks,
-    progressCurrent: s => s.parksVisited,
-    criteria: s => s.totalParks > 0 && s.parksVisited >= s.totalParks,
-  },
-
-  // ── States visited milestones ───────────────────────────────────────────────
-  {
-    id: 'state_hopper',
-    name: 'State Hopper',
-    description: 'Visited parks in 3 different states',
-    emoji: '🧭',
-    tier: 'bronze',
-    progressTarget: () => 3,
-    progressCurrent: s => s.statesVisited,
-    criteria: s => s.statesVisited >= 3,
-  },
-  {
-    id: 'cross_country',
-    name: 'Cross Country',
-    description: 'Visited parks in 7 different states',
-    emoji: '🌎',
-    tier: 'silver',
-    progressTarget: () => 7,
-    progressCurrent: s => s.statesVisited,
-    criteria: s => s.statesVisited >= 7,
-  },
-  {
-    id: 'all_american',
-    name: 'All-American',
-    description: 'Visited parks in 15 different states',
-    emoji: '🗽',
-    tier: 'gold',
-    progressTarget: () => 15,
-    progressCurrent: s => s.statesVisited,
-    criteria: s => s.statesVisited >= 15,
-  },
-  {
-    id: 'continental',
-    name: 'Continental',
-    description: 'Visited parks in 30 different states',
-    emoji: '🌐',
-    tier: 'platinum',
-    progressTarget: () => 30,
-    progressCurrent: s => s.statesVisited,
-    criteria: s => s.statesVisited >= 30,
-  },
-  {
-    id: 'united_legend',
-    name: 'United Legend',
-    description: 'Visited parks in all 50 states',
-    emoji: '🏛️',
-    tier: 'legendary',
-    progressTarget: () => 50,
-    progressCurrent: s => s.statesVisited,
-    criteria: s => s.statesVisited >= 50,
-  },
-
-  // ── Bucket list milestones ──────────────────────────────────────────────────
-  {
-    id: 'wishful_thinker',
-    name: 'Wishful Thinker',
-    description: 'Added 5 parks to your bucket list',
-    emoji: '📋',
-    tier: 'bronze',
-    progressTarget: () => 5,
-    progressCurrent: s => s.bucketListCount,
-    criteria: s => s.bucketListCount >= 5,
-  },
-  {
-    id: 'big_dreamer',
-    name: 'Big Dreamer',
-    description: 'Added 15 parks to your bucket list',
-    emoji: '✨',
-    tier: 'silver',
-    progressTarget: () => 15,
-    progressCurrent: s => s.bucketListCount,
-    criteria: s => s.bucketListCount >= 15,
-  },
-  {
-    id: 'visionary',
-    name: 'Visionary',
-    description: 'Added 30 parks to your bucket list',
-    emoji: '🌠',
-    tier: 'gold',
-    progressTarget: () => 30,
-    progressCurrent: s => s.bucketListCount,
-    criteria: s => s.bucketListCount >= 30,
-  },
-
-  // ── Yearly activity ─────────────────────────────────────────────────────────
-  {
-    id: 'hot_streak',
-    name: 'Hot Streak',
-    description: 'Visited 5 parks in a single calendar year',
-    emoji: '🔥',
-    tier: 'silver',
-    progressTarget: () => 5,
-    progressCurrent: s => s.maxParksInAYear,
-    criteria: s => s.maxParksInAYear >= 5,
-  },
-  {
-    id: 'year_adventurer',
-    name: 'Year Adventurer',
-    description: 'Visited 10 parks in a single calendar year',
-    emoji: '🚀',
-    tier: 'gold',
-    progressTarget: () => 10,
-    progressCurrent: s => s.maxParksInAYear,
-    criteria: s => s.maxParksInAYear >= 10,
-  },
-  {
-    id: 'park_obsessed',
-    name: 'Park Obsessed',
-    description: 'Visited 20 parks in a single calendar year',
-    emoji: '💫',
-    tier: 'platinum',
-    progressTarget: () => 20,
-    progressCurrent: s => s.maxParksInAYear,
-    criteria: s => s.maxParksInAYear >= 20,
-  },
-];
-
-// Condition-engine equivalents of the built-in criteria above. The admin editor
-// uses these to prefill the criteria form when overriding a built-in badge.
-// park_legend has no entry: its target (every park) tracks the live park count,
-// which the condition engine can't express.
-export const BUILTIN_CONDITIONS: Record<string, BadgeCondition[]> = {
-  first_steps:     [{ type: 'parks_visited', count: 1 }],
-  trail_walker:    [{ type: 'parks_visited', count: 5 }],
-  camp_wanderer:   [{ type: 'parks_visited', count: 10 }],
-  sharp_eye:       [{ type: 'parks_visited', count: 25 }],
-  true_explorer:   [{ type: 'parks_visited', count: 50 }],
-  peak_climber:    [{ type: 'parks_visited', count: 75 }],
-  century_club:    [{ type: 'parks_visited', count: 100 }],
-  star_ranger:     [{ type: 'parks_visited', count: 150 }],
-  horizon_chaser:  [{ type: 'parks_visited', count: 200 }],
-  wild_at_heart:   [{ type: 'parks_visited', count: 300 }],
-  state_hopper:    [{ type: 'states_visited', count: 3 }],
-  cross_country:   [{ type: 'states_visited', count: 7 }],
-  all_american:    [{ type: 'states_visited', count: 15 }],
-  continental:     [{ type: 'states_visited', count: 30 }],
-  united_legend:   [{ type: 'states_visited', count: 50 }],
-  wishful_thinker: [{ type: 'bucket_list_count', count: 5 }],
-  big_dreamer:     [{ type: 'bucket_list_count', count: 15 }],
-  visionary:       [{ type: 'bucket_list_count', count: 30 }],
-  hot_streak:      [{ type: 'visits_in_year', count: 5 }],
-  year_adventurer: [{ type: 'visits_in_year', count: 10 }],
-  park_obsessed:   [{ type: 'visits_in_year', count: 20 }],
-};
-
-// ─── Custom badge condition engine ─────────────────────────────────────────────
-// Admin-defined badges store an array of BadgeCondition (AND semantics) in the
-// custom_badges table; this evaluates them against the same UserStats.
+// ─── Condition engine ───────────────────────────────────────────────────────────
+// Every badge stores an array of BadgeCondition (AND semantics) in the
+// custom_badges table; this evaluates them against a user's stats.
 
 /** current/target progress for one condition against the user's stats */
 export function conditionProgress(c: BadgeCondition, stats: UserStats): { current: number; target: number } {
   switch (c.type) {
     case 'parks_visited':         return { current: stats.parksVisited,          target: c.count ?? 1 };
+    case 'all_parks_visited':     return { current: stats.parksVisited,          target: stats.totalParks };
     case 'states_visited':        return { current: stats.statesVisited,         target: c.count ?? 1 };
     case 'bucket_list_count':     return { current: stats.bucketListCount,       target: c.count ?? 1 };
     case 'total_visits':          return { current: stats.totalVisits,           target: c.count ?? 1 };
@@ -399,6 +128,7 @@ export function describeCondition(c: BadgeCondition, parkNames?: Map<string, str
   const n = c.count ?? 1;
   switch (c.type) {
     case 'parks_visited':         return `Visit ${n} park${n === 1 ? '' : 's'}`;
+    case 'all_parks_visited':     return `Visit every park`;
     case 'states_visited':        return `Visit parks in ${n} state${n === 1 ? '' : 's'}`;
     case 'bucket_list_count':     return `Add ${n} park${n === 1 ? '' : 's'} to your bucket list`;
     case 'total_visits':          return `Log ${n} total trip${n === 1 ? '' : 's'}`;

@@ -120,6 +120,9 @@ export const reportContent = (
   body: JSON.stringify({ targetType, targetId, reason, details }),
 });
 
+export const deleteReport = (token: string, reportId: number) =>
+  req(`/api/reports?id=${reportId}`, token, { method: 'DELETE' });
+
 export const getBlockedUsers = (token: string) =>
   req<BlockedUser[]>('/api/blocks', token);
 
