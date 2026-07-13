@@ -40,7 +40,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           className="flex items-center justify-center gap-2 border-b border-destructive/30 bg-destructive/10 px-5 py-2.5 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/15"
         >
           <Flag size={14} strokeWidth={2.5} />
-          {openCount} unaddressed report{openCount !== 1 ? 's' : ''} {openCount !== 1 ? 'need' : 'needs'} review — go to reports queue
+          {openCount} unaddressed report{openCount !== 1 ? 's' : ''} {openCount !== 1 ? 'need' : 'needs'} review
         </Link>
       )}
       <main className="mx-auto max-w-5xl px-5 py-8">{children}</main>
