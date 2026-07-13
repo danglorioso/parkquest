@@ -20,7 +20,8 @@
       "expo-auth-session": "~7.0.11",
       "expo-application": "~7.0.8",
       "expo-constants": "~18.0.13",
-      "expo-crypto": "~15.0.9"
+      "expo-crypto": "~15.0.9",
+      "sharp": "^0.35.3"
     },
     "patchedDependencies": {
       "@expo/metro-runtime@4.0.1": "patches/@expo__metro-runtime@4.0.1.patch"
