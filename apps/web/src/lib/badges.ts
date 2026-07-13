@@ -1,8 +1,8 @@
 // ─── Badge system ─────────────────────────────────────────────────────────────
-// To add a new badge: add one entry to ALL_BADGES. That's it.
-// The API route will automatically pick it up, evaluate it, and award it.
-// Admins can also define badges at runtime (custom_badges table) — see the
-// condition engine below and /api/admin/custom-badges.
+// Every badge — the original launch set and anything an admin adds later — is a
+// row in the custom_badges table, evaluated through the condition engine below.
+// There's no code-defined badge list; add/edit/delete all happen through
+// /api/admin/badges.
 
 import type { BadgeCondition } from '@parkquest/types';
 
@@ -21,18 +21,6 @@ export interface UserStats {
   maxVisitsInAYear: number;        // most visit logs in one calendar year
   maxUniqueParksInAYear: number;   // most distinct parks visited in one calendar year
   visitedParkCodes: string[];      // distinct parks visited
-}
-
-export interface BadgeDefinition {
-  id: string;
-  name: string;
-  description: string;
-  emoji: string;
-  tier: BadgeTier;
-  /** For progress display on locked badges */
-  progressTarget?: (stats: UserStats) => number;
-  progressCurrent?: (stats: UserStats) => number;
-  criteria: (stats: UserStats) => boolean;
 }
 
 // ─── Tier visual config ────────────────────────────────────────────────────────
