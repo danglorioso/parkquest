@@ -23,7 +23,6 @@ export const TIER_FILL_LIGHT: Record<BadgeTier, BadgeColors> = {
 
 export const CONDITION_LABELS: Record<BadgeConditionType, string> = {
   parks_visited:         'Parks visited',
-  all_parks_visited:     'All parks visited',
   states_visited:        'States visited',
   bucket_list_count:     'Bucket list size',
   total_visits:          'Total trips logged',
@@ -124,9 +123,7 @@ export function ConditionEditor({
   const setType = (type: BadgeConditionType) => {
     onChange(type === 'specific_parks'
       ? { type, parkCodes: [], mode: 'all' }
-      : type === 'all_parks_visited'
-        ? { type }
-        : { type, count: condition.count && condition.count > 0 ? condition.count : 1 });
+      : { type, count: condition.count && condition.count > 0 ? condition.count : 1 });
   };
 
   return (
@@ -164,8 +161,6 @@ export function ConditionEditor({
               />
             )}
           </>
-        ) : condition.type === 'all_parks_visited' ? (
-          <span className="text-sm text-ink-mute">count ignored</span>
         ) : (
           <>
             <span className="text-sm text-ink-mute">at least</span>

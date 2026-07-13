@@ -377,40 +377,42 @@ export default function UserProfileScreen() {
         options={{
           title: profile ? (profile.display_name ?? `@${profile.username}`) : 'Profile',
           headerRight: (!isOwnProfile && profile) ? () => (
+            <View style={{ position: 'relative' }}>
+              {showProfileMenu && (
+                <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowProfileMenu(false)} />
+              )}
               <TouchableOpacity
                 onPress={() => setShowProfileMenu(v => !v)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
                 <Ionicons name="ellipsis-horizontal" size={20} color={showProfileMenu ? T.primary : C.inkMute} />
               </TouchableOpacity>
+              {showProfileMenu && (
+                <View style={styles.profileMenu}>
+                  <TouchableOpacity
+                    style={styles.profileMenuItem}
+                    disabled={blockBusy}
+                    onPress={() => { setShowProfileMenu(false); handleBlock(); }}
+                  >
+                    <Text style={[styles.profileMenuItemText, { color: C.liked }]}>Block user</Text>
+                  </TouchableOpacity>
+                  <View style={styles.profileMenuDivider} />
+                  <TouchableOpacity
+                    style={styles.profileMenuItem}
+                    disabled={reportedUser}
+                    onPress={() => { setShowProfileMenu(false); setPostBlockReport(false); setShowReportUserSheet(true); }}
+                  >
+                    <Text style={[styles.profileMenuItemText, { color: reportedUser ? C.inkMute : C.liked }]}>
+                      {reportedUser ? 'Reported' : 'Report user'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           ) : undefined,
         }}
       />
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['bottom']}>
-        {showProfileMenu && !isOwnProfile && profile ? (
-          <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowProfileMenu(false)} />
-            <View style={styles.profileMenu}>
-              <TouchableOpacity
-                style={styles.profileMenuItem}
-                disabled={blockBusy}
-                onPress={() => { setShowProfileMenu(false); handleBlock(); }}
-              >
-                <Text style={[styles.profileMenuItemText, { color: C.liked }]}>Block user</Text>
-              </TouchableOpacity>
-              <View style={styles.profileMenuDivider} />
-              <TouchableOpacity
-                style={styles.profileMenuItem}
-                disabled={reportedUser}
-                onPress={() => { setShowProfileMenu(false); setPostBlockReport(false); setShowReportUserSheet(true); }}
-              >
-                <Text style={[styles.profileMenuItemText, { color: reportedUser ? C.inkMute : C.liked }]}> 
-                  {reportedUser ? 'Reported' : 'Report user'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : null}
         {loading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator color={T.primary} />
@@ -651,7 +653,7 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
   },
   profileMenu: {
-    position: 'absolute', top: 12, right: 16, zIndex: 100,
+    position: 'absolute', top: 30, right: 0, zIndex: 100,
     backgroundColor: C.surface, borderWidth: 1, borderColor: C.hairline,
     borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18, shadowRadius: 20, elevation: 12,

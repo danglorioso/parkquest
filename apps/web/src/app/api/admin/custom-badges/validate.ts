@@ -47,9 +47,7 @@ export function validateConditions(raw: unknown): BadgeCondition[] | string {
     const c = item as Record<string, unknown>;
     const type = c.type as BadgeConditionType;
 
-    if (type === 'all_parks_visited') {
-      conditions.push({ type });
-    } else if (NUMERIC_TYPES.includes(type)) {
+    if (NUMERIC_TYPES.includes(type)) {
       const count = Number(c.count);
       if (!Number.isInteger(count) || count < 1) return `Condition "${type}" needs a count of at least 1`;
       conditions.push({ type, count });

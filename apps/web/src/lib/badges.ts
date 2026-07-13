@@ -1,8 +1,8 @@
 // ─── Badge system ─────────────────────────────────────────────────────────────
-// Every badge — the original launch set and anything an admin adds later — is a
-// row in the custom_badges table, evaluated through the condition engine below.
-// There's no code-defined badge list; add/edit/delete all happen through
-// /api/admin/badges.
+// To add a new badge: add one entry to ALL_BADGES. That's it.
+// The API route will automatically pick it up, evaluate it, and award it.
+// Admins can also define badges at runtime (custom_badges table) — see the
+// condition engine below and /api/admin/custom-badges.
 
 import type { BadgeCondition } from '@parkquest/types';
 
@@ -21,6 +21,18 @@ export interface UserStats {
   maxVisitsInAYear: number;        // most visit logs in one calendar year
   maxUniqueParksInAYear: number;   // most distinct parks visited in one calendar year
   visitedParkCodes: string[];      // distinct parks visited
+}
+
+export interface BadgeDefinition {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  tier: BadgeTier;
+  /** For progress display on locked badges */
+  progressTarget?: (stats: UserStats) => number;
+  progressCurrent?: (stats: UserStats) => number;
+  criteria: (stats: UserStats) => boolean;
 }
 
 // ─── Tier visual config ────────────────────────────────────────────────────────
@@ -343,7 +355,6 @@ export const BUILTIN_CONDITIONS: Record<string, BadgeCondition[]> = {
 export function conditionProgress(c: BadgeCondition, stats: UserStats): { current: number; target: number } {
   switch (c.type) {
     case 'parks_visited':         return { current: stats.parksVisited,          target: c.count ?? 1 };
-    case 'all_parks_visited':     return { current: stats.parksVisited,          target: stats.totalParks };
     case 'states_visited':        return { current: stats.statesVisited,         target: c.count ?? 1 };
     case 'bucket_list_count':     return { current: stats.bucketListCount,       target: c.count ?? 1 };
     case 'total_visits':          return { current: stats.totalVisits,           target: c.count ?? 1 };
@@ -388,7 +399,6 @@ export function describeCondition(c: BadgeCondition, parkNames?: Map<string, str
   const n = c.count ?? 1;
   switch (c.type) {
     case 'parks_visited':         return `Visit ${n} park${n === 1 ? '' : 's'}`;
-    case 'all_parks_visited':     return 'Visit every park';
     case 'states_visited':        return `Visit parks in ${n} state${n === 1 ? '' : 's'}`;
     case 'bucket_list_count':     return `Add ${n} park${n === 1 ? '' : 's'} to your bucket list`;
     case 'total_visits':          return `Log ${n} total trip${n === 1 ? '' : 's'}`;
