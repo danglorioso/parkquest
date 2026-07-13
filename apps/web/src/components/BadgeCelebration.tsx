@@ -7,6 +7,7 @@ interface CelebrationBadge {
   description: string;
   emoji: string;
   tier: string;
+  colors?: { fill: string; light: string } | null;
 }
 
 interface BadgeCelebrationProps {
@@ -25,9 +26,18 @@ const TIERS: Record<string, { name: string; fill: string; light: string; glow: s
 
 const CONFETTI_COLORS = ["#C56B3D", "#D89A3A", "#2F7A4A", "#FFFBF1", "#6E97A3"];
 
+/** "#B27339" + 0.3 → "rgba(178,115,57,0.3)" for the glow behind custom-colored badges. */
+function hexToRgba(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
 export function BadgeCelebration({ badge, onClose, onShare }: BadgeCelebrationProps) {
   const id = useId().replace(/:/g, "");
-  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const tier = TIERS[badge.tier] ?? TIERS.bronze;
+  const t = badge.colors
+    ? { ...tier, fill: badge.colors.fill, light: badge.colors.light, glow: hexToRgba(badge.colors.fill, 0.3) }
+    : tier;
 
   return (
     <div

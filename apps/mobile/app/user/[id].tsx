@@ -8,7 +8,7 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
-import { BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
+import { badgeColors, type BadgeColors } from '@/lib/badges';
 import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline';
 import { PostCard, ReportSheet, type FeedPost } from '@/components/PostCard';
 import { Avatar } from '@/components/Avatar';
@@ -27,6 +27,7 @@ interface ProfileBadge {
   name: string;
   emoji: string;
   tier: string;
+  colors?: BadgeColors | null;
 }
 
 interface VisitedPark {
@@ -53,9 +54,6 @@ interface UserProfile {
   journal?: JournalEntry[];
 }
 
-function tierColors(tier: string) {
-  return BADGE_TIER_COLORS[tier as BadgeTier] ?? BADGE_TIER_COLORS.bronze;
-}
 
 // ── Section header — icon + mono kicker, matches web profile sections ─────────
 
@@ -558,7 +556,7 @@ export default function UserProfileScreen() {
                 <SectionHeader icon="ribbon-outline" title="BADGES EARNED" />
                 <View style={styles.badgeWrap}>
                   {profile.badges.map(b => {
-                    const t = tierColors(b.tier);
+                    const t = badgeColors(b);
                     return (
                       <TouchableOpacity
                         key={b.badge_id}
@@ -589,7 +587,6 @@ export default function UserProfileScreen() {
                   <PostCard
                     key={p.id}
                     post={p}
-                    token={token}
                     myUserId={me?.id ?? ''}
                     myAvatarUrl={me?.imageUrl}
                     myName={me?.fullName ?? me?.username}
@@ -618,6 +615,7 @@ export default function UserProfileScreen() {
               name: selectedBadge.name,
               emoji: selectedBadge.emoji,
               tier: selectedBadge.tier,
+              colors: selectedBadge.colors,
               earned_at: selectedBadge.earned_at,
             }}
             onClose={() => setSelectedBadge(null)}
@@ -637,7 +635,6 @@ export default function UserProfileScreen() {
 
         {showReportUserSheet && token && profile ? (
           <ReportSheet
-            token={token}
             targetType="user"
             targetId={profile.clerk_user_id}
             onClose={() => { setShowReportUserSheet(false); if (postBlockReport) router.back(); }}

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, or, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
@@ -155,11 +155,13 @@ export async function POST(request: Request) {
           metadata: { friendship_id: inserted.id },
         }).catch(() => {});
 
-        sendPushToUser(targetId, {
+        // Un-awaited work dies when the serverless response returns; after() keeps
+        // the function alive until the push is actually handed to Expo.
+        after(() => sendPushToUser(targetId, {
           title: 'New friend request',
           body: `${name} wants to be your friend.`,
           url: '/friends',
-        }).catch(() => {});
+        }).catch(() => {}));
       }
     }
 
@@ -218,11 +220,11 @@ export async function PATCH(request: Request) {
         .from(userProfiles)
         .where(eq(userProfiles.clerk_user_id, userId));
       const name = actor?.display_name || actor?.username || 'Someone';
-      sendPushToUser(friendship.requester_id, {
+      after(() => sendPushToUser(friendship.requester_id, {
         title: 'Friend request accepted',
         body: `${name} accepted your friend request.`,
         url: '/friends',
-      }).catch(() => {});
+      }).catch(() => {}));
     } else {
       await db.update(friendships).set({ status: 'rejected', updated_at: new Date() }).where(eq(friendships.id, friendshipId));
     }

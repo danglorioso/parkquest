@@ -103,6 +103,7 @@ export const customBadges = pgTable('custom_badges', {
   description: text('description').notNull(),
   emoji: varchar('emoji', { length: 20 }).notNull(),
   tier: varchar('tier', { length: 20 }).notNull().default('bronze'), // BadgeTier
+  colors: jsonb('colors').$type<import('@parkquest/types').BadgeColors>(), // null = tier colors
   conditions: jsonb('conditions').$type<import('@parkquest/types').BadgeCondition[]>().notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   created_at: timestamp('created_at').defaultNow().notNull(),
@@ -111,6 +112,22 @@ export const customBadges = pgTable('custom_badges', {
 
 export type CustomBadgeRow = typeof customBadges.$inferSelect;
 export type NewCustomBadgeRow = typeof customBadges.$inferInsert;
+
+// Admin edits to the built-in badges defined in lib/badges.ts. One row per
+// edited badge; a missing row (or null column) means "use the built-in value".
+// conditions replaces the badge's code-defined criteria when set.
+export const badgeOverrides = pgTable('badge_overrides', {
+  badge_id: varchar('badge_id', { length: 100 }).primaryKey(),
+  name: varchar('name', { length: 100 }),
+  description: text('description'),
+  emoji: varchar('emoji', { length: 20 }),
+  tier: varchar('tier', { length: 20 }), // BadgeTier
+  colors: jsonb('colors').$type<import('@parkquest/types').BadgeColors>(),
+  conditions: jsonb('conditions').$type<import('@parkquest/types').BadgeCondition[]>(),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type BadgeOverrideRow = typeof badgeOverrides.$inferSelect;
 
 export type Park = typeof parks.$inferSelect;
 export type NewPark = typeof parks.$inferInsert;

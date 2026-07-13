@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui/card';
 import CustomBadgeManager from './CustomBadgeManager';
+import BuiltinBadgeManager from './BuiltinBadgeManager';
 import { getBadgeStats } from '@/lib/badgeStats';
 
 export default async function AdminBadgesPage() {
@@ -20,6 +21,8 @@ export default async function AdminBadgesPage() {
           Percentages are of the {activeUsers.toLocaleString()} users who have ever posted or logged a visit.
         </p>
       </div>
+
+      <BuiltinBadgeManager />
 
       <CustomBadgeManager />
 

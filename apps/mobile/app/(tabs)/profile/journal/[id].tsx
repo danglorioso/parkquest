@@ -10,7 +10,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { fitUnderUploadCap } from '@/lib/uploadImage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { STATIC as C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
 import { dayCount, fmtDate, fmtRange, MONTHS } from '@/lib/dates';
@@ -257,9 +257,6 @@ function PhotoHero({ photos, cover }: { photos: string[]; cover: string | null }
 
 // ── Photo strip for edit mode ─────────────────────────────────────────────────
 
-// Longest edge, px — matches the server's safety-net cap in /api/upload.
-const PHOTO_MAX_DIMENSION = 1600;
-
 function PhotoStrip({
   photos, cover, onPhotosChange, onCoverChange, token,
 }: {
@@ -287,27 +284,12 @@ function PhotoStrip({
     try {
       const newUrls: string[] = [];
       for (const asset of result.assets) {
-        // Resize before upload — Vercel Functions cap request bodies at 4.5 MB, and a
-        // full sensor-resolution photo is wasted storage for something shown as a strip thumb.
-        let uri = asset.uri;
-        const longestEdge = Math.max(asset.width, asset.height);
-        if (longestEdge <= 0 || longestEdge > PHOTO_MAX_DIMENSION) {
-          try {
-            const resizeAction: ImageManipulator.Action = asset.width >= asset.height
-              ? { resize: { width: PHOTO_MAX_DIMENSION } }
-              : { resize: { height: PHOTO_MAX_DIMENSION } };
-            const result = await ImageManipulator.manipulateAsync(
-              asset.uri, [resizeAction], { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG },
-            );
-            uri = result.uri;
-          } catch (e) {
-            console.warn('Resize failed, using original photo:', e);
-          }
-        }
-        const blob = await fetch(uri).then(r => r.blob());
+        // Photos upload at original dimensions; only shrunk if they'd blow the
+        // request body cap (Vercel Functions cap bodies at 4.5 MB) — see /lib/uploadImage.
+        const { blob, mimeType } = await fitUnderUploadCap(asset.uri, asset.mimeType);
         const up = await fetch(`${BASE}/api/upload`, {
           method: 'POST',
-          headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${token}` },
+          headers: { 'Content-Type': mimeType, Authorization: `Bearer ${token}` },
           body: blob,
         });
         if (!up.ok) continue;

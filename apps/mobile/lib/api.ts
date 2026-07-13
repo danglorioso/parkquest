@@ -413,3 +413,9 @@ export const markNotificationsRead = (token: string, ids?: number[]) =>
 
 export const dismissNotification = (token: string, id: number) =>
   req(`/api/notifications/${id}`, token, { method: 'DELETE' });
+
+export const setNotificationRead = (token: string, id: number, read: boolean) =>
+  req(`/api/notifications/${id}`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({ read }),
+  });

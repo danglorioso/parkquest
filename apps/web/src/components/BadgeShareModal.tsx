@@ -18,6 +18,7 @@ interface CelebrationBadge {
   description: string;
   emoji: string;
   tier: string;
+  colors?: { fill: string; light: string } | null;
 }
 
 const TIERS: Record<string, { fill: string; light: string; label: string }> = {
@@ -41,7 +42,8 @@ export function BadgeShareModal({ badge, onClose, onPost }: BadgeShareModalProps
   const [audience, setAudience] = useState<Audience>("friends");
   const [submitting, setSubmitting] = useState(false);
   const [alreadyShared, setAlreadyShared] = useState(false);
-  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const tier = TIERS[badge.tier] ?? TIERS.bronze;
+  const t = badge.colors ? { ...tier, ...badge.colors } : tier;
   const badgeKey = badge.id ?? badge.name;
 
   useEffect(() => {

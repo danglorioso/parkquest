@@ -9,12 +9,11 @@ const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "i
 // so clients must resize/compress *before* posting here. This is a defensive ceiling on
 // top of that, not the primary size control.
 const MAX_BYTES = 4 * 1024 * 1024;
-const MAX_DIMENSION = 1600; // longest edge, px — plenty for feed/thumbnail display, a fraction of the storage
 
-// Server-mediated upload: the client sends already-resized image bytes here (not a
-// presigned R2 PUT), and this does one more resize/recompress pass as a safety net
-// before anything is written to R2 — guards against a client that skips its own
-// resize step, and normalizes everything (including HEIC) to a consistent JPEG.
+// Server-mediated upload: the client sends image bytes here (not a presigned R2 PUT).
+// Photos keep their original dimensions — the only client-side shrinking happens when
+// a photo would exceed the request body cap. This pass normalizes everything
+// (including HEIC) to JPEG, auto-orients, and strips EXIF (GPS!) before writing to R2.
 export async function POST(req: Request) {
   if (!process.env.CLOUDFLARE_R2_ACCOUNT_ID || !process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || !process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY) {
     return NextResponse.json({ error: "R2 not configured — fill in CLOUDFLARE_R2_* env vars" }, { status: 503 });
@@ -40,8 +39,7 @@ export async function POST(req: Request) {
   try {
     output = await sharp(input)
       .rotate() // auto-orient from EXIF before it gets stripped, then strip it
-      .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 80 })
+      .jpeg({ quality: 85 })
       .toBuffer();
   } catch (error) {
     console.error("Image processing failed:", error);

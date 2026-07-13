@@ -216,6 +216,7 @@ export async function GET(
       name:        BADGE_MAP.get(b.badge_id)?.name ?? b.badge_id,
       emoji:       BADGE_MAP.get(b.badge_id)?.emoji ?? '🏅',
       tier:        BADGE_MAP.get(b.badge_id)?.tier ?? 'bronze',
+      colors:      BADGE_MAP.get(b.badge_id)?.colors ?? null,
       description: BADGE_MAP.get(b.badge_id)?.description ?? null,
     })).reverse();
 

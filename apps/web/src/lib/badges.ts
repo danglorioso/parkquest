@@ -319,6 +319,34 @@ export const ALL_BADGES: BadgeDefinition[] = [
   },
 ];
 
+// Condition-engine equivalents of the built-in criteria above. The admin editor
+// uses these to prefill the criteria form when overriding a built-in badge.
+// park_legend has no entry: its target (every park) tracks the live park count,
+// which the condition engine can't express.
+export const BUILTIN_CONDITIONS: Record<string, BadgeCondition[]> = {
+  first_steps:     [{ type: 'parks_visited', count: 1 }],
+  trail_walker:    [{ type: 'parks_visited', count: 5 }],
+  camp_wanderer:   [{ type: 'parks_visited', count: 10 }],
+  sharp_eye:       [{ type: 'parks_visited', count: 25 }],
+  true_explorer:   [{ type: 'parks_visited', count: 50 }],
+  peak_climber:    [{ type: 'parks_visited', count: 75 }],
+  century_club:    [{ type: 'parks_visited', count: 100 }],
+  star_ranger:     [{ type: 'parks_visited', count: 150 }],
+  horizon_chaser:  [{ type: 'parks_visited', count: 200 }],
+  wild_at_heart:   [{ type: 'parks_visited', count: 300 }],
+  state_hopper:    [{ type: 'states_visited', count: 3 }],
+  cross_country:   [{ type: 'states_visited', count: 7 }],
+  all_american:    [{ type: 'states_visited', count: 15 }],
+  continental:     [{ type: 'states_visited', count: 30 }],
+  united_legend:   [{ type: 'states_visited', count: 50 }],
+  wishful_thinker: [{ type: 'bucket_list_count', count: 5 }],
+  big_dreamer:     [{ type: 'bucket_list_count', count: 15 }],
+  visionary:       [{ type: 'bucket_list_count', count: 30 }],
+  hot_streak:      [{ type: 'visits_in_year', count: 5 }],
+  year_adventurer: [{ type: 'visits_in_year', count: 10 }],
+  park_obsessed:   [{ type: 'visits_in_year', count: 20 }],
+};
+
 // ─── Custom badge condition engine ─────────────────────────────────────────────
 // Admin-defined badges store an array of BadgeCondition (AND semantics) in the
 // custom_badges table; this evaluates them against the same UserStats.

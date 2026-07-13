@@ -1,4 +1,4 @@
-import type { BadgeCondition, BadgeConditionType, BadgeTier } from '@parkquest/types';
+import type { BadgeColors, BadgeCondition, BadgeConditionType, BadgeTier } from '@parkquest/types';
 
 const TIERS: BadgeTier[] = ['bronze', 'silver', 'gold', 'platinum', 'legendary'];
 
@@ -7,39 +7,44 @@ const NUMERIC_TYPES: BadgeConditionType[] = [
   'visits_to_single_park', 'parks_in_year', 'visits_in_year',
 ];
 
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
 export interface CustomBadgeInput {
   name: string;
   description: string;
   emoji: string;
   tier: BadgeTier;
+  colors: BadgeColors | null;
   conditions: BadgeCondition[];
   enabled: boolean;
 }
 
-/** Returns a normalized payload, or a string describing what's wrong. */
-export function validateCustomBadge(body: unknown): CustomBadgeInput | string {
-  if (typeof body !== 'object' || body === null) return 'Invalid payload';
-  const b = body as Record<string, unknown>;
+/** Shared display fields for custom badges and built-in overrides. */
+export interface BadgeDisplayInput {
+  name: string;
+  description: string;
+  emoji: string;
+  tier: BadgeTier;
+  colors: BadgeColors | null;
+}
 
-  const name = typeof b.name === 'string' ? b.name.trim() : '';
-  if (!name || name.length > 100) return 'Name is required (max 100 chars)';
+/** null/undefined = use tier colors. Returns a string describing what's wrong. */
+export function validateColors(raw: unknown): BadgeColors | null | string {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== 'object') return 'Invalid colors';
+  const c = raw as Record<string, unknown>;
+  if (typeof c.fill !== 'string' || !HEX_COLOR.test(c.fill)) return 'Colors need a hex fill like #B27339';
+  if (typeof c.light !== 'string' || !HEX_COLOR.test(c.light)) return 'Colors need a hex light like #D4A070';
+  return { fill: c.fill, light: c.light };
+}
 
-  const description = typeof b.description === 'string' ? b.description.trim() : '';
-  if (!description) return 'Description is required';
-
-  const emoji = typeof b.emoji === 'string' ? b.emoji.trim() : '';
-  if (!emoji || emoji.length > 20) return 'Emoji is required';
-
-  const tier = b.tier as BadgeTier;
-  if (!TIERS.includes(tier)) return `Tier must be one of: ${TIERS.join(', ')}`;
-
-  if (!Array.isArray(b.conditions) || b.conditions.length === 0) {
-    return 'At least one condition is required';
-  }
+/** Validates a non-empty condition list. Returns a string describing what's wrong. */
+export function validateConditions(raw: unknown): BadgeCondition[] | string {
+  if (!Array.isArray(raw) || raw.length === 0) return 'At least one condition is required';
   const conditions: BadgeCondition[] = [];
-  for (const raw of b.conditions) {
-    if (typeof raw !== 'object' || raw === null) return 'Invalid condition';
-    const c = raw as Record<string, unknown>;
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) return 'Invalid condition';
+    const c = item as Record<string, unknown>;
     const type = c.type as BadgeConditionType;
 
     if (NUMERIC_TYPES.includes(type)) {
@@ -65,8 +70,41 @@ export function validateCustomBadge(body: unknown): CustomBadgeInput | string {
       return `Unknown condition type: ${String(c.type)}`;
     }
   }
+  return conditions;
+}
 
-  return { name, description, emoji, tier, conditions, enabled: b.enabled !== false };
+/** Returns normalized display fields, or a string describing what's wrong. */
+export function validateBadgeDisplay(b: Record<string, unknown>): BadgeDisplayInput | string {
+  const name = typeof b.name === 'string' ? b.name.trim() : '';
+  if (!name || name.length > 100) return 'Name is required (max 100 chars)';
+
+  const description = typeof b.description === 'string' ? b.description.trim() : '';
+  if (!description) return 'Description is required';
+
+  const emoji = typeof b.emoji === 'string' ? b.emoji.trim() : '';
+  if (!emoji || emoji.length > 20) return 'Emoji is required';
+
+  const tier = b.tier as BadgeTier;
+  if (!TIERS.includes(tier)) return `Tier must be one of: ${TIERS.join(', ')}`;
+
+  const colors = validateColors(b.colors);
+  if (typeof colors === 'string') return colors;
+
+  return { name, description, emoji, tier, colors };
+}
+
+/** Returns a normalized payload, or a string describing what's wrong. */
+export function validateCustomBadge(body: unknown): CustomBadgeInput | string {
+  if (typeof body !== 'object' || body === null) return 'Invalid payload';
+  const b = body as Record<string, unknown>;
+
+  const display = validateBadgeDisplay(b);
+  if (typeof display === 'string') return display;
+
+  const conditions = validateConditions(b.conditions);
+  if (typeof conditions === 'string') return conditions;
+
+  return { ...display, conditions, enabled: b.enabled !== false };
 }
 
 /** 'Weekend Warrior' -> 'custom_weekend_warrior' */

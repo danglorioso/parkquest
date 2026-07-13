@@ -9,9 +9,10 @@ import { Avatar } from '@/components/Avatar';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { BADGE_MAP, BADGE_TIER_COLORS, ensureBadgeDefs } from '@/lib/badges';
+import { BADGE_MAP, badgeColors, ensureBadgeDefs } from '@/lib/badges';
 import { blockUser } from '@/lib/api';
 import { emitUserBlocked } from '@/lib/blocking';
 import { STATIC as C, useColors } from '@/lib/palette';
@@ -95,7 +96,10 @@ const DIFF_LABELS   = ['Easy', 'Light', 'Moderate', 'Hard', 'Strenuous'];
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
-async function apiReq(path: string, token: string, options: RequestInit = {}) {
+type TokenGetter = () => Promise<string | null>;
+
+async function apiReq(path: string, getToken: TokenGetter, options: RequestInit = {}) {
+  const token = await getToken();
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
@@ -108,22 +112,35 @@ async function apiReq(path: string, token: string, options: RequestInit = {}) {
   return res.json();
 }
 
+// Clerk session tokens expire after ~60s, so a token captured when the feed
+// loaded goes stale while the user scrolls or types a comment. Resolve a fresh
+// token per request instead — Clerk returns the cached one while it's still
+// valid. Same idiom as log-visit.tsx / map.tsx; never put getToken itself in a
+// dep array (its identity changes every render in @clerk/clerk-expo).
+function useFreshToken(): TokenGetter {
+  const { getToken } = useAuth();
+  const ref = useRef(getToken);
+  ref.current = getToken;
+  return useCallback(() => ref.current(), []);
+}
+
 // ── LikersSheet ───────────────────────────────────────────────────────────────
 
 function LikersSheet({
-  postId, token, onClose,
-}: { postId: number; token: string; onClose: () => void }) {
+  postId, onClose,
+}: { postId: number; onClose: () => void }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const freshToken = useFreshToken();
   const [rows, setRows] = useState<Liker[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiReq(`/api/likes?postId=${postId}`, token)
+    apiReq(`/api/likes?postId=${postId}`, freshToken)
       .then(setRows)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [postId, token]);
+  }, [postId, freshToken]);
 
   const openProfile = (userId: string) => {
     onClose();
@@ -218,15 +235,15 @@ const REPORT_REASONS: Record<ReportTargetType, { key: ReportReason; label: strin
 };
 
 export function ReportSheet({
-  token, targetType, targetId, onClose, onSubmitted,
+  targetType, targetId, onClose, onSubmitted,
 }: {
-  token: string;
   targetType: ReportTargetType;
   targetId: number | string;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
   const C = useColors();
+  const freshToken = useFreshToken();
   const reasons = REPORT_REASONS[targetType];
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [details, setDetails] = useState('');
@@ -253,7 +270,7 @@ export function ReportSheet({
     if (!reason || submitting) return;
     setSubmitting(true);
     try {
-      await apiReq('/api/reports', token, {
+      await apiReq('/api/reports', freshToken, {
         method: 'POST',
         body: JSON.stringify({ targetType, targetId, reason, details: details.trim() || undefined }),
       });
@@ -432,16 +449,15 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
 function BadgePostBody({ badgeId }: { badgeId: string }) {
   const [badge, setBadge] = useState(() => BADGE_MAP.get(badgeId));
 
-  // Unknown id = admin-defined badge; pull runtime defs then re-read
+  // Static defs never carry admin edits (custom colors, renames), so always
+  // refresh from the server defs and re-read.
   useEffect(() => {
-    if (badge) return;
     let active = true;
     ensureBadgeDefs().then(() => { if (active) setBadge(BADGE_MAP.get(badgeId)); });
     return () => { active = false; };
-  }, [badgeId, badge]);
+  }, [badgeId]);
 
-  const tier  = badge?.tier ?? 'bronze';
-  const col   = BADGE_TIER_COLORS[tier];
+  const col = badgeColors(badge);
 
   return (
     <View style={[styles.badgeBody, {
@@ -453,7 +469,7 @@ function BadgePostBody({ badgeId }: { badgeId: string }) {
       </View>
       <View style={styles.badgeText}>
         <Text style={[styles.badgeTierLabel, { color: col.fill }]}>
-          {tier.toUpperCase()} BADGE
+          {(badge?.tier ?? 'bronze').toUpperCase()} BADGE
         </Text>
         <Text style={styles.badgeName}>{badge?.name ?? badgeId}</Text>
         {badge?.description ? (
@@ -632,10 +648,9 @@ const COMMENT_LIMIT = 500;
 const COMMENT_PREVIEW_CHARS = 200;
 
 function CommentsSheet({
-  postId, token, myUserId, myAvatarUrl, myName, initialRows, onCountChange, onClose,
+  postId, myUserId, myAvatarUrl, myName, initialRows, onCountChange, onClose,
 }: {
   postId: number;
-  token: string;
   myUserId?: string | null;
   myAvatarUrl?: string | null;
   myName?: string | null;
@@ -646,6 +661,7 @@ function CommentsSheet({
   const router = useRouter();
   const C = useColors();
   const insets = useSafeAreaInsets();
+  const freshToken = useFreshToken();
   const [rows, setRows] = useState<CommentRow[]>(initialRows ?? []);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -664,13 +680,13 @@ function CommentsSheet({
 
   useEffect(() => {
     if (initialRows) return;
-    apiReq(`/api/comments?postId=${postId}`, token)
+    apiReq(`/api/comments?postId=${postId}`, freshToken)
       .then(setRows)
       .catch(() => {})
       .finally(() => setLoading(false));
   // initialRows only matters on mount (whether we already have the full list)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [postId, token]);
+  }, [postId, freshToken]);
 
   useEffect(() => {
     Animated.parallel([
@@ -713,7 +729,7 @@ function CommentsSheet({
     setSubmitting(true);
     setDraft('');
     try {
-      const newComment = await apiReq('/api/comments', token, {
+      const newComment = await apiReq('/api/comments', freshToken, {
         method: 'POST',
         body: JSON.stringify({ postId, content: text }),
       });
@@ -730,18 +746,18 @@ function CommentsSheet({
     } finally {
       setSubmitting(false);
     }
-  }, [draft, submitting, postId, token, myName, myAvatarUrl, onCountChange]);
+  }, [draft, submitting, postId, freshToken, myName, myAvatarUrl, onCountChange]);
 
   const deleteComment = useCallback(async (commentId: number) => {
     setActiveCommentMenu(null);
     setRows(prev => prev.filter(c => c.id !== commentId));
     onCountChange(-1);
     try {
-      await apiReq(`/api/comments/${commentId}`, token, { method: 'DELETE' });
+      await apiReq(`/api/comments/${commentId}`, freshToken, { method: 'DELETE' });
     } catch {
-      apiReq(`/api/comments?postId=${postId}`, token).then(setRows).catch(() => {});
+      apiReq(`/api/comments?postId=${postId}`, freshToken).then(setRows).catch(() => {});
     }
-  }, [token, postId, onCountChange]);
+  }, [freshToken, postId, onCountChange]);
 
   const editComment = useCallback(async (commentId: number, text: string) => {
     const trimmed = text.trim();
@@ -749,14 +765,14 @@ function CommentsSheet({
     setEditingComment(null);
     setRows(prev => prev.map(c => c.id === commentId ? { ...c, content: trimmed } : c));
     try {
-      await apiReq(`/api/comments/${commentId}`, token, {
+      await apiReq(`/api/comments/${commentId}`, freshToken, {
         method: 'PATCH',
         body: JSON.stringify({ content: trimmed }),
       });
     } catch {
-      apiReq(`/api/comments?postId=${postId}`, token).then(setRows).catch(() => {});
+      apiReq(`/api/comments?postId=${postId}`, freshToken).then(setRows).catch(() => {});
     }
-  }, [token, postId]);
+  }, [freshToken, postId]);
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={dismiss} statusBarTranslucent>
@@ -937,7 +953,6 @@ function CommentsSheet({
 
       {reportingCommentId != null && (
         <ReportSheet
-          token={token}
           targetType="comment"
           targetId={reportingCommentId}
           onClose={() => setReportingCommentId(null)}
@@ -961,7 +976,6 @@ const VIS_ORDER = ['public', 'friends', 'private'] as const;
 
 export function PostCard({
   post,
-  token,
   myUserId,
   myAvatarUrl,
   myName,
@@ -972,7 +986,6 @@ export function PostCard({
   autoOpenLikers = false,
 }: {
   post: FeedPost;
-  token: string;
   myUserId: string;
   myAvatarUrl?: string | null;
   myName?: string | null;
@@ -986,12 +999,18 @@ export function PostCard({
 }) {
   const router = useRouter();
   const C = useColors();
+  const freshToken = useFreshToken();
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likeCount, setLikeCount] = useState(post.like_count);
   const [showComments, setShowComments] = useState(false);
   const [showLikers, setShowLikers] = useState(false);
   const [commentDelta, setCommentDelta] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
+  // Window coords of the ⋯ button, measured on open — the menu renders in a
+  // full-screen Modal (so tapping anywhere else closes it) but still needs to
+  // sit anchored under the button.
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const menuBtnRef = useRef<View>(null);
   const [showReportSheet, setShowReportSheet] = useState(false);
   const [reported, setReported] = useState(false);
   // Full comment list, preloaded as the card scrolls into view so the sheet
@@ -1017,11 +1036,11 @@ export function PostCard({
   useEffect(() => {
     if (post.comment_count + commentDelta <= 0) { setAllComments([]); return; }
     let active = true;
-    apiReq(`/api/comments?postId=${post.id}`, token)
+    apiReq(`/api/comments?postId=${post.id}`, freshToken)
       .then((rows: CommentRow[]) => { if (active) setAllComments(rows); })
       .catch(() => {});
     return () => { active = false; };
-  // token is stable per-render of the feed screen; post.id never changes
+  // freshToken is stable; post.id never changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.id, post.comment_count, commentDelta]);
   const [editingCaption, setEditingCaption] = useState(false);
@@ -1055,9 +1074,9 @@ export function PostCard({
     setLikeCount(c => c + (prev ? -1 : 1));
     try {
       if (prev) {
-        await apiReq(`/api/likes?postId=${post.id}`, token, { method: 'DELETE' });
+        await apiReq(`/api/likes?postId=${post.id}`, freshToken, { method: 'DELETE' });
       } else {
-        await apiReq('/api/likes', token, {
+        await apiReq('/api/likes', freshToken, {
           method: 'POST', body: JSON.stringify({ postId: post.id }),
         });
       }
@@ -1073,7 +1092,7 @@ export function PostCard({
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          await apiReq(`/api/posts/${post.id}`, token, { method: 'DELETE' }).catch(() => {});
+          await apiReq(`/api/posts/${post.id}`, freshToken, { method: 'DELETE' }).catch(() => {});
           onDelete?.(post.id);
         },
       },
@@ -1092,7 +1111,9 @@ export function PostCard({
           text: 'Block', style: 'destructive',
           onPress: async () => {
             try {
-              await blockUser(token, post.clerk_user_id);
+              const tok = await freshToken();
+              if (!tok) throw new Error('Not signed in');
+              await blockUser(tok, post.clerk_user_id);
               emitUserBlocked(post.clerk_user_id);
             } catch {
               Alert.alert('Error', 'Could not block this user. Please try again.');
@@ -1106,7 +1127,7 @@ export function PostCard({
   const handleSaveCaption = async () => {
     // Visit posts inherit the visit's visibility, so route the change there;
     // all other posts carry their own
-    const res = await apiReq(`/api/posts/${post.id}`, token, {
+    const res = await apiReq(`/api/posts/${post.id}`, freshToken, {
       method: 'PATCH',
       body: JSON.stringify({
         caption: captionDraft,
@@ -1116,7 +1137,7 @@ export function PostCard({
     if (res === null) return;
 
     if (post.visit_id != null && visDraft !== visibility) {
-      const visRes = await apiReq(`/api/visits/${post.visit_id}`, token, {
+      const visRes = await apiReq(`/api/visits/${post.visit_id}`, freshToken, {
         method: 'PATCH',
         body: JSON.stringify({ visibility: visDraft }),
       }).catch(() => null);
@@ -1179,18 +1200,24 @@ export function PostCard({
           </View>
         </TouchableOpacity>
         <View style={{ position: 'relative' }}>
-          {showMenu && (
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
-          )}
           <TouchableOpacity
-            onPress={() => setShowMenu(v => !v)}
+            ref={menuBtnRef}
+            onPress={() => {
+              if (showMenu) { setShowMenu(false); return; }
+              menuBtnRef.current?.measureInWindow((x, y, w, h) => {
+                setMenuPos({ top: y + h + 6, right: SCREEN_W - (x + w) });
+                setShowMenu(true);
+              });
+            }}
             hitSlop={8}
             style={[styles.menuBtn, showMenu && [styles.menuBtnActive, { backgroundColor: C.primary + '14' }]]}
           >
             <Ionicons name="ellipsis-horizontal" size={18} color={showMenu ? C.primary : C.inkMute} />
           </TouchableOpacity>
-          {showMenu && (
-            <View style={styles.menu}>
+          {showMenu && menuPos && (
+            <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setShowMenu(false)}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
+              <View style={[styles.menu, { top: menuPos.top, right: menuPos.right }]}>
               {isOwnPost ? (
                 <>
                   {post.visit_id != null && (
@@ -1235,7 +1262,8 @@ export function PostCard({
                   </TouchableOpacity>
                 </>
               )}
-            </View>
+              </View>
+            </Modal>
           )}
         </View>
       </View>
@@ -1382,7 +1410,6 @@ export function PostCard({
       {showLikers && (
         <LikersSheet
           postId={post.id}
-          token={token}
           onClose={() => setShowLikers(false)}
         />
       )}
@@ -1431,7 +1458,6 @@ export function PostCard({
       {showComments && (
         <CommentsSheet
           postId={post.id}
-          token={token}
           myUserId={myUserId}
           myAvatarUrl={myAvatarUrl}
           myName={myName}
@@ -1444,7 +1470,6 @@ export function PostCard({
       {/* Report sheet */}
       {showReportSheet && (
         <ReportSheet
-          token={token}
           targetType="post"
           targetId={post.id}
           onClose={() => setShowReportSheet(false)}

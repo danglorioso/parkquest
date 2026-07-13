@@ -1731,8 +1731,14 @@ export default function MapScreen() {
         />
       )}
 
-      {/* Map controls */}
-      <Animated.View style={[styles.mapControls, { bottom: controlsBottomAnim }]}>
+      {/* Map controls — belong to the map, so while a park sheet is open they
+          drop below the sheet body (zIndex 30): still visible/tappable above
+          the peeking sheet, but covered when the sheet expands to full. */}
+      <Animated.View style={[
+        styles.mapControls,
+        { bottom: controlsBottomAnim },
+        selectedPark ? { zIndex: 29 } : null,
+      ]}>
         <TouchableOpacity style={styles.mapControlBtn} onPress={zoomIn} activeOpacity={0.75}>
           <Ionicons name="add" size={18} color={dyn('#4A4535', '#F0EAD9')} />
         </TouchableOpacity>
@@ -1972,7 +1978,7 @@ const styles = StyleSheet.create({
   // Bottom sheet
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 29,
+    zIndex: 28,
   },
   sheet: {
     position: 'absolute',

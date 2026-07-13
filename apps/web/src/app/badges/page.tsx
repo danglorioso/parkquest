@@ -18,11 +18,14 @@ interface BadgeData {
   description: string;
   emoji: string;
   tier: string;
+  colors?: BadgeColorPair | null;
   earned: boolean;
   earned_at: string | null;
   progress_current: number | null;
   progress_target: number | null;
 }
+
+type BadgeColorPair = { fill: string; light: string };
 
 // ── Tier config ───────────────────────────────────────────────────────────────
 
@@ -36,21 +39,37 @@ const TIERS: Record<string, { name: string; fill: string; light: string; glow: s
 
 const TIER_ORDER = ["bronze", "silver", "gold", "platinum", "legendary"];
 
+/** "#B27339" + 0.3 → "rgba(178,115,57,0.3)" */
+function hexToRgba(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/** Tier palette, with the badge's admin-set colors layered on top when present. */
+function badgeTheme(tier: string, colors?: BadgeColorPair | null) {
+  const t = TIERS[tier] ?? TIERS.bronze;
+  return colors
+    ? { ...t, fill: colors.fill, light: colors.light, glow: hexToRgba(colors.fill, 0.3) }
+    : t;
+}
+
 // ── BadgePatch ────────────────────────────────────────────────────────────────
 
 function BadgePatch({
   emoji,
   tier,
+  colors,
   size = 72,
   earned = true,
 }: {
   emoji: string;
   tier: string;
+  colors?: BadgeColorPair | null;
   size?: number;
   earned?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
-  const t = TIERS[tier] ?? TIERS.bronze;
+  const t = badgeTheme(tier, colors);
 
   return (
     <div
@@ -101,7 +120,7 @@ function BadgePatch({
 
 function BadgeDetailModal({ badge, onClose, onShare }: { badge: BadgeData; onClose: () => void; onShare: (badge: BadgeData) => void }) {
   const id = useId().replace(/:/g, "");
-  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const t = badgeTheme(badge.tier, badge.colors);
   const pct =
     badge.progress_target && badge.progress_target > 0
       ? Math.min(100, Math.round(((badge.progress_current ?? 0) / badge.progress_target) * 100))
@@ -274,7 +293,7 @@ function BadgeDetailModal({ badge, onClose, onShare }: { badge: BadgeData; onClo
 // ── BadgeCell ─────────────────────────────────────────────────────────────────
 
 function BadgeCell({ badge, onClick }: { badge: BadgeData; onClick: () => void }) {
-  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const t = badgeTheme(badge.tier, badge.colors);
   const pct =
     badge.progress_target && badge.progress_target > 0
       ? Math.min(100, Math.round((badge.progress_current! / badge.progress_target!) * 100))
@@ -323,7 +342,7 @@ function BadgeCell({ badge, onClick }: { badge: BadgeData; onClick: () => void }
         />
       )}
 
-      <BadgePatch emoji={badge.emoji} tier={badge.tier} size={72} earned={badge.earned} />
+      <BadgePatch emoji={badge.emoji} tier={badge.tier} colors={badge.colors} size={72} earned={badge.earned} />
 
       <div
         style={{
@@ -644,7 +663,7 @@ function BadgesPageContent() {
 function FeaturedCard({ badge }: { badge: BadgeData }) {
   const [celebrating, setCelebrating] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const t = badgeTheme(badge.tier, badge.colors);
   const dateStr = badge.earned_at
     ? new Date(badge.earned_at)
         .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -676,7 +695,7 @@ function FeaturedCard({ badge }: { badge: BadgeData }) {
       />
 
       <div style={{ position: "relative" }}>
-        <BadgePatch emoji={badge.emoji} tier={badge.tier} size={108} earned />
+        <BadgePatch emoji={badge.emoji} tier={badge.tier} colors={badge.colors} size={108} earned />
       </div>
 
       <div style={{ position: "relative", flex: 1 }}>

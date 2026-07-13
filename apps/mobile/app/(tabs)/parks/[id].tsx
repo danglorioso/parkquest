@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal,
-  Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  PanResponder, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View,
   type ColorValue,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -228,6 +228,10 @@ export default function ParkDetailScreen() {
   const prevHeroRef = useRef<string | null>(null);
   const npsRef = useRef<NpsData | null>(null);
   npsRef.current = nps;
+  const scrollRef = useRef<ScrollView>(null);
+  // Content-relative y of the journal section, captured via onLayout so the
+  // "Visits" stat cell can jump straight to it.
+  const journalY = useRef(0);
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -398,13 +402,40 @@ export default function ParkDetailScreen() {
     }
   }, [heroImage]);
 
+  // Bumped on every manual swipe so the auto-rotate timer restarts — otherwise
+  // an auto-advance could land right after the user swiped.
+  const [heroSwipeEpoch, setHeroSwipeEpoch] = useState(0);
+
   useEffect(() => {
     if (!heroLoaded || !nps || nps.images.length < 2) return;
     const tid = setInterval(() => {
       setHeroIdx(prev => (prev + 1) % npsRef.current!.images.length);
     }, 5000);
     return () => clearInterval(tid);
-  }, [heroLoaded, nps]);
+  }, [heroLoaded, nps, heroSwipeEpoch]);
+
+  const goHero = useCallback((dir: 1 | -1) => {
+    const total = npsRef.current?.images.length ?? 0;
+    if (total < 2) return;
+    setHeroIdx(prev => (prev + dir + total) % total);
+    setHeroSwipeEpoch(e => e + 1);
+  }, []);
+
+  // Horizontal swipe over the hero switches covers manually (the tap-to-open
+  // lightbox stays: a swipe claims the responder, which cancels the tap).
+  // Claim only clearly horizontal moves so the page's vertical scroll wins
+  // everywhere else.
+  const heroPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
+        Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5,
+      onPanResponderRelease: (_, { dx, vx }) => {
+        if (dx <= -40 || vx <= -0.5) goHero(1);
+        else if (dx >= 40 || vx >= 0.5) goHero(-1);
+      },
+    })
+  ).current;
 
   const parkStatus = (() => {
     if (visits.some(v => !v.is_bucket_list && v.visited_date)) return 'visited';
@@ -472,12 +503,16 @@ export default function ParkDetailScreen() {
       </TouchableOpacity>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.screen}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: tabBarSpace + 12 }}
       >
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
-        <View style={[styles.hero, { height: 260 + insets.top, backgroundColor: parkColor(park.park_code) }]}>
+        <View
+          style={[styles.hero, { height: 260 + insets.top, backgroundColor: parkColor(park.park_code) }]}
+          {...heroPan.panHandlers}
+        >
           {/* Previous image stays visible as background during cross-dissolve */}
           {prevHeroImage && (
             <ExpoImage
@@ -566,7 +601,11 @@ export default function ParkDetailScreen() {
             valueColor={parkStatus === 'visited' ? C.visited : onBucket ? C.bucket : C.inkMute}
           />
           <View style={styles.statDivider} />
-          <StatCell label="Visits" value={String(visits.length)} />
+          <StatCell
+            label="Visits"
+            value={String(visits.length)}
+            onPress={() => scrollRef.current?.scrollTo({ y: journalY.current, animated: true })}
+          />
         </View>
 
         {/* ── Friends who've visited ──────────────────────────────────────────
@@ -823,7 +862,10 @@ export default function ParkDetailScreen() {
           ) : null
         )}
 
-        <View style={styles.divider} />
+        <View
+          style={styles.divider}
+          onLayout={e => { journalY.current = e.nativeEvent.layout.y; }}
+        />
 
         {/* ── Journal ───────────────────────────────────────────────────────── */}
         <Section title={`Your Journal (${visits.length})`}>
@@ -852,7 +894,6 @@ export default function ParkDetailScreen() {
                     <PostCard
                       key={post.id}
                       post={post}
-                      token={token}
                       myUserId={user?.id ?? ''}
                       myAvatarUrl={user?.imageUrl}
                       myName={user?.fullName ?? user?.username}
@@ -904,13 +945,21 @@ export default function ParkDetailScreen() {
 
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 
-function StatCell({ label, value, valueColor }: { label: string; value: string; valueColor?: ColorValue }) {
-  return (
-    <View style={styles.statCell}>
+function StatCell({ label, value, valueColor, onPress }: { label: string; value: string; valueColor?: ColorValue; onPress?: () => void }) {
+  const body = (
+    <>
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={[styles.statValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
-    </View>
+    </>
   );
+  if (onPress) {
+    return (
+      <TouchableOpacity style={styles.statCell} onPress={onPress} activeOpacity={0.6}>
+        {body}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={styles.statCell}>{body}</View>;
 }
 
 // ── Friends who've visited (mutuals) ─────────────────────────────────────────

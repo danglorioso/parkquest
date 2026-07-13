@@ -28,7 +28,23 @@ const TIERS: Record<string, { name: string; fill: string; light: string; glow: s
 };
 const TIER_ORDER = ['bronze', 'silver', 'gold', 'platinum', 'legendary'] as const;
 
+/** '#B27339' + 0.3 → 'rgba(178,115,57,0.3)' */
+function hexToRgba(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/** Tier palette, with the badge's admin-set colors layered on top when present. */
+function badgeTheme(tier: string, colors?: BadgeColorPair | null) {
+  const t = TIERS[tier] ?? TIERS.bronze;
+  return colors
+    ? { ...t, fill: colors.fill, light: colors.light, glow: hexToRgba(colors.fill, 0.3) }
+    : t;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+type BadgeColorPair = { fill: string; light: string };
 
 interface BadgeData {
   id: string;
@@ -36,6 +52,7 @@ interface BadgeData {
   description: string;
   emoji: string;
   tier: string;
+  colors?: BadgeColorPair | null;
   earned: boolean;
   earned_at: string | null;
   progress_current: number | null;
@@ -53,10 +70,10 @@ type Row =
 // ── BadgePatch — same SVG as web: radial gradient fill, rings, stars ──────────
 
 function BadgePatch({
-  emoji, tier, size = 72, earned,
-}: { emoji: string; tier: string; size?: number; earned: boolean }) {
+  emoji, tier, colors, size = 72, earned,
+}: { emoji: string; tier: string; colors?: BadgeColorPair | null; size?: number; earned: boolean }) {
   const id = useId().replace(/:/g, '');
-  const t = TIERS[tier] ?? TIERS.bronze;
+  const t = badgeTheme(tier, colors);
 
   return (
     <View style={{ width: size, height: size, opacity: earned ? 1 : 0.5 }}>
@@ -143,7 +160,7 @@ function ProgressBar({ current, target, fill }: { current: number; target: numbe
 // ── BadgeCell ─────────────────────────────────────────────────────────────────
 
 function BadgeCell({ badge, onPress }: { badge: BadgeData; onPress: () => void }) {
-  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const t = badgeTheme(badge.tier, badge.colors);
   const earnedDateStr = badge.earned_at
     ? new Date(badge.earned_at)
         .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -165,7 +182,7 @@ function BadgeCell({ badge, onPress }: { badge: BadgeData; onPress: () => void }
         <TierGlow glow={t.glow} cx={0.5} cy={-0.2} rx={1.4} ry={1.0} fade={0.6} />
       )}
 
-      <BadgePatch emoji={badge.emoji} tier={badge.tier} size={72} earned={badge.earned} />
+      <BadgePatch emoji={badge.emoji} tier={badge.tier} colors={badge.colors} size={72} earned={badge.earned} />
 
       {/* Badge name */}
       <Text
@@ -188,7 +205,7 @@ function BadgeCell({ badge, onPress }: { badge: BadgeData; onPress: () => void }
 // ── FeaturedCard ──────────────────────────────────────────────────────────────
 
 function FeaturedCard({ badge, onPress, onShare }: { badge: BadgeData; onPress: () => void; onShare: () => void }) {
-  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const t = badgeTheme(badge.tier, badge.colors);
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.featured}>
@@ -196,7 +213,7 @@ function FeaturedCard({ badge, onPress, onShare }: { badge: BadgeData; onPress: 
           radial-gradient(120% 80% at 20% 0%, glow 0%, transparent 55%) */}
       <TierGlow glow={t.glow} cx={0.2} cy={0} rx={1.2} ry={0.8} fade={0.55} />
       <View style={{ position: 'relative' }}>
-        <BadgePatch emoji={badge.emoji} tier={badge.tier} size={108} earned />
+        <BadgePatch emoji={badge.emoji} tier={badge.tier} colors={badge.colors} size={108} earned />
       </View>
       <View style={{ flex: 1, gap: 5, position: 'relative' }}>
         <Text style={styles.featuredKicker}>
@@ -216,7 +233,7 @@ function FeaturedCard({ badge, onPress, onShare }: { badge: BadgeData; onPress: 
 // ── BadgeDetailModal ──────────────────────────────────────────────────────────
 
 function BadgeDetailModal({ badge, onClose, onShare }: { badge: BadgeData; onClose: () => void; onShare: (badge: BadgeData) => void }) {
-  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const t = badgeTheme(badge.tier, badge.colors);
   const pct = badge.progress_target && badge.progress_target > 0
     ? Math.min(100, Math.round(((badge.progress_current ?? 0) / badge.progress_target) * 100))
     : 0;
@@ -273,7 +290,7 @@ function BadgeDetailModal({ badge, onClose, onShare }: { badge: BadgeData; onClo
               { translateY: patchAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
             ],
           }}>
-            <BadgePatch emoji={badge.emoji} tier={badge.tier} size={120} earned={badge.earned} />
+            <BadgePatch emoji={badge.emoji} tier={badge.tier} colors={badge.colors} size={120} earned={badge.earned} />
           </Animated.View>
 
           {/* Name + description */}
@@ -334,7 +351,7 @@ function BadgeShareSheet({ badge, onClose }: { badge: BadgeData; onClose: () => 
   const [audience, setAudience]           = useState<Audience>('friends');
   const [submitting, setSubmitting]       = useState(false);
   const [alreadyShared, setAlreadyShared] = useState(false);
-  const t = TIERS[badge.tier] ?? TIERS.bronze;
+  const t = badgeTheme(badge.tier, badge.colors);
 
   // One-time share: check if this badge was already posted
   useEffect(() => {

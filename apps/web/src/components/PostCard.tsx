@@ -66,16 +66,26 @@ export interface FeedPost {
 
 // ── Badge lookup ──────────────────────────────────────────────────────────────
 
-export const BADGE_MAP = new Map<string, { id: string; name: string; description: string; emoji: string; tier: string }>(
+interface BadgeDisplay {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  tier: string;
+  colors?: { fill: string; light: string } | null;
+}
+
+export const BADGE_MAP = new Map<string, BadgeDisplay>(
   ALL_BADGES.map(b => [b.id, b]),
 );
 
-// Admin-defined badges aren't in the static list; merge them in at runtime.
+// Admin-defined badges and edits to built-in ones aren't in the static list;
+// merge the server defs in at runtime.
 let badgeDefsPromise: Promise<void> | null = null;
 function ensureBadgeDefs(): Promise<void> {
   badgeDefsPromise ??= fetch('/api/badges/defs')
     .then(r => r.json())
-    .then((d: { badges?: { id: string; name: string; description: string; emoji: string; tier: string }[] }) => {
+    .then((d: { badges?: BadgeDisplay[] }) => {
       for (const b of d.badges ?? []) BADGE_MAP.set(b.id, b);
     })
     .catch(() => { badgeDefsPromise = null; }); // allow a retry on next call
@@ -532,16 +542,16 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
 function BadgePostBody({ badgeId }: { badgeId: string }) {
   const [badge, setBadge] = useState(() => BADGE_MAP.get(badgeId));
 
-  // Unknown id = admin-defined badge; pull runtime defs then re-read
+  // Static defs never carry admin edits (custom colors, renames), so always
+  // refresh from the server defs and re-read.
   useEffect(() => {
-    if (badge) return;
     let active = true;
     ensureBadgeDefs().then(() => { if (active) setBadge(BADGE_MAP.get(badgeId)); });
     return () => { active = false; };
-  }, [badgeId, badge]);
+  }, [badgeId]);
 
   if (!badge) return null;
-  const colors = BADGE_TIER_COLORS[badge.tier] ?? BADGE_TIER_COLORS.bronze;
+  const colors = badge.colors ?? BADGE_TIER_COLORS[badge.tier] ?? BADGE_TIER_COLORS.bronze;
 
   return (
     <div style={{ padding: "0 18px 16px" }}>

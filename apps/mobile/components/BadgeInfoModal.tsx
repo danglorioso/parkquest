@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BADGE_MAP, BADGE_TIER_COLORS, ensureBadgeDefs, type BadgeTier } from '@/lib/badges';
+import { BADGE_MAP, badgeColors, ensureBadgeDefs, type BadgeColors } from '@/lib/badges';
 import { STATIC as C } from '@/lib/palette';
 
 // Light badge detail modal — emoji, tier, how-to-earn, earned date.
@@ -13,20 +13,21 @@ export interface BadgeModalData {
   name: string;
   emoji: string;
   tier: string;
+  colors?: BadgeColors | null;
   earned_at: string | null;
 }
 
 export function BadgeInfoModal({ badge, onClose }: { badge: BadgeModalData; onClose: () => void }) {
   const [def, setDef] = useState(() => BADGE_MAP.get(badge.id));
 
-  // Unknown id = admin-defined badge; pull runtime defs then re-read
+  // Static defs never carry admin edits (custom colors, renames), so always
+  // refresh from the server defs and re-read.
   useEffect(() => {
-    if (def) return;
     let active = true;
     ensureBadgeDefs().then(() => { if (active) setDef(BADGE_MAP.get(badge.id)); });
     return () => { active = false; };
-  }, [badge.id, def]);
-  const tint = (BADGE_TIER_COLORS[badge.tier as BadgeTier] ?? BADGE_TIER_COLORS.bronze).fill;
+  }, [badge.id]);
+  const tint = badgeColors({ tier: badge.tier, colors: badge.colors ?? def?.colors }).fill;
   const earnedDate = badge.earned_at
     ? new Date(badge.earned_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : null;

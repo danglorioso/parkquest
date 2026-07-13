@@ -1,20 +1,29 @@
 export type BadgeTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'legendary';
 
+export interface BadgeColors { fill: string; light: string }
+
 export interface BadgeInfo {
   id: string;
   name: string;
   emoji: string;
   tier: BadgeTier;
   description: string;
+  /** Admin-set colors; when absent the tier palette applies. */
+  colors?: BadgeColors | null;
 }
 
-export const BADGE_TIER_COLORS: Record<BadgeTier, { fill: string; light: string }> = {
+export const BADGE_TIER_COLORS: Record<BadgeTier, BadgeColors> = {
   bronze:    { fill: '#B27339', light: '#D4A070' },
   silver:    { fill: '#A8A39B', light: '#C5C0B8' },
   gold:      { fill: '#D4A93F', light: '#EBC96A' },
   platinum:  { fill: '#6E97A3', light: '#95B8C2' },
   legendary: { fill: '#8B5DBF', light: '#B08ADE' },
 };
+
+/** Effective colors for a badge: admin-set pair, else its tier's palette. */
+export function badgeColors(b?: { tier?: string; colors?: BadgeColors | null } | null): BadgeColors {
+  return b?.colors ?? BADGE_TIER_COLORS[(b?.tier ?? 'bronze') as BadgeTier] ?? BADGE_TIER_COLORS.bronze;
+}
 
 // Mirrors apps/web/src/lib/badges.ts — only the display fields needed by PostCard
 const ALL_BADGES: BadgeInfo[] = [

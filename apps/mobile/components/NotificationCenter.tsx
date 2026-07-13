@@ -10,7 +10,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/components/Avatar';
 import {
   getNotifications, getUnreadNotificationCount, markNotificationsRead,
-  respondFriendRequest, dismissNotification, type NotificationItem, type NotificationType,
+  respondFriendRequest, dismissNotification, setNotificationRead,
+  type NotificationItem, type NotificationType,
 } from '@/lib/api';
 import { STATIC as C, dyn, useColors, useThemedStyles, type Colors } from '@/lib/palette';
 
@@ -58,30 +59,84 @@ function buildText(n: NotificationItem): { actorName: string | null; rest: strin
   }
 }
 
-const SWIPE_THRESHOLD = -80;
+const DISMISS_THRESHOLD = -80;
+// Width of the exposed "Unread" action when the row is swiped open to the right.
+const UNREAD_ACTION_WIDTH = 96;
 
-function SwipeableRow({ children, onDismiss }: { children: React.ReactNode; onDismiss: () => void }) {
+function SwipeableRow({ children, onDismiss, onMarkUnread }: {
+  children: React.ReactNode;
+  onDismiss: () => void;
+  onMarkUnread: () => void;
+}) {
   const styles = useThemedStyles(makeStyles);
   const translateX = useRef(new Animated.Value(0)).current;
+  // Settled resting offset: 0 (closed) or UNREAD_ACTION_WIDTH (Unread button revealed).
+  // PanResponder gives dx relative to gesture start, so drags from an open row
+  // need this base to compute the absolute position.
+  const settled = useRef(0);
+  const [actionOpen, setActionOpen] = useState(false);
+
+  const close = useCallback(() => {
+    settled.current = 0;
+    setActionOpen(false);
+    Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+  }, [translateX]);
 
   const panResponder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, { dx, dy }) => Math.abs(dx) > Math.abs(dy) + 4 && dx < -4,
-    onPanResponderMove: (_, { dx }) => { if (dx < 0) translateX.setValue(dx); },
+    onMoveShouldSetPanResponder: (_, { dx, dy }) => Math.abs(dx) > Math.abs(dy) + 4,
+    // Once we own a horizontal drag, don't let the list scroll steal it mid-gesture.
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderMove: (_, { dx }) => {
+      const pos = settled.current + dx;
+      // Rubber-band past the unread button so the row can't fly off to the right.
+      translateX.setValue(pos > UNREAD_ACTION_WIDTH
+        ? UNREAD_ACTION_WIDTH + (pos - UNREAD_ACTION_WIDTH) / 4
+        : pos);
+    },
     onPanResponderRelease: (_, { dx, vx }) => {
-      if (dx < SWIPE_THRESHOLD || vx < -0.8) {
+      const pos = settled.current + dx;
+      if (pos < DISMISS_THRESHOLD || vx < -0.8) {
         Animated.timing(translateX, { toValue: -500, duration: 200, useNativeDriver: true })
           .start(onDismiss);
+      } else if (pos > UNREAD_ACTION_WIDTH / 2 || (pos > 0 && vx > 0.8)) {
+        settled.current = UNREAD_ACTION_WIDTH;
+        setActionOpen(true);
+        Animated.spring(translateX, { toValue: UNREAD_ACTION_WIDTH, useNativeDriver: true, bounciness: 4 }).start();
       } else {
-        Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
+        close();
       }
     },
+    // If something does take the responder away, snap shut so the row is never
+    // left stranded at a partial offset.
+    onPanResponderTerminate: () => close(),
   })).current;
 
   return (
     <View style={{ overflow: 'hidden' }}>
-      <View style={styles.swipeBg} />
+      <View style={styles.swipeUnderlay}>
+        <TouchableOpacity
+          style={styles.unreadAction}
+          activeOpacity={0.85}
+          onPress={() => { onMarkUnread(); close(); }}
+        >
+          <View style={styles.unreadActionInner}>
+            <Ionicons name="mail-unread-outline" size={18} color="#fff" />
+            <Text style={styles.unreadActionText}>Unread</Text>
+          </View>
+        </TouchableOpacity>
+        <View style={styles.dismissAction}>
+          <View style={styles.dismissActionInner}>
+            <Ionicons name="trash-outline" size={18} color="#fff" />
+          </View>
+        </View>
+      </View>
       <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
         {children}
+        {actionOpen && (
+          // While the Unread button is exposed, a tap on the row closes it
+          // instead of navigating — matches mail-app swipe behavior.
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={close} />
+        )}
       </Animated.View>
     </View>
   );
@@ -99,7 +154,7 @@ function NotificationRow({
 }: {
   n: NotificationItem;
   status: FriendReqStatus;
-  onRespond: (friendshipId: number, action: 'accept' | 'reject') => Promise<void>;
+  onRespond: (notificationId: number, friendshipId: number, action: 'accept' | 'reject') => Promise<void>;
   onNavigateToUser: (userId: string) => void;
   onNavigateToBadge: (badgeId: string) => void;
   onNavigateToPost: (postId: number, openMode?: 'likes' | 'comments') => void;
@@ -118,7 +173,7 @@ function NotificationRow({
     const fid = n.metadata?.friendship_id;
     if (!fid || busy) return;
     setBusy(true);
-    try { await onRespond(fid, action); } finally { setBusy(false); }
+    try { await onRespond(n.id, fid, action); } finally { setBusy(false); }
   };
 
   const handlePress = badgeId
@@ -399,12 +454,17 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
     return () => { active = false; clearTimeout(fallback); };
   }, [open, animateIn]);
 
-  const handleRespond = useCallback(async (friendshipId: number, action: 'accept' | 'reject') => {
+  const handleRespond = useCallback(async (notificationId: number, friendshipId: number, action: 'accept' | 'reject') => {
     const tok = await getTokenRef.current();
     if (!tok) return;
     setFriendReqStatus(prev => ({ ...prev, [friendshipId]: action === 'accept' ? 'accepted' : 'declined' }));
     try {
       await respondFriendRequest(tok, friendshipId, action);
+      if (action === 'reject') {
+        // The server deletes the friend_request notification on decline; drop the
+        // row here too instead of leaving a settled "Declined" state behind.
+        setItems(prev => prev.filter(n => n.id !== notificationId));
+      }
     } catch {
       // Roll back to pending so Accept/Decline reappear — the request is still live.
       setFriendReqStatus(prev => {
@@ -421,6 +481,18 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
       const tok = await getTokenRef.current();
       if (tok) await dismissNotification(tok, id);
     } catch { /* already removed from UI */ }
+  }, []);
+
+  const handleMarkUnread = useCallback(async (id: number) => {
+    setItems(prev => prev.map(n => (n.id === id ? { ...n, read: false } : n)));
+    try {
+      const tok = await getTokenRef.current();
+      if (tok) {
+        await setNotificationRead(tok, id, false);
+        // Refresh the bell badge so the count survives closing the panel.
+        _fetchCount();
+      }
+    } catch { /* keep the optimistic unread state */ }
   }, []);
 
   const newCount = items.filter(n => !n.read).length;
@@ -502,7 +574,10 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                 style={{ maxHeight: 500 }}
                 contentContainerStyle={{ paddingTop: 6 }}
                 renderItem={({ item }) => (
-                  <SwipeableRow onDismiss={() => handleDismiss(item.id)}>
+                  <SwipeableRow
+                    onDismiss={() => handleDismiss(item.id)}
+                    onMarkUnread={() => handleMarkUnread(item.id)}
+                  >
                     <NotificationRow
                       n={item}
                       status={item.metadata?.friendship_id != null ? (friendReqStatus[item.metadata.friendship_id] ?? 'pending') : 'pending'}
@@ -574,9 +649,37 @@ const makeStyles = (T: Colors) => StyleSheet.create({
     fontSize: 13, fontWeight: '700', color: '#fff', lineHeight: 15,
   },
 
-  swipeBg: {
+  swipeUnderlay: {
     ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     backgroundColor: C.surfaceAlt,
+  },
+  // Wider than the exposed area so rubber-band overshoot never reveals a gap;
+  // the inner wrappers keep the icon/label centered within the exposed strip.
+  unreadAction: {
+    width: 160,
+    backgroundColor: '#2563EB',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  unreadActionInner: {
+    width: UNREAD_ACTION_WIDTH,
+    alignItems: 'center',
+    gap: 2,
+  },
+  unreadActionText: {
+    fontSize: 11, fontWeight: '700', color: '#fff',
+  },
+  dismissAction: {
+    width: 160,
+    backgroundColor: '#DC2626',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  dismissActionInner: {
+    width: UNREAD_ACTION_WIDTH,
+    alignItems: 'center',
   },
 
   overlayContainer: {

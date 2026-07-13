@@ -132,12 +132,19 @@ export interface BlockedUser {
   blocked_at: Date | null;
 }
 
+/** Optional per-badge color pair; when absent, clients fall back to the tier palette. */
+export interface BadgeColors {
+  fill: string;  // main color, hex
+  light: string; // lighter accent, hex
+}
+
 export interface Badge {
   id: string;
   name: string;
   description: string;
   emoji: string;
   tier: BadgeTier;
+  colors?: BadgeColors | null;
   earned: boolean;
   earned_at: Date | null;
   progress_current: number | null;
@@ -191,6 +198,7 @@ export interface CustomBadge {
   description: string;
   emoji: string;
   tier: BadgeTier;
+  colors?: BadgeColors | null;
   conditions: BadgeCondition[];
   enabled: boolean;
   created_at: Date | null;
@@ -204,6 +212,7 @@ export interface BadgeDef {
   description: string;
   emoji: string;
   tier: BadgeTier;
+  colors?: BadgeColors | null;
 }
 
 // Convenience type for park + visit status on map/list views

@@ -307,7 +307,6 @@ export default function FeedScreen() {
           token ? (
             <PostCard
               post={item}
-              token={token}
               myUserId={user?.id ?? ''}
               myAvatarUrl={user?.imageUrl}
               myName={user?.fullName ?? user?.username}

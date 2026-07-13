@@ -50,6 +50,7 @@ export async function POST(request: Request) {
       description: parsed.description,
       emoji: parsed.emoji,
       tier: parsed.tier,
+      colors: parsed.colors,
       conditions: parsed.conditions,
       enabled: parsed.enabled,
     })

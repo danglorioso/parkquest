@@ -71,7 +71,6 @@ export default function PostDetailScreen() {
         >
           <PostCard
             post={post}
-            token={token}
             myUserId={me?.id ?? ''}
             myAvatarUrl={me?.imageUrl}
             myName={me?.fullName ?? me?.username}

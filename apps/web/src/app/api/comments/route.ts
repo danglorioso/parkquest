@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, asc, notInArray, and } from 'drizzle-orm';
 import { db } from '@/lib/db';
@@ -61,7 +61,9 @@ export async function POST(request: Request) {
       await db.insert(notifications).values({ recipient_id: post.clerk_user_id, actor_id: userId, type: 'comment', post_id: Number(postId), metadata: { excerpt: content.trim().slice(0, 100) } }).catch(() => {});
       const [actor] = await db.select({ display_name: userProfiles.display_name, username: userProfiles.username }).from(userProfiles).where(eq(userProfiles.clerk_user_id, userId));
       const name = actor?.display_name || actor?.username || "Someone";
-      sendPushToUser(post.clerk_user_id, { title: "New comment", body: `${name}: ${content.trim().slice(0, 80)}`, url: "/map" }).catch(() => {});
+      // Un-awaited work dies when the serverless response returns; after() keeps
+      // the function alive until the push is actually handed to Expo.
+      after(() => sendPushToUser(post.clerk_user_id, { title: "New comment", body: `${name}: ${content.trim().slice(0, 80)}`, url: "/map" }).catch(() => {}));
     }
 
     return NextResponse.json(comment, { status: 201 });

@@ -1,13 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { visits, parks, userBadges, posts, notifications } from '@/lib/db/schema';
 import {
-  ALL_BADGES, computeStats, conditionsMet, conditionsProgress,
-  type BadgeDefinition, type UserStats, type BadgeTier,
+  computeStats, conditionsMet, conditionsProgress,
+  type UserStats, type BadgeTier,
 } from '@/lib/badges';
-import { getEnabledCustomBadges } from '@/lib/badgeDefs';
+import { getEnabledCustomBadges, getEffectiveStaticBadges, type EffectiveStaticBadge } from '@/lib/badgeDefs';
+import type { BadgeColors } from '@parkquest/types';
+import { sendPushToUser } from '@/lib/push';
 
 // Static + custom badges evaluated through one shape
 interface EvalBadge {
@@ -16,6 +18,7 @@ interface EvalBadge {
   description: string;
   emoji: string;
   tier: BadgeTier;
+  colors: BadgeColors | null;
   earns: (stats: UserStats) => boolean;
   progress: (stats: UserStats) => { current: number | null; target: number | null };
 }
@@ -25,7 +28,7 @@ export async function GET() {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const [userVisits, allParks, earnedBadges, customRows] = await Promise.all([
+    const [userVisits, allParks, earnedBadges, customRows, staticBadges] = await Promise.all([
       db
         .select({ park_code: visits.park_code, is_bucket_list: visits.is_bucket_list, visited_date: visits.visited_date })
         .from(visits)
@@ -36,6 +39,7 @@ export async function GET() {
         .from(userBadges)
         .where(eq(userBadges.clerk_user_id, userId)),
       getEnabledCustomBadges(),
+      getEffectiveStaticBadges(),
     ]);
 
     const stats = computeStats(userVisits, allParks);
@@ -43,14 +47,23 @@ export async function GET() {
     const earnedMap = new Map(earnedBadges.map((b) => [b.badge_id, b.earned_at]));
 
     const evalBadges: EvalBadge[] = [
-      ...ALL_BADGES.map((b: BadgeDefinition): EvalBadge => ({
+      // Built-in badges use their code-defined criteria unless an admin
+      // replaced them with condition-engine rules (badge_overrides.conditions).
+      ...staticBadges.map((b: EffectiveStaticBadge): EvalBadge => ({
         id: b.id,
         name: b.name,
         description: b.description,
         emoji: b.emoji,
         tier: b.tier,
-        earns: (s) => b.criteria(s),
-        progress: (s) => ({ current: b.progressCurrent?.(s) ?? null, target: b.progressTarget?.(s) ?? null }),
+        colors: b.colors,
+        earns: (s) => b.conditionOverride ? conditionsMet(b.conditionOverride, s) : b.criteria(s),
+        progress: (s) => {
+          if (b.conditionOverride) {
+            const p = conditionsProgress(b.conditionOverride, s);
+            return { current: p?.current ?? null, target: p?.target ?? null };
+          }
+          return { current: b.progressCurrent?.(s) ?? null, target: b.progressTarget?.(s) ?? null };
+        },
       })),
       ...customRows.map((b): EvalBadge => ({
         id: b.badge_id,
@@ -58,6 +71,7 @@ export async function GET() {
         description: b.description,
         emoji: b.emoji,
         tier: b.tier as BadgeTier,
+        colors: b.colors ?? null,
         earns: (s) => conditionsMet(b.conditions, s),
         progress: (s) => {
           const p = conditionsProgress(b.conditions, s);
@@ -77,8 +91,8 @@ export async function GET() {
         earnedIds.add(b.id);
         earnedMap.set(b.id, new Date());
       });
-      // Notify user of each new badge (fire and forget)
-      db.insert(notifications)
+      // Notify user of each new badge
+      await db.insert(notifications)
         .values(newBadges.map((b) => ({
           recipient_id: userId,
           actor_id: null,
@@ -86,6 +100,17 @@ export async function GET() {
           metadata: { badge_id: b.id, badge_name: b.name, badge_emoji: b.emoji },
         })))
         .catch(() => {});
+      // Un-awaited work dies when the serverless response returns; after() keeps
+      // the function alive until the push is actually handed to Expo.
+      after(() =>
+        Promise.all(newBadges.map((b) =>
+          sendPushToUser(userId, {
+            title: 'Badge earned!',
+            body: `${b.emoji} ${b.name} — ${b.description}`,
+            url: '/badges',
+          }).catch(() => {})
+        ))
+      );
     }
 
     // Revoke badges the user no longer qualifies for, and delete their badge share posts.
@@ -113,6 +138,7 @@ export async function GET() {
         description: badge.description,
         emoji: badge.emoji,
         tier: badge.tier,
+        colors: badge.colors,
         earned: earnedIds.has(badge.id),
         earned_at: earnedMap.get(badge.id) ?? null,
         progress_current: p.current,

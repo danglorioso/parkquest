@@ -32,6 +32,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       description: parsed.description,
       emoji: parsed.emoji,
       tier: parsed.tier,
+      colors: parsed.colors,
       conditions: parsed.conditions,
       enabled: parsed.enabled,
       updated_at: new Date(),

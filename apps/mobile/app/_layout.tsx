@@ -20,6 +20,17 @@ import { StatusBar } from 'expo-status-bar';
 import LoadingScreen from '../components/LoadingScreen';
 import { ToastHost } from '../lib/toast';
 
+// Without a handler iOS silently drops pushes that arrive while the app is
+// foregrounded (e.g. badge-earned right after logging a visit).
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
+
 const tokenCache = {
   getToken: (key: string) => SecureStore.getItemAsync(key),
   saveToken: (key: string, value: string) => SecureStore.setItemAsync(key, value),

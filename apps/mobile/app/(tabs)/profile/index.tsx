@@ -8,7 +8,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
-import { BADGE_TIER_COLORS, type BadgeTier } from '@/lib/badges';
+import { badgeColors, type BadgeColors } from '@/lib/badges';
 import { BadgeInfoModal } from '@/components/BadgeInfoModal';
 import { Wordmark } from '@/components/Wordmark';
 import { ParkStamp } from '@/components/ParkStamp';
@@ -39,6 +39,7 @@ interface BadgeSummary {
   name: string;
   emoji: string;
   tier: string;
+  colors?: BadgeColors | null;
   earned: boolean;
   earned_at: string | null;
 }
@@ -58,9 +59,6 @@ interface StampPreview {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function tierFill(tier: string): string {
-  return (BADGE_TIER_COLORS[tier as BadgeTier] ?? BADGE_TIER_COLORS.bronze).fill;
-}
 
 async function apiFetch<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -580,7 +578,7 @@ export default function ProfileScreen() {
                   activeOpacity={0.7}
                   style={styles.badgePreviewItem}
                 >
-                  <View style={[styles.badgeCircle, { backgroundColor: tierFill(b.tier) + '22', borderColor: tierFill(b.tier) + '55' }]}>
+                  <View style={[styles.badgeCircle, { backgroundColor: badgeColors(b).fill + '22', borderColor: badgeColors(b).fill + '55' }]}>
                     <Text style={{ fontSize: 22 }}>{b.emoji}</Text>
                   </View>
                   <Text style={styles.badgePreviewName} numberOfLines={2}>{b.name}</Text>

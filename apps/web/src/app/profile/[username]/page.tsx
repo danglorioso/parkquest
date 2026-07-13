@@ -33,6 +33,7 @@ interface BadgeData {
   name: string;
   emoji: string;
   tier: string;
+  colors?: { fill: string; light: string } | null;
   description?: string | null;
 }
 
@@ -93,13 +94,18 @@ const TIER_BG: Record<string, string> = {
   platinum: "#EBF4F7", legendary: "#F5EFFE",
 };
 
+/** Admin-set badge colors win over the tier palette; bg is the light color at low alpha. */
+function badgeAccent(b: BadgeData): { color: string; bg: string } {
+  if (b.colors) return { color: b.colors.fill, bg: `${b.colors.light}2e` };
+  return { color: TIER_COLOR[b.tier] ?? "#888", bg: TIER_BG[b.tier] ?? "#F9F9F9" };
+}
+
 function BadgeModal({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
   // API supplies the description (covers admin-defined badges); static defs are the fallback
   const def = badge.description
     ? { description: badge.description }
     : ALL_BADGES.find((b) => b.id === badge.badge_id);
-  const tierColor = TIER_COLOR[badge.tier] ?? "#888";
-  const tierBg = TIER_BG[badge.tier] ?? "#F9F9F9";
+  const { color: tierColor, bg: tierBg } = badgeAccent(badge);
   const earnedDate = badge.earned_at
     ? new Date(badge.earned_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
     : null;
@@ -982,30 +988,33 @@ export default function ProfilePage() {
         <div style={{ marginBottom: 28 }}>
           <Section title="BADGES EARNED" icon={Award}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {profile.badges.map((b) => (
-                <button
-                  key={b.badge_id}
-                  onClick={() => setSelectedBadge(b)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    background: TIER_BG[b.tier] ?? "#F9F9F9",
-                    border: `1px solid ${TIER_COLOR[b.tier] ?? "#ccc"}33`,
-                    borderRadius: 8, padding: "5px 10px",
-                    cursor: "pointer",
-                    transition: "filter 120ms",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(0.96)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; }}
-                >
-                  <span style={{ fontSize: 15 }}>{b.emoji}</span>
-                  <div>
-                    <div style={{ fontSize: 11.5, fontWeight: 650, color: "var(--ink)", lineHeight: 1.2 }}>{b.name}</div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "0.8px", color: TIER_COLOR[b.tier] ?? "var(--ink-mute)", fontWeight: 600, textTransform: "uppercase" }}>
-                      {b.tier}
+              {profile.badges.map((b) => {
+                const accent = badgeAccent(b);
+                return (
+                  <button
+                    key={b.badge_id}
+                    onClick={() => setSelectedBadge(b)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      background: accent.bg,
+                      border: `1px solid ${accent.color}33`,
+                      borderRadius: 8, padding: "5px 10px",
+                      cursor: "pointer",
+                      transition: "filter 120ms",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(0.96)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; }}
+                  >
+                    <span style={{ fontSize: 15 }}>{b.emoji}</span>
+                    <div>
+                      <div style={{ fontSize: 11.5, fontWeight: 650, color: "var(--ink)", lineHeight: 1.2 }}>{b.name}</div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "0.8px", color: accent.color, fontWeight: 600, textTransform: "uppercase" }}>
+                        {b.tier}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </Section>
         </div>

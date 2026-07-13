@@ -6,6 +6,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { fitUnderUploadCap } from '@/lib/uploadImage';
 import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
@@ -755,9 +756,6 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
 const PHOTO_THUMB = 124;
 const PHOTO_GAP = 8;
 const CROP_MAX_ZOOM = 4;
-// Longest edge, px — matches the server's safety-net cap. Keeps what we upload (and
-// pay to store in R2) close to what a feed/thumbnail ever actually displays.
-const PHOTO_MAX_DIMENSION = 1600;
 
 function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
   uri: string | null; index: number; total: number;
@@ -831,15 +829,13 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
       const cropSize = FRAME / totalScale;
       const cropX = clamp(left / totalScale, 0, Math.max(0, imgSize.w - cropSize));
       const cropY = clamp(top / totalScale, 0, Math.max(0, imgSize.h - cropSize));
+      // Crop at the source photo's native resolution — no downscaling. If the encoded
+      // result is too big for the request cap, uploadAll's fitUnderUploadCap handles it.
       const actions: ImageManipulator.Action[] = [{ crop: {
         originX: cropX, originY: cropY,
         width: Math.min(cropSize, imgSize.w - cropX),
         height: Math.min(cropSize, imgSize.h - cropY),
       } }];
-      // Cap the output — the crop region can still be huge on a high-res source photo.
-      if (cropSize > PHOTO_MAX_DIMENSION) {
-        actions.push({ resize: { width: PHOTO_MAX_DIMENSION, height: PHOTO_MAX_DIMENSION } });
-      }
       const result = await ImageManipulator.manipulateAsync(
         uri,
         actions,
@@ -1022,13 +1018,12 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder }: {
     const urls: string[] = [];
     for (const item of items) {
       try {
-        const fileRes = await fetch(item.uri);
-        const blob = await fileRes.blob();
-        // Posts the (already client-resized) bytes straight to our server, which does
-        // a safety-net resize/recompress before writing to R2 — see /api/upload.
+        // Photos upload at original dimensions; only shrunk if they'd blow the
+        // request body cap. Server normalizes to JPEG + strips EXIF — see /api/upload.
+        const { blob, mimeType } = await fitUnderUploadCap(item.uri, item.mimeType);
         const { publicUrl } = await apiFetch<{ publicUrl: string }>('/api/upload', tok, {
           method: 'POST',
-          headers: { 'Content-Type': item.mimeType ?? 'image/jpeg' },
+          headers: { 'Content-Type': mimeType },
           body: blob,
         });
         urls.push(publicUrl);
@@ -1042,9 +1037,9 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder }: {
     setUploadProgress({ done: 0, total: 0 });
   };
 
-  const advanceCrop = (finalUri: string) => {
+  const advanceCrop = (finalUri: string, mimeType?: string) => {
     const asset = cropQueue[0];
-    const nextDone = [...cropDone, { uri: finalUri, mimeType: 'image/jpeg', fileName: asset.fileName ?? 'photo.jpg' }];
+    const nextDone = [...cropDone, { uri: finalUri, mimeType: mimeType ?? 'image/jpeg', fileName: asset.fileName ?? 'photo.jpg' }];
     const rest = cropQueue.slice(1);
     if (rest.length === 0) {
       setCropQueue([]);
@@ -1056,26 +1051,11 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder }: {
     }
   };
 
-  const skipCrop = async () => {
+  // Cropping is optional — skipping keeps the original photo untouched at its native
+  // dimensions. Photos that would exceed the request cap get shrunk at upload time.
+  const skipCrop = () => {
     const asset = cropQueue[0];
-    const longestEdge = Math.max(asset.width, asset.height);
-    // width/height can come back 0 if the system didn't report them — treat that as
-    // "unknown" (needs the resize pass) rather than "already small enough".
-    if (longestEdge > 0 && longestEdge <= PHOTO_MAX_DIMENSION) { advanceCrop(asset.uri); return; }
-    try {
-      // Uncropped photos still need the resize pass — a picked-but-not-cropped
-      // photo can be full sensor resolution otherwise.
-      const resizeAction: ImageManipulator.Action = asset.width >= asset.height
-        ? { resize: { width: PHOTO_MAX_DIMENSION } }
-        : { resize: { height: PHOTO_MAX_DIMENSION } };
-      const result = await ImageManipulator.manipulateAsync(
-        asset.uri, [resizeAction], { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG },
-      );
-      advanceCrop(result.uri);
-    } catch (e) {
-      console.warn('Resize failed, using original photo:', e);
-      advanceCrop(asset.uri);
-    }
+    advanceCrop(asset.uri, asset.mimeType);
   };
   const cancelCrops = () => { setCropQueue([]); setCropDone([]); };
 
@@ -2452,6 +2432,10 @@ export default function LogVisitModal() {
         }
         // Original photos dropped during this edit are no longer referenced anywhere — clean them up.
         deletePhotos([...originalPhotos.current].filter(p => !draft.photos.includes(p)), tok);
+        // Badge awards are evaluated server-side on this fetch; fire it now so a
+        // newly earned badge pushes a banner immediately instead of waiting for
+        // the user to open a badges screen.
+        apiFetch('/api/badges', tok).catch(() => {});
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast('Visit updated');
         leavingViaAction.current = true;
@@ -2495,6 +2479,10 @@ export default function LogVisitModal() {
 
       if (saveTimer.current) clearTimeout(saveTimer.current);
       deleteDraft(draftId.current);
+      // Badge awards are evaluated server-side on this fetch; fire it now so a
+      // newly earned badge pushes a banner immediately instead of waiting for
+      // the user to open a badges screen.
+      apiFetch('/api/badges', tok).catch(() => {});
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast('Visit logged!');
       leavingViaAction.current = true;
