@@ -24,13 +24,16 @@ import { ToastHost } from '../lib/toast';
 // enableNative captures native crashes (e.g. uncaught worklet exceptions —
 // the SIGABRT class of crash that shows up with zero JS context in Apple's
 // own crash logs) with a real JS stack attached, not just plain JS errors.
-// Disabled in dev by default so local testing doesn't spam the Sentry project.
-Sentry.init({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
-  enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN,
-  enableNative: true,
-  tracesSampleRate: 0.2,
-});
+// Disabled in dev, and skipped entirely without a DSN — passing dsn: "" to
+// Sentry.init (rather than not calling it at all) crashed launch, since the
+// native side doesn't reliably gate on `enabled` before parsing the DSN.
+if (!__DEV__ && process.env.EXPO_PUBLIC_SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+    enableNative: true,
+    tracesSampleRate: 0.2,
+  });
+}
 
 // Without a handler iOS silently drops pushes that arrive while the app is
 // foregrounded (e.g. badge-earned right after logging a visit).
