@@ -11,9 +11,9 @@ const MIN_DIMENSION = 1280;
 // sniffs the actual bytes server-side, so a mislabeled header still converts fine.
 const SERVER_ACCEPTED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
 
-// Photos upload at their original dimensions. This only intervenes when the encoded
-// bytes would blow past the server's request cap: first recompress at full size,
-// then step the dimensions down until it fits.
+// The crop step (log-visit.tsx) already caps the long edge to a sane display size
+// before this runs, so most photos pass through untouched. This is the last-resort
+// safety net for whatever still blows past the server's request cap.
 export async function fitUnderUploadCap(
   uri: string,
   mimeType?: string,

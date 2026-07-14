@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
-import { STATIC as C, dyn, useColors } from '@/lib/palette';
+import { STATIC as C, dyn, useColors, useReassertThemeOnUnmount } from '@/lib/palette';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { showToast } from '@/lib/toast';
 import { loadRawDrafts, upsertRawDraft, deleteRawDraft, type SavedDraft as SharedSavedDraft } from '@/lib/drafts';
@@ -95,7 +95,7 @@ const RETURN_OPTS   = [
   { id: 'no',    label: 'Probably not', color: C.inkMute, icon: 'cloud-outline' as const,  iconFilled: 'cloud' as const },
 ];
 const STEPS = [
-  'Where & when', 'Rating', 'Crowd', 'Difficulty', 'Weather', 'Would you return?', 'Journal', 'Share',
+  'Where & when', 'Rating', 'Crowd', 'Difficulty', 'Weather', 'Would you return?', 'Photos', 'Journal', 'Share',
 ];
 const STAR_SIZE = 56;
 
@@ -753,38 +753,88 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
 
 // ── Photo crop modal ────────────────────────────────────────────────────────
 
-const PHOTO_THUMB = 124;
-const PHOTO_GAP = 8;
+// Photos is its own full step now, laid out as a grid so it uses the width and
+// vertical room a single scrolling strip left empty — thumb size is computed per
+// device width in PhotoStrip so `cols` fixed columns always fill the row exactly.
+const PHOTO_GRID_COLS = 3;
+const PHOTO_GAP = 10;
 const CROP_MAX_ZOOM = 4;
+// Long-edge cap applied at crop time — the happy medium between a crisp full-screen
+// lightbox view and not shipping multi-megabyte originals. fitUnderUploadCap (in
+// uploadImage.ts) is the last-resort safety net if this still isn't enough.
+const CROP_TARGET_MAX_DIMENSION = 2048;
+const CROP_QUALITY = 0.82;
 
-function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
+// 'original' isn't a fixed number — it tracks each photo's own aspect ratio, which
+// is what makes it behave like "no crop" (frame matches the image exactly, so the
+// default pan/zoom state already shows the full frame with nothing to trim).
+type RatioId = 'original' | 'square' | '4:5' | '16:9';
+const RATIO_OPTIONS: { id: RatioId; label: string; ratio: number | null }[] = [
+  { id: 'original', label: 'Original', ratio: null },
+  { id: 'square',   label: 'Square',   ratio: 1 },
+  { id: '4:5',      label: '4:5',      ratio: 4 / 5 },
+  { id: '16:9',     label: '16:9',     ratio: 16 / 9 },
+];
+
+function PhotoCropModal({ uri, index, total, onCancel, onDone }: {
   uri: string | null; index: number; total: number;
-  onCancel: () => void; onSkip: () => void; onDone: (croppedUri: string) => void;
+  onCancel: () => void; onDone: (croppedUri: string) => void;
 }) {
   const C = useColors();
-  const FRAME = Math.min(Dimensions.get('window').width - 48, 320);
+  const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
+  const [ratioId, setRatioId] = useState<RatioId>('original');
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [busy, setBusy] = useState(false);
   const gesture = useRef({ startScale: 1, startTx: 0, startTy: 0, startDist: 0 }).current;
+  // PanResponder.create only runs once (see the useRef below), so its callbacks close
+  // over whatever `scale`/`tx`/`ty`/`imgSize`/frame values existed on that first render
+  // — a live ref is the only way for them to see current values on every touch event.
+  const live = useRef({ scale: 1, tx: 0, ty: 0, imgSize: null as { w: number; h: number } | null, baseScale: 1, frameW: 0, frameH: 0 }).current;
 
   useEffect(() => {
     if (!uri) return;
+    setRatioId('original');
     setScale(1); setTx(0); setTy(0);
     Image.getSize(uri, (w, h) => setImgSize({ w, h }), () => setImgSize({ w: 1, h: 1 }));
   }, [uri]);
 
-  const baseScale = imgSize ? Math.max(FRAME / imgSize.w, FRAME / imgSize.h) : 1;
+  // Ratio switches re-fit the frame around the same photo — reset pan/zoom rather
+  // than trying to carry a crop region across a reshaped frame.
+  const changeRatio = (id: RatioId) => {
+    setRatioId(id);
+    setScale(1); setTx(0); setTy(0);
+  };
+
+  const imgRatio = imgSize ? imgSize.w / imgSize.h : 1;
+  const effectiveRatio = RATIO_OPTIONS.find(r => r.id === ratioId)?.ratio ?? imgRatio;
+
+  // Fit the frame inside the available space (below the header, above the ratio
+  // chips + hint) while honoring the selected aspect ratio.
+  const maxFrameW = winW - 48;
+  const maxFrameH = winH * 0.52;
+  let frameW = maxFrameW;
+  let frameH = frameW / effectiveRatio;
+  if (frameH > maxFrameH) { frameH = maxFrameH; frameW = frameH * effectiveRatio; }
+
+  const baseScale = imgSize ? Math.max(frameW / imgSize.w, frameH / imgSize.h) : 1;
   const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
-  const clampPan = (nx: number, ny: number, s: number) => {
-    if (!imgSize) return { x: nx, y: ny };
-    const dw = imgSize.w * baseScale * s;
-    const dh = imgSize.h * baseScale * s;
-    const maxX = Math.max(0, (dw - FRAME) / 2);
-    const maxY = Math.max(0, (dh - FRAME) / 2);
+  // Keep the live ref in sync every render so the PanResponder callbacks (created
+  // once, below) always see this render's values instead of the first render's.
+  live.scale = scale; live.tx = tx; live.ty = ty;
+  live.imgSize = imgSize; live.baseScale = baseScale; live.frameW = frameW; live.frameH = frameH;
+
+  const clampPanLive = (nx: number, ny: number, s: number) => {
+    const size = live.imgSize;
+    if (!size) return { x: 0, y: 0 };
+    const dw = size.w * live.baseScale * s;
+    const dh = size.h * live.baseScale * s;
+    const maxX = Math.max(0, (dw - live.frameW) / 2);
+    const maxY = Math.max(0, (dh - live.frameH) / 2);
     return { x: clamp(nx, -maxX, maxX), y: clamp(ny, -maxY, maxY) };
   };
 
@@ -792,9 +842,9 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (e) => {
-      gesture.startScale = scale;
-      gesture.startTx = tx;
-      gesture.startTy = ty;
+      gesture.startScale = live.scale;
+      gesture.startTx = live.tx;
+      gesture.startTy = live.ty;
       const touches = e.nativeEvent.touches;
       if (touches.length === 2) {
         const [a, b] = touches;
@@ -807,11 +857,12 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
         const [a, b] = touches;
         const dist = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
         const nextScale = clamp(gesture.startScale * (dist / gesture.startDist), 1, CROP_MAX_ZOOM);
-        setScale(nextScale);
-        const p = clampPan(gesture.startTx, gesture.startTy, nextScale);
-        setTx(p.x); setTy(p.y);
+        const p = clampPanLive(gesture.startTx, gesture.startTy, nextScale);
+        live.scale = nextScale; live.tx = p.x; live.ty = p.y;
+        setScale(nextScale); setTx(p.x); setTy(p.y);
       } else if (touches.length === 1) {
-        const p = clampPan(gesture.startTx + gestureState.dx, gesture.startTy + gestureState.dy, scale);
+        const p = clampPanLive(gesture.startTx + gestureState.dx, gesture.startTy + gestureState.dy, live.scale);
+        live.tx = p.x; live.ty = p.y;
         setTx(p.x); setTy(p.y);
       }
     },
@@ -824,22 +875,37 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
       const totalScale = baseScale * scale;
       const dw = imgSize.w * totalScale;
       const dh = imgSize.h * totalScale;
-      const left = (dw - FRAME) / 2 - tx;
-      const top = (dh - FRAME) / 2 - ty;
-      const cropSize = FRAME / totalScale;
-      const cropX = clamp(left / totalScale, 0, Math.max(0, imgSize.w - cropSize));
-      const cropY = clamp(top / totalScale, 0, Math.max(0, imgSize.h - cropSize));
-      // Crop at the source photo's native resolution — no downscaling. If the encoded
-      // result is too big for the request cap, uploadAll's fitUnderUploadCap handles it.
-      const actions: ImageManipulator.Action[] = [{ crop: {
-        originX: cropX, originY: cropY,
-        width: Math.min(cropSize, imgSize.w - cropX),
-        height: Math.min(cropSize, imgSize.h - cropY),
+      const left = (dw - frameW) / 2 - tx;
+      const top = (dh - frameH) / 2 - ty;
+      const cropW = clamp(frameW / totalScale, 0, imgSize.w);
+      const cropH = clamp(frameH / totalScale, 0, imgSize.h);
+      const cropX = clamp(left / totalScale, 0, Math.max(0, imgSize.w - cropW));
+      const cropY = clamp(top / totalScale, 0, Math.max(0, imgSize.h - cropH));
+
+      // Untouched "Original" at no zoom is the full photo — skip the crop action
+      // entirely rather than re-encoding a no-op region.
+      const isFullFrame = ratioId === 'original' && scale === 1
+        && cropW >= imgSize.w - 1 && cropH >= imgSize.h - 1;
+
+      const actions: ImageManipulator.Action[] = isFullFrame ? [] : [{ crop: {
+        originX: cropX, originY: cropY, width: cropW, height: cropH,
       } }];
+
+      // Cap the long edge post-crop — this is the primary size control now
+      // (fitUnderUploadCap only kicks in as a fallback if this still isn't enough).
+      const outW = isFullFrame ? imgSize.w : cropW;
+      const outH = isFullFrame ? imgSize.h : cropH;
+      const longEdge = Math.max(outW, outH);
+      if (longEdge > CROP_TARGET_MAX_DIMENSION) {
+        const resizeScale = CROP_TARGET_MAX_DIMENSION / longEdge;
+        actions.push({ resize: {
+          width: Math.round(outW * resizeScale), height: Math.round(outH * resizeScale),
+        } });
+      }
+
+      if (actions.length === 0) { onDone(uri); return; }
       const result = await ImageManipulator.manipulateAsync(
-        uri,
-        actions,
-        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG },
+        uri, actions, { compress: CROP_QUALITY, format: ImageManipulator.SaveFormat.JPEG },
       );
       onDone(result.uri);
     } catch (e) {
@@ -853,18 +919,18 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
   return (
     <Modal visible={!!uri} animationType="fade" transparent onRequestClose={onCancel}>
       <View style={styles.cropBg}>
-        <View style={styles.cropHeader}>
-          <TouchableOpacity onPress={onCancel} hitSlop={8}>
-            <Text style={styles.cropHeaderBtn}>Cancel</Text>
+        <View style={[styles.cropHeader, { paddingTop: insets.top + 14 }]}>
+          <TouchableOpacity onPress={onCancel} hitSlop={8} style={styles.cropIconBtn}>
+            <Ionicons name="close" size={20} color="#FFFBF1" />
           </TouchableOpacity>
-          <Text style={styles.cropHeaderTitle}>{total > 1 ? `Crop photo ${index + 1} of ${total}` : 'Crop photo'}</Text>
-          <TouchableOpacity onPress={handleDone} disabled={busy} hitSlop={8}>
-            {busy ? <ActivityIndicator size="small" color="#FFFBF1" /> : <Text style={[styles.cropHeaderBtn, { fontWeight: '800', color: C.accent }]}>Use Photo</Text>}
+          <Text style={styles.cropHeaderTitle}>{total > 1 ? `PHOTO ${index + 1} OF ${total}` : 'CROP PHOTO'}</Text>
+          <TouchableOpacity onPress={handleDone} disabled={busy} hitSlop={8} style={[styles.cropIconBtn, { backgroundColor: C.primary }]}>
+            {busy ? <ActivityIndicator size="small" color={C.onPrimary} /> : <Ionicons name="checkmark" size={20} color={C.onPrimary} />}
           </TouchableOpacity>
         </View>
 
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <View style={[styles.cropFrame, { width: FRAME, height: FRAME }]} {...panResponder.panHandlers}>
+          <View style={[styles.cropFrame, { width: frameW, height: frameH }]} {...panResponder.panHandlers}>
             {uri && imgSize && (
               <Image
                 source={{ uri }}
@@ -872,8 +938,8 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
                   position: 'absolute',
                   width: imgSize.w * baseScale,
                   height: imgSize.h * baseScale,
-                  left: (FRAME - imgSize.w * baseScale) / 2,
-                  top: (FRAME - imgSize.h * baseScale) / 2,
+                  left: (frameW - imgSize.w * baseScale) / 2,
+                  top: (frameH - imgSize.h * baseScale) / 2,
                   transform: [{ translateX: tx }, { translateY: ty }, { scale }],
                 }}
               />
@@ -882,10 +948,20 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
         </View>
 
         <View style={styles.cropFooter}>
+          <View style={styles.ratioRow}>
+            {RATIO_OPTIONS.map(opt => {
+              const on = ratioId === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id} onPress={() => changeRatio(opt.id)} activeOpacity={0.8}
+                  style={[styles.ratioChip, on && { backgroundColor: C.primary, borderColor: C.primary }]}
+                >
+                  <Text style={[styles.ratioChipText, on && { color: C.onPrimary, fontWeight: '800' }]}>{opt.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
           <Text style={styles.cropHint}>Pinch to zoom &middot; drag to reposition</Text>
-          <TouchableOpacity onPress={onSkip} hitSlop={8}>
-            <Text style={styles.cropSkip}>Use original, uncropped</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -894,12 +970,15 @@ function PhotoCropModal({ uri, index, total, onCancel, onSkip, onDone }: {
 
 // ── Draggable photo thumb ───────────────────────────────────────────────────
 
-const PHOTO_CELL = PHOTO_THUMB + PHOTO_GAP;
+// Grid position (in cells) for a linear array index, row-major, `cols` wide.
+function cellPos(i: number, cols: number) {
+  return { col: i % cols, row: Math.floor(i / cols) };
+}
 
 function DraggablePhotoThumb({
-  index, url, isCover, count, activeIndex, overIndex, onDragStart, onDragEnd, onPress, onRemove,
+  index, url, isCover, count, cols, cellSize, activeIndex, overIndex, onDragStart, onDragEnd, onPress, onRemove,
 }: {
-  index: number; url: string; isCover: boolean; count: number;
+  index: number; url: string; isCover: boolean; count: number; cols: number; cellSize: number;
   activeIndex: SharedValue<number>; overIndex: SharedValue<number>;
   onDragStart: () => void;
   onDragEnd: (from: number, to: number) => void;
@@ -907,25 +986,33 @@ function DraggablePhotoThumb({
 }) {
   const C = useColors();
   const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const step = cellSize + PHOTO_GAP;
 
   // Gesture.Pan() is rebuilt fresh every render (not memoized), so it already closes
-  // over the current `index` prop directly — no ref indirection needed here.
+  // over the current `index`/`cols`/`step` props directly — no ref indirection needed.
   const pan = Gesture.Pan()
     .activateAfterLongPress(220)
     .onStart(() => {
       translateX.value = 0;
+      translateY.value = 0;
       activeIndex.value = index;
       overIndex.value = index;
       runOnJS(onDragStart)();
     })
     .onUpdate(e => {
       translateX.value = e.translationX;
-      const raw = index + Math.round(e.translationX / PHOTO_CELL);
+      translateY.value = e.translationY;
+      const { col, row } = cellPos(index, cols);
+      const rawCol = Math.max(0, Math.min(cols - 1, col + Math.round(e.translationX / step)));
+      const rawRow = Math.max(0, row + Math.round(e.translationY / step));
+      const raw = rawRow * cols + rawCol;
       const clamped = Math.max(0, Math.min(count - 1, raw));
       if (clamped !== overIndex.value) overIndex.value = clamped;
     })
     .onEnd(() => {
       translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
+      translateY.value = withSpring(0, { damping: 20, stiffness: 260 });
       const from = index;
       const to = overIndex.value;
       activeIndex.value = -1;
@@ -937,7 +1024,7 @@ function DraggablePhotoThumb({
     const active = activeIndex.value === index;
     if (active) {
       return {
-        transform: [{ translateX: translateX.value }, { scale: 1.06 }],
+        transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: 1.06 }],
         zIndex: 10, shadowOpacity: 0.22,
       };
     }
@@ -947,15 +1034,23 @@ function DraggablePhotoThumb({
       if (a < index && index <= t) shift = -1;
       else if (a > index && index >= t) shift = 1;
     }
+    // Shifted items land in the grid slot the next/previous index occupies —
+    // usually one column over, but a row-wrap slides them a full row instead.
+    const mine = cellPos(index, cols);
+    const target = cellPos(index + shift, cols);
     return {
-      transform: [{ translateX: withTiming(shift * PHOTO_CELL, { duration: 160 }) }, { scale: 1 }],
+      transform: [
+        { translateX: withTiming((target.col - mine.col) * step, { duration: 160 }) },
+        { translateY: withTiming((target.row - mine.row) * step, { duration: 160 }) },
+        { scale: 1 },
+      ],
       zIndex: 0, shadowOpacity: 0,
     };
   });
 
   return (
     <GestureDetector gesture={pan}>
-      <Reanimated.View style={[styles.photoThumb, animStyle]}>
+      <Reanimated.View style={[styles.photoThumb, { width: cellSize, height: cellSize }, animStyle]}>
         <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={StyleSheet.absoluteFill}>
           <Image source={{ uri: url }} style={StyleSheet.absoluteFill as any} resizeMode="cover" />
         </TouchableOpacity>
@@ -977,21 +1072,28 @@ function DraggablePhotoThumb({
 
 // ── Photo strip ──────────────────────────────────────────────────────────────
 
-function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder }: {
+function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder, onDragActiveChange }: {
   getToken: () => Promise<string | null>; photos: string[];
   onAdd: (urls: string[]) => void;
   onRemove: (url: string) => void;
   onReorder: (next: string[]) => void;
+  // The grid's own drag-to-reorder gesture fights the wizard's outer vertical
+  // scroll (and the sheet's swipe-to-dismiss) once dragging moves between rows —
+  // this freezes both for the duration, same as the slider steps already do.
+  onDragActiveChange: (active: boolean) => void;
 }) {
   const C = useColors();
+  const { width: winW } = useWindowDimensions();
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   const uploading = uploadProgress.total > 0;
   const [cropQueue, setCropQueue] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [cropDone, setCropDone] = useState<{ uri: string; mimeType?: string; fileName?: string }[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [scrollEnabled, setScrollEnabled] = useState(true);
   const activeIndex = useSharedValue(-1);
   const overIndex = useSharedValue(-1);
+  // Matches the step content's horizontal padding (20 on each side) so the grid's
+  // `cols` cells fill the row edge-to-edge.
+  const cellSize = (winW - 40 - (PHOTO_GRID_COLS - 1) * PHOTO_GAP) / PHOTO_GRID_COLS;
 
   const pickAndUpload = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -1018,8 +1120,9 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder }: {
     const urls: string[] = [];
     for (const item of items) {
       try {
-        // Photos upload at original dimensions; only shrunk if they'd blow the
-        // request body cap. Server normalizes to JPEG + strips EXIF — see /api/upload.
+        // Crop step already sized this down to CROP_TARGET_MAX_DIMENSION; this is
+        // just the request-body-cap safety net. Server normalizes to JPEG + strips
+        // EXIF regardless — see /api/upload.
         const { blob, mimeType } = await fitUnderUploadCap(item.uri, item.mimeType);
         const { publicUrl } = await apiFetch<{ publicUrl: string }>('/api/upload', tok, {
           method: 'POST',
@@ -1051,16 +1154,10 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder }: {
     }
   };
 
-  // Cropping is optional — skipping keeps the original photo untouched at its native
-  // dimensions. Photos that would exceed the request cap get shrunk at upload time.
-  const skipCrop = () => {
-    const asset = cropQueue[0];
-    advanceCrop(asset.uri, asset.mimeType);
-  };
   const cancelCrops = () => { setCropQueue([]); setCropDone([]); };
 
   const handleReorder = (from: number, to: number) => {
-    setScrollEnabled(true);
+    onDragActiveChange(false);
     if (from === to) return;
     const next = [...photos];
     const [moved] = next.splice(from, 1);
@@ -1075,7 +1172,6 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder }: {
         index={cropDone.length}
         total={cropDone.length + cropQueue.length}
         onCancel={cancelCrops}
-        onSkip={skipCrop}
         onDone={advanceCrop}
       />
       {lightboxIndex !== null && (
@@ -1085,31 +1181,31 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder }: {
           onClose={() => setLightboxIndex(null)}
         />
       )}
-      <ScrollView
-        horizontal showsHorizontalScrollIndicator={false}
-        scrollEnabled={scrollEnabled}
-        contentContainerStyle={{ gap: PHOTO_GAP, paddingBottom: 4, paddingHorizontal: 2 }}
-      >
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: PHOTO_GAP }}>
         {photos.map((url, idx) => (
           <DraggablePhotoThumb
             key={url}
             index={idx} url={url} isCover={idx === 0} count={photos.length}
+            cols={PHOTO_GRID_COLS} cellSize={cellSize}
             activeIndex={activeIndex} overIndex={overIndex}
-            onDragStart={() => setScrollEnabled(false)}
+            onDragStart={() => onDragActiveChange(true)}
             onDragEnd={handleReorder}
             onPress={() => setLightboxIndex(idx)}
             onRemove={() => onRemove(url)}
           />
         ))}
         {photos.length < 10 && (
-          <TouchableOpacity onPress={pickAndUpload} disabled={uploading} style={styles.photoAdd} activeOpacity={0.7}>
-            <Ionicons name={uploading ? 'hourglass' : 'add'} size={24} color={C.primary} />
-            <Text style={{ fontSize: 13, fontWeight: '600', color: C.primary, marginTop: 4 }}>
+          <TouchableOpacity
+            onPress={pickAndUpload} disabled={uploading} activeOpacity={0.7}
+            style={[styles.photoAdd, { width: cellSize, height: cellSize }]}
+          >
+            <Ionicons name={uploading ? 'hourglass' : 'add'} size={28} color={C.primary} />
+            <Text style={{ fontSize: 13.5, fontWeight: '600', color: C.primary, marginTop: 5, textAlign: 'center' }}>
               {uploading ? 'Uploading…' : 'Add photos'}
             </Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
+      </View>
       {uploading ? (
         <View style={styles.uploadProgressWrap}>
           <View style={styles.uploadProgressTrack}>
@@ -1810,37 +1906,59 @@ function StepWouldReturn({ draft, set }: {
   );
 }
 
-function StepJournal({ draft, set, token, getToken, npsActivityNames, originalPhotos }: {
-  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void; token: string;
+// Photos gets its own full step now — the strip is the whole page's focus
+// instead of one section competing with four text/chip fields underneath it.
+function StepPhotos({ draft, set, getToken, originalPhotos, onDragActiveChange }: {
+  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   getToken: () => Promise<string | null>;
-  npsActivityNames: string[];
   originalPhotos: Set<string>;
+  onDragActiveChange: (active: boolean) => void;
+}) {
+  const C = useColors();
+  return (
+    <View>
+      <Reanimated.View entering={FadeInDown.duration(360)} style={{ marginBottom: 10 }}>
+        <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Add your photos</Text>
+      </Reanimated.View>
+
+      <Reanimated.View entering={FadeInDown.delay(60).duration(360)} style={{ marginBottom: 24 }}>
+        <Text style={{ fontSize: 14, color: C.inkMute, lineHeight: 19 }}>
+          {draft.photos.length > 0
+            ? `${draft.photos.length} of 10 — drag to reorder, first is the cover`
+            : 'Pick your best shots to show off the trip'}
+        </Text>
+      </Reanimated.View>
+
+      <Reanimated.View entering={FadeInDown.delay(120).duration(380)}>
+        <PhotoStrip
+          getToken={getToken} photos={draft.photos} onDragActiveChange={onDragActiveChange}
+          onAdd={urls => set('photos', [...draft.photos, ...urls].slice(0, 10))}
+          onRemove={url => {
+            const next = draft.photos.filter(p => p !== url);
+            set('photos', next);
+            // Only nuke it immediately if it was uploaded this session — photos already
+            // attached to the saved visit stay live until the edit is actually submitted.
+            if (!originalPhotos.has(url)) getToken().then(tok => deletePhotos([url], tok));
+          }}
+          onReorder={next => set('photos', next)}
+        />
+      </Reanimated.View>
+    </View>
+  );
+}
+
+function StepJournal({ draft, set, token, npsActivityNames }: {
+  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void; token: string;
+  npsActivityNames: string[];
 }) {
   const C = useColors();
   return (
     <View>
       <Reanimated.View entering={FadeInDown.duration(360)} style={{ marginBottom: 24 }}>
-        <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Journal & photos</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Journal</Text>
       </Reanimated.View>
 
       <Reanimated.View entering={FadeInDown.delay(80).duration(360)}>
-        <Section title="Photos" hint={`${draft.photos.length} of 10`}>
-          <PhotoStrip
-            getToken={getToken} photos={draft.photos}
-            onAdd={urls => set('photos', [...draft.photos, ...urls].slice(0, 10))}
-            onRemove={url => {
-              const next = draft.photos.filter(p => p !== url);
-              set('photos', next);
-              // Only nuke it immediately if it was uploaded this session — photos already
-              // attached to the saved visit stay live until the edit is actually submitted.
-              if (!originalPhotos.has(url)) getToken().then(tok => deletePhotos([url], tok));
-            }}
-            onReorder={next => set('photos', next)}
-          />
-        </Section>
-      </Reanimated.View>
-
-      <Reanimated.View entering={FadeInDown.delay(160).duration(360)}>
         <Section title="Highlight">
           <TextInput
             value={draft.highlight} onChangeText={v => set('highlight', v.slice(0, 90))}
@@ -1848,6 +1966,16 @@ function StepJournal({ draft, set, token, getToken, npsActivityNames, originalPh
             style={[styles.textField, { marginBottom: 0 }]}
           />
           <Text style={styles.charCountOutside}>{draft.highlight.length}/90</Text>
+        </Section>
+      </Reanimated.View>
+
+      <Reanimated.View entering={FadeInDown.delay(160).duration(360)}>
+        <Section title="Who came along?">
+          <CompanionSearch
+            companions={draft.companions} companionObjs={draft.companionObjs}
+            onChange={(ids, objs) => { set('companions', ids); set('companionObjs', objs); }}
+            token={token}
+          />
         </Section>
       </Reanimated.View>
 
@@ -1865,16 +1993,6 @@ function StepJournal({ draft, set, token, getToken, npsActivityNames, originalPh
       <Reanimated.View entering={FadeInDown.delay(320).duration(360)}>
         <Section title="Activities">
           <ActivityChips value={draft.activities} onChange={v => set('activities', v)} npsActivityNames={npsActivityNames} />
-        </Section>
-      </Reanimated.View>
-
-      <Reanimated.View entering={FadeInDown.delay(400).duration(360)}>
-        <Section title="Who came along?">
-          <CompanionSearch
-            companions={draft.companions} companionObjs={draft.companionObjs}
-            onChange={(ids, objs) => { set('companions', ids); set('companionObjs', objs); }}
-            token={token}
-          />
         </Section>
       </Reanimated.View>
     </View>
@@ -2103,6 +2221,11 @@ export default function LogVisitModal() {
   const { user } = useUser();
   const insets   = useSafeAreaInsets();
   const C = useColors();
+  // Swiping this sheet down to dismiss (an interactive UISheetPresentationController
+  // dismissal) can leave the window's trait collection stuck on this screen's
+  // last-drawn appearance instead of reverting — the tab bar and toast render dark
+  // until this forces a resync. See useReassertThemeOnUnmount for the full story.
+  useReassertThemeOnUnmount();
 
   // Edit mode — opened from a feed post's "Edit visit" menu item
   const {
@@ -2581,8 +2704,9 @@ export default function LogVisitModal() {
         {step === 3 && <StepDifficulty draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
         {step === 4 && <StepWeather draft={draft} set={set} />}
         {step === 5 && <StepWouldReturn draft={draft} set={set} />}
-        {step === 6 && token && <StepJournal draft={draft} set={set} token={token} getToken={getFreshToken} npsActivityNames={npsActivityNames} originalPhotos={originalPhotos.current} />}
-        {step === 7 && (
+        {step === 6 && <StepPhotos draft={draft} set={set} getToken={getFreshToken} originalPhotos={originalPhotos.current} onDragActiveChange={setSliderDragging} />}
+        {step === 7 && token && <StepJournal draft={draft} set={set} token={token} npsActivityNames={npsActivityNames} />}
+        {step === 8 && (
           <StepShare
             draft={draft}
             set={set}
@@ -2861,8 +2985,9 @@ const styles = StyleSheet.create({
   // Photos
   // No backgroundColor here — this style lands on a Reanimated.View, and
   // DynamicColorIOS values crash Reanimated. The Image itself covers the cell.
+  // width/height are set inline per grid cell size — see PhotoStrip.
   photoThumb: {
-    width: PHOTO_THUMB, height: PHOTO_THUMB, borderRadius: 14, overflow: 'hidden',
+    borderRadius: 14, overflow: 'hidden',
   },
   photoRemoveBtn: {
     position: 'absolute', top: 6, right: 6,
@@ -2878,8 +3003,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20,17,12,0.55)', width: 24, height: 24, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
   },
+  // width/height are set inline per grid cell size — see PhotoStrip.
   photoAdd: {
-    width: PHOTO_THUMB, height: PHOTO_THUMB, borderRadius: 14,
+    borderRadius: 14,
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.hairline,
     backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 10, paddingVertical: 10,
@@ -2906,27 +3032,37 @@ const styles = StyleSheet.create({
   },
   cropHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 56, paddingHorizontal: 20, paddingBottom: 16,
+    paddingHorizontal: 20, paddingBottom: 16,
   },
-  cropHeaderBtn: {
-    fontSize: 15, fontWeight: '600', color: '#FFFBF1',
+  cropIconBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,251,241,0.14)',
   },
   cropHeaderTitle: {
-    fontSize: 14, fontWeight: '700', color: 'rgba(255,251,241,0.85)',
+    fontSize: 12.5, fontWeight: '700', color: 'rgba(255,251,241,0.7)', letterSpacing: 1.3,
   },
   cropFrame: {
-    borderRadius: 4, overflow: 'hidden',
+    borderRadius: 8, overflow: 'hidden',
     borderWidth: 1, borderColor: 'rgba(255,251,241,0.7)',
     backgroundColor: '#000',
   },
   cropFooter: {
     alignItems: 'center', gap: 14, paddingBottom: 48, paddingTop: 20,
   },
+  ratioRow: {
+    flexDirection: 'row', gap: 8,
+  },
+  ratioChip: {
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 100,
+    borderWidth: 1, borderColor: 'rgba(255,251,241,0.3)',
+    backgroundColor: 'rgba(255,251,241,0.08)',
+  },
+  ratioChipText: {
+    fontSize: 13, fontWeight: '700', color: 'rgba(255,251,241,0.85)',
+  },
   cropHint: {
     fontSize: 12.5, color: 'rgba(255,251,241,0.6)',
-  },
-  cropSkip: {
-    fontSize: 13.5, fontWeight: '600', color: 'rgba(255,251,241,0.85)', textDecorationLine: 'underline',
   },
 
   // Park picker

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Appearance, DynamicColorIOS, Platform, useColorScheme, type ColorValue } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -105,7 +105,9 @@ function useResolvedScheme(): 'light' | 'dark' {
   return scheme === 'dark' ? 'dark' : 'light';
 }
 
-function applyThemeMode(mode: ThemeMode) {
+// Exported so screens whose native presentation can desync the window's trait
+// collection (see useReassertThemeOnUnmount below) can force a resync.
+export function applyThemeMode(mode: ThemeMode) {
   if (Platform.OS !== 'ios') return;
   // Sets overrideUserInterfaceStyle on every window, so DynamicColorIOS
   // colors, MapView, blur materials and the keyboard all follow along.
@@ -156,6 +158,19 @@ export const usePalette = () => useContext(PaletteContext);
 export function useThemeMode() {
   const { themeMode, setThemeMode } = useContext(PaletteContext);
   return { themeMode, setThemeMode };
+}
+
+// iOS's UISheetPresentationController (used for expo-router's `presentation:
+// 'modal'` screens) can leave the root window's trait collection on whatever
+// the sheet last showed after an interactive swipe-to-dismiss, instead of
+// reverting to the app's actual theme — DynamicColorIOS surfaces (tab bar,
+// toasts) then render dark until something else forces a resync. Call this
+// from any such screen to force one on unmount, regardless of how it closed.
+export function useReassertThemeOnUnmount() {
+  const { themeMode } = useThemeMode();
+  const modeRef = useRef(themeMode);
+  modeRef.current = themeMode;
+  useEffect(() => () => applyThemeMode(modeRef.current), []);
 }
 
 export type Colors = typeof STATIC & PaletteColors;
