@@ -40,4 +40,10 @@ EOF
 
 echo "==> pod install"
 cd "$CI_PRIMARY_REPOSITORY_PATH/apps/mobile/ios"
+# sentry-react-native 8.18+ vendors a prebuilt Sentry.xcframework fetched from
+# GitHub Releases at pod-install time by default. That binary caused a native
+# segfault inside SentrySDK.start on TestFlight (build 91) — reproducible on
+# every launch, survived a full reinstall. Falling back to the source-built
+# Sentry pod (pre-8.18 behavior) as the documented escape hatch.
+export SENTRY_USE_XCFRAMEWORK=0
 pod install

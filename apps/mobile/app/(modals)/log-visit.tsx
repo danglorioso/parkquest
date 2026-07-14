@@ -971,7 +971,11 @@ function PhotoCropModal({ uri, index, total, onCancel, onDone }: {
 // ── Draggable photo thumb ───────────────────────────────────────────────────
 
 // Grid position (in cells) for a linear array index, row-major, `cols` wide.
+// Called from inside worklets (useAnimatedStyle, gesture .onUpdate), so it
+// needs its own 'worklet' directive — plain functions aren't callable from
+// the UI thread even when referenced from a worklet's closure.
 function cellPos(i: number, cols: number) {
+  'worklet';
   return { col: i % cols, row: Math.floor(i / cols) };
 }
 
