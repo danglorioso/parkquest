@@ -2,6 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner', 'sharp'],
+  // sharp's native libvips binding lives two directories up in this pnpm-hoisted
+  // monorepo (root node_modules/@img/*) — Turbopack's file tracer isn't picking
+  // it up on its own, so the deployed function dlopen's a missing .so. Force it
+  // into the /api/upload function's bundle explicitly.
+  outputFileTracingIncludes: {
+    '/api/upload': [
+      '../../node_modules/@img/sharp-linux-x64/**/*',
+      '../../node_modules/@img/sharp-libvips-linux-x64/**/*',
+    ],
+  },
   async rewrites() {
     return [
       // Next ignores dot-folders in app/, so the Apple Universal Links file
