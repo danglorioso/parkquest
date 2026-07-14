@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
@@ -12,10 +12,14 @@ import {
 } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import Logo from "@/components/Logo";
+import { OpenInAppOverlay } from "@/components/OpenInAppOverlay";
 import type { MapPark } from "@/components/USAMapGL";
 import { PostCard, ReportDialog, type FeedPost } from "@/components/PostCard";
 import { useToast } from "@/components/ToastProvider";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
+
+// TODO: set once the app is live on the App Store (see apps/web/src/app/p/[id]/page.tsx)
+const APP_STORE_URL: string | null = null;
 
 const USAMap = dynamic(() => import("@/components/USAMapGL"), {
   ssr: false,
@@ -516,7 +520,13 @@ function Bone({ w = "100%", h = 16, r = 6, style }: { w?: number | string; h?: n
 function ProfileSkeleton() {
   return (
     <>
-      <style>{`@keyframes pq-shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }`}</style>
+      <style>{`
+        @keyframes pq-shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+        .pq-map-passport-grid { display: grid; grid-template-columns: 1fr 260px; }
+        @media (max-width: 640px) {
+          .pq-map-passport-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 22, marginBottom: 28 }}>
         <Bone w={84} h={84} r={42} />
@@ -536,7 +546,7 @@ function ProfileSkeleton() {
         ))}
       </div>
       {/* Map + passport */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 16, marginBottom: 28 }}>
+      <div className="pq-map-passport-grid" style={{ gap: 16, marginBottom: 28 }}>
         <Bone h={240} r={14} />
         <Bone h={240} r={14} />
       </div>
@@ -582,6 +592,18 @@ export default function ProfilePage() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showReportUser, setShowReportUser] = useState(false);
   const [reportedUser, setReportedUser] = useState(false);
+
+  // Signed-out visitors arrive here from a shared /u/<username> link — same
+  // "open in app" overlay + deep-link attempt as the shared-post page.
+  const [showAppOverlay, setShowAppOverlay] = useState(true);
+  const attemptedOpen = useRef(false);
+  const openApp = () => { window.location.href = `parkquest://u/${username}`; };
+  useEffect(() => {
+    if (!isLoaded || isSignedIn || attemptedOpen.current) return;
+    attemptedOpen.current = true;
+    openApp();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn, username]);
 
   useEffect(() => {
     if (!showProfileMenu) return;
@@ -760,6 +782,12 @@ export default function ProfilePage() {
 
   const content = profile ? (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 28px 80px" }}>
+      <style>{`
+        .pq-map-passport-grid { display: grid; grid-template-columns: 1fr 260px; }
+        @media (max-width: 640px) {
+          .pq-map-passport-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
 
       {/* ── Back button ── */}
       {!profile.is_own_profile && (
@@ -909,7 +937,7 @@ export default function ProfilePage() {
       </div>
 
       {/* ── Map + Passport card ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 16, marginBottom: 28, alignItems: "stretch" }}>
+      <div className="pq-map-passport-grid" style={{ gap: 16, marginBottom: 28, alignItems: "stretch" }}>
         {/* Map */}
         <div style={{
           borderRadius: 14, overflow: "hidden",
@@ -1138,6 +1166,13 @@ export default function ProfilePage() {
       onPosted={() => setEditDraft(undefined)}
     />
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+      <style>{`
+        .pq-signup-banner { display: flex; align-items: center; justify-content: space-between; }
+        @media (max-width: 560px) {
+          .pq-signup-banner { flex-direction: column; align-items: stretch; }
+          .pq-signup-banner-actions { justify-content: flex-end; }
+        }
+      `}</style>
       {/* Minimal public nav */}
       <div style={{
         position: "sticky", top: 0, zIndex: 100,
@@ -1171,36 +1206,45 @@ export default function ProfilePage() {
       <div style={{ paddingBottom: 100 }}>{content}</div>
 
       {/* Sticky sign-up banner */}
-      <div style={{
+      <div className="pq-signup-banner" style={{
         position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200,
-        background: "var(--primary)", padding: "16px 24px",
-        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+        background: "var(--primary)", padding: "16px 24px", gap: 16,
       }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#FFFBF1" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#FFFBF1", overflowWrap: "break-word" }}>
             Join {displayName} on ParkQuest
           </div>
           <div style={{ fontSize: 12.5, color: "rgba(255,251,241,0.75)", marginTop: 2 }}>
             Track your national park adventures, earn badges, and connect with friends.
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+        <div className="pq-signup-banner-actions" style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           <Link href={`/sign-in?redirect=${encodeURIComponent(`/profile/${username}`)}`} style={{ textDecoration: "none" }}>
             <button style={{
               background: "rgba(255,251,241,0.15)", border: "1px solid rgba(255,251,241,0.35)",
               borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600,
-              color: "#FFFBF1", cursor: "pointer",
+              color: "#FFFBF1", cursor: "pointer", whiteSpace: "nowrap",
             }}>Sign in</button>
           </Link>
           <Link href="/sign-up" style={{ textDecoration: "none" }}>
             <button style={{
               background: "#FFFBF1", border: "none",
               borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700,
-              color: "var(--primary)", cursor: "pointer",
+              color: "var(--primary)", cursor: "pointer", whiteSpace: "nowrap",
             }}>Create free account</button>
           </Link>
         </div>
       </div>
+
+      {showAppOverlay && (
+        <OpenInAppOverlay
+          title="Open this profile in the app"
+          description="See full park stamps, badges, and posts, and connect with friends in the ParkQuest app."
+          onDismiss={() => setShowAppOverlay(false)}
+          onOpenApp={openApp}
+          appStoreUrl={APP_STORE_URL}
+        />
+      )}
     </div>
     </>
   );

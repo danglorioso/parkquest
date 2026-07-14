@@ -1760,9 +1760,12 @@ function StepWhere({ draft, set, parks, onPickPark }: {
         </Section>
       </Reanimated.View>
 
-      {/* Rest locked until park selected */}
+      {/* Rest locked until park selected — the entrance fade and the lock/unlock
+          opacity are two separate Reanimated-driven animations, so each needs its
+          own wrapper: applying both `entering` and an animated `opacity` style to
+          the same node makes them fight over the same property. */}
+      <Reanimated.View entering={FadeInDown.delay(160).duration(360)}>
       <Reanimated.View
-        entering={FadeInDown.delay(160).duration(360)}
         style={unlockedStyle}
         pointerEvents={park ? 'auto' : 'none'}
       >
@@ -1816,6 +1819,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
             <Text style={{ fontSize: 13, color: C.accent, fontWeight: '700', marginTop: 6 }}>{days} day trip</Text>
           )}
         </Section>
+      </Reanimated.View>
       </Reanimated.View>
     </View>
   );

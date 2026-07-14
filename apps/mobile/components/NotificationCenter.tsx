@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, AppState, FlatList, Linking, Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
+  ActivityIndicator, Animated, AppState, FlatList, Linking, Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -432,13 +432,15 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
     if (!open) return;
     let active = true;
     setItemsFresh(false);
-    // Fallback: animate in after 2.5s even if fetch stalls
-    const fallback = setTimeout(() => { if (active) animateIn(); }, 2500);
+    // Slide the sheet in right away — don't wait on the fetch. The panel shows
+    // its own "Loading…" state (via `loading` below) while data comes in, so
+    // tapping the bell feels instant instead of stalling on the network.
+    animateIn();
     (async () => {
       setLoading(true);
       try {
         const tok = await getTokenRef.current();
-        if (!tok) { animateIn(); return; }
+        if (!tok) return;
         const data = await getNotifications(tok);
         if (!active) return;
         setItems(data);
@@ -451,14 +453,10 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
           _broadcastCount(0);
         }
       } catch { /* silent */ } finally {
-        if (active) {
-          setLoading(false);
-          clearTimeout(fallback);
-          animateIn();
-        }
+        if (active) setLoading(false);
       }
     })();
-    return () => { active = false; clearTimeout(fallback); };
+    return () => { active = false; };
   }, [open, animateIn]);
 
   const handleRespond = useCallback(async (notificationId: number, friendshipId: number, action: 'accept' | 'reject') => {
@@ -508,7 +506,11 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   return (
     <>
       <TouchableOpacity style={[style, open && styles.bellActive]} activeOpacity={0.7} onPress={() => { dragY.setValue(800); backdropOpacity.setValue(0); setOpen(true); }}>
-        <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? T.primary : C.inkSoft} />
+        {loading ? (
+          <ActivityIndicator size="small" color={T.primary} />
+        ) : (
+          <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? T.primary : C.inkSoft} />
+        )}
         {displayCount > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{displayCount > 99 ? '99+' : displayCount}</Text>
@@ -526,28 +528,34 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
         <View style={styles.overlayContainer}>
           <Animated.View style={[StyleSheet.absoluteFill, styles.overlayBackdrop, { opacity: backdropOpacity }]} pointerEvents="none" />
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={dismiss} />
-          <Animated.View style={[styles.sheet, { paddingBottom: insets.bottom + 8, transform: [{ translateY: dragY }] }]}>
+          <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>
 
-            {/* Drag handle */}
-            <View style={styles.dragHandle} {...panResponder.panHandlers}>
-              <View style={styles.dragIndicator} />
-            </View>
+            {/* Drag handle + header share one relative wrapper so the close button
+                can center on the whole band (handle + header) down to the divider,
+                instead of just matching the title text's own line height. */}
+            <View style={{ position: 'relative' }}>
+              <View style={styles.dragHandle} {...panResponder.panHandlers}>
+                <View style={styles.dragIndicator} />
+              </View>
 
-            {/* Header */}
-            <View style={styles.sheetHeader} {...panResponder.panHandlers}>
-              <View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={styles.sheetTitle}>Notifications</Text>
-                  {newCount > 0 && (
-                    <View style={styles.newChip}>
-                      <Text style={styles.newChipText}>{newCount} new</Text>
-                    </View>
-                  )}
+              <View style={styles.sheetHeader} {...panResponder.panHandlers}>
+                <View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.sheetTitle}>Notifications</Text>
+                    {newCount > 0 && (
+                      <View style={styles.newChip}>
+                        <Text style={styles.newChipText}>{newCount} new</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               </View>
-              <TouchableOpacity onPress={dismiss} style={styles.closeBtn} hitSlop={8}>
-                <Ionicons name="close" size={17} color={C.inkMute} />
-              </TouchableOpacity>
+
+              <View style={styles.closeBtnWrap} pointerEvents="box-none">
+                <TouchableOpacity onPress={dismiss} style={styles.closeBtn} hitSlop={8}>
+                  <Ionicons name="close" size={17} color={C.inkMute} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Denied banner */}
@@ -611,9 +619,11 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
               />
             )}
 
-            {/* Push permission footer */}
+            {/* Push permission footer — extends into the safe area itself so its
+                background/border reach the true bottom edge instead of leaving a
+                bare gap below it. */}
             <TouchableOpacity
-              style={styles.permFooter}
+              style={[styles.permFooter, { paddingTop: 16, paddingBottom: 11 + insets.bottom }]}
               onPress={handleOpenPushSettings}
               activeOpacity={0.8}
             >
@@ -712,7 +722,7 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   sheetHeader: {
     paddingHorizontal: 18, paddingTop: 12, paddingBottom: 14,
     borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center',
   },
   sheetTitle: {
     fontWeight: '800', fontSize: 20, color: C.ink, letterSpacing: -0.3,
@@ -723,6 +733,12 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   },
   newChipText: {
     fontSize: 13, fontWeight: '700', color: C.onPrimary, letterSpacing: 0.3,
+  },
+  // Stretches to span the drag handle + header (its relative parent) so the
+  // button centers on that whole band instead of just the header row/title.
+  closeBtnWrap: {
+    position: 'absolute', top: 0, bottom: 0, right: 18,
+    justifyContent: 'center', alignItems: 'center',
   },
   closeBtn: {
     width: 30, height: 30, borderRadius: 15,
@@ -806,9 +822,10 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   permFooterLabel: { fontSize: 13, color: C.inkMute },
   permFooterAction: { fontSize: 13, color: C.inkMute, fontWeight: '600' },
 
-  // Empty / loading
+  // Empty / loading — sized to content (not a fixed height) so an empty/loading
+  // sheet doesn't reserve a huge block of blank space before the footer below it.
   centerBox: {
-    height: 400, paddingHorizontal: 32,
+    paddingVertical: 56, paddingHorizontal: 32,
     alignItems: 'center', justifyContent: 'center', gap: 6,
   },
   emptyEmoji: { fontSize: 38, marginBottom: 6 },

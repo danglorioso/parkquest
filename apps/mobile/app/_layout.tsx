@@ -138,7 +138,9 @@ function RootStack() {
       />
       <Stack.Screen
         name="profile/edit"
-        options={{ ...HEADER, title: 'Settings', headerBackTitle: 'Profile' }}
+        // No back-title label — Settings is reachable from more than just Profile
+        // (e.g. the feed), so a fixed "Profile" label would be wrong half the time.
+        options={{ ...HEADER, title: 'Settings', headerBackTitle: '' }}
       />
       <Stack.Screen
         name="profile/security"

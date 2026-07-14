@@ -306,7 +306,15 @@ export default function PassportScreen() {
                 <View style={st.headerIdentity}>
                   <View style={[st.headerAvatar, { backgroundColor: T.primary }]}>
                     {avatarUrl ? (
-                      <Image source={{ uri: avatarUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                      // Slight overscale — some avatar sources (e.g. Clerk's default
+                      // silhouette image) have their graphic inset from the image's
+                      // own edges, so a plain 100% cover still shows a sliver of its
+                      // background at top/bottom inside our circular mask.
+                      <Image
+                        source={{ uri: avatarUrl }}
+                        style={{ width: '100%', height: '100%', transform: [{ scale: 1.15 }] }}
+                        resizeMode="cover"
+                      />
                     ) : (
                       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                         {name ? (
@@ -337,14 +345,23 @@ export default function PassportScreen() {
                   {[
                     { label: 'PARKS',  value: loading ? '–' : `${visitedCount}/63` },
                     { label: 'STATES', value: loading ? '–' : `${statesCount}/50` },
-                    { label: 'BUCKET', value: loading ? '–' : String(bucketCount) },
+                    // Only stat that links anywhere — it's the sole way to reach the
+                    // bucket list, which otherwise has no dedicated entry point.
+                    { label: 'BUCKET', value: loading ? '–' : String(bucketCount), onPress: () => router.push('/(tabs)/map?filter=bucketList' as never) },
                     { label: 'BADGES', value: loading ? '–' : `${badgeCount}/${totalBadges}` },
-                  ].map((s, i) => (
-                    <View key={s.label} style={[st.headerStat, i > 0 && st.headerStatBorder]}>
-                      <Text style={st.headerStatLabel}>{s.label}</Text>
-                      <Text style={st.headerStatVal}>{s.value}</Text>
-                    </View>
-                  ))}
+                  ].map((s, i) => {
+                    const Wrap = s.onPress ? TouchableOpacity : View;
+                    return (
+                      <Wrap
+                        key={s.label}
+                        style={[st.headerStat, i > 0 && st.headerStatBorder]}
+                        {...(s.onPress ? { onPress: s.onPress, activeOpacity: 0.6 } : {})}
+                      >
+                        <Text style={st.headerStatLabel}>{s.label}</Text>
+                        <Text style={st.headerStatVal}>{s.value}</Text>
+                      </Wrap>
+                    );
+                  })}
                 </View>
 
                 {/* Stamp count progress line */}

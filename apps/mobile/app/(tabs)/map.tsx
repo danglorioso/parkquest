@@ -1397,7 +1397,7 @@ export default function MapScreen() {
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { parkCode: focusParkCode } = useLocalSearchParams<{ parkCode?: string }>();
+  const { parkCode: focusParkCode, filter: focusFilter } = useLocalSearchParams<{ parkCode?: string; filter?: FilterStatus }>();
 
   const [token, setToken]               = useState<string | null>(null);
   const [parks, setParks]               = useState<ParkForMap[]>([]);
@@ -1629,6 +1629,13 @@ export default function MapScreen() {
     const park = parks.find(p => p.park_code === focusParkCode);
     if (park) handleSelectPark(park);
   }, [focusParkCode, parks, handleSelectPark]);
+
+  // Lets other screens (e.g. the passport's Bucket stat) deep-link straight into
+  // a pre-filtered map instead of dumping the user on "All" and making them tap it.
+  useEffect(() => {
+    if (!focusFilter) return;
+    setFilterStatus(focusFilter);
+  }, [focusFilter]);
 
   const zoomIn = useCallback(() => {
     const r = currentRegionRef.current;
@@ -1864,8 +1871,8 @@ const styles = StyleSheet.create({
   // Filter pill
   filterPillWrap: {
     position: 'absolute',
-    left: 14,
-    right: 14,
+    left: 10,
+    right: 10,
     alignItems: 'stretch',
     zIndex: 20,
   },
@@ -1918,8 +1925,8 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
     borderRadius: 100,
-    paddingVertical: 6,
-    paddingHorizontal: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -1932,9 +1939,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
     borderRadius: 100,
-    paddingHorizontal: 3,
-    paddingVertical: 4,
-    gap: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 5,
+    gap: 4,
   },
   pillBtnFlex: {
     flex: 1,
@@ -1944,9 +1951,9 @@ const styles = StyleSheet.create({
     backgroundColor: dyn('rgba(31,61,46,0.10)', 'rgba(240,234,217,0.16)'),
   },
   pillDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   pillCount: {
     fontSize: 13,
@@ -1970,9 +1977,9 @@ const styles = StyleSheet.create({
   },
   pillDivider: {
     width: 1,
-    height: 12,
+    height: 14,
     backgroundColor: C.hairline,
-    marginHorizontal: 4,
+    marginHorizontal: 6,
   },
 
   // Bottom sheet

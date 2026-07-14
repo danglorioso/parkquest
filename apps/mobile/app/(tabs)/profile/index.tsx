@@ -863,7 +863,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.2)',
   },
   passportStatItem: {
-    width: '50%', marginBottom: 10,
+    width: '50%', marginBottom: 14,
   },
   passportStatLabel: {
     fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.8)', letterSpacing: 1.2,
@@ -874,7 +874,7 @@ const styles = StyleSheet.create({
   },
   passportProgress: {
     gap: 6,
-    marginTop: 2,
+    marginTop: 18,
     marginBottom: 10,
   },
   passportProgressText: {
