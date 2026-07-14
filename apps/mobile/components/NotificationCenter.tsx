@@ -345,6 +345,11 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   const styles = useThemedStyles(makeStyles);
 
   const [open, setOpen] = useState(false);
+  // Guards the badge against `items` being stale the instant `open` flips true —
+  // without it, displayCount below switches to newCount (derived from last
+  // session's already-read items, or an empty first-open array) before this
+  // session's fetch has actually populated `items`, flashing the badge to 0.
+  const [itemsFresh, setItemsFresh] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -426,6 +431,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   useEffect(() => {
     if (!open) return;
     let active = true;
+    setItemsFresh(false);
     // Fallback: animate in after 2.5s even if fetch stalls
     const fallback = setTimeout(() => { if (active) animateIn(); }, 2500);
     (async () => {
@@ -436,6 +442,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
         const data = await getNotifications(tok);
         if (!active) return;
         setItems(data);
+        setItemsFresh(true);
         if (data.some(n => !n.read)) {
           markNotificationsRead(tok)
             .then(() => { if (active) _broadcastCount(0); })
@@ -496,7 +503,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
   }, []);
 
   const newCount = items.filter(n => !n.read).length;
-  const displayCount = open ? newCount : unreadCount;
+  const displayCount = (open && itemsFresh) ? newCount : unreadCount;
 
   return (
     <>

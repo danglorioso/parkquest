@@ -4,6 +4,7 @@ import {
   Modal, Dimensions, Alert, ActivityIndicator, Share,
   StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder,
 } from 'react-native';
+import { MenuView } from '@react-native-menu/menu';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Avatar } from '@/components/Avatar';
 import { Image } from 'expo-image';
@@ -1006,11 +1007,6 @@ export function PostCard({
   const [showLikers, setShowLikers] = useState(false);
   const [commentDelta, setCommentDelta] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
-  // Window coords of the ⋯ button, measured on open — the menu renders in a
-  // full-screen Modal (so tapping anywhere else closes it) but still needs to
-  // sit anchored under the button.
-  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
-  const menuBtnRef = useRef<View>(null);
   const [showReportSheet, setShowReportSheet] = useState(false);
   const [reported, setReported] = useState(false);
   // Full comment list, preloaded as the card scrolls into view so the sheet
@@ -1150,13 +1146,14 @@ export function PostCard({
   };
 
   const isFirstVisit = !isBadge && !!post.visit_id && Number(post.visit_ordinal) === 1;
-  const CardContainer = openOnPress ? Pressable : View;
+  // Only the body (park chip / photos / caption / actions) opens the post on tap —
+  // the header can't be inside this Pressable. MenuView is a native context-menu
+  // view, not a JS Touchable; its gesture recognizer doesn't participate in RN's
+  // responder negotiation, so an ancestor Pressable's onPress fires right through it.
+  const CardBody = openOnPress ? Pressable : View;
 
   return (
-    <CardContainer
-      style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}
-      {...(openOnPress ? { onPress: () => router.push(`/(tabs)/feed/post/${post.id}` as never) } : {})}
-    >
+    <View style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}>
       {/* Badge banner */}
       {isBadge && (
         <View style={[styles.badgeBanner, { borderBottomColor: C.primary + '60' }]}>
@@ -1200,74 +1197,50 @@ export function PostCard({
           </View>
         </TouchableOpacity>
         <View style={{ position: 'relative' }}>
-          <TouchableOpacity
-            ref={menuBtnRef}
-            onPress={() => {
-              if (showMenu) { setShowMenu(false); return; }
-              menuBtnRef.current?.measureInWindow((x, y, w, h) => {
-                setMenuPos({ top: y + h + 6, right: SCREEN_W - (x + w) });
-                setShowMenu(true);
-              });
+          <MenuView
+            onOpenMenu={() => setShowMenu(true)}
+            onCloseMenu={() => setShowMenu(false)}
+            onPressAction={({ nativeEvent }) => {
+              switch (nativeEvent.event) {
+                case 'edit-visit':
+                  router.push(`/(modals)/log-visit?visitId=${post.visit_id}&postId=${post.id}` as never);
+                  break;
+                case 'edit-caption':
+                  setCaptionDraft(currentCaption ?? '');
+                  setVisDraft(visibility ?? 'public');
+                  setEditingCaption(true);
+                  break;
+                case 'delete':
+                  handleDelete();
+                  break;
+                case 'report':
+                  setShowReportSheet(true);
+                  break;
+                case 'block':
+                  handleBlock();
+                  break;
+              }
             }}
-            hitSlop={8}
-            style={[styles.menuBtn, showMenu && [styles.menuBtnActive, { backgroundColor: C.primary + '14' }]]}
+            actions={isOwnPost ? [
+              ...(post.visit_id != null ? [{ id: 'edit-visit', title: 'Edit visit' }] : []),
+              { id: 'edit-caption', title: 'Edit caption' },
+              { id: 'delete', title: 'Delete post', attributes: { destructive: true } },
+            ] : [
+              { id: 'report', title: reported ? 'Reported' : 'Report post', attributes: { destructive: true, disabled: reported } },
+              { id: 'block', title: 'Block user', attributes: { destructive: true } },
+            ]}
           >
-            <Ionicons name="ellipsis-horizontal" size={18} color={showMenu ? C.primary : C.inkMute} />
-          </TouchableOpacity>
-          {showMenu && menuPos && (
-            <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setShowMenu(false)}>
-              <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
-              <View style={[styles.menu, { top: menuPos.top, right: menuPos.right }]}>
-              {isOwnPost ? (
-                <>
-                  {post.visit_id != null && (
-                    <>
-                      <TouchableOpacity
-                        style={styles.menuItem}
-                        onPress={() => {
-                          setShowMenu(false);
-                          router.push(`/(modals)/log-visit?visitId=${post.visit_id}&postId=${post.id}` as never);
-                        }}
-                      >
-                        <Text style={styles.menuItemText}>Edit visit</Text>
-                      </TouchableOpacity>
-                      <View style={styles.menuDivider} />
-                    </>
-                  )}
-                  <TouchableOpacity
-                    style={styles.menuItem}
-                    onPress={() => { setCaptionDraft(currentCaption ?? ''); setVisDraft(visibility ?? 'public'); setEditingCaption(true); setShowMenu(false); }}
-                  >
-                    <Text style={styles.menuItemText}>Edit caption</Text>
-                  </TouchableOpacity>
-                  <View style={styles.menuDivider} />
-                  <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
-                    <Text style={[styles.menuItemText, { color: C.liked }]}>Delete post</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={styles.menuItem}
-                    disabled={reported}
-                    onPress={() => { setShowMenu(false); setShowReportSheet(true); }}
-                  >
-                    <Text style={[styles.menuItemText, { color: reported ? C.inkMute : C.liked }]}>
-                      {reported ? 'Reported' : 'Report post'}
-                    </Text>
-                  </TouchableOpacity>
-                  <View style={styles.menuDivider} />
-                  <TouchableOpacity style={styles.menuItem} onPress={handleBlock}>
-                    <Text style={[styles.menuItemText, { color: C.liked }]}>Block user</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-              </View>
-            </Modal>
-          )}
+            <TouchableOpacity
+              hitSlop={8}
+              style={[styles.menuBtn, showMenu && [styles.menuBtnActive, { backgroundColor: C.primary + '14' }]]}
+            >
+              <Ionicons name="ellipsis-horizontal" size={18} color={showMenu ? C.primary : C.inkMute} />
+            </TouchableOpacity>
+          </MenuView>
         </View>
       </View>
 
+      <CardBody {...(openOnPress ? { onPress: () => router.push(`/(tabs)/feed/post/${post.id}` as never) } : {})}>
       {/* Park chip */}
       {post.park_name && !isBadge && !(!hasPhotos && post.visit_id) && (
         <TouchableOpacity
@@ -1482,8 +1455,8 @@ export function PostCard({
           }}
         />
       )}
-
-    </CardContainer>
+      </CardBody>
+    </View>
   );
 }
 
@@ -1716,13 +1689,6 @@ const styles = StyleSheet.create({
   authorName: { fontWeight: '700', fontSize: 14, color: C.ink },
   authorSub: { fontSize: 13, color: C.inkMute, marginTop: 1 },
   menuBtn: { padding: 6, borderRadius: 6 },
-  menu: {
-    position: 'absolute', top: 30, right: 0, zIndex: 100,
-    backgroundColor: C.surface, borderWidth: 1, borderColor: C.hairline,
-    borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18, shadowRadius: 20, elevation: 12,
-    minWidth: 160, overflow: 'hidden',
-  },
   menuBtnActive: {
     borderRadius: 6,
   },

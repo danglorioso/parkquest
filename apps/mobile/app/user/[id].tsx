@@ -1,10 +1,11 @@
 import {
   ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View, Alert, Pressable,
+  Text, TouchableOpacity, View, Alert,
 } from 'react-native';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { MenuView } from '@react-native-menu/menu';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -377,38 +378,29 @@ export default function UserProfileScreen() {
         options={{
           title: profile ? (profile.display_name ?? `@${profile.username}`) : 'Profile',
           headerRight: (!isOwnProfile && profile) ? () => (
-            <View style={{ position: 'relative' }}>
-              {showProfileMenu && (
-                <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowProfileMenu(false)} />
-              )}
-              <TouchableOpacity
-                onPress={() => setShowProfileMenu(v => !v)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
+            <MenuView
+              onOpenMenu={() => setShowProfileMenu(true)}
+              onCloseMenu={() => setShowProfileMenu(false)}
+              onPressAction={({ nativeEvent }) => {
+                switch (nativeEvent.event) {
+                  case 'block':
+                    handleBlock();
+                    break;
+                  case 'report':
+                    setPostBlockReport(false);
+                    setShowReportUserSheet(true);
+                    break;
+                }
+              }}
+              actions={[
+                { id: 'block', title: 'Block user', attributes: { destructive: true, disabled: blockBusy } },
+                { id: 'report', title: reportedUser ? 'Reported' : 'Report user', attributes: { destructive: true, disabled: reportedUser } },
+              ]}
+            >
+              <TouchableOpacity hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                 <Ionicons name="ellipsis-horizontal" size={20} color={showProfileMenu ? T.primary : C.inkMute} />
               </TouchableOpacity>
-              {showProfileMenu && (
-                <View style={styles.profileMenu}>
-                  <TouchableOpacity
-                    style={styles.profileMenuItem}
-                    disabled={blockBusy}
-                    onPress={() => { setShowProfileMenu(false); handleBlock(); }}
-                  >
-                    <Text style={[styles.profileMenuItemText, { color: C.liked }]}>Block user</Text>
-                  </TouchableOpacity>
-                  <View style={styles.profileMenuDivider} />
-                  <TouchableOpacity
-                    style={styles.profileMenuItem}
-                    disabled={reportedUser}
-                    onPress={() => { setShowProfileMenu(false); setPostBlockReport(false); setShowReportUserSheet(true); }}
-                  >
-                    <Text style={[styles.profileMenuItemText, { color: reportedUser ? C.inkMute : C.liked }]}>
-                      {reportedUser ? 'Reported' : 'Report user'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
+            </MenuView>
           ) : undefined,
         }}
       />
@@ -652,16 +644,6 @@ const styles = StyleSheet.create({
   scroll: {
     paddingBottom: 48,
   },
-  profileMenu: {
-    position: 'absolute', top: 30, right: 0, zIndex: 100,
-    backgroundColor: C.surface, borderWidth: 1, borderColor: C.hairline,
-    borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18, shadowRadius: 20, elevation: 12,
-    minWidth: 150, overflow: 'hidden',
-  },
-  profileMenuItem: { paddingHorizontal: 14, paddingVertical: 11 },
-  profileMenuItemText: { fontSize: 14, fontWeight: '600' },
-  profileMenuDivider: { height: 0.5, backgroundColor: C.hairline },
   hero: {
     alignItems: 'center',
     paddingTop: 32,

@@ -879,7 +879,7 @@ function makeStyles(C: Colors) {
   scroll: {
     padding: 20,
     paddingBottom: 96,
-    gap: 16,
+    gap: 22,
   },
   avatarNameRow: {
     flexDirection: 'row',
@@ -1074,7 +1074,7 @@ function makeStyles(C: Colors) {
     borderColor: C.primary,
     borderRadius: 8,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    height: 36,
     minWidth: 84,
     alignItems: 'center',
     justifyContent: 'center',
