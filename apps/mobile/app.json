@@ -43,6 +43,7 @@
       "expo-router",
       "expo-splash-screen",
       "expo-secure-store",
+      "@sentry/react-native/expo",
       [
         "expo-notifications",
         {

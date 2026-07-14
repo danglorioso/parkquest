@@ -17,8 +17,20 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
+import * as Sentry from '@sentry/react-native';
 import LoadingScreen from '../components/LoadingScreen';
 import { ToastHost } from '../lib/toast';
+
+// enableNative captures native crashes (e.g. uncaught worklet exceptions —
+// the SIGABRT class of crash that shows up with zero JS context in Apple's
+// own crash logs) with a real JS stack attached, not just plain JS errors.
+// Disabled in dev by default so local testing doesn't spam the Sentry project.
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN,
+  enableNative: true,
+  tracesSampleRate: 0.2,
+});
 
 // Without a handler iOS silently drops pushes that arrive while the app is
 // foregrounded (e.g. badge-earned right after logging a visit).
@@ -186,7 +198,7 @@ function RootStack() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const [appReady, setAppReady] = useState(false);
 
   return (
@@ -210,3 +222,5 @@ export default function RootLayout() {
     </ClerkProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);
