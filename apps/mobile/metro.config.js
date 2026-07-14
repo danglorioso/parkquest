@@ -23,6 +23,7 @@ config.resolver.extraNodeModules = {
   'expo-haptics': rootPkg('expo-haptics'),
   'expo-image-manipulator': rootPkg('expo-image-manipulator'),
   '@react-native-community/netinfo': rootPkg('@react-native-community/netinfo'),
+  '@sentry/react-native': rootPkg('@sentry/react-native'),
 };
 
 // Hard-pin singleton packages to the monorepo root. Uses Metro's own resolver
