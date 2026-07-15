@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal,
-  PanResponder, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  PanResponder, Pressable, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View,
   type ColorValue,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -365,6 +365,17 @@ export default function ParkDetailScreen() {
     setBucketBusy(false);
   }, [getToken, id, onBucket]);
 
+  const handleShare = useCallback(async () => {
+    if (!park) return;
+    // Universal Link — opens the app if installed, public web profile otherwise
+    const url = `https://parkquest.me/parks/${park.park_code}`;
+    try {
+      await Share.share({ message: `Check out ${park.name} on ParkQuest! ${url}` });
+    } catch {
+      // user dismissed the share sheet
+    }
+  }, [park]);
+
   const loadDataRef = useRef(loadData);
   const loadWeatherRef = useRef(loadWeather);
   loadDataRef.current = loadData;
@@ -506,6 +517,15 @@ export default function ParkDetailScreen() {
         hitSlop={8}
       >
         <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
+      </TouchableOpacity>
+
+      {/* Share button — fixed overlay, always visible */}
+      <TouchableOpacity
+        style={[styles.backBtn, { top: insets.top + 8, right: 16, left: undefined, zIndex: 10 }]}
+        onPress={handleShare}
+        hitSlop={8}
+      >
+        <Ionicons name="share-outline" size={20} color="#FFFBF1" />
       </TouchableOpacity>
 
       <ScrollView

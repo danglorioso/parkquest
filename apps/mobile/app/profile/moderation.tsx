@@ -1,8 +1,9 @@
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { Avatar } from '@/components/Avatar';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { getMyReports, getBlockedUsers, unblockUser, deleteReport } from '@/lib/api';
@@ -37,6 +38,7 @@ export default function ModerationScreen() {
   const [unblockBusy, setUnblockBusy] = useState<Set<string>>(new Set());
   const [deleteBusy, setDeleteBusy] = useState<Set<number>>(new Set());
   const [defaultVis, setDefaultVis] = useState<DefaultVisibility | null>(null);
+  const [locationStatus, setLocationStatus] = useState<Location.PermissionStatus | null>(null);
 
   const load = useCallback(async () => {
     const tok = await getToken();
@@ -45,9 +47,23 @@ export default function ModerationScreen() {
     getBlockedUsers(tok).then(setBlocked).catch(() => setBlocked([]));
   }, [getToken]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    load();
+    // Re-checked on every focus so coming back from the iOS Settings app
+    // reflects a permission change immediately.
+    Location.getForegroundPermissionsAsync().then(({ status }) => setLocationStatus(status));
+  }, [load]));
 
   useEffect(() => { getDefaultVisibility().then(setDefaultVis); }, []);
+
+  const handleLocationRow = async () => {
+    if (locationStatus === 'undetermined') {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      setLocationStatus(status);
+    } else {
+      Linking.openSettings();
+    }
+  };
 
   const chooseDefaultVis = (v: DefaultVisibility) => {
     setDefaultVis(v);
@@ -122,6 +138,29 @@ export default function ModerationScreen() {
             </TouchableOpacity>
           );
         })}
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={st.sectionLabel}>LOCATION</Text>
+        <TouchableOpacity style={st.blockedRow} activeOpacity={0.7} onPress={handleLocationRow}>
+          <View style={[st.visIcon, {
+            backgroundColor: locationStatus === 'granted' ? T.primary : C.surface,
+            borderColor: locationStatus === 'granted' ? T.primary : C.hairline,
+          }]}>
+            <Ionicons name="location-outline" size={16} color={locationStatus === 'granted' ? C.onPrimary : C.inkSoft} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={st.rowName}>Location access</Text>
+            <Text style={st.rowHandle}>
+              {locationStatus === 'granted'
+                ? 'Enabled — parks are sorted by distance to you'
+                : locationStatus === 'denied'
+                ? "Denied — tap to turn it back on in Settings"
+                : 'Not enabled yet — tap to allow'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={C.inkMute} />
+        </TouchableOpacity>
       </View>
 
       <View style={{ gap: 8 }}>

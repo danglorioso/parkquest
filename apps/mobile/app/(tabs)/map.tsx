@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated, DeviceEventEmitter, Dimensions, Keyboard, Linking, PanResponder, Platform,
-  Pressable, ScrollView, StyleSheet,
+  Pressable, ScrollView, Share, StyleSheet,
   Text, TextInput, TouchableOpacity, View, useColorScheme,
   type ColorValue,
 } from 'react-native';
@@ -843,6 +843,16 @@ function ParkBottomSheet({
     setActionLoading(null);
   };
 
+  const handleShare = async () => {
+    // Universal Link — opens the app if installed, public web profile otherwise
+    const url = `https://parkquest.me/parks/${park.park_code}`;
+    try {
+      await Share.share({ message: `Check out ${park.name} on ParkQuest! ${url}` });
+    } catch {
+      // user dismissed the share sheet
+    }
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const heroUrl      = npsImages[imgIdx] ?? null;
@@ -1332,6 +1342,26 @@ function ParkBottomSheet({
           >
             <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
           </TouchableOpacity>
+        )}
+
+        {/* Full profile + share — same overlay treatment as the back button */}
+        {scrollEnabled && (
+          <View style={[styles.heroActionsRight, { top: insets.top + 8 }]}>
+            <TouchableOpacity
+              style={styles.heroIconBtn}
+              onPress={() => router.push(`/parks/${park.park_code}` as never)}
+              hitSlop={8}
+            >
+              <Ionicons name="open-outline" size={20} color="#FFFBF1" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.heroIconBtn}
+              onPress={handleShare}
+              hitSlop={8}
+            >
+              <Ionicons name="share-outline" size={20} color="#FFFBF1" />
+            </TouchableOpacity>
+          </View>
         )}
         </View>{/* end contentPan wrapper */}
 
@@ -2052,6 +2082,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroActionsRight: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 10,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  heroIconBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,

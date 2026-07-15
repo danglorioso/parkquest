@@ -10,6 +10,8 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { MenuView } from '@react-native-menu/menu';
+import * as Location from 'expo-location';
 import { fullStateName } from '@/lib/stateNames';
 import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
 import { STATIC as C, useColors } from '@/lib/palette';
@@ -18,6 +20,8 @@ import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useIsOnline } from '@/lib/network';
+import { hasSeenLocationPrompt, markLocationPromptSeen, distanceMiles } from '@/lib/location';
+import { LocationPermissionModal } from '@/components/LocationPermissionModal';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const CARD_GAP = 14;
@@ -511,6 +515,8 @@ export default function ParksScreen() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showViewMenu, setShowViewMenu] = useState(false);
   const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
   const isOnline = useIsOnline();
   const hasLoadedRef = useRef(false);
 
@@ -577,11 +583,46 @@ export default function ParksScreen() {
   loadDataRef.current = loadData;
   const flatListRef = useRef<FlatList>(null);
   useScrollToTop(flatListRef);
+
+  const fetchLocation = useCallback(async () => {
+    try {
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+    } catch { /* ignore — sort just falls back to alphabetical */ }
+  }, []);
+
+  const handleAllowLocation = useCallback(async () => {
+    setShowLocationPrompt(false);
+    await markLocationPromptSeen();
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') fetchLocation();
+  }, [fetchLocation]);
+
+  const handleDismissLocation = useCallback(async () => {
+    setShowLocationPrompt(false);
+    await markLocationPromptSeen();
+  }, []);
+
   useFocusEffect(useCallback(() => {
     loadDataRef.current();
     const intent = consumeParkFilterIntent();
     if (intent) setStatusFilter(intent);
-  }, []));
+
+    // Re-checked on every focus so a permission grant from Settings (or the
+    // moderation screen's Location row) picks up without an app restart.
+    (async () => {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status === 'granted') {
+        fetchLocation();
+        return;
+      }
+      if (status === 'denied') {
+        await markLocationPromptSeen();
+        return;
+      }
+      if (!(await hasSeenLocationPrompt())) setShowLocationPrompt(true);
+    })();
+  }, [fetchLocation]));
 
   // Activities and topics are slow (NPS API) — load lazily in background, once
   const filtersFetched = useRef(false);
@@ -625,8 +666,20 @@ export default function ParksScreen() {
           || (p.description ?? '').toLowerCase().includes(q);
       }
       return true;
-    }).sort((a, b) => a.name.localeCompare(b.name));
-  }, [parks, visits, query, statusFilter, regionFilters, activityFilters, topicFilters, activitiesMap, topicsMap]);
+    }).sort((a, b) => {
+      // Default sort: nearest first once we have a location fix, alphabetical otherwise.
+      if (userLocation) {
+        const da = a.latitude && a.longitude
+          ? distanceMiles(userLocation.lat, userLocation.lng, parseFloat(a.latitude), parseFloat(a.longitude))
+          : Infinity;
+        const db = b.latitude && b.longitude
+          ? distanceMiles(userLocation.lat, userLocation.lng, parseFloat(b.latitude), parseFloat(b.longitude))
+          : Infinity;
+        if (da !== db) return da - db;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [parks, visits, query, statusFilter, regionFilters, activityFilters, topicFilters, activitiesMap, topicsMap, userLocation]);
 
   const hasFilter = statusFilter !== 'all' || regionFilters.length > 0
     || activityFilters.length > 0 || topicFilters.length > 0;
@@ -691,9 +744,16 @@ export default function ParksScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={styles.title}>Explore the Parks</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{ position: 'relative' }}>
+            <MenuView
+              onOpenMenu={() => setShowViewMenu(true)}
+              onCloseMenu={() => setShowViewMenu(false)}
+              onPressAction={({ nativeEvent }) => setViewMode(nativeEvent.event as 'grid' | 'list')}
+              actions={[
+                { id: 'grid', title: 'Grid', image: 'square.grid.2x2', state: viewMode === 'grid' ? 'on' : 'off' },
+                { id: 'list', title: 'List', image: 'list.bullet', state: viewMode === 'list' ? 'on' : 'off' },
+              ]}
+            >
               <TouchableOpacity
-                onPress={() => setShowViewMenu(v => !v)}
                 hitSlop={8}
                 style={[styles.viewToggle, showViewMenu && [styles.viewToggleActive, { backgroundColor: primary + '14' }]]}
               >
@@ -703,27 +763,7 @@ export default function ParksScreen() {
                   color={showViewMenu ? primary : C.inkSoft}
                 />
               </TouchableOpacity>
-              {showViewMenu && (
-                <View style={styles.viewMenu}>
-                  {([
-                    { mode: 'grid', icon: 'grid-outline', label: 'Grid' },
-                    { mode: 'list', icon: 'list-outline', label: 'List' },
-                  ] as const).map(opt => (
-                    <TouchableOpacity
-                      key={opt.mode}
-                      style={[styles.viewMenuItem, viewMode === opt.mode && { backgroundColor: primary + '12' }]}
-                      onPress={() => { setViewMode(opt.mode); setShowViewMenu(false); }}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name={opt.icon} size={15} color={viewMode === opt.mode ? primary : C.inkSoft} />
-                      <Text style={[styles.viewMenuItemText, viewMode === opt.mode && { color: primary, fontWeight: '700' }]}>
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
+            </MenuView>
           </View>
         </View>
       </View>
@@ -810,6 +850,11 @@ export default function ParksScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
+      <LocationPermissionModal
+        visible={showLocationPrompt}
+        onAllow={handleAllowLocation}
+        onDismiss={handleDismissLocation}
+      />
       <FlatList
         ref={flatListRef}
         data={rows}
@@ -1025,38 +1070,6 @@ const styles = StyleSheet.create({
   },
   viewToggleActive: {
     borderRadius: 6,
-  },
-  viewMenu: {
-    position: 'absolute',
-    top: 30,
-    right: 0,
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.hairline,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 12,
-    minWidth: 120,
-    overflow: 'hidden',
-    zIndex: 100,
-  },
-  viewMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-  },
-  viewMenuItemActive: {
-    backgroundColor: 'rgba(31,61,46,0.07)',
-  },
-  viewMenuItemText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: C.inkSoft,
   },
 
   // Grid rows
