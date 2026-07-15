@@ -11,6 +11,11 @@ export interface SavedDraft<T> {
   id: string;
   savedAt: string; // ISO
   parkName?: string;
+  // Set when this draft was saved while editing an existing visit (e.g. a
+  // failed save mid-edit), so restoring it later updates that visit instead
+  // of creating a brand-new one.
+  editVisitId?: number;
+  editPostId?: number | null;
   draft: T;
 }
 

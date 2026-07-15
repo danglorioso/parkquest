@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { fullStateName } from '@/lib/stateNames';
 import { parkGradient } from '@/lib/parkColors';
 import { ImageLightbox } from '@/components/ImageLightbox';
+import { FriendsVisitedSheet } from '@/components/FriendsVisitedSheet';
 import { STATIC as C, dyn, useColors } from '@/lib/palette';
 import { CompassSpinner } from '@/components/LoadingScreen';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
@@ -442,10 +443,12 @@ function StatCell({ label, value, valueColor }: { label: string; value: string; 
 // Same component as parks/[id].tsx's — duplicated locally rather than shared,
 // matching how StatCell/ChipGrid are already duplicated per screen in this file.
 
-function FriendsVisitedRow({ friends, total }: { friends: ParkVisitorsSummary['friends']; total: number }) {
+function FriendsVisitedRow({ friends, total, onPress }: {
+  friends: ParkVisitorsSummary['friends']; total: number; onPress: () => void;
+}) {
   const shown = friends.slice(0, 3);
   return (
-    <View style={styles.mutualsRow}>
+    <TouchableOpacity style={styles.mutualsRow} activeOpacity={0.7} onPress={onPress}>
       <View style={styles.mutualsAvatars}>
         {shown.map((f, i) => (
           <Avatar
@@ -464,7 +467,7 @@ function FriendsVisitedRow({ friends, total }: { friends: ParkVisitorsSummary['f
       <Text style={styles.mutualsText}>
         {total} {total === 1 ? 'friend has' : 'friends have'} visited
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -566,6 +569,7 @@ function ParkBottomSheet({
   // Friends who've visited (mutuals) — no offline cache for this (per-user/live
   // data), so it's simply not fetched/hidden while offline, same as the detail page.
   const [visitors, setVisitors] = useState<ParkVisitorsSummary | null>(null);
+  const [showFriendsSheet, setShowFriendsSheet] = useState(false);
 
   // Full visits (with rating + photos)
   const [fullVisits,       setFullVisits]       = useState<FullVisit[]>([]);
@@ -976,7 +980,10 @@ function ParkBottomSheet({
 
           {/* ── Friends who've visited ── */}
           {isOnline && visitors && visitors.total > 0 && (
-            <FriendsVisitedRow friends={visitors.friends} total={visitors.total} />
+            <FriendsVisitedRow
+              friends={visitors.friends} total={visitors.total}
+              onPress={() => setShowFriendsSheet(true)}
+            />
           )}
 
           {/* ── Photo strip — next images relative to the rotating hero ── */}
@@ -1386,6 +1393,10 @@ function ParkBottomSheet({
           initialIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
         />
+      )}
+
+      {showFriendsSheet && visitors && (
+        <FriendsVisitedSheet friends={visitors.friends} onClose={() => setShowFriendsSheet(false)} />
       )}
     </>
   );

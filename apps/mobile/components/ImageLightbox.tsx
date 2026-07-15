@@ -155,13 +155,21 @@ export function ImageLightbox({
 }: {
   images: LightboxImage[];
   initialIndex?: number;
-  onClose: () => void;
+  // Called with whichever image was on screen when the lightbox closed, so a
+  // caller with its own carousel (e.g. PostCard) can stay in sync instead of
+  // resetting to wherever it was before the lightbox opened.
+  onClose: (index: number) => void;
 }) {
   const insets = useSafeAreaInsets();
   const [idx, setIdx] = useState(initialIndex);
   const [zoomed, setZoomed] = useState(false);
   const listRef = useRef<FlatList<LightboxImage>>(null);
   const n = images.length;
+  const idxRef = useRef(idx);
+  idxRef.current = idx;
+  // Reads the index at call time (not whatever `idx` a stale closure captured),
+  // so it reports the last-viewed image regardless of which handler fires.
+  const handleClose = useCallback(() => onClose(idxRef.current), [onClose]);
 
   // For wrap-around swiping, pad the real data with a clone of the last image
   // up front and a clone of the first image at the end. List index `k` maps
@@ -177,31 +185,32 @@ export function ImageLightbox({
     setIdx(real);
   };
 
-  // Arrows fade out after a few seconds of no interaction, and reappear
-  // briefly whenever the visible image changes or the user touches anything.
-  const arrowsOpacity = useRef(new Animated.Value(1)).current;
-  const [arrowsVisible, setArrowsVisible] = useState(true);
+  // Arrows and the counter chip fade out after a few seconds of no
+  // interaction, and reappear briefly whenever the visible image changes or
+  // the user touches anything.
+  const chromeOpacity = useRef(new Animated.Value(1)).current;
+  const [chromeVisible, setChromeVisible] = useState(true);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showArrowsBriefly = useCallback(() => {
+  const showChromeBriefly = useCallback(() => {
     if (fadeTimer.current) clearTimeout(fadeTimer.current);
-    setArrowsVisible(true);
-    arrowsOpacity.setValue(1);
+    setChromeVisible(true);
+    chromeOpacity.setValue(1);
     fadeTimer.current = setTimeout(() => {
-      Animated.timing(arrowsOpacity, { toValue: 0, duration: 400, useNativeDriver: true })
-        .start(() => setArrowsVisible(false));
+      Animated.timing(chromeOpacity, { toValue: 0, duration: 400, useNativeDriver: true })
+        .start(() => setChromeVisible(false));
     }, ARROW_FADE_DELAY);
-  }, [arrowsOpacity]);
+  }, [chromeOpacity]);
 
   useEffect(() => {
-    showArrowsBriefly();
+    showChromeBriefly();
     return () => { if (fadeTimer.current) clearTimeout(fadeTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.bg} onTouchStart={showArrowsBriefly}>
+    <Modal visible transparent animationType="fade" onRequestClose={handleClose}>
+      <View style={styles.bg} onTouchStart={showChromeBriefly}>
         {/* Fullscreen pager — swipe anywhere to change image, wraps at the ends.
             Disabled while zoomed in so a pan-to-inspect never also flips pages. */}
         <FlatList
@@ -232,24 +241,27 @@ export function ImageLightbox({
             <LightboxPage
               image={item}
               active={n <= 1 ? index === idx : index === idx + 1}
-              onRequestClose={onClose}
+              onRequestClose={handleClose}
               onZoomChange={setZoomed}
-              onTouch={showArrowsBriefly}
+              onTouch={showChromeBriefly}
             />
           )}
         />
 
-        {/* Counter chip — top left */}
+        {/* Counter chip — top left, fades with the arrows */}
         {n > 1 && (
-          <View style={[styles.counter, { top: insets.top + 12 }]} pointerEvents="none">
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.counter, { top: insets.top + 12, opacity: chromeOpacity }]}
+          >
             <Text style={styles.counterText}>{idx + 1} / {n}</Text>
-          </View>
+          </Animated.View>
         )}
 
         {/* Close */}
         <TouchableOpacity
           style={[styles.close, { top: insets.top + 12 }]}
-          onPress={onClose}
+          onPress={handleClose}
           hitSlop={16}
         >
           <Ionicons name="close" size={22} color="#FFFBF1" />
@@ -258,8 +270,8 @@ export function ImageLightbox({
         {/* Prev / next arrows — fade after a few seconds of inactivity */}
         {n > 1 && (
           <Animated.View
-            pointerEvents={arrowsVisible ? 'auto' : 'none'}
-            style={[styles.nav, { left: 16, opacity: arrowsOpacity }]}
+            pointerEvents={chromeVisible ? 'auto' : 'none'}
+            style={[styles.nav, { left: 16, opacity: chromeOpacity }]}
           >
             <TouchableOpacity onPress={() => goTo(idx - 1)} style={styles.navBtn}>
               <Ionicons name="chevron-back" size={24} color="#fff" />
@@ -268,8 +280,8 @@ export function ImageLightbox({
         )}
         {n > 1 && (
           <Animated.View
-            pointerEvents={arrowsVisible ? 'auto' : 'none'}
-            style={[styles.nav, { right: 16, opacity: arrowsOpacity }]}
+            pointerEvents={chromeVisible ? 'auto' : 'none'}
+            style={[styles.nav, { right: 16, opacity: chromeOpacity }]}
           >
             <TouchableOpacity onPress={() => goTo(idx + 1)} style={styles.navBtn}>
               <Ionicons name="chevron-forward" size={24} color="#fff" />

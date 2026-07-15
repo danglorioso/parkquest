@@ -138,8 +138,11 @@ async function loadDrafts(): Promise<SavedDraft[]> {
   }));
 }
 
-async function upsertDraft(d: Draft, parkName: string | undefined, id: string): Promise<void> {
-  await upsertRawDraft<Draft>({ id, savedAt: new Date().toISOString(), parkName, draft: d });
+async function upsertDraft(
+  d: Draft, parkName: string | undefined, id: string,
+  editVisitId?: number, editPostId?: number | null,
+): Promise<void> {
+  await upsertRawDraft<Draft>({ id, savedAt: new Date().toISOString(), parkName, editVisitId, editPostId, draft: d });
 }
 
 async function deleteDraft(id: string): Promise<void> {
@@ -2293,6 +2296,13 @@ export default function LogVisitModal() {
   const draftId = useRef(`draft-${Date.now()}`);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [restoreBanner, setRestoreBanner] = useState<SavedDraft | null>(null);
+  // Set when the restored draft was itself saved mid-edit of an existing visit
+  // (see handleSubmit's catch-all draft save) — lets a "+"-opened session
+  // still PATCH that original visit on submit instead of creating a new one.
+  const [resumedEdit, setResumedEdit] = useState<{ visitId: number; postId: number | null } | null>(null);
+  const isEditing = isEdit || resumedEdit != null;
+  const activeEditVisitId = isEdit ? editVisitId : (resumedEdit?.visitId ?? null);
+  const activeEditPostId  = isEdit ? editPostId  : (resumedEdit?.postId  ?? null);
   // Set right before any router.back() we trigger ourselves (Cancel/Discard/Save draft/
   // submit) — those paths already handle the draft + any messaging. Left false, it means
   // the screen is being torn down by something we didn't drive, i.e. the native swipe-down
@@ -2344,10 +2354,10 @@ export default function LogVisitModal() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
-      upsertDraft(draft, parkName, draftId.current);
+      upsertDraft(draft, parkName, draftId.current, activeEditVisitId ?? undefined, activeEditPostId);
     }, 600);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [draft, parks, isEdit]);
+  }, [draft, parks, isEdit, activeEditVisitId, activeEditPostId]);
 
   // Catches dismissal we didn't initiate ourselves — the native swipe-down-to-dismiss
   // gesture on this pageSheet, or the Android back button — and flushes the draft
@@ -2357,23 +2367,40 @@ export default function LogVisitModal() {
       if (leavingViaAction.current || isEdit || !draftHasContent(draft)) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
-      upsertDraft(draft, parkName, draftId.current);
+      upsertDraft(draft, parkName, draftId.current, activeEditVisitId ?? undefined, activeEditPostId);
       showToast('Draft saved');
     });
     return unsub;
-  }, [navigation, draft, parks, isEdit]);
+  }, [navigation, draft, parks, isEdit, activeEditVisitId, activeEditPostId]);
 
   const resumeDraft = () => {
     if (!restoreBanner) return;
     setDraftState(restoreBanner.draft);
     draftId.current = restoreBanner.id;
+    if (restoreBanner.editVisitId != null) {
+      const visitId = restoreBanner.editVisitId;
+      setResumedEdit({ visitId, postId: restoreBanner.editPostId ?? null });
+      // Re-fetch the original photo set so the cleanup/cover-photo logic in
+      // handleSubmit has the same baseline it would from a route-driven edit.
+      getFreshToken().then(tok => {
+        if (!tok) return;
+        apiFetch<VisitDetail>(`/api/visits/${visitId}`, tok)
+          .then(v => { originalPhotos.current = new Set(v.photos ?? []); })
+          .catch(() => {});
+      });
+    }
     setRestoreBanner(null);
   };
 
   const discardSavedDraft = () => {
     if (!restoreBanner) return;
     deleteDraft(restoreBanner.id);
-    getFreshToken().then(tok => deletePhotos(restoreBanner.draft.photos, tok));
+    // An edit-tagged draft's photo list can include photos still live on the
+    // original visit — safest to leave storage cleanup to the visit's own
+    // photo diffing rather than risk deleting a still-in-use file here.
+    if (restoreBanner.editVisitId == null) {
+      getFreshToken().then(tok => deletePhotos(restoreBanner.draft.photos, tok));
+    }
     setRestoreBanner(null);
   };
 
@@ -2473,7 +2500,7 @@ export default function LogVisitModal() {
   };
 
   const handleCancel = () => {
-    if (isEdit) {
+    if (isEditing) {
       Alert.alert('Discard changes?', "Your edits won't be saved.", [
         { text: 'Keep editing', style: 'cancel' },
         {
@@ -2482,6 +2509,12 @@ export default function LogVisitModal() {
             // Photos already on the saved visit stay put — only clean up ones added this session.
             const orphaned = draft.photos.filter(p => !originalPhotos.current.has(p));
             getFreshToken().then(tok => deletePhotos(orphaned, tok));
+            // A resumed edit-draft (route-driven edits never have one) — remove
+            // it so it doesn't keep coming back as a "resume?" offer.
+            if (!isEdit) {
+              if (saveTimer.current) clearTimeout(saveTimer.current);
+              deleteDraft(draftId.current);
+            }
             leavingViaAction.current = true;
             router.back();
           },
@@ -2529,8 +2562,8 @@ export default function LogVisitModal() {
       const tok = await getFreshToken();
       if (!tok) throw new Error('No auth token');
 
-      if (isEdit) {
-        await apiFetch(`/api/visits/${editVisitId}`, tok, {
+      if (isEditing) {
+        await apiFetch(`/api/visits/${activeEditVisitId}`, tok, {
           method: 'PATCH',
           body: JSON.stringify({
             park_code:          draft.parkCode,
@@ -2551,8 +2584,8 @@ export default function LogVisitModal() {
             visibility:         draft.visibility.toLowerCase(),
           }),
         });
-        if (editPostId != null) {
-          await apiFetch(`/api/posts/${editPostId}`, tok, {
+        if (activeEditPostId != null) {
+          await apiFetch(`/api/posts/${activeEditPostId}`, tok, {
             method: 'PATCH',
             body: JSON.stringify({
               caption:   draft.caption || null,
@@ -2563,6 +2596,11 @@ export default function LogVisitModal() {
         }
         // Original photos dropped during this edit are no longer referenced anywhere — clean them up.
         deletePhotos([...originalPhotos.current].filter(p => !draft.photos.includes(p)), tok);
+        // A resumed edit-draft (route-driven edits never have one) is now applied — remove it.
+        if (!isEdit) {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          deleteDraft(draftId.current);
+        }
         // Badge awards are evaluated server-side on this fetch; fire it now so a
         // newly earned badge pushes a banner immediately instead of waiting for
         // the user to open a badges screen.
@@ -2623,10 +2661,12 @@ export default function LogVisitModal() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         Alert.alert('Park already logged', 'You already have a visit for that park. Edit that visit instead.');
       } else {
-        // Post didn't go through — make sure the latest edits are saved as a draft so nothing is lost.
+        // Post didn't go through — make sure the latest edits are saved as a draft so nothing is
+        // lost. Tag it with the visit/post being edited (if any) so restoring it later updates
+        // that visit instead of creating a brand-new one.
         if (saveTimer.current) clearTimeout(saveTimer.current);
         const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
-        upsertDraft(draft, parkName, draftId.current);
+        upsertDraft(draft, parkName, draftId.current, activeEditVisitId ?? undefined, activeEditPostId);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         showToast("Couldn't post — saved as a draft", 'error');
       }
@@ -2647,7 +2687,7 @@ export default function LogVisitModal() {
           <View style={{ alignItems: 'center', marginBottom: 8 }}>
             <View style={styles.grabber} />
           </View>
-          <Text style={styles.modalTitle}>{isEdit ? 'Edit visit' : 'Log a visit'}</Text>
+          <Text style={styles.modalTitle}>{isEditing ? 'Edit visit' : 'Log a visit'}</Text>
         </View>
         <TouchableOpacity onPress={handleCancel} style={styles.modalClose} hitSlop={8}>
           <Ionicons name="close" size={16} color={C.inkSoft} />
@@ -2786,7 +2826,7 @@ export default function LogVisitModal() {
                   <ActivityIndicator color={C.onPrimary} size="small" />
                 ) : (
                   <Text style={{ fontSize: 15, fontWeight: '800', color: canContinue ? C.onPrimary : C.inkMute }}>
-                    {isLast ? (isEdit ? 'Save' : 'Post') : 'Continue'}
+                    {isLast ? (isEditing ? 'Save' : 'Post') : 'Continue'}
                   </Text>
                 )}
                 {!isLast && <Ionicons name="arrow-forward" size={15} color={canContinue ? C.onPrimary : C.inkMute} />}

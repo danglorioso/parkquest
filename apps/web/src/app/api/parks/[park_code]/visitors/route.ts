@@ -60,10 +60,10 @@ export async function GET(
       .from(userProfiles)
       .where(inArray(userProfiles.clerk_user_id, visitorIds));
 
+    // Full list — the mobile client slices to a few for the avatar stack but
+    // needs everyone for the "N friends have visited" tap-through list.
     return NextResponse.json({
-      // Only ever need a handful for the avatar stack — the total below still
-      // reflects everyone, not just the ones with fetched profiles.
-      friends: profiles.slice(0, 3),
+      friends: profiles,
       total: profiles.length,
     });
   } catch (error) {

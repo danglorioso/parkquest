@@ -16,6 +16,7 @@ import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { parkColor, parkGradient } from '@/lib/parkColors';
 import { ImageLightbox } from '@/components/ImageLightbox';
+import { FriendsVisitedSheet } from '@/components/FriendsVisitedSheet';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { Avatar } from '@/components/Avatar';
@@ -224,6 +225,7 @@ export default function ParkDetailScreen() {
   const [actionBtnHeight, setActionBtnHeight] = useState<number | null>(null);
   const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
   const [visitors, setVisitors] = useState<ParkVisitorsSummary | null>(null);
+  const [showFriendsSheet, setShowFriendsSheet] = useState(false);
   const isOnline = useIsOnline();
   const prevHeroRef = useRef<string | null>(null);
   const npsRef = useRef<NpsData | null>(null);
@@ -493,6 +495,10 @@ export default function ParkDetailScreen() {
         />
       )}
 
+      {showFriendsSheet && visitors && (
+        <FriendsVisitedSheet friends={visitors.friends} onClose={() => setShowFriendsSheet(false)} />
+      )}
+
       {/* Back button — fixed overlay, always visible */}
       <TouchableOpacity
         style={[styles.backBtn, { top: insets.top + 8, zIndex: 10 }]}
@@ -614,7 +620,10 @@ export default function ParkDetailScreen() {
             depends on the current user's live friends list rather than anything
             cached for offline viewing. */}
         {isOnline && visitors && visitors.total > 0 && (
-          <FriendsVisitedRow friends={visitors.friends} total={visitors.total} />
+          <FriendsVisitedRow
+            friends={visitors.friends} total={visitors.total}
+            onPress={() => setShowFriendsSheet(true)}
+          />
         )}
 
         {/* ── Action buttons ────────────────────────────────────────────────── */}
@@ -964,11 +973,12 @@ function StatCell({ label, value, valueColor, onPress }: { label: string; value:
 
 // ── Friends who've visited (mutuals) ─────────────────────────────────────────
 
-function FriendsVisitedRow({ friends, total }: { friends: ParkVisitorsSummary['friends']; total: number }) {
-  const C = useColors();
+function FriendsVisitedRow({ friends, total, onPress }: {
+  friends: ParkVisitorsSummary['friends']; total: number; onPress: () => void;
+}) {
   const shown = friends.slice(0, 3);
   return (
-    <View style={styles.mutualsRow}>
+    <TouchableOpacity style={styles.mutualsRow} activeOpacity={0.7} onPress={onPress}>
       <View style={styles.mutualsAvatars}>
         {shown.map((f, i) => (
           <Avatar
@@ -987,7 +997,7 @@ function FriendsVisitedRow({ friends, total }: { friends: ParkVisitorsSummary['f
       <Text style={styles.mutualsText}>
         {total} {total === 1 ? 'friend has' : 'friends have'} visited
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 

@@ -305,8 +305,8 @@ export const getParkWeather = (token: string | null, parkCode: string) =>
 
 // Friends (of the current user) who've logged a non-private visit to this
 // park — powers the "N friends have visited" mutuals indicator on the park
-// detail screen. `friends` is capped to a few profiles for the avatar stack;
-// `total` reflects everyone.
+// detail screen. Callers slice `friends` for the avatar stack preview, but
+// the array holds everyone (matches `total`) for the tap-through list.
 export interface ParkVisitorsSummary {
   friends: Array<{
     clerk_user_id: string;

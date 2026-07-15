@@ -344,12 +344,34 @@ const SCREEN_H = Dimensions.get('window').height;
 const CARD_W   = SCREEN_W - 32;
 const PHOTO_H  = 380;
 
+const CAROUSEL_CHROME_FADE_DELAY = 2500;
+
 function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: string | null }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const n = photos.length;
   const fallbackColor = parkColor(parkCode ?? 'xx');
+
+  // Arrows + counter fade out after a few seconds of no interaction, and
+  // reappear briefly on swipe/tap — same behavior as the fullscreen lightbox.
+  const chromeOpacity = useRef(new Animated.Value(1)).current;
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showChromeBriefly = useCallback(() => {
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    setChromeVisible(true);
+    chromeOpacity.setValue(1);
+    fadeTimer.current = setTimeout(() => {
+      Animated.timing(chromeOpacity, { toValue: 0, duration: 400, useNativeDriver: true })
+        .start(() => setChromeVisible(false));
+    }, CAROUSEL_CHROME_FADE_DELAY);
+  }, [chromeOpacity]);
+  useEffect(() => {
+    showChromeBriefly();
+    return () => { if (fadeTimer.current) clearTimeout(fadeTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIdx]);
 
   const goTo = (k: number) => {
     const next = Math.max(0, Math.min(n - 1, k));
@@ -364,6 +386,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
+        onScrollBeginDrag={showChromeBriefly}
         onMomentumScrollEnd={e => {
           const x = e.nativeEvent.contentOffset.x;
           setActiveIdx(Math.round(x / CARD_W));
@@ -390,33 +413,43 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         ))}
       </ScrollView>
 
-      {/* Counter badge */}
+      {/* Counter badge — fades after a few seconds of inactivity */}
       {n > 1 && (
-        <View style={styles.carouselCounter}>
+        <Animated.View style={[styles.carouselCounter, { opacity: chromeOpacity }]} pointerEvents="none">
           <Text style={styles.carouselCounterText}>{activeIdx + 1} / {n}</Text>
-        </View>
+        </Animated.View>
       )}
 
-      {/* Prev arrow */}
+      {/* Prev arrow — fades after a few seconds of inactivity */}
       {n > 1 && activeIdx > 0 && (
-        <TouchableOpacity
-          style={[styles.carouselNav, { left: 10 }]}
-          onPress={() => goTo(activeIdx - 1)}
-          hitSlop={8}
+        <Animated.View
+          pointerEvents={chromeVisible ? 'auto' : 'none'}
+          style={[styles.carouselNav, { left: 10, opacity: chromeOpacity }]}
         >
-          <Ionicons name="chevron-back" size={18} color="#FFFBF1" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.carouselNavBtn}
+            onPress={() => { goTo(activeIdx - 1); showChromeBriefly(); }}
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-back" size={18} color="#FFFBF1" />
+          </TouchableOpacity>
+        </Animated.View>
       )}
 
-      {/* Next arrow */}
+      {/* Next arrow — fades after a few seconds of inactivity */}
       {n > 1 && activeIdx < n - 1 && (
-        <TouchableOpacity
-          style={[styles.carouselNav, { right: 10 }]}
-          onPress={() => goTo(activeIdx + 1)}
-          hitSlop={8}
+        <Animated.View
+          pointerEvents={chromeVisible ? 'auto' : 'none'}
+          style={[styles.carouselNav, { right: 10, opacity: chromeOpacity }]}
         >
-          <Ionicons name="chevron-forward" size={18} color="#FFFBF1" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.carouselNavBtn}
+            onPress={() => { goTo(activeIdx + 1); showChromeBriefly(); }}
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-forward" size={18} color="#FFFBF1" />
+          </TouchableOpacity>
+        </Animated.View>
       )}
 
       {/* Dot strip */}
@@ -438,7 +471,11 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         <ImageLightbox
           images={photos.filter(Boolean).map(url => ({ url }))}
           initialIndex={lightboxIdx}
-          onClose={() => setLightboxIdx(null)}
+          onClose={finalIndex => {
+            setLightboxIdx(null);
+            setActiveIdx(finalIndex);
+            scrollRef.current?.scrollTo({ x: finalIndex * CARD_W, animated: false });
+          }}
         />
       )}
     </View>
@@ -1484,6 +1521,9 @@ const styles = StyleSheet.create({
     position: 'absolute', top: PHOTO_H / 2 - 18,
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
+  },
+  carouselNavBtn: {
+    flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center',
   },
 
   // Likers sheet

@@ -1,8 +1,8 @@
 import {
-  ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet,
+  ActivityIndicator, Animated, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { MenuView } from '@react-native-menu/menu';
@@ -101,11 +101,35 @@ function FriendListModal({ userId, onClose, onNavigate }: {
     })();
   }, [userId]);
 
+  // Same dim-backdrop + slide-up entrance as the other sheets (LikersSheet,
+  // ReportSheet) — this one used the bare "slide" animationType with no
+  // dimming at all, so the sheet looked like it had nothing behind it.
+  const slide = useRef(new Animated.Value(400)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 0, duration: 260, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 260, useNativeDriver: true }),
+    ]).start();
+  }, [slide, backdropOpacity]);
+
+  const dismiss = () => {
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 400, duration: 200, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => onClose());
+  };
+
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={{ flex: 1 }}>
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-        <View style={styles.friendsSheet}>
+    <Modal visible transparent animationType="none" onRequestClose={dismiss} statusBarTranslucent>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.friendsBackdrop, { opacity: backdropOpacity }]}
+          pointerEvents="none"
+        />
+        <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
+        <Animated.View style={[styles.friendsSheet, { transform: [{ translateY: slide }] }]}>
           <View style={styles.friendsHandle} />
           <Text style={styles.friendsTitle}>
             {loading ? 'Friends' : `${friends.length} ${friends.length === 1 ? 'Friend' : 'Friends'}`}
@@ -137,7 +161,7 @@ function FriendListModal({ userId, onClose, onNavigate }: {
             />
           )}
           <View style={{ height: 24 }} />
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -823,6 +847,9 @@ const styles = StyleSheet.create({
   },
 
   // Friends list bottom sheet
+  friendsBackdrop: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
   friendsSheet: {
     backgroundColor: C.bg,
     borderTopLeftRadius: 20,
