@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles } from '@/lib/db/schema';
+import { notifyAdminNewUser } from '@/lib/notifyAdmin';
 
 export async function GET() {
   try {
@@ -60,6 +61,16 @@ export async function GET() {
         avatar_url: clerkUser?.imageUrl ?? null,
       })
       .returning();
+
+    if (created) {
+      // Un-awaited work dies when the serverless response returns; after() keeps
+      // the function alive until the email is actually sent.
+      after(() => notifyAdminNewUser({
+        clerkUserId: userId,
+        username: created.username,
+        displayName: created.display_name,
+      }).catch(() => {}));
+    }
 
     return NextResponse.json(created);
   } catch (error) {
