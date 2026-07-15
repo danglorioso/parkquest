@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export type DefaultVisibility = 'public' | 'friends' | 'private';
 
 const KEY = 'pq-default-visibility';
-const FALLBACK: DefaultVisibility = 'friends';
+const FALLBACK: DefaultVisibility = 'public';
 
 export async function getDefaultVisibility(): Promise<DefaultVisibility> {
   try {

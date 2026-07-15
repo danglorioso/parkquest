@@ -4,7 +4,7 @@
 export type DefaultVisibility = 'public' | 'friends' | 'private';
 
 const KEY = 'pq-default-visibility';
-const FALLBACK: DefaultVisibility = 'friends';
+const FALLBACK: DefaultVisibility = 'public';
 
 export function getDefaultVisibility(): DefaultVisibility {
   try {
