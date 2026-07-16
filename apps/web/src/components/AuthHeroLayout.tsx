@@ -1981,7 +1981,7 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
         <AboutSection />
         <FeaturesSection />
         <ScreenshotsSection />
-        <SocialProofSection />
+        {/* <SocialProofSection /> */}
         <FinalCTASection onAbout={scrollToAbout} />
       </div>
 
