@@ -1,7 +1,9 @@
 import '../global.css';
 
 import { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { GlassIconBg } from '../components/GlassIconBg';
 import * as SecureStore from 'expo-secure-store';
 import { useFonts } from 'expo-font';
 import { PaletteProvider, STATIC, colorStr, useColors } from '../lib/palette';
@@ -131,6 +133,23 @@ function SplashController({ onReady }: { onReady: () => void }) {
   return null;
 }
 
+// Circular glass back button — same treatment as the park detail header.
+// Used where the default back button would show a wrong/ugly route-name
+// label (e.g. "(tabs)" on Settings, which is reachable from several tabs).
+function GlassBackButton() {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      onPress={() => router.back()}
+      hitSlop={8}
+      style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <GlassIconBg />
+      <Ionicons name="chevron-back" size={22} color={colorStr(STATIC.ink)} />
+    </TouchableOpacity>
+  );
+}
+
 function RootStack() {
   const T = useColors();
   const HEADER = {
@@ -153,9 +172,10 @@ function RootStack() {
       />
       <Stack.Screen
         name="profile/edit"
-        // No back-title label — Settings is reachable from more than just Profile
-        // (e.g. the feed), so a fixed "Profile" label would be wrong half the time.
-        options={{ ...HEADER, title: 'Settings', headerBackTitle: '' }}
+        // Custom headerLeft — the default back button falls back to the
+        // previous route's name ("(tabs)") since Settings is reachable from
+        // several places and headerBackTitle: '' doesn't suppress it.
+        options={{ ...HEADER, title: 'Settings', headerLeft: () => <GlassBackButton /> }}
       />
       <Stack.Screen
         name="profile/security"

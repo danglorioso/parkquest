@@ -15,7 +15,7 @@ const DANGER = '#DC2626';
 
 // Cap on "People you may know" — keeps the section skimmable and bounds the
 // suggestions query/response size. Bump this if product wants a longer list.
-const MAX_SUGGESTIONS = 8;
+const MAX_SUGGESTIONS = 4;
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
