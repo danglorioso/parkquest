@@ -1,5 +1,5 @@
 import {
-  Animated, Dimensions, Easing, FlatList, Image, LayoutAnimation, Linking, Platform, Pressable,
+  Animated, Dimensions, Easing, FlatList, Image, Keyboard, LayoutAnimation, Linking, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, UIManager, View,
   type ColorValue,
 } from 'react-native';
@@ -22,6 +22,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { useIsOnline } from '@/lib/network';
 import { hasSeenLocationPrompt, markLocationPromptSeen, distanceMiles } from '@/lib/location';
 import { LocationPermissionModal } from '@/components/LocationPermissionModal';
+import { GlassIconBg } from '@/components/GlassIconBg';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const CARD_GAP = 14;
@@ -837,8 +838,10 @@ export default function ParksScreen() {
             >
               <TouchableOpacity
                 hitSlop={8}
-                style={[styles.viewToggle, showViewMenu && [styles.viewToggleActive, { backgroundColor: primary + '14' }]]}
+                activeOpacity={0.7}
+                style={[styles.viewToggle, showViewMenu && { backgroundColor: primary + '14', borderColor: primary }]}
               >
+                <GlassIconBg />
                 <Ionicons
                   name={viewMode === 'grid' ? 'grid-outline' : 'list-outline'}
                   size={18}
@@ -856,7 +859,8 @@ export default function ParksScreen() {
         <TextInput
           value={query} onChangeText={setQuery}
           placeholder="Search parks…" placeholderTextColor={C.inkMute}
-          style={styles.searchInput} autoCorrect={false} autoCapitalize="none"
+          style={styles.searchInput} autoCorrect={false} autoCapitalize="none" spellCheck={false}
+          returnKeyType="search" onSubmitEditing={Keyboard.dismiss}
         />
         {query.length > 0 && (
           <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
@@ -1150,10 +1154,14 @@ const styles = StyleSheet.create({
 
   // View toggle button
   viewToggle: {
-    padding: 4,
-  },
-  viewToggleActive: {
-    borderRadius: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Grid rows

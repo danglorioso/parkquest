@@ -6,12 +6,13 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import {
-  ChevronLeft, ChevronRight, PenLine, MapPin, Plus, ExternalLink, Phone, Mail, Clock, DollarSign, Navigation, Cloud, Tag, Footprints, ArrowUpRight, TreePine,
+  ChevronLeft, ChevronRight, ChevronDown, PenLine, MapPin, Plus, ExternalLink, Phone, Mail, Clock, DollarSign, Navigation, Cloud, Tag, Footprints, ArrowUpRight, TreePine,
 } from "lucide-react";
 import { LightboxModal, type LightboxImage } from "@/components/LightboxModal";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
+import { PostCard, type FeedPost } from "@/components/PostCard";
 import Logo from "@/components/Logo";
 import type { NpsData } from "@/app/api/parks/[park_code]/nps/route";
 import type { WeatherForecast } from "@/app/api/parks/[park_code]/weather/route";
@@ -216,6 +217,19 @@ function ParkPageSkeleton() {
   );
 }
 
+// ── Weather day label ────────────────────────────────────────────────────────
+
+function dayLabel(period: { name: string; startTime: string }): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const periodDate = new Date(period.startTime);
+  periodDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((periodDate.getTime() - today.getTime()) / 86400000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Tomorrow";
+  return period.name.slice(0, 3);
+}
+
 // ── Weather emoji ─────────────────────────────────────────────────────────────
 
 function weatherEmoji(shortForecast: string): string {
@@ -240,22 +254,44 @@ function weatherEmoji(shortForecast: string): string {
   return "🌤️";
 }
 
-// ── SectionLabel ──────────────────────────────────────────────────────────────
+// ── CollapsibleSection ──────────────────────────────────────────────────────────
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function CollapsibleSection({
+  label,
+  icon,
+  defaultOpen = true,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10,
-        letterSpacing: "1.6px",
-        color: "var(--ink-mute)",
-        textTransform: "uppercase",
-        marginBottom: 10,
-        fontWeight: 600,
-      }}
-    >
-      {children}
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          width: "100%", background: "none", border: "none", padding: 0,
+          marginBottom: open ? 10 : 0, cursor: "pointer",
+        }}
+      >
+        <span style={{
+          fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.6px",
+          color: "var(--ink-mute)", textTransform: "uppercase", fontWeight: 600,
+        }}>
+          {icon}
+          {label}
+        </span>
+        <ChevronDown
+          size={13}
+          strokeWidth={2.2}
+          style={{ color: "var(--ink-mute)", transform: open ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s ease", flexShrink: 0 }}
+        />
+      </button>
+      {open && children}
     </div>
   );
 }
@@ -718,6 +754,132 @@ function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: strin
   );
 }
 
+// ── Community posts ───────────────────────────────────────────────────────────
+
+function ParkPosts({
+  parkCode,
+  isSignedIn,
+  onEditVisit,
+}: {
+  parkCode: string;
+  isSignedIn: boolean | null | undefined;
+  onEditVisit: (visitId: number) => void;
+}) {
+  const [data, setData] = useState<{ yours: FeedPost[]; community: FeedPost[] } | null>(null);
+  const [tab, setTab] = useState<"community" | "yours">("community");
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/parks/${parkCode}/posts`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setData(d);
+        setTab(d.community.length > 0 || d.yours.length === 0 ? "community" : "yours");
+      })
+      .catch(() => {});
+  }, [parkCode]);
+
+  const handleLike = (postId: number, currentlyLiked: boolean) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const bump = (list: FeedPost[]) =>
+        list.map((p) =>
+          p.id === postId
+            ? { ...p, liked_by_me: !currentlyLiked, like_count: p.like_count + (currentlyLiked ? -1 : 1) }
+            : p
+        );
+      return { yours: bump(prev.yours), community: bump(prev.community) };
+    });
+    (currentlyLiked
+      ? fetch(`/api/likes?postId=${postId}`, { method: "DELETE" })
+      : fetch("/api/likes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ postId }) })
+    ).catch(() => {});
+  };
+
+  const handleDelete = (postId: number) => {
+    setData((prev) =>
+      prev
+        ? { yours: prev.yours.filter((p) => p.id !== postId), community: prev.community.filter((p) => p.id !== postId) }
+        : prev
+    );
+  };
+
+  const handleUserBlocked = (userId: string) => {
+    setData((prev) =>
+      prev
+        ? {
+            yours: prev.yours.filter((p) => p.clerk_user_id !== userId),
+            community: prev.community.filter((p) => p.clerk_user_id !== userId),
+          }
+        : prev
+    );
+  };
+
+  if (!data || (data.yours.length === 0 && data.community.length === 0)) return null;
+
+  const showTabs = isSignedIn && data.yours.length > 0;
+  const activeList = tab === "yours" ? data.yours : data.community;
+
+  return (
+    <div style={{ padding: "0 32px 40px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: open ? 12 : 0 }}>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, cursor: "pointer" }}
+        >
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.6px", color: "var(--ink-mute)", textTransform: "uppercase", fontWeight: 600 }}>
+            COMMUNITY
+          </span>
+          <ChevronDown
+            size={13}
+            strokeWidth={2.2}
+            style={{ color: "var(--ink-mute)", transform: open ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s ease" }}
+          />
+        </button>
+        {open && showTabs && (
+          <div style={{ display: "flex", gap: 4, background: "var(--surface-alt)", borderRadius: 8, padding: 3 }}>
+            {(["community", "yours"] as const).map((key) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                style={{
+                  border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer",
+                  fontSize: 12, fontWeight: 700,
+                  background: tab === key ? "var(--surface)" : "transparent",
+                  color: tab === key ? "var(--ink)" : "var(--ink-mute)",
+                  boxShadow: tab === key ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                }}
+              >
+                {key === "community" ? "Community" : "Your posts"}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {!open ? null : activeList.length === 0 ? (
+        <div style={{ padding: "24px 0", textAlign: "center", fontSize: 13, color: "var(--ink-mute)" }}>
+          {tab === "yours" ? "You haven't posted about this park yet." : "No community posts yet."}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {activeList.map((post) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              onLike={handleLike}
+              onDelete={handleDelete}
+              onEditVisit={onEditVisit}
+              onUserBlocked={handleUserBlocked}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Shared park info content ──────────────────────────────────────────────────
 
 function ParkInfoContent({
@@ -733,6 +895,7 @@ function ParkInfoContent({
   setTopicsExpanded,
   onLightbox,
   onLogVisit,
+  onEditVisit,
   status,
 }: {
   park: ParkData;
@@ -747,6 +910,7 @@ function ParkInfoContent({
   setTopicsExpanded: (v: boolean) => void;
   onLightbox: (images: LightboxImage[], index: number) => void;
   onLogVisit: () => void;
+  onEditVisit: (visitId: number) => void;
   status: "visited" | "bucketList" | "notVisited";
 }) {
   const [heroLoaded, setHeroLoaded] = useState(false);
@@ -858,10 +1022,9 @@ function ParkInfoContent({
       {/* About */}
       {park.description && (
         <div style={{ padding: "24px 32px 16px" }}>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.6px", color: "var(--ink-mute)", textTransform: "uppercase", marginBottom: 8, fontWeight: 600 }}>
-            ABOUT
-          </div>
-          <div style={{ fontSize: 16, color: "var(--ink-soft)", lineHeight: 1.6 }}>{park.description}</div>
+          <CollapsibleSection label="ABOUT">
+            <div style={{ fontSize: 16, color: "var(--ink-soft)", lineHeight: 1.6 }}>{park.description}</div>
+          </CollapsibleSection>
         </div>
       )}
 
@@ -917,11 +1080,10 @@ function ParkInfoContent({
             const shown = activitiesExpanded ? nps.activities : nps.activities.slice(0, LIMIT);
             const hidden = nps.activities.length - LIMIT;
             return (
-              <div>
-                <SectionLabel>
-                  <Footprints size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
-                  ACTIVITIES
-                </SectionLabel>
+              <CollapsibleSection
+                label="ACTIVITIES"
+                icon={<Footprints size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />}
+              >
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
                   {shown.map((a, i) => <InfoChip key={i} href={`/parks?activity=${encodeURIComponent(a)}`}>{a}</InfoChip>)}
                   {!activitiesExpanded && hidden > 0 && (
@@ -935,7 +1097,7 @@ function ParkInfoContent({
                     </button>
                   )}
                 </div>
-              </div>
+              </CollapsibleSection>
             );
           })()}
 
@@ -945,11 +1107,10 @@ function ParkInfoContent({
             const shown = topicsExpanded ? nps.topics : nps.topics.slice(0, LIMIT);
             const hidden = nps.topics.length - LIMIT;
             return (
-              <div>
-                <SectionLabel>
-                  <Tag size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
-                  TOPICS
-                </SectionLabel>
+              <CollapsibleSection
+                label="TOPICS"
+                icon={<Tag size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />}
+              >
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
                   {shown.map((t, i) => <InfoChip key={i} muted href={`/parks?topic=${encodeURIComponent(t)}`}>{t}</InfoChip>)}
                   {!topicsExpanded && hidden > 0 && (
@@ -963,17 +1124,16 @@ function ParkInfoContent({
                     </button>
                   )}
                 </div>
-              </div>
+              </CollapsibleSection>
             );
           })()}
 
           {/* Operating hours */}
           {nps?.operatingHours && nps.operatingHours.length > 0 && (
-            <div>
-              <SectionLabel>
-                <Clock size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
-                HOURS
-              </SectionLabel>
+            <CollapsibleSection
+              label="HOURS"
+              icon={<Clock size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />}
+            >
               {nps.operatingHours.map((h, i, hours) => {
                 const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
                 const dayLabels: Record<string, string> = { monday: "Mon", tuesday: "Tue", wednesday: "Wed", thursday: "Thu", friday: "Fri", saturday: "Sat", sunday: "Sun" };
@@ -992,16 +1152,15 @@ function ParkInfoContent({
                   </div>
                 );
               })}
-            </div>
+            </CollapsibleSection>
           )}
 
           {/* Directions */}
           {nps?.directionsInfo && (
-            <div>
-              <SectionLabel>
-                <Navigation size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
-                DIRECTIONS
-              </SectionLabel>
+            <CollapsibleSection
+              label="DIRECTIONS"
+              icon={<Navigation size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />}
+            >
               <div style={{ background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 12, padding: "14px 18px" }}>
                 <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: nps.directionsUrl ? 12 : 0 }}>
                   {nps.directionsInfo}
@@ -1012,7 +1171,7 @@ function ParkInfoContent({
                   </a>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
         </div>
 
@@ -1021,11 +1180,10 @@ function ParkInfoContent({
 
           {/* Location map */}
           {park.latitude && park.longitude && (
-            <div>
-              <SectionLabel>
-                <MapPin size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
-                LOCATION
-              </SectionLabel>
+            <CollapsibleSection
+              label="LOCATION"
+              icon={<MapPin size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />}
+            >
               <div style={{ height: 220, borderRadius: 12, overflow: "hidden", border: "0.5px solid var(--hairline)" }}>
                 <ParkMiniMap
                   parkCode={park.park_code}
@@ -1039,16 +1197,15 @@ function ParkInfoContent({
                   <ArrowUpRight size={12} strokeWidth={2.2} /> Open full map
                 </Link>
               )}
-            </div>
+            </CollapsibleSection>
           )}
 
           {/* Entrance fees */}
           {nps?.entranceFees && nps.entranceFees.length > 0 && (
-            <div>
-              <SectionLabel>
-                <DollarSign size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
-                ENTRANCE FEES
-              </SectionLabel>
+            <CollapsibleSection
+              label="ENTRANCE FEES"
+              icon={<DollarSign size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />}
+            >
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {nps.entranceFees.map((fee, i) => (
                   <div key={i} style={{ background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 12, padding: "12px 14px", display: "flex", alignItems: "flex-start", gap: 10 }}>
@@ -1062,13 +1219,12 @@ function ParkInfoContent({
                   </div>
                 ))}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
 
           {/* Contact */}
           {(nps?.phone || nps?.email || nps?.url) && (
-            <div>
-              <SectionLabel>CONTACT</SectionLabel>
+            <CollapsibleSection label="CONTACT">
               <div style={{ background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
                 {nps.phone && (
                   <a href={`tel:${nps.phone}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--ink)" }}>
@@ -1089,7 +1245,7 @@ function ParkInfoContent({
                   </a>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
         </div>
       </div>
@@ -1097,10 +1253,10 @@ function ParkInfoContent({
       {/* Weather — full width below the 2-col section */}
       {(forecast || nps?.weatherInfo) && (
         <div style={{ padding: "0 32px 40px" }}>
-          <SectionLabel>
-            <Cloud size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />
-            WEATHER
-          </SectionLabel>
+          <CollapsibleSection
+            label="WEATHER"
+            icon={<Cloud size={11} strokeWidth={2} style={{ display: "inline", marginRight: 5, verticalAlign: "middle" }} />}
+          >
           {forecast && forecast.periods.length > 0 && (() => {
             const daytime = forecast.periods.filter((p) => p.isDaytime);
             type Period = WeatherForecast["periods"][number];
@@ -1112,7 +1268,7 @@ function ParkInfoContent({
               <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(daytime.length, 7)}, 1fr)`, gap: 6, marginBottom: nps?.weatherInfo ? 12 : 0 }}>
                 {daytime.slice(0, 7).map((period, i) => {
                   const night = nightMap.get(period.name);
-                  const shortDay = period.name === "Today" ? "Today" : period.name.slice(0, 3);
+                  const shortDay = dayLabel(period);
                   return (
                     <div key={i} style={{ background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 10, padding: "10px 8px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700, color: "var(--ink-mute)", letterSpacing: "0.8px", textTransform: "uppercase" }}>{shortDay}</div>
@@ -1131,8 +1287,11 @@ function ParkInfoContent({
               {nps.weatherInfo}
             </div>
           )}
+          </CollapsibleSection>
         </div>
       )}
+
+      <ParkPosts key={park.park_code} parkCode={park.park_code} isSignedIn={isSignedIn} onEditVisit={onEditVisit} />
 
       {/* Data attribution */}
       <div style={{ padding: "20px 32px 32px", borderTop: "0.5px solid var(--hairline)", marginTop: 8 }}>
@@ -1243,6 +1402,35 @@ export default function ParkDetailPage({
     setVisits((all as VisitData[]).filter((v) => v.park_code === park_code));
   };
 
+  // Opens the edit modal for a visit referenced by a post (e.g. from the
+  // community posts section), rather than one already in `visits`.
+  const openEditVisitById = async (visitId: number) => {
+    const res = await fetch(`/api/visits/${visitId}`);
+    if (!res.ok) return;
+    const v = await res.json();
+    setLogVisitDraft({
+      parkCode: v.park_code,
+      dates: { start: v.visited_date ? new Date(v.visited_date) : null, end: v.end_date ? new Date(v.end_date) : null },
+      rating: v.rating ?? 0,
+      crowd: v.crowd ?? 0,
+      difficulty: v.difficulty ?? 0,
+      weather: { conds: v.weather_conditions ?? [] },
+      activities: v.activities ?? [],
+      companions: v.companions ?? [],
+      wouldReturn: v.would_return ?? null,
+      highlight: v.highlight ?? "",
+      title: v.title ?? "",
+      notes: v.notes ?? "",
+      photos: v.photos ?? [],
+      cover: v.cover_photo ?? null,
+      visibility: (v.visibility
+        ? v.visibility.charAt(0).toUpperCase() + v.visibility.slice(1)
+        : "Private") as "Private" | "Friends" | "Public",
+    });
+    setLogVisitEditMode(true);
+    setLogVisitOpen(true);
+  };
+
   const latestVisit = visits
     .filter((v) => !v.is_bucket_list && v.visited_date)
     .sort((a, b) => new Date(b.visited_date!).getTime() - new Date(a.visited_date!).getTime())[0] ?? null;
@@ -1278,6 +1466,7 @@ export default function ParkDetailPage({
     setTopicsExpanded,
     onLightbox: (images: LightboxImage[], index: number) => setLightbox({ images, index }),
     onLogVisit: openLogVisit,
+    onEditVisit: openEditVisitById,
     status,
   };
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth, clerkClient } from '@clerk/nextjs/server';
-import { eq, or } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import {
   notifications,
@@ -13,6 +13,8 @@ import {
   friendships,
   userBadges,
   userProfiles,
+  blocks,
+  reports,
 } from '@/lib/db/schema';
 
 export async function DELETE() {
@@ -34,6 +36,12 @@ export async function DELETE() {
       or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId))
     );
     await db.delete(userBadges).where(eq(userBadges.clerk_user_id, userId));
+    await db.delete(blocks).where(
+      or(eq(blocks.blocker_id, userId), eq(blocks.blocked_id, userId))
+    );
+    await db.delete(reports).where(
+      or(eq(reports.reporter_id, userId), and(eq(reports.target_type, 'user'), eq(reports.target_id, userId)))
+    );
     await db.delete(userProfiles).where(eq(userProfiles.clerk_user_id, userId));
 
     const clerk = await clerkClient();

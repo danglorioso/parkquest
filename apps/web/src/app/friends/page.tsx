@@ -106,7 +106,7 @@ export default function FriendsPage() {
       setOutgoing([]);
     });
 
-    fetch('/api/users/suggestions?limit=8')
+    fetch('/api/users/suggestions?limit=4')
       .then(r => r.ok ? r.json() : [])
       .then(setSuggestions)
       .catch(() => {})

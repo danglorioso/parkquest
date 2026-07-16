@@ -11,6 +11,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { STATIC, colorStr, dyn, useColors } from '@/lib/palette';
 import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 
@@ -47,6 +48,7 @@ export function useTabBarSpace() {
 
 export default function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const C = useColors();
   const isDark = useColorScheme() === 'dark';
   const [pillW, setPillW] = useState(0);
@@ -107,6 +109,14 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
     Haptics.selectionAsync();
   }, []);
 
+  // Dropping the drag on the FAB slot opens the log-visit modal, same
+  // destination as tapping the FAB itself — the slot has no navigable
+  // index of its own, so this can't go through switchTo/navigation.navigate.
+  const openLogVisit = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push('/(modals)/log-visit');
+  }, [router]);
+
   const pan = Gesture.Pan()
     .activeOffsetX([-12, 12])
     .failOffsetY([-16, 16])
@@ -152,7 +162,11 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
     })
     .onEnd(() => {
       // Navigate only once the finger lifts, not while sliding
-      runOnJS(switchTo)(slot.value);
+      if (overFab.value === 1) {
+        runOnJS(openLogVisit)();
+      } else {
+        runOnJS(switchTo)(slot.value);
+      }
     })
     .onFinalize(() => {
       dragging.value = 0;

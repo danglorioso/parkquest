@@ -66,6 +66,7 @@ interface OperatingHours {
 
 interface WeatherPeriod {
   name: string;
+  startTime: string;
   temperature: number;
   temperatureUnit: string;
   shortForecast: string;
@@ -129,6 +130,17 @@ function formatDateRange(start: string, end?: string | null): string {
 }
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function dayLabel(period: WeatherPeriod): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const periodDate = new Date(period.startTime);
+  periodDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((periodDate.getTime() - today.getTime()) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  return period.name.replace('This ', '');
+}
 
 function weatherEmoji(shortForecast: string): string {
   const f = shortForecast.toLowerCase();
@@ -1161,7 +1173,7 @@ function ParkBottomSheet({
                     const night = forecastNights[i];
                     return (
                       <View key={i} style={styles.weatherCard}>
-                        <Text style={styles.weatherDay}>{p.name.replace('This ', '')}</Text>
+                        <Text style={styles.weatherDay}>{dayLabel(p)}</Text>
                         <Text style={styles.weatherEmoji}>{weatherEmoji(p.shortForecast)}</Text>
                         <Text style={styles.weatherTemp}>{p.temperature}°{p.temperatureUnit}</Text>
                         {night && <Text style={styles.weatherLow}>{night.temperature}° low</Text>}
@@ -2221,7 +2233,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 0,
     backgroundColor: C.surface,
     borderRadius: 14,
     borderWidth: 0.5,

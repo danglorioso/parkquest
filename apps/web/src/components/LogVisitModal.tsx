@@ -214,7 +214,11 @@ function loadDrafts(): SavedDraft[] {
 function upsertDraft(d: VisitDraft, parkName: string | undefined, id: string): void {
   const saved: SavedDraft = { id, savedAt: new Date().toISOString(), parkName, draft: d };
   const rest = loadDrafts().filter(s => s.id !== id);
-  localStorage.setItem(DRAFT_KEY, JSON.stringify([saved, ...rest].slice(0, MAX_DRAFTS)));
+  const combined = [saved, ...rest];
+  const kept = combined.slice(0, MAX_DRAFTS);
+  const evicted = combined.slice(MAX_DRAFTS);
+  if (evicted.length) deletePhotos(evicted.flatMap(s => s.draft.photos));
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(kept));
 }
 
 function deleteDraft(id: string): void {
@@ -1392,7 +1396,7 @@ function StepRate({ draft, set }: { draft: VisitDraft; set: SetFn }) {
   );
 }
 
-function StepJournal({ draft, set, activities, npsActivityNames, originalPhotos }: { draft: VisitDraft; set: SetFn; activities: string[]; npsActivityNames: string[]; originalPhotos: Set<string> }) {
+function StepJournal({ draft, set, activities, npsActivityNames, originalPhotos, onPhotosUploadingChange }: { draft: VisitDraft; set: SetFn; activities: string[]; npsActivityNames: string[]; originalPhotos: Set<string>; onPhotosUploadingChange: (uploading: boolean) => void }) {
   return (
     <>
       <div style={{ display: "flex", flexDirection: "column", gap: 18, marginBottom: 18 }}>
@@ -1424,6 +1428,7 @@ function StepJournal({ draft, set, activities, npsActivityNames, originalPhotos 
       </Section>
       <Section title="Photos" tag="optional" hint={`${draft.photos.length} of 10`}>
         <PhotoUploader photos={draft.photos} cover={draft.cover}
+          onUploadingChange={onPhotosUploadingChange}
           onAddPhotos={urls => {
             const next = [...draft.photos, ...urls].slice(0, 10);
             set("photos", next);
@@ -1715,7 +1720,7 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
   const renderStep = (key: string) => {
     if (key === "where")   return <StepWhere   draft={draft} set={set} onOpenPark={() => setShowParkPicker(true)} park={park} />;
     if (key === "rate")    return <StepRate    draft={draft} set={set} />;
-    if (key === "journal") return <StepJournal draft={draft} set={set} activities={availableActivities} npsActivityNames={npsActivityCache?.names ?? []} originalPhotos={originalPhotos.current} />;
+    if (key === "journal") return <StepJournal draft={draft} set={set} activities={availableActivities} npsActivityNames={npsActivityCache?.names ?? []} originalPhotos={originalPhotos.current} onPhotosUploadingChange={setPhotosUploading} />;
     if (key === "share")   return <StepShare   draft={draft} set={set} />;
     return null;
   };
@@ -1805,11 +1810,11 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
             <div style={{ display: "flex", gap: 5 }}>
               {STEPS.map((_, i) => <div key={i} style={{ width: i === step ? 20 : 6, height: 6, borderRadius: 3, background: i <= step ? "var(--primary)" : "var(--hairline)", transition: "all 200ms" }} />)}
             </div>
-            <button onClick={() => { if (last) handleSubmit(); else if (canContinue) goToStep(step + 1); }} disabled={!canContinue || submitting}
-              style={{ padding: "11px 20px", borderRadius: 10, border: 0, background: canContinue ? "var(--primary)" : "var(--surface-alt)", color: canContinue ? "#FFFBF1" : "var(--ink-mute)", fontWeight: 800, fontSize: 13, cursor: canContinue && !submitting ? "pointer" : "default", display: "flex", alignItems: "center", gap: 7, fontFamily: "inherit", boxShadow: canContinue ? "0 4px 12px rgba(31,61,46,0.35)" : "none", opacity: submitting ? 0.7 : 1 }}>
+            <button onClick={() => { if (last) handleSubmit(); else if (canContinue) goToStep(step + 1); }} disabled={!canContinue || submitting || photosUploading}
+              style={{ padding: "11px 20px", borderRadius: 10, border: 0, background: canContinue ? "var(--primary)" : "var(--surface-alt)", color: canContinue ? "#FFFBF1" : "var(--ink-mute)", fontWeight: 800, fontSize: 13, cursor: canContinue && !submitting && !photosUploading ? "pointer" : "default", display: "flex", alignItems: "center", gap: 7, fontFamily: "inherit", boxShadow: canContinue ? "0 4px 12px rgba(31,61,46,0.35)" : "none", opacity: submitting || photosUploading ? 0.7 : 1 }}>
               {last
-                ? <><Check style={{ width: 15, height: 15 }} strokeWidth={2.6} /> {submitting ? (editMode ? "Saving…" : "Posting…") : (editMode ? "Save changes" : "Post entry")}</>
-                : <>Continue <ArrowRight style={{ width: 15, height: 15 }} strokeWidth={2.4} /></>
+                ? <><Check style={{ width: 15, height: 15 }} strokeWidth={2.6} /> {submitting ? (editMode ? "Saving…" : "Posting…") : photosUploading ? "Uploading…" : (editMode ? "Save changes" : "Post entry")}</>
+                : photosUploading ? "Uploading…" : <>Continue <ArrowRight style={{ width: 15, height: 15 }} strokeWidth={2.4} /></>
               }
             </button>
           </div>

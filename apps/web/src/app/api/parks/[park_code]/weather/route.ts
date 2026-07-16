@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 
 export interface ForecastPeriod {
   name: string;
+  startTime: string;
   temperature: number;
   temperatureUnit: string;
   shortForecast: string;
@@ -68,6 +69,7 @@ export async function GET(
     const forecast: WeatherForecast = {
       periods: rawPeriods.map((p) => ({
         name: p.name,
+        startTime: p.startTime,
         temperature: p.temperature,
         temperatureUnit: p.temperatureUnit,
         shortForecast: p.shortForecast,

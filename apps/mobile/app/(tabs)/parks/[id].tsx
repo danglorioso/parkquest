@@ -1,7 +1,7 @@
 import {
   ActivityIndicator, Animated, Dimensions, FlatList, Image, Linking, Modal,
   PanResponder, Pressable, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View,
-  type ColorValue,
+  type ColorValue, type NativeScrollEvent, type NativeSyntheticEvent,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { PostCard, type FeedPost } from '@/components/PostCard';
+import { MenuView } from '@react-native-menu/menu';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker } from 'react-native-maps';
@@ -31,8 +32,10 @@ const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
 // Hero collapses from this height down to this as the page scrolls, and
 // stretches taller than this on overscroll (see heroHeightAnim below).
+// HERO_MIN matches the map sheet's COLLAPSED_H (56 + insets.top) — a slim
+// title-bar strip, not a shrunken photo.
 const HERO_MAX = 340;
-const HERO_MIN = 110;
+const HERO_MIN = 56;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,6 +84,7 @@ interface PostLite {
 
 interface ForecastPeriod {
   name: string;
+  startTime: string;
   temperature: number;
   temperatureUnit: string;
   shortForecast: string;
@@ -95,6 +99,17 @@ interface WeatherForecast {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function dayLabel(period: ForecastPeriod): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const periodDate = new Date(period.startTime);
+  periodDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((periodDate.getTime() - today.getTime()) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  return period.name.replace('This ', '');
+}
 
 function weatherEmoji(shortForecast: string): string {
   const f = shortForecast.toLowerCase();
@@ -226,6 +241,7 @@ export default function ParkDetailScreen() {
   const [lightbox,     setLightbox]     = useState<{ images: NpsImage[]; idx: number } | null>(null);
   const [onBucket,     setOnBucket]     = useState(false);
   const [bucketBusy,   setBucketBusy]   = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [heroIdx,      setHeroIdx]      = useState(0);
   const [heroLoaded,   setHeroLoaded]   = useState(false);
   const [prevHeroImage, setPrevHeroImage] = useState<string | null>(null);
@@ -243,6 +259,8 @@ export default function ParkDetailScreen() {
   // "Visits" stat cell can jump straight to it.
   const journalY = useRef(0);
   const scrollY = useRef(new Animated.Value(0)).current;
+  const [titleCollapsed, setTitleCollapsed] = useState(false);
+  const titleCollapsedRef = useRef(false);
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -520,10 +538,12 @@ export default function ParkDetailScreen() {
     ? (distanceAway < 10 ? `${distanceAway.toFixed(1)} mi` : `${Math.round(distanceAway)} mi`)
     : null;
 
-  // AllTrails-style collapsing hero: stretches taller on overscroll (so the
+  // Map-sheet-style collapsing hero: stretches taller on overscroll (so the
   // bounce reveals more image instead of the screen background), and shrinks
-  // to a slim strip as the page scrolls up, handing the title off to the
-  // sticky bar that fades in over the same range.
+  // to a slim title-bar strip as the page scrolls up. The title itself scales
+  // down and slides right to sit next to the back button — same transform
+  // trick as ParkBottomSheet's collapsingHeader (scale/translate instead of
+  // fontSize/padding, so it stays off the layout thread and doesn't jump).
   const heroMax = HERO_MAX + insets.top;
   const heroMin = HERO_MIN + insets.top;
   const collapseRange = heroMax - heroMin;
@@ -532,13 +552,25 @@ export default function ParkDetailScreen() {
     outputRange: [heroMax * 2, heroMax, heroMin],
     extrapolate: 'clamp',
   });
-  const heroTitleOpacityAnim = scrollY.interpolate({
-    inputRange: [0, collapseRange * 0.6],
+  const heroTitleScale = scrollY.interpolate({
+    inputRange: [0, collapseRange * 0.75],
+    outputRange: [1, 20 / 28],
+    extrapolate: 'clamp',
+  });
+  const heroStateOpacity = scrollY.interpolate({
+    inputRange: [0, collapseRange * 0.45],
     outputRange: [1, 0],
     extrapolate: 'clamp',
   });
-  const stickyBarOpacityAnim = scrollY.interpolate({
-    inputRange: [collapseRange * 0.5, collapseRange],
+  const heroTitleTranslateX = scrollY.interpolate({
+    inputRange: [0, collapseRange * 0.75],
+    outputRange: [0, 40],
+    extrapolate: 'clamp',
+  });
+  // Actions menu only makes sense once the hero has meaningfully collapsed —
+  // stays hidden while the full-size cover photo is showing.
+  const headerActionsOpacity = scrollY.interpolate({
+    inputRange: [collapseRange * 0.5, collapseRange * 0.85],
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
@@ -567,53 +599,53 @@ export default function ParkDetailScreen() {
         <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
       </TouchableOpacity>
 
-      {/* Share button — fixed overlay, always visible */}
-      <TouchableOpacity
-        style={[styles.backBtn, { top: insets.top + 8, right: 16, left: undefined, zIndex: 10 }]}
-        onPress={handleShare}
-        hitSlop={8}
-      >
-        <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
-        <Ionicons name="share-outline" size={20} color="#FFFBF1" />
-      </TouchableOpacity>
-
-      {/* Log a visit button — fixed overlay, always visible */}
-      <TouchableOpacity
-        style={[styles.backBtn, { top: insets.top + 8, right: 60, left: undefined, zIndex: 10 }]}
-        onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
-        hitSlop={8}
-      >
-        <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
-        <Ionicons name="checkmark" size={20} color="#FFFBF1" />
-      </TouchableOpacity>
-
-      {/* Bucket list toggle — fixed overlay, always visible */}
-      {parkStatus !== 'visited' && (
-        <TouchableOpacity
-          style={[styles.backBtn, { top: insets.top + 8, right: 104, left: undefined, zIndex: 10 }]}
-          onPress={toggleBucketList}
-          disabled={bucketBusy}
-          hitSlop={8}
-        >
-          <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
-          {bucketBusy ? (
-            <ActivityIndicator size="small" color="#FFFBF1" />
-          ) : (
-            <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={20} color={onBucket ? C.bucket : '#FFFBF1'} />
-          )}
-        </TouchableOpacity>
-      )}
-
-      {/* Sticky title bar — fades in as the hero collapses, "locking" the
-          park name at the top once it scrolls out of the hero itself. */}
+      {/* Actions menu — fades in once the hero has collapsed. Collapses share /
+          log visit / bucket list into one button so long park names don't
+          collide with it; hidden up top so the full-size cover photo isn't
+          cluttered with buttons. */}
       <Animated.View
-        pointerEvents="none"
-        style={[styles.stickyBar, { height: insets.top + 44, opacity: stickyBarOpacityAnim, zIndex: 5 }]}
+        pointerEvents={titleCollapsed ? 'auto' : 'none'}
+        style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 10, opacity: headerActionsOpacity }}
       >
-        <GlassIconBg interactive={false} fallbackColor="rgba(0,0,0,0.35)" />
-        <Text style={[styles.stickyBarTitle, { marginTop: insets.top }]} numberOfLines={1}>
-          {park.name}
-        </Text>
+        <MenuView
+          onOpenMenu={() => setShowHeaderMenu(true)}
+          onCloseMenu={() => setShowHeaderMenu(false)}
+          onPressAction={({ nativeEvent }) => {
+            switch (nativeEvent.event) {
+              case 'log-visit':
+                router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never);
+                break;
+              case 'bucket':
+                toggleBucketList();
+                break;
+              case 'share':
+                handleShare();
+                break;
+            }
+          }}
+          actions={[
+            { id: 'log-visit', title: parkStatus === 'visited' ? 'Log another visit' : 'Log a visit', image: 'checkmark.circle' },
+            ...(parkStatus !== 'visited' ? [{
+              id: 'bucket',
+              title: onBucket ? 'Remove from bucket list' : 'Add to bucket list',
+              image: onBucket ? 'bookmark.fill' : 'bookmark',
+            }] : []),
+            { id: 'share', title: 'Share', image: 'square.and.arrow.up' },
+          ]}
+        >
+          <TouchableOpacity
+            hitSlop={8}
+            disabled={bucketBusy}
+            style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined, opacity: showHeaderMenu ? 0.6 : 1 }]}
+          >
+            <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+            {bucketBusy ? (
+              <ActivityIndicator size="small" color="#FFFBF1" />
+            ) : (
+              <Ionicons name="ellipsis-horizontal" size={20} color="#FFFBF1" />
+            )}
+          </TouchableOpacity>
+        </MenuView>
       </Animated.View>
 
       <Animated.ScrollView
@@ -625,7 +657,17 @@ export default function ParkDetailScreen() {
         scrollEventThrottle={16}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
+          {
+            useNativeDriver: false,
+            listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+              const y = e.nativeEvent.contentOffset.y;
+              const collapsed = y > collapseRange * 0.5;
+              if (collapsed !== titleCollapsedRef.current) {
+                titleCollapsedRef.current = collapsed;
+                setTitleCollapsed(collapsed);
+              }
+            },
+          }
         )}
       >
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
@@ -967,7 +1009,7 @@ export default function ParkDetailScreen() {
                   const night = forecastNights[i];
                   return (
                     <View key={i} style={styles.weatherCard}>
-                      <Text style={styles.weatherDay}>{p.name.replace('This ', '').replace('Tonight', 'Tonight')}</Text>
+                      <Text style={styles.weatherDay}>{dayLabel(p)}</Text>
                       <Text style={styles.weatherEmoji}>{weatherEmoji(p.shortForecast)}</Text>
                       <Text style={styles.weatherTemp}>{p.temperature}°{p.temperatureUnit}</Text>
                       {night && (

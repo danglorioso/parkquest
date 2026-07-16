@@ -2359,19 +2359,68 @@ export default function LogVisitModal() {
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [draft, parks, isEdit, activeEditVisitId, activeEditPostId]);
 
+  // Shared save/discard/keep-editing prompt — used by both the explicit close
+  // button and the beforeRemove interception below, so swipe-down and hardware
+  // back get the exact same confirmation as tapping close.
+  const promptExit = useCallback((onConfirmed: () => void) => {
+    if (isEditing) {
+      Alert.alert('Discard changes?', "Your edits won't be saved.", [
+        { text: 'Keep editing', style: 'cancel' },
+        {
+          text: 'Discard', style: 'destructive',
+          onPress: () => {
+            const orphaned = draft.photos.filter(p => !originalPhotos.current.has(p));
+            getFreshToken().then(tok => deletePhotos(orphaned, tok));
+            if (!isEdit) {
+              if (saveTimer.current) clearTimeout(saveTimer.current);
+              deleteDraft(draftId.current);
+            }
+            onConfirmed();
+          },
+        },
+      ]);
+      return;
+    }
+    if (!draftHasContent(draft)) { onConfirmed(); return; }
+    Alert.alert('Save as draft?', 'Pick up where you left off next time.', [
+      { text: 'Keep editing', style: 'cancel' },
+      {
+        text: 'Discard', style: 'destructive',
+        onPress: () => {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          deleteDraft(draftId.current);
+          getFreshToken().then(tok => deletePhotos(draft.photos, tok));
+          onConfirmed();
+        },
+      },
+      {
+        text: 'Save draft',
+        onPress: () => {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
+          upsertDraft(draft, parkName, draftId.current);
+          onConfirmed();
+        },
+      },
+    ]);
+  }, [isEditing, isEdit, draft, parks]);
+
   // Catches dismissal we didn't initiate ourselves — the native swipe-down-to-dismiss
-  // gesture on this pageSheet, or the Android back button — and flushes the draft
-  // immediately instead of waiting on the debounce, with a toast to confirm it stuck.
+  // gesture on this pageSheet, or the Android back button — and routes it through the
+  // same save/discard/keep-editing prompt as the explicit close button, instead of
+  // silently auto-saving (which used to stack a redundant draft on top of any other
+  // saved draft with zero warning).
   useEffect(() => {
-    const unsub = navigation.addListener('beforeRemove', () => {
-      if (leavingViaAction.current || isEdit || !draftHasContent(draft)) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
-      upsertDraft(draft, parkName, draftId.current, activeEditVisitId ?? undefined, activeEditPostId);
-      showToast('Draft saved');
+    const unsub = navigation.addListener('beforeRemove', e => {
+      if (leavingViaAction.current) return;
+      e.preventDefault();
+      promptExit(() => {
+        leavingViaAction.current = true;
+        navigation.dispatch(e.data.action);
+      });
     });
     return unsub;
-  }, [navigation, draft, parks, isEdit, activeEditVisitId, activeEditPostId]);
+  }, [navigation, promptExit]);
 
   const resumeDraft = () => {
     if (!restoreBanner) return;
@@ -2500,57 +2549,10 @@ export default function LogVisitModal() {
   };
 
   const handleCancel = () => {
-    if (isEditing) {
-      Alert.alert('Discard changes?', "Your edits won't be saved.", [
-        { text: 'Keep editing', style: 'cancel' },
-        {
-          text: 'Discard', style: 'destructive',
-          onPress: () => {
-            // Photos already on the saved visit stay put — only clean up ones added this session.
-            const orphaned = draft.photos.filter(p => !originalPhotos.current.has(p));
-            getFreshToken().then(tok => deletePhotos(orphaned, tok));
-            // A resumed edit-draft (route-driven edits never have one) — remove
-            // it so it doesn't keep coming back as a "resume?" offer.
-            if (!isEdit) {
-              if (saveTimer.current) clearTimeout(saveTimer.current);
-              deleteDraft(draftId.current);
-            }
-            leavingViaAction.current = true;
-            router.back();
-          },
-        },
-      ]);
-      return;
-    }
-    if (draftHasContent(draft)) {
-      Alert.alert('Save as draft?', 'Pick up where you left off next time.', [
-        { text: 'Keep editing', style: 'cancel' },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: () => {
-            if (saveTimer.current) clearTimeout(saveTimer.current);
-            deleteDraft(draftId.current);
-            getFreshToken().then(tok => deletePhotos(draft.photos, tok));
-            leavingViaAction.current = true;
-            router.back();
-          },
-        },
-        {
-          text: 'Save draft',
-          onPress: () => {
-            if (saveTimer.current) clearTimeout(saveTimer.current);
-            const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
-            upsertDraft(draft, parkName, draftId.current);
-            leavingViaAction.current = true;
-            router.back();
-          },
-        },
-      ]);
-    } else {
+    promptExit(() => {
       leavingViaAction.current = true;
       router.back();
-    }
+    });
   };
 
   const handleSubmit = async () => {

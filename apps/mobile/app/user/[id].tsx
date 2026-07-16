@@ -291,10 +291,14 @@ export default function UserProfileScreen() {
           `${profile.display_name ?? profile.username} sent you a friend request.`,
           [
             { text: 'Decline', style: 'destructive', onPress: async () => {
-              // We don't have friendship_id here, so just navigate to friends page
+              // We don't have friendship_id here, so just navigate to friends page.
+              // Seed the profile tab's stack with its root first — pushing the nested
+              // friends screen directly leaves that stack as [friends] with no back button.
+              router.push('/(tabs)/profile' as never);
               router.push('/(tabs)/profile/friends' as never);
             }},
             { text: 'Accept', onPress: async () => {
+              router.push('/(tabs)/profile' as never);
               router.push('/(tabs)/profile/friends' as never);
             }},
           ]

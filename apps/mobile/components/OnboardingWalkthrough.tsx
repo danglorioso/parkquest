@@ -91,6 +91,12 @@ export function OnboardingWalkthrough() {
 
   const findFriends = () => {
     finish();
+    // Seed the profile tab's stack with its root before pushing the nested
+    // friends screen — pushing the nested route directly (while a different
+    // tab is focused) left that stack as just [friends] with no index
+    // beneath it: no back button, and every later Profile tap re-focused
+    // that same stale stack instead of resetting to the profile root.
+    router.push('/(tabs)/profile' as never);
     router.push('/(tabs)/profile/friends' as never);
   };
 
