@@ -32,7 +32,7 @@ import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
 // Hero collapses from this height down to this as the page scrolls, and
-// stretches taller than this on overscroll (see heroHeightAnim below).
+// stretches taller than this on overscroll (see the hero interpolations).
 // HERO_MIN matches the map sheet's COLLAPSED_H (56 + insets.top) — a slim
 // title-bar strip, not a shrunken photo.
 const HERO_MAX = 340;
@@ -283,6 +283,9 @@ export default function ParkDetailScreen() {
   // bar is always either fully hidden or fully shown; it can't be caught
   // half-in if the user stops scrolling mid-transition.
   const barAnim = useRef(new Animated.Value(0)).current;
+  // Same 0/1 breakpoint, longer duration — the three action buttons slide
+  // into the "..." more lazily than the title swap.
+  const actionsAnim = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -584,24 +587,43 @@ export default function ParkDetailScreen() {
   const heroMax = HERO_MAX + insets.top;
   const barHeight = HERO_MIN + insets.top;
   const shrinkDistance = heroMax - barHeight;
-  const heroHeightAnim = scrollY.interpolate({
-    inputRange: [-heroMax, 0, shrinkDistance],
-    outputRange: [heroMax * 2, heroMax, barHeight],
+  // Everything below is transforms only — no animated `height`. Animating
+  // layout off scrollY forces the JS driver (every scroll frame does a JS
+  // round-trip + a layout pass), which is what made the collapse stutter on
+  // fast flicks, worst right at the breakpoint where the title-swap state
+  // update lands on the same JS frames. With transforms the scroll event
+  // runs with useNativeDriver: true and the hero tracks the finger entirely
+  // on the UI thread.
+  //
+  // Geometry: the hero box is FIXED at heroMax tall and clips its contents.
+  //  - collapse: the box translates up (bottom edge rises exactly like the
+  //    old height shrink), while the inner image counter-translates down by
+  //    the same amount, so the image reads as pinned to the viewport with
+  //    the window shrinking over it. Locks at barHeight worth of visible
+  //    strip (clamp at shrinkDistance).
+  //  - overscroll: the box scales from its top edge instead of growing
+  //    taller, covering the stretch gap the fixed height would leave.
+  const heroTranslateY = scrollY.interpolate({
+    inputRange: [0, shrinkDistance],
+    outputRange: [0, -shrinkDistance],
     extrapolate: 'clamp',
   });
-  // Zoom on the image only — a scale transform on the fixed-size inner box,
-  // top-anchored so the image's top edge stays pinned to the top of the
-  // screen. Rests slightly zoomed in (1.15) and zooms OUT toward 1 as you
-  // scroll down (the shrinking window reads as widening/fitting more), and
-  // zooms IN on pull-down overscroll. Scale is compositor-only — no layout
-  // pass on the image, so this can't reintroduce the fallback-color-gap bug
-  // that animating the image's own height caused. Never dips below 1, or
-  // the image would narrow past the screen edges. Coverage on overscroll:
-  // at y=-t the window is heroMax+t tall and the scaled image is
-  // 1.15*(heroMax+t) — always taller, so the fallback color never peeks out.
+  const heroStretchScale = scrollY.interpolate({
+    inputRange: [-heroMax, 0],
+    outputRange: [2, 1],
+    extrapolate: 'clamp',
+  });
+  const heroImageCounterY = scrollY.interpolate({
+    inputRange: [0, shrinkDistance],
+    outputRange: [0, shrinkDistance],
+    extrapolate: 'clamp',
+  });
+  // Rests slightly zoomed in (1.15) and zooms OUT toward 1 as you scroll
+  // down — the shrinking window reads as widening/fitting more width.
+  // Never dips below 1, or the image would narrow past the screen edges.
   const heroImageScale = scrollY.interpolate({
-    inputRange: [-heroMax, 0, shrinkDistance],
-    outputRange: [2.3, 1.15, 1],
+    inputRange: [0, shrinkDistance],
+    outputRange: [1.15, 1],
     extrapolate: 'clamp',
   });
   // The big title is bottom-anchored in the hero (heroContent's 22px bottom
@@ -638,27 +660,29 @@ export default function ParkDetailScreen() {
         />
       )}
 
-      {/* ── Hero — absolute overlay (not a scrolling child), so it stays
-          pinned at the top. Stretches on overscroll, shrinks smoothly as the
-          page scrolls, then locks at `barHeight` via `heroHeightAnim`'s own
-          clamp — height stays driven by the Animated value the whole time,
-          never swapped for a plain number.
-
-          The outer box is purely a clip mask: animated height,
-          overflow:hidden, `backgroundColor` as a flat per-park fallback for
-          any moment nothing else covers it yet. The image/gradient live in a
-          nested view fixed at `heroMax` tall — laid out exactly once, never
-          resized — so there is no per-frame relayout for it to lag behind
-          the container's height and reveal that fallback color, which is
-          what every previous attempt here was actually fighting. The title
-          is absolutely positioned to the outer box's own bottom edge (not
-          flex layout inside the fixed inner box), so it still rides up with
-          the shrink correctly. */}
+      {/* ── Hero — absolute overlay (not a scrolling child), pinned at the
+          top. Fixed heroMax height; all motion is transforms (see the
+          heroTranslateY/heroStretchScale/heroImageCounterY interpolations
+          above for the geometry and why layout must never animate here).
+          The big title is bottom-anchored inside, so it rides the
+          translating bottom edge exactly like it rode the old height
+          shrink. */}
       <Animated.View
-        style={[styles.hero, { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5, height: heroHeightAnim, overflow: 'hidden', justifyContent: 'flex-start', backgroundColor: parkColor(park.park_code) }]}
+        style={[styles.hero, {
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
+          height: heroMax, overflow: 'hidden', justifyContent: 'flex-start',
+          backgroundColor: parkColor(park.park_code),
+          transformOrigin: 'top',
+          transform: [{ translateY: heroTranslateY }, { scale: heroStretchScale }],
+        }]}
         {...heroPan.panHandlers}
       >
-        <Animated.View style={{ height: heroMax, transform: [{ scale: heroImageScale }], transformOrigin: 'top' }}>
+        <Animated.View
+          style={{
+            height: heroMax, transformOrigin: 'top',
+            transform: [{ translateY: heroImageCounterY }, { scale: heroImageScale }],
+          }}
+        >
           {/* Previous image stays visible as background during cross-dissolve */}
           {prevHeroImage && (
             <ExpoImage
@@ -753,19 +777,25 @@ export default function ParkDetailScreen() {
           while fading, instead of blinking out. Always mounted (barAnim-
           driven) for the same native-driver mid-flight-mount reason as the
           titles; pointerEvents flips so the hidden set never eats taps. */}
-      <Animated.View
+      <View
         pointerEvents={titleCollapsed ? 'none' : 'auto'}
         style={{
           position: 'absolute', top: insets.top + 8, right: 16, zIndex: 10,
           flexDirection: 'row', gap: 8,
-          opacity: barAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
-          transform: [{ translateX: barAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 88] }) }],
         }}
       >
         {(() => {
+          // Row is [first, second, share], 36px buttons + 8px gaps. On
+          // collapse the two left buttons travel right into the share
+          // button's slot (+88 / +44), fading out as they arrive; the share
+          // button stays put and crossfades into the "..." rendered on top
+          // of the same spot. Reads as all three merging into one.
+          const travel = (dist: number) => ({
+            opacity: actionsAnim.interpolate({ inputRange: [0, 0.7], outputRange: [1, 0], extrapolate: 'clamp' as const }),
+            transform: [{ translateX: actionsAnim.interpolate({ inputRange: [0, 1], outputRange: [0, dist] }) }],
+          });
           const logVisitBtn = (
             <TouchableOpacity
-              key="log-visit"
               style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
               onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
               hitSlop={8}
@@ -774,58 +804,58 @@ export default function ParkDetailScreen() {
               <Ionicons name="checkmark" size={20} color="#FFFBF1" />
             </TouchableOpacity>
           );
-          if (parkStatus === 'visited') {
-            return (
-              <>
-                {logVisitBtn}
+          const secondBtn = parkStatus === 'visited' ? (
+            <TouchableOpacity
+              style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+              onPress={handleEditVisitPress}
+              hitSlop={8}
+            >
+              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+              <Ionicons name="pencil" size={18} color="#FFFBF1" />
+            </TouchableOpacity>
+          ) : logVisitBtn;
+          const firstBtn = parkStatus === 'visited' ? logVisitBtn : (
+            <TouchableOpacity
+              style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+              onPress={toggleBucketList}
+              disabled={bucketBusy}
+              hitSlop={8}
+            >
+              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+              {bucketBusy ? (
+                <ActivityIndicator size="small" color="#FFFBF1" />
+              ) : (
+                <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={20} color={onBucket ? C.bucket : '#FFFBF1'} />
+              )}
+            </TouchableOpacity>
+          );
+          return (
+            <>
+              <Animated.View style={travel(88)}>{firstBtn}</Animated.View>
+              <Animated.View style={travel(44)}>{secondBtn}</Animated.View>
+              <Animated.View style={{ opacity: actionsAnim.interpolate({ inputRange: [0.55, 0.9], outputRange: [1, 0], extrapolate: 'clamp' }) }}>
                 <TouchableOpacity
                   style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
-                  onPress={handleEditVisitPress}
+                  onPress={handleShare}
                   hitSlop={8}
                 >
                   <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
-                  <Ionicons name="pencil" size={18} color="#FFFBF1" />
+                  <Ionicons name="share-outline" size={20} color="#FFFBF1" />
                 </TouchableOpacity>
-              </>
-            );
-          }
-          return (
-            <>
-              <TouchableOpacity
-                style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
-                onPress={toggleBucketList}
-                disabled={bucketBusy}
-                hitSlop={8}
-              >
-                <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
-                {bucketBusy ? (
-                  <ActivityIndicator size="small" color="#FFFBF1" />
-                ) : (
-                  <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={20} color={onBucket ? C.bucket : '#FFFBF1'} />
-                )}
-              </TouchableOpacity>
-              {logVisitBtn}
+              </Animated.View>
             </>
           );
         })()}
-        <TouchableOpacity
-          style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
-          onPress={handleShare}
-          hitSlop={8}
-        >
-          <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
-          <Ionicons name="share-outline" size={20} color="#FFFBF1" />
-        </TouchableOpacity>
-      </Animated.View>
+      </View>
 
-      {/* Actions menu — the three buttons above collapse into this single
-          "..." as they slide over; it scales/fades in at the same spot. */}
+      {/* Actions menu — the "..." the row above merges into. Fades in over
+          the share button's spot as that button fades out (late in the
+          timing, so the crossfade happens after the travelers arrive). */}
       <Animated.View
         pointerEvents={titleCollapsed ? 'auto' : 'none'}
         style={{
           position: 'absolute', top: insets.top + 8, right: 16, zIndex: 11,
-          opacity: barAnim,
-          transform: [{ scale: barAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+          opacity: actionsAnim.interpolate({ inputRange: [0.55, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
         }}
       >
         <MenuView
@@ -879,7 +909,11 @@ export default function ParkDetailScreen() {
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           {
-            useNativeDriver: false,
+            // Transform-only consumers (see hero interpolations) — keep it
+            // that way. Reintroducing an animated height/layout prop off
+            // scrollY forces this back to false and brings the fast-scroll
+            // stutter back.
+            useNativeDriver: true,
             listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
               const y = e.nativeEvent.contentOffset.y;
               const collapsed = y >= collapseThreshold;
@@ -889,6 +923,11 @@ export default function ParkDetailScreen() {
                 Animated.timing(barAnim, {
                   toValue: collapsed ? 1 : 0,
                   duration: 220,
+                  useNativeDriver: true,
+                }).start();
+                Animated.timing(actionsAnim, {
+                  toValue: collapsed ? 1 : 0,
+                  duration: 420,
                   useNativeDriver: true,
                 }).start();
               }
