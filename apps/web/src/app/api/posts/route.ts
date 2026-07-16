@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { posts, parks, userProfiles, friendships, notifications, visits } from '@/lib/db/schema';
 import { getBlockedIds } from '@/lib/blocks';
 import { getReportedPostIds } from '@/lib/reportedContent';
+import { ensureUserProfile } from '@/lib/ensureUserProfile';
 
 const VISIBILITIES = ['public', 'friends', 'private'] as const;
 
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    await ensureUserProfile(userId);
 
     const { caption, photos, park_code, visit_id, quoted_post_id, badge_id, visibility } = await request.json();
     const postVisibility = VISIBILITIES.includes(visibility) ? visibility : 'public';

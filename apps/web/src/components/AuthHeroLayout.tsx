@@ -96,6 +96,18 @@ function UsernameStep({ showNameFields }: { showNameFields: boolean }) {
   const handleChange = (v: string) =>
     setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ""));
 
+  // GET /api/profile also creates the user_profiles row on first call — if it
+  // fails silently (session-propagation race, transient DB error), the user
+  // ends up fully signed in with no profile row and can still use the app.
+  const ensureProfileCreated = async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch("/api/profile");
+      if (res.ok) return;
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 600));
+    }
+    throw new Error("Could not finish setting up your profile. Please try again.");
+  };
+
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!isLoaded || username.length < 3) return;
@@ -110,7 +122,7 @@ function UsernameStep({ showNameFields }: { showNameFields: boolean }) {
         const result = await signUp.update(updates);
         if (result.status === "complete" && result.createdSessionId) {
           await signUpSetActive!({ session: result.createdSessionId });
-          await fetch("/api/profile");
+          await ensureProfileCreated();
           localStorage.setItem("pq_returning", "1");
           router.push("/dashboard");
         } else {
@@ -122,7 +134,7 @@ function UsernameStep({ showNameFields }: { showNameFields: boolean }) {
         if (firstName.trim()) updates.firstName = firstName.trim();
         if (lastName.trim()) updates.lastName = lastName.trim();
         await user.update(updates);
-        await fetch("/api/profile");
+        await ensureProfileCreated();
         localStorage.setItem("pq_returning", "1");
         router.push("/dashboard");
       } else {
@@ -133,7 +145,7 @@ function UsernameStep({ showNameFields }: { showNameFields: boolean }) {
       setError(
         clerkErr?.errors?.[0]?.longMessage ??
         clerkErr?.errors?.[0]?.message ??
-        "Username taken or invalid. Try another."
+        (err instanceof Error ? err.message : "Username taken or invalid. Try another.")
       );
     } finally {
       setBusy(false);

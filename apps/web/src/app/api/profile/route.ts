@@ -1,9 +1,9 @@
-import { NextResponse, after } from 'next/server';
+import { NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles } from '@/lib/db/schema';
-import { notifyAdminNewUser } from '@/lib/notifyAdmin';
+import { ensureUserProfile } from '@/lib/ensureUserProfile';
 
 export async function GET() {
   try {
@@ -36,42 +36,7 @@ export async function GET() {
       return NextResponse.json(row);
     }
 
-    // Auto-create profile from Clerk data on first access
-    const clerkUser = await currentUser();
-    const rawUsername =
-      clerkUser?.username ??
-      clerkUser?.emailAddresses[0]?.emailAddress?.split('@')[0] ??
-      `user_${userId.slice(-8)}`;
-    const baseUsername = rawUsername.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 50);
-
-    // Ensure username is unique by appending a suffix if needed
-    const taken = await db
-      .select({ username: userProfiles.username })
-      .from(userProfiles)
-      .where(eq(userProfiles.username, baseUsername))
-      .limit(1);
-    const username = taken.length > 0 ? `${baseUsername}_${userId.slice(-4)}` : baseUsername;
-
-    const [created] = await db
-      .insert(userProfiles)
-      .values({
-        clerk_user_id: userId,
-        username,
-        display_name: clerkUser?.fullName ?? null,
-        avatar_url: clerkUser?.imageUrl ?? null,
-      })
-      .returning();
-
-    if (created) {
-      // Un-awaited work dies when the serverless response returns; after() keeps
-      // the function alive until the email is actually sent.
-      after(() => notifyAdminNewUser({
-        clerkUserId: userId,
-        username: created.username,
-        displayName: created.display_name,
-      }).catch(() => {}));
-    }
-
+    const created = await ensureUserProfile(userId);
     return NextResponse.json(created);
   } catch (error) {
     console.error('Error fetching profile:', error);

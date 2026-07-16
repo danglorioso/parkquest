@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Flag, Users, Image as ImageIcon, MapPin, Award, Trees, Megaphone, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Flag, Users, Image as ImageIcon, MapPin, Award, Trees, Megaphone, Mail, Menu, X } from 'lucide-react';
 
 const LINKS = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -14,6 +14,7 @@ const LINKS = [
   { href: '/admin/badges', label: 'Badges', icon: Award },
   { href: '/admin/parks', label: 'Parks', icon: Trees },
   { href: '/admin/notifications', label: 'Broadcast', icon: Megaphone },
+  { href: '/admin/email-health', label: 'Email', icon: Mail },
 ];
 
 function renderLinks(pathname: string, onNavigate?: () => void) {
