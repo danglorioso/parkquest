@@ -26,6 +26,11 @@ export const metadata: Metadata = {
     default: "ParkQuest - Track Your National Park Adventures",
   },
   description: "Track your visits, earn badges, and explore the beauty of national parks across the country with ParkQuest.",
+  other: {
+    // Safari's native Smart App Banner — shows "View"/"Open" at the top of the
+    // page on iOS, linking to the App Store listing (or the app itself if installed).
+    "apple-itunes-app": "app-id=6778208311",
+  },
 };
 
 export default function RootLayout({

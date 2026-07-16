@@ -68,9 +68,25 @@ export function OpenInAppOverlay({
           Open in App
         </button>
 
-        {!appStoreUrl && (
+        {appStoreUrl ? (
+          <a
+            href={appStoreUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'block', width: '100%', boxSizing: 'border-box',
+              background: 'transparent', color: 'var(--primary)',
+              fontWeight: 700, fontSize: 14,
+              padding: '13px 28px', borderRadius: 12,
+              border: '1.5px solid var(--primary)',
+              textDecoration: 'none', marginBottom: 12,
+            }}
+          >
+            Download on the App Store
+          </a>
+        ) : (
           <div style={{ fontSize: 11.5, color: 'var(--ink-mute)', marginBottom: 12 }}>
-            Not installed yet? ParkQuest is coming soon to the App Store.
+            Don&apos;t have ParkQuest yet? Search &quot;ParkQuest&quot; on the App Store.
           </div>
         )}
 

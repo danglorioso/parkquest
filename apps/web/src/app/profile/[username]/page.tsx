@@ -18,8 +18,7 @@ import { PostCard, ReportDialog, type FeedPost } from "@/components/PostCard";
 import { useToast } from "@/components/ToastProvider";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
 
-// TODO: set once the app is live on the App Store (see apps/web/src/app/p/[id]/page.tsx)
-const APP_STORE_URL: string | null = null;
+const APP_STORE_URL: string | null = 'https://apps.apple.com/us/app/parkquest-national-park-log/id6778208311';
 
 const USAMap = dynamic(() => import("@/components/USAMapGL"), {
   ssr: false,

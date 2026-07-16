@@ -4,10 +4,8 @@ import { db } from '@/lib/db';
 import { posts, parks, userProfiles, visits } from '@/lib/db/schema';
 import { PostFallbackClient } from './PostFallbackClient';
 
-// TODO: set once the app is live on the App Store (numeric App Store ID for
-// the apple-itunes-app smart banner, e.g. "6474123456")
-export const APP_STORE_ID: string | null = null;
-export const APP_STORE_URL: string | null = null;
+export const APP_STORE_ID: string | null = '6778208311';
+export const APP_STORE_URL: string | null = 'https://apps.apple.com/us/app/parkquest-national-park-log/id6778208311';
 
 async function getMetaPost(id: string) {
   const postId = Number(id);
