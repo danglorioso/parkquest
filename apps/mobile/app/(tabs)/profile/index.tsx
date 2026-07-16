@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { badgeColors, type BadgeColors } from '@/lib/badges';
 import { BadgeInfoModal } from '@/components/BadgeInfoModal';
 import { Wordmark } from '@/components/Wordmark';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import { ParkStamp } from '@/components/ParkStamp';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
@@ -341,6 +342,7 @@ export default function ProfileScreen() {
           activeOpacity={0.7}
           onPress={() => setSearchOpen(true)}
         >
+          <GlassIconBg />
           <Ionicons name="search" size={17} color={C.inkSoft} />
         </TouchableOpacity>
         <TouchableOpacity
@@ -348,6 +350,7 @@ export default function ProfileScreen() {
           activeOpacity={0.8}
           onPress={() => router.push('/profile/edit' as never)}
         >
+          <GlassIconBg />
           <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
         </TouchableOpacity>
       </View>
@@ -1037,7 +1040,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: C.surface,
+    overflow: 'hidden',
     borderWidth: 0.5,
     borderColor: C.hairline,
     alignItems: 'center',

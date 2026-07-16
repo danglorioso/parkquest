@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/components/Avatar';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import {
   getNotifications, getUnreadNotificationCount, markNotificationsRead,
   respondFriendRequest, dismissNotification, setNotificationRead,
@@ -505,7 +506,9 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 
   return (
     <>
-      <TouchableOpacity style={[style, open && styles.bellActive]} activeOpacity={0.7} onPress={() => { dragY.setValue(800); backdropOpacity.setValue(0); setOpen(true); }}>
+      <TouchableOpacity style={style} activeOpacity={0.7} onPress={() => { dragY.setValue(800); backdropOpacity.setValue(0); setOpen(true); }}>
+        <GlassIconBg />
+        {open && <View style={[StyleSheet.absoluteFill, styles.bellActive]} pointerEvents="none" />}
         {loading ? (
           <ActivityIndicator size="small" color={T.primary} />
         ) : (
@@ -652,7 +655,6 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 const makeStyles = (T: Colors) => StyleSheet.create({
   bellActive: {
     backgroundColor: `${T.primary}12`,
-    borderColor: C.hairline,
   },
   badge: {
     position: 'absolute', top: 0, right: 0,

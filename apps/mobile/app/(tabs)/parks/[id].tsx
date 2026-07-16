@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { distanceMiles } from '@/lib/location';
-import { GlassView, liquidGlassAvailable } from '@/lib/glass';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { parkColor, parkGradient } from '@/lib/parkColors';
@@ -29,20 +29,10 @@ import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
-const glass = liquidGlassAvailable && GlassView != null;
 // Hero collapses from this height down to this as the page scrolls, and
 // stretches taller than this on overscroll (see heroHeightAnim below).
 const HERO_MAX = 340;
 const HERO_MIN = 110;
-
-// Frosted background for the floating header icon buttons / sticky title bar —
-// real Liquid Glass where available, a flat translucent surface otherwise
-// (Expo Go / older iOS / Android).
-function GlassBg({ interactive = false }: { interactive?: boolean }) {
-  return glass && GlassView
-    ? <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" isInteractive={interactive} />
-    : <View style={[StyleSheet.absoluteFill, styles.glassFallbackBg]} />;
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -573,7 +563,7 @@ export default function ParkDetailScreen() {
         onPress={() => router.back()}
         hitSlop={8}
       >
-        <GlassBg interactive />
+        <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
         <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
       </TouchableOpacity>
 
@@ -583,7 +573,7 @@ export default function ParkDetailScreen() {
         onPress={handleShare}
         hitSlop={8}
       >
-        <GlassBg interactive />
+        <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
         <Ionicons name="share-outline" size={20} color="#FFFBF1" />
       </TouchableOpacity>
 
@@ -593,7 +583,7 @@ export default function ParkDetailScreen() {
         onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
         hitSlop={8}
       >
-        <GlassBg interactive />
+        <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
         <Ionicons name="checkmark" size={20} color="#FFFBF1" />
       </TouchableOpacity>
 
@@ -605,7 +595,7 @@ export default function ParkDetailScreen() {
           disabled={bucketBusy}
           hitSlop={8}
         >
-          <GlassBg interactive />
+          <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
           {bucketBusy ? (
             <ActivityIndicator size="small" color="#FFFBF1" />
           ) : (
@@ -620,7 +610,7 @@ export default function ParkDetailScreen() {
         pointerEvents="none"
         style={[styles.stickyBar, { height: insets.top + 44, opacity: stickyBarOpacityAnim, zIndex: 5 }]}
       >
-        <GlassBg />
+        <GlassIconBg interactive={false} fallbackColor="rgba(0,0,0,0.35)" />
         <Text style={[styles.stickyBarTitle, { marginTop: insets.top }]} numberOfLines={1}>
           {park.name}
         </Text>
@@ -1159,9 +1149,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  glassFallbackBg: {
-    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   stickyBar: {
     position: 'absolute',

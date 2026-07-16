@@ -12,6 +12,7 @@ import * as Haptics from 'expo-haptics';
 
 import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Wordmark } from '@/components/Wordmark';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -235,12 +236,11 @@ export default function FeedScreen() {
         <OfflineBanner fetchedAt={offlineFetchedAt} noun="posts" style={{ marginHorizontal: 0 }} />
       )}
 
-      {/* Page kicker + title */}
+      {/* Page title — the sticky top bar above already carries the ParkQuest
+          brand, so this stays to a single line rather than repeating it. */}
       <View style={styles.headerTop}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.kicker}>THE FEED</Text>
           <Text style={styles.title}>Out there</Text>
-          <Text style={styles.subtitle}>Latest posts from your friends and the community</Text>
         </View>
       </View>
 
@@ -346,6 +346,7 @@ export default function FeedScreen() {
               activeOpacity={0.7}
               onPress={() => setSearchOpen(true)}
             >
+              <GlassIconBg />
               <Ionicons name="search" size={17} color={C.inkSoft} />
             </TouchableOpacity>
             <TouchableOpacity
@@ -353,6 +354,7 @@ export default function FeedScreen() {
               activeOpacity={0.7}
               onPress={() => router.push('/profile/edit' as never)}
             >
+              <GlassIconBg />
               <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
             </TouchableOpacity>
           </View>
@@ -407,7 +409,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: dyn('rgba(255,251,241,0.55)', 'rgba(32,29,23,0.55)'),
+    overflow: 'hidden',
     borderWidth: 0.5,
     borderColor: C.hairline,
     alignItems: 'center',
@@ -424,16 +426,9 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 0,
   },
-  kicker: {
-    fontSize: 13, fontWeight: '700', letterSpacing: 1.4,
-    color: C.inkMute, marginBottom: 4,
-  },
   title: {
     fontSize: 26, fontWeight: '800', color: C.ink,
     letterSpacing: -0.5, lineHeight: 30,
-  },
-  subtitle: {
-    fontSize: 13, color: C.inkMute, marginTop: 4, lineHeight: 18,
   },
   chips: {
     flexDirection: 'row', gap: 6, marginTop: 14,
