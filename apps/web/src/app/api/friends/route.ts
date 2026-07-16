@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { friendships, userProfiles, notifications } from '@/lib/db/schema';
 import { sendPushToUser } from '@/lib/push';
 import { getBlockedIds } from '@/lib/blocks';
+import { ensureUserProfile } from '@/lib/ensureUserProfile';
 
 // GET /api/friends?userId=...&type=friends|pending_incoming|pending_outgoing
 // userId defaults to the authenticated caller — only needed to view someone
@@ -142,6 +143,14 @@ export async function POST(request: Request) {
         // They already sent us a request — auto-accept
         await db.update(friendships).set({ status: 'accepted', updated_at: new Date() }).where(eq(friendships.id, f.id));
         await db.insert(notifications).values({ recipient_id: targetId, actor_id: userId, type: 'friend_accepted' }).catch(() => {});
+        // The request is resolved — clear its "sent you a friend request"
+        // notification, same as the PATCH accept path does.
+        await db.delete(notifications).where(
+          and(
+            eq(notifications.type, 'friend_request'),
+            sql`${notifications.metadata}->>'friendship_id' = ${String(f.id)}`
+          )
+        ).catch(() => {});
         return NextResponse.json({ message: 'Friend request accepted', status: 'accepted' });
       }
       // Rejected — allow re-request
@@ -153,11 +162,11 @@ export async function POST(request: Request) {
         .returning();
 
       if (inserted) {
-        const [actor] = await db
-          .select({ display_name: userProfiles.display_name, username: userProfiles.username })
-          .from(userProfiles)
-          .where(eq(userProfiles.clerk_user_id, userId));
-        const name = actor?.display_name || actor?.username || 'Someone';
+        // ensureUserProfile, not a raw select — if the actor's onboarding
+        // profile-create failed silently, the row doesn't exist yet and the
+        // push would bake in "Someone" even though a username was available.
+        const actor = await ensureUserProfile(userId).catch(() => null);
+        const name = actor?.display_name?.trim() || actor?.username || 'Someone';
 
         await db.insert(notifications).values({
           recipient_id: targetId,
@@ -226,11 +235,8 @@ export async function PATCH(request: Request) {
         actor_id: userId,
         type: 'friend_accepted',
       }).catch(() => {});
-      const [actor] = await db
-        .select({ display_name: userProfiles.display_name, username: userProfiles.username })
-        .from(userProfiles)
-        .where(eq(userProfiles.clerk_user_id, userId));
-      const name = actor?.display_name || actor?.username || 'Someone';
+      const actor = await ensureUserProfile(userId).catch(() => null);
+      const name = actor?.display_name?.trim() || actor?.username || 'Someone';
       after(() => sendPushToUser(friendship.requester_id, {
         title: 'Friend request accepted',
         body: `${name} accepted your friend request.`,

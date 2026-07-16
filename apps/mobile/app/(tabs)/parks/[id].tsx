@@ -17,10 +17,11 @@ import * as Location from 'expo-location';
 import { distanceMiles } from '@/lib/location';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import { fullStateName } from '@/lib/stateNames';
-import { STATIC as C, useColors } from '@/lib/palette';
+import { STATIC as C, useColors, colorStr } from '@/lib/palette';
 import { parkColor, parkGradient } from '@/lib/parkColors';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { FriendsVisitedSheet } from '@/components/FriendsVisitedSheet';
+import { VisitPickerSheet } from '@/components/VisitPickerSheet';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { Avatar } from '@/components/Avatar';
@@ -145,10 +146,24 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 // ── Section wrapper ───────────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const C = useColors();
+  const [open, setOpen] = useState(true);
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
+      <TouchableOpacity
+        onPress={() => setOpen(v => !v)}
+        activeOpacity={0.6}
+        style={[styles.sectionHeader, open && { marginBottom: 12 }]}
+      >
+        <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{title}</Text>
+        <Ionicons
+          name="chevron-down"
+          size={16}
+          color={C.inkMute}
+          style={{ transform: [{ rotate: open ? '0deg' : '-90deg' }] }}
+        />
+      </TouchableOpacity>
+      {open && children}
     </View>
   );
 }
@@ -246,6 +261,8 @@ export default function ParkDetailScreen() {
   const [heroLoaded,   setHeroLoaded]   = useState(false);
   const [prevHeroImage, setPrevHeroImage] = useState<string | null>(null);
   const [actionBtnHeight, setActionBtnHeight] = useState<number | null>(null);
+  const [bottomOverlayHeight, setBottomOverlayHeight] = useState(0);
+  const [showVisitPicker, setShowVisitPicker] = useState(false);
   const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
   const [visitors, setVisitors] = useState<ParkVisitorsSummary | null>(null);
   const [showFriendsSheet, setShowFriendsSheet] = useState(false);
@@ -261,6 +278,11 @@ export default function ParkDetailScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const [titleCollapsed, setTitleCollapsed] = useState(false);
   const titleCollapsedRef = useRef(false);
+  // Discrete 0/1 value driven by a timing animation on the `titleCollapsed`
+  // breakpoint — NOT interpolated straight off scrollY. That way the frozen
+  // bar is always either fully hidden or fully shown; it can't be caught
+  // half-in if the user stops scrolling mid-transition.
+  const barAnim = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -455,12 +477,14 @@ export default function ParkDetailScreen() {
   const [heroSwipeEpoch, setHeroSwipeEpoch] = useState(0);
 
   useEffect(() => {
-    if (!heroLoaded || !nps || nps.images.length < 2) return;
+    // Paused while collapsed — the hero is just a thin strip behind the
+    // frozen title there, so cycling covers is invisible churn.
+    if (!heroLoaded || !nps || nps.images.length < 2 || titleCollapsed) return;
     const tid = setInterval(() => {
       setHeroIdx(prev => (prev + 1) % npsRef.current!.images.length);
     }, 5000);
     return () => clearInterval(tid);
-  }, [heroLoaded, nps, heroSwipeEpoch]);
+  }, [heroLoaded, nps, heroSwipeEpoch, titleCollapsed]);
 
   const goHero = useCallback((dir: 1 | -1) => {
     const total = npsRef.current?.images.length ?? 0;
@@ -489,6 +513,19 @@ export default function ParkDetailScreen() {
     if (visits.some(v => !v.is_bucket_list && v.visited_date)) return 'visited';
     return 'notVisited';
   })();
+
+  const sortedVisits = [...visits]
+    .filter(v => !v.is_bucket_list && v.visited_date)
+    .sort((a, b) => new Date(b.visited_date!).getTime() - new Date(a.visited_date!).getTime());
+  const lastVisit = sortedVisits[0] ?? null;
+
+  const handleEditVisitPress = () => {
+    if (sortedVisits.length > 1) {
+      setShowVisitPicker(true);
+      return;
+    }
+    if (sortedVisits[0]) router.push(`/(modals)/log-visit?visitId=${sortedVisits[0].id}` as never);
+  };
 
   // Daytime forecast periods only
   const forecastDays = weather?.periods.filter(p => p.isDaytime).slice(0, 7) ?? [];
@@ -538,42 +575,46 @@ export default function ParkDetailScreen() {
     ? (distanceAway < 10 ? `${distanceAway.toFixed(1)} mi` : `${Math.round(distanceAway)} mi`)
     : null;
 
-  // Map-sheet-style collapsing hero: stretches taller on overscroll (so the
-  // bounce reveals more image instead of the screen background), and shrinks
-  // to a slim title-bar strip as the page scrolls up. The title itself scales
-  // down and slides right to sit next to the back button — same transform
-  // trick as ParkBottomSheet's collapsingHeader (scale/translate instead of
-  // fontSize/padding, so it stays off the layout thread and doesn't jump).
+  // Pinned, locking hero: the cover photo is an absolute overlay (not a
+  // scrolling child) that stretches taller on overscroll, shrinks smoothly
+  // as the page scrolls, and then locks at `barHeight` — the size it needs
+  // to sit behind the frozen title — instead of continuing to shrink or
+  // scrolling away. The frozen title itself fades/slides in separately once
+  // locked (see `barAnim` below), not tied 1:1 to the image's shrink.
   const heroMax = HERO_MAX + insets.top;
-  const heroMin = HERO_MIN + insets.top;
-  const collapseRange = heroMax - heroMin;
+  const barHeight = HERO_MIN + insets.top;
+  const shrinkDistance = heroMax - barHeight;
   const heroHeightAnim = scrollY.interpolate({
-    inputRange: [-heroMax, 0, collapseRange],
-    outputRange: [heroMax * 2, heroMax, heroMin],
+    inputRange: [-heroMax, 0, shrinkDistance],
+    outputRange: [heroMax * 2, heroMax, barHeight],
     extrapolate: 'clamp',
   });
-  const heroTitleScale = scrollY.interpolate({
-    inputRange: [0, collapseRange * 0.75],
-    outputRange: [1, 20 / 28],
+  // Zoom on the image only — a scale transform on the fixed-size inner box,
+  // top-anchored so the image's top edge stays pinned to the top of the
+  // screen. Rests slightly zoomed in (1.15) and zooms OUT toward 1 as you
+  // scroll down (the shrinking window reads as widening/fitting more), and
+  // zooms IN on pull-down overscroll. Scale is compositor-only — no layout
+  // pass on the image, so this can't reintroduce the fallback-color-gap bug
+  // that animating the image's own height caused. Never dips below 1, or
+  // the image would narrow past the screen edges. Coverage on overscroll:
+  // at y=-t the window is heroMax+t tall and the scaled image is
+  // 1.15*(heroMax+t) — always taller, so the fallback color never peeks out.
+  const heroImageScale = scrollY.interpolate({
+    inputRange: [-heroMax, 0, shrinkDistance],
+    outputRange: [2.3, 1.15, 1],
     extrapolate: 'clamp',
   });
-  const heroStateOpacity = scrollY.interpolate({
-    inputRange: [0, collapseRange * 0.45],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-  const heroTitleTranslateX = scrollY.interpolate({
-    inputRange: [0, collapseRange * 0.75],
-    outputRange: [0, 40],
-    extrapolate: 'clamp',
-  });
-  // Actions menu only makes sense once the hero has meaningfully collapsed —
-  // stays hidden while the full-size cover photo is showing.
-  const headerActionsOpacity = scrollY.interpolate({
-    inputRange: [collapseRange * 0.5, collapseRange * 0.85],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
+  // The big title is bottom-anchored in the hero (heroContent's 22px bottom
+  // padding + the 32px title line height), while the back/action buttons sit
+  // fixed at insets.top+8 through insets.top+44. Once the shrinking hero's
+  // height puts the title's top edge at or below the buttons' bottom edge,
+  // the title is unreadable behind them — that's the actual moment to swap
+  // to the frozen title + "..." menu, not an arbitrary point in the shrink.
+  const collapseThreshold = heroMax - (insets.top + 8 + 36) - (22 + 32);
+  // The two titles swap on this threshold as a hard switch (see
+  // `titleCollapsed` renders below), not a scroll-scrubbed cross-fade — the
+  // big one unmounts the instant the frozen one starts animating in, so
+  // there is never a frame where both are visible at once.
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -589,6 +630,114 @@ export default function ParkDetailScreen() {
         <FriendsVisitedSheet friends={visitors.friends} onClose={() => setShowFriendsSheet(false)} />
       )}
 
+      {showVisitPicker && (
+        <VisitPickerSheet
+          visits={sortedVisits.map(v => ({ id: v.id, visited_date: v.visited_date!, title: v.title }))}
+          onSelect={(visitId) => router.push(`/(modals)/log-visit?visitId=${visitId}` as never)}
+          onClose={() => setShowVisitPicker(false)}
+        />
+      )}
+
+      {/* ── Hero — absolute overlay (not a scrolling child), so it stays
+          pinned at the top. Stretches on overscroll, shrinks smoothly as the
+          page scrolls, then locks at `barHeight` via `heroHeightAnim`'s own
+          clamp — height stays driven by the Animated value the whole time,
+          never swapped for a plain number.
+
+          The outer box is purely a clip mask: animated height,
+          overflow:hidden, `backgroundColor` as a flat per-park fallback for
+          any moment nothing else covers it yet. The image/gradient live in a
+          nested view fixed at `heroMax` tall — laid out exactly once, never
+          resized — so there is no per-frame relayout for it to lag behind
+          the container's height and reveal that fallback color, which is
+          what every previous attempt here was actually fighting. The title
+          is absolutely positioned to the outer box's own bottom edge (not
+          flex layout inside the fixed inner box), so it still rides up with
+          the shrink correctly. */}
+      <Animated.View
+        style={[styles.hero, { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5, height: heroHeightAnim, overflow: 'hidden', justifyContent: 'flex-start', backgroundColor: parkColor(park.park_code) }]}
+        {...heroPan.panHandlers}
+      >
+        <Animated.View style={{ height: heroMax, transform: [{ scale: heroImageScale }], transformOrigin: 'top' }}>
+          {/* Previous image stays visible as background during cross-dissolve */}
+          {prevHeroImage && (
+            <ExpoImage
+              source={{ uri: prevHeroImage }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              contentPosition="top"
+              cachePolicy="memory-disk"
+            />
+          )}
+          {heroImage && (
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={0.95}
+              disabled={!nps?.images?.length}
+              onPress={() => nps?.images?.length && setLightbox({ images: nps.images, idx: heroIdx })}
+            >
+              <ExpoImage
+                key={heroImage}
+                source={{ uri: heroImage }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                contentPosition="top"
+                cachePolicy="memory-disk"
+                onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
+              />
+            </TouchableOpacity>
+          )}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.42)', 'transparent']}
+            locations={[0, 0.35, 0.65]}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 0, y: 0 }}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+        </Animated.View>
+
+        {/* Fades out (1 - barAnim) as the frozen title fades in — always
+            mounted so the fade actually animates (same native-driver
+            mid-flight-mount caveat as the frozen title). */}
+        <Animated.View
+          style={[styles.heroContent, {
+            position: 'absolute', left: 0, right: 0, bottom: 0,
+            opacity: barAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+          }]}
+          pointerEvents="none"
+        >
+          <Text style={styles.heroDesignation}>{stateName.toUpperCase()}</Text>
+          <Text style={styles.heroName}>{park.name}</Text>
+        </Animated.View>
+      </Animated.View>
+
+      {/* Frozen title — text ONLY, nothing else animates in with it: no
+          scrim, no second copy of the cover image (an earlier gradient
+          scrim here read as a snippet of the photo sliding in over the big
+          title). Readability over bright images comes from the text shadow
+          on `frozenTitle` instead. ALWAYS mounted, fully driven by barAnim
+          (opacity 0 at rest) — a view mounted mid-flight of a
+          useNativeDriver animation doesn't attach to it and just pops in at
+          the end value ("no entrance animation" bug). */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', top: insets.top + 8, left: 64, right: 64, height: 36, zIndex: 8, justifyContent: 'center',
+          opacity: barAnim,
+          // Plain slide-down + fade. Deliberately NOT the 3D flip
+          // (perspective + rotateX) — a 3D-rotated layer's projected plane
+          // sweeps far outside its own bounds mid-animation and iOS stops
+          // honoring sibling zIndex on such layers, which made the back
+          // button vanish for a beat every time this came in.
+          transform: [
+            { translateY: barAnim.interpolate({ inputRange: [0, 1], outputRange: [-14, 0] }) },
+          ],
+        }}
+      >
+        <Text style={styles.frozenTitle} numberOfLines={1}>{park.name}</Text>
+      </Animated.View>
+
       {/* Back button — fixed overlay, always visible */}
       <TouchableOpacity
         style={[styles.backBtn, { top: insets.top + 8, zIndex: 10 }]}
@@ -599,13 +748,85 @@ export default function ParkDetailScreen() {
         <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
       </TouchableOpacity>
 
-      {/* Actions menu — fades in once the hero has collapsed. Collapses share /
-          log visit / bucket list into one button so long park names don't
-          collide with it; hidden up top so the full-size cover photo isn't
-          cluttered with buttons. */}
+      {/* Expanded actions — full-size buttons shown over the cover photo.
+          At the breakpoint they slide right into the "..." button's spot
+          while fading, instead of blinking out. Always mounted (barAnim-
+          driven) for the same native-driver mid-flight-mount reason as the
+          titles; pointerEvents flips so the hidden set never eats taps. */}
+      <Animated.View
+        pointerEvents={titleCollapsed ? 'none' : 'auto'}
+        style={{
+          position: 'absolute', top: insets.top + 8, right: 16, zIndex: 10,
+          flexDirection: 'row', gap: 8,
+          opacity: barAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+          transform: [{ translateX: barAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 88] }) }],
+        }}
+      >
+        {(() => {
+          const logVisitBtn = (
+            <TouchableOpacity
+              key="log-visit"
+              style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+              onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+              hitSlop={8}
+            >
+              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+              <Ionicons name="checkmark" size={20} color="#FFFBF1" />
+            </TouchableOpacity>
+          );
+          if (parkStatus === 'visited') {
+            return (
+              <>
+                {logVisitBtn}
+                <TouchableOpacity
+                  style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+                  onPress={handleEditVisitPress}
+                  hitSlop={8}
+                >
+                  <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+                  <Ionicons name="pencil" size={18} color="#FFFBF1" />
+                </TouchableOpacity>
+              </>
+            );
+          }
+          return (
+            <>
+              <TouchableOpacity
+                style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+                onPress={toggleBucketList}
+                disabled={bucketBusy}
+                hitSlop={8}
+              >
+                <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+                {bucketBusy ? (
+                  <ActivityIndicator size="small" color="#FFFBF1" />
+                ) : (
+                  <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={20} color={onBucket ? C.bucket : '#FFFBF1'} />
+                )}
+              </TouchableOpacity>
+              {logVisitBtn}
+            </>
+          );
+        })()}
+        <TouchableOpacity
+          style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+          onPress={handleShare}
+          hitSlop={8}
+        >
+          <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+          <Ionicons name="share-outline" size={20} color="#FFFBF1" />
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* Actions menu — the three buttons above collapse into this single
+          "..." as they slide over; it scales/fades in at the same spot. */}
       <Animated.View
         pointerEvents={titleCollapsed ? 'auto' : 'none'}
-        style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 10, opacity: headerActionsOpacity }}
+        style={{
+          position: 'absolute', top: insets.top + 8, right: 16, zIndex: 11,
+          opacity: barAnim,
+          transform: [{ scale: barAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+        }}
       >
         <MenuView
           onOpenMenu={() => setShowHeaderMenu(true)}
@@ -652,7 +873,7 @@ export default function ParkDetailScreen() {
         ref={scrollRef}
         style={styles.screen}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: tabBarSpace + 12 }}
+        contentContainerStyle={{ paddingTop: heroMax, paddingBottom: tabBarSpace + bottomOverlayHeight + 12 }}
         contentInsetAdjustmentBehavior="never"
         scrollEventThrottle={16}
         onScroll={Animated.event(
@@ -661,62 +882,20 @@ export default function ParkDetailScreen() {
             useNativeDriver: false,
             listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
               const y = e.nativeEvent.contentOffset.y;
-              const collapsed = y > collapseRange * 0.5;
+              const collapsed = y >= collapseThreshold;
               if (collapsed !== titleCollapsedRef.current) {
                 titleCollapsedRef.current = collapsed;
                 setTitleCollapsed(collapsed);
+                Animated.timing(barAnim, {
+                  toValue: collapsed ? 1 : 0,
+                  duration: 220,
+                  useNativeDriver: true,
+                }).start();
               }
             },
           }
         )}
       >
-        {/* ── Hero ─────────────────────────────────────────────────────────── */}
-        <Animated.View
-          style={[styles.hero, { height: heroHeightAnim, backgroundColor: parkColor(park.park_code) }]}
-          {...heroPan.panHandlers}
-        >
-          {/* Previous image stays visible as background during cross-dissolve */}
-          {prevHeroImage && (
-            <ExpoImage
-              source={{ uri: prevHeroImage }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-            />
-          )}
-          {heroImage && (
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={0.95}
-              disabled={!nps?.images?.length}
-              onPress={() => nps?.images?.length && setLightbox({ images: nps.images, idx: heroIdx })}
-            >
-              <ExpoImage
-                key={heroImage}
-                source={{ uri: heroImage }}
-                style={StyleSheet.absoluteFill}
-                contentFit="cover"
-                transition={800}
-                cachePolicy="memory-disk"
-                onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
-              />
-            </TouchableOpacity>
-          )}
-          <LinearGradient
-            colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.42)', 'transparent']}
-            locations={[0, 0.35, 0.65]}
-            start={{ x: 0, y: 1 }}
-            end={{ x: 0, y: 0 }}
-            style={StyleSheet.absoluteFillObject}
-            pointerEvents="none"
-          />
-
-          <Animated.View style={[styles.heroContent, { opacity: heroTitleOpacityAnim }]} pointerEvents="none">
-            <Text style={styles.heroDesignation}>{stateName.toUpperCase()}</Text>
-            <Text style={styles.heroName}>{park.name}</Text>
-          </Animated.View>
-        </Animated.View>
-
         {/* ── Photo strip ──────────────────────────────────────────────────── */}
         {stripImages.length > 0 && (
           <ScrollView
@@ -725,12 +904,18 @@ export default function ParkDetailScreen() {
           >
             {stripImages.map(({ img, actualIdx }, slotIdx) => {
               const gc = parkGradient(park.park_code);
+              // With few images, stretch them to span the same width as the
+              // stat card below (screen minus the strip's 16px side padding)
+              // instead of leaving a ragged right edge. 4+ keeps the fixed
+              // size and scrolls.
+              const n = stripImages.length;
+              const thumbWidth = n <= 3 ? (SW - 32 - (n - 1) * 8) / n : 110;
               return (
                 <TouchableOpacity
                   key={slotIdx}
                   onPress={() => setLightbox({ images: nps!.images, idx: actualIdx })}
                   activeOpacity={0.85}
-                  style={styles.photoStripItem}
+                  style={[styles.photoStripItem, { width: thumbWidth }]}
                 >
                   <LinearGradient
                     colors={gc}
@@ -786,53 +971,6 @@ export default function ParkDetailScreen() {
             friends={visitors.friends} total={visitors.total}
             onPress={() => setShowFriendsSheet(true)}
           />
-        )}
-
-        {/* ── Action buttons ────────────────────────────────────────────────── */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: C.primary }]}
-            onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
-            onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="pencil" size={16} color="#FFFBF1" />
-            <Text style={styles.actionBtnText}>
-              {parkStatus === 'visited' ? 'Log another visit' : 'Log a visit'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtnOutline, { borderColor: C.primary }]}
-            onPress={() => router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code } } as never)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="map-outline" size={16} color={C.primary} />
-            <Text style={[styles.actionBtnOutlineText, { color: C.primary }]}>View on map</Text>
-          </TouchableOpacity>
-        </View>
-
-        {parkStatus !== 'visited' && (
-          <TouchableOpacity
-            style={[styles.bucketBtn, onBucket && styles.bucketBtnActive]}
-            onPress={toggleBucketList}
-            activeOpacity={0.8}
-            disabled={bucketBusy}
-          >
-            {bucketBusy ? (
-              <ActivityIndicator size="small" color={onBucket ? C.onPrimary : C.bucket} />
-            ) : (
-              <>
-                <Ionicons
-                  name={onBucket ? 'bookmark' : 'bookmark-outline'}
-                  size={16}
-                  color={onBucket ? C.onPrimary : C.bucket}
-                />
-                <Text style={[styles.bucketBtnText, onBucket && { color: C.onPrimary }]}>
-                  {onBucket ? 'On bucket list' : 'Add to bucket list'}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
         )}
 
         <View style={styles.divider} />
@@ -1110,6 +1248,74 @@ export default function ParkDetailScreen() {
           </Text>
         </View>
       </Animated.ScrollView>
+
+      {/* Action row — overlays above the floating tab bar, mirroring the map
+          sheet's pinned action row. */}
+      <View
+        style={[styles.actionOverlay, { paddingBottom: tabBarSpace }]}
+        onLayout={(e) => setBottomOverlayHeight(e.nativeEvent.layout.height)}
+      >
+        <View style={styles.actionRow}>
+          {parkStatus === 'visited' ? (
+            <>
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+                onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
+                activeOpacity={0.8}
+              >
+                <GlassIconBg tintColor={C.primary} fallbackColor={C.primary} />
+                <Ionicons name="checkmark" size={16} color="#FFFBF1" />
+                <Text style={styles.actionBtnText}>Log another visit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtnOutline, { borderColor: C.primary }]}
+                onPress={() => { if (lastVisit) router.push(`/profile/journal/${lastVisit.id}` as never); }}
+                activeOpacity={0.8}
+              >
+                <GlassIconBg />
+                <Ionicons name="pencil-outline" size={16} color={C.primary} />
+                <Text style={[styles.actionBtnOutlineText, { color: C.primary }]}>Edit last visit</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+                onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
+                activeOpacity={0.8}
+              >
+                <GlassIconBg tintColor={C.primary} fallbackColor={C.primary} />
+                <Ionicons name="checkmark" size={16} color="#FFFBF1" />
+                <Text style={styles.actionBtnText}>Log a visit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.bucketBtn, { flex: 1, marginHorizontal: 0, marginBottom: 0 }]}
+                onPress={toggleBucketList}
+                activeOpacity={0.8}
+                disabled={bucketBusy}
+              >
+                <GlassIconBg tintColor={onBucket ? colorStr(C.bucket) : undefined} fallbackColor={onBucket ? colorStr(C.bucket) : undefined} />
+                {bucketBusy ? (
+                  <ActivityIndicator size="small" color={onBucket ? C.onPrimary : C.bucket} />
+                ) : (
+                  <>
+                    <Ionicons
+                      name={onBucket ? 'bookmark' : 'bookmark-outline'}
+                      size={16}
+                      color={onBucket ? C.onPrimary : C.bucket}
+                    />
+                    <Text style={[styles.bucketBtnText, onBucket && { color: C.onPrimary }]}>
+                      {onBucket ? 'On bucket list' : 'Add to bucket list'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </View>
     </View>
   );
 }
@@ -1192,22 +1398,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stickyBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-  },
-  stickyBarTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: C.ink,
-    textAlign: 'center',
-    paddingBottom: 10,
-    paddingHorizontal: 72,
-  },
   heroContent: {
     padding: 20,
     paddingBottom: 22,
@@ -1225,6 +1415,18 @@ const styles = StyleSheet.create({
     color: '#FFFBF1',
     letterSpacing: -0.5,
     lineHeight: 32,
+  },
+  frozenTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#FFFBF1',
+    letterSpacing: -0.3,
+    lineHeight: 24,
+    // Stands in for the scrim this bar used to have — keeps white text
+    // readable over bright imagery without darkening the photo itself.
+    textShadowColor: 'rgba(0,0,0,0.65)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
 
   // Photo strip
@@ -1306,6 +1508,16 @@ const styles = StyleSheet.create({
   },
 
   // Actions
+  actionOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: C.surface,
+    borderTopWidth: 0.5,
+    borderTopColor: C.hairlineSoft,
+    paddingTop: 12,
+  },
   actionRow: {
     flexDirection: 'row',
     gap: 10,
@@ -1319,6 +1531,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     borderRadius: 12,
+    overflow: 'hidden',
     paddingVertical: 11,
   },
   actionBtnText: {
@@ -1334,6 +1547,7 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: 'transparent',
     borderRadius: 12,
+    overflow: 'hidden',
     paddingVertical: 11,
     borderWidth: 1.5,
   },
@@ -1347,6 +1561,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     borderRadius: 12,
+    overflow: 'hidden',
     paddingVertical: 11,
     borderWidth: 1.5,
     borderColor: C.bucket,
@@ -1375,6 +1590,11 @@ const styles = StyleSheet.create({
   section: {
     paddingHorizontal: 16,
     paddingVertical: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sectionTitle: {
     fontSize: 15,

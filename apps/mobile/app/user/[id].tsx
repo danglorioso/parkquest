@@ -285,27 +285,6 @@ export default function UserProfileScreen() {
         setFriendBusy(false);
         return;
 
-      } else if (status === 'pending_received') {
-        Alert.alert(
-          'Friend request',
-          `${profile.display_name ?? profile.username} sent you a friend request.`,
-          [
-            { text: 'Decline', style: 'destructive', onPress: async () => {
-              // We don't have friendship_id here, so just navigate to friends page.
-              // Seed the profile tab's stack with its root first — pushing the nested
-              // friends screen directly leaves that stack as [friends] with no back button.
-              router.push('/(tabs)/profile' as never);
-              router.push('/(tabs)/profile/friends' as never);
-            }},
-            { text: 'Accept', onPress: async () => {
-              router.push('/(tabs)/profile' as never);
-              router.push('/(tabs)/profile/friends' as never);
-            }},
-          ]
-        );
-        setFriendBusy(false);
-        return;
-
       } else if (status === 'accepted') {
         Alert.alert(
           'Remove friend',
@@ -329,6 +308,55 @@ export default function UserProfileScreen() {
         );
         setFriendBusy(false);
         return;
+      }
+    } catch {
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setFriendBusy(false);
+    }
+  };
+
+  // Incoming request — accept/decline inline, right on the profile.
+  // POST /api/friends against someone who already sent us a pending request
+  // auto-accepts it server-side, and DELETE clears the pending row, so
+  // neither needs the friendship_id (which this screen doesn't have).
+  const handleAcceptRequest = async () => {
+    if (!profile || friendBusy) return;
+    const tok = await getToken();
+    if (!tok) return;
+    setFriendBusy(true);
+    try {
+      const res = await fetch(`${BASE}/api/friends`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: profile.clerk_user_id }),
+      });
+      if (res.ok) {
+        setProfile(p => p ? { ...p, friendship_status: 'accepted', friend_count: p.friend_count + 1 } : p);
+      } else {
+        Alert.alert('Error', 'Could not accept the request. Please try again.');
+      }
+    } catch {
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setFriendBusy(false);
+    }
+  };
+
+  const handleDeclineRequest = async () => {
+    if (!profile || friendBusy) return;
+    const tok = await getToken();
+    if (!tok) return;
+    setFriendBusy(true);
+    try {
+      const res = await fetch(`${BASE}/api/friends?userId=${profile.clerk_user_id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (res.ok) {
+        setProfile(p => p ? { ...p, friendship_status: 'none' } : p);
+      } else {
+        Alert.alert('Error', 'Could not decline the request. Please try again.');
       }
     } catch {
       Alert.alert('Error', 'Something went wrong. Please try again.');
@@ -375,11 +403,12 @@ export default function UserProfileScreen() {
     );
   };
 
+  // pending_received renders its own accept/decline pair below, so these
+  // only cover the single-button states.
   const friendButtonLabel = () => {
     switch (profile?.friendship_status) {
       case 'accepted':       return 'Friends';
       case 'pending_sent':   return 'Request sent';
-      case 'pending_received': return 'Respond to request';
       default:               return 'Add friend';
     }
   };
@@ -388,7 +417,6 @@ export default function UserProfileScreen() {
     switch (profile?.friendship_status) {
       case 'accepted':         return 'people';
       case 'pending_sent':     return 'time-outline';
-      case 'pending_received': return 'person-add-outline';
       default:                 return 'person-add-outline';
     }
   };
@@ -494,42 +522,75 @@ export default function UserProfileScreen() {
             {/* Friend action */}
             {!isOwnProfile ? (
               <View style={styles.section}>
-                <TouchableOpacity
-                  style={[
-                    styles.friendButton,
-                    isFriend
-                      ? styles.friendButtonSecondary
-                      : isPending
-                        ? [styles.friendButtonOutline, { borderColor: T.primary }]
-                        : { backgroundColor: T.primary },
-                    friendBusy && { opacity: 0.6 },
-                  ]}
-                  onPress={handleFriendAction}
-                  disabled={friendBusy}
-                  activeOpacity={0.8}
-                >
-                  {friendBusy ? (
-                    <ActivityIndicator size="small" color={isFriend ? C.inkMute : isPending ? T.primary : C.onPrimary} />
-                  ) : (
-                    <>
-                      <Ionicons
-                        name={friendButtonIcon()}
-                        size={16}
-                        color={isFriend ? C.inkSoft : isPending ? T.primary : C.onPrimary}
-                        style={{ marginRight: 7 }}
-                      />
-                      <Text
-                        style={[
-                          styles.friendButtonText,
-                          isFriend && styles.friendButtonTextSecondary,
-                          isPending && { color: T.primary },
-                        ]}
-                      >
-                        {friendButtonLabel()}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                {profile.friendship_status === 'pending_received' ? (
+                  /* Incoming request — inline accept/decline instead of a
+                     single "respond" button that bounced through an Alert
+                     and the friends screen. Distinct look from "Add friend"
+                     since it's a different state. */
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity
+                      style={[styles.friendButton, { flex: 1, backgroundColor: T.primary }, friendBusy && { opacity: 0.6 }]}
+                      onPress={handleAcceptRequest}
+                      disabled={friendBusy}
+                      activeOpacity={0.8}
+                    >
+                      {friendBusy ? (
+                        <ActivityIndicator size="small" color={C.onPrimary} />
+                      ) : (
+                        <>
+                          <Ionicons name="checkmark" size={16} color={C.onPrimary} style={{ marginRight: 7 }} />
+                          <Text style={styles.friendButtonText}>Accept request</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.friendButton, styles.friendButtonOutline, { flex: 1, borderColor: C.hairline }, friendBusy && { opacity: 0.6 }]}
+                      onPress={handleDeclineRequest}
+                      disabled={friendBusy}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="close" size={16} color={C.inkMute} style={{ marginRight: 7 }} />
+                      <Text style={[styles.friendButtonText, { color: C.inkSoft }]}>Decline</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      styles.friendButton,
+                      isFriend
+                        ? styles.friendButtonSecondary
+                        : isPending
+                          ? [styles.friendButtonOutline, { borderColor: T.primary }]
+                          : { backgroundColor: T.primary },
+                      friendBusy && { opacity: 0.6 },
+                    ]}
+                    onPress={handleFriendAction}
+                    disabled={friendBusy}
+                    activeOpacity={0.8}
+                  >
+                    {friendBusy ? (
+                      <ActivityIndicator size="small" color={isFriend ? C.inkMute : isPending ? T.primary : C.onPrimary} />
+                    ) : (
+                      <>
+                        <Ionicons
+                          name={friendButtonIcon()}
+                          size={16}
+                          color={isFriend ? C.inkSoft : isPending ? T.primary : C.onPrimary}
+                          style={{ marginRight: 7 }}
+                        />
+                        <Text
+                          style={[
+                            styles.friendButtonText,
+                            isFriend && styles.friendButtonTextSecondary,
+                            isPending && { color: T.primary },
+                          ]}
+                        >
+                          {friendButtonLabel()}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
             ) : null}
 

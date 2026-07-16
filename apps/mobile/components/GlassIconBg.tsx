@@ -8,12 +8,14 @@ const glass = liquidGlassAvailable && GlassView != null;
 // share, …) — real Liquid Glass where available, a flat translucent fill
 // otherwise (Expo Go / older iOS / Android). Render as the first child of a
 // TouchableOpacity that has `overflow: 'hidden'` and no backgroundColor of its own.
+// Pass `tintColor` for a prominent/tinted glass button (e.g. a primary CTA) —
+// falls back to a flat fill in that color when Liquid Glass is unavailable.
 export function GlassIconBg({
-  interactive = true, fallbackColor,
-}: { interactive?: boolean; fallbackColor?: string }) {
+  interactive = true, tintColor, fallbackColor,
+}: { interactive?: boolean; tintColor?: string; fallbackColor?: string }) {
   return glass && GlassView
-    ? <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" isInteractive={interactive} />
-    : <View style={[StyleSheet.absoluteFill, styles.fallback, fallbackColor ? { backgroundColor: fallbackColor } : null]} />;
+    ? <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={tintColor} isInteractive={interactive} />
+    : <View style={[StyleSheet.absoluteFill, styles.fallback, (fallbackColor ?? tintColor) ? { backgroundColor: fallbackColor ?? tintColor } : null]} />;
 }
 
 const styles = StyleSheet.create({

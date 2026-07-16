@@ -114,7 +114,15 @@ function SwipeableRow({ children, onDismiss, onMarkUnread }: {
 
   return (
     <View style={{ overflow: 'hidden' }}>
-      <View style={styles.swipeUnderlay}>
+      {/* Underlay stays invisible until the row has actually moved — the row
+          above it is a TouchableOpacity, so its press-in dim would otherwise
+          flash the unread/delete buttons through on every plain tap. */}
+      <Animated.View
+        style={[
+          styles.swipeUnderlay,
+          { opacity: translateX.interpolate({ inputRange: [-8, 0, 8], outputRange: [1, 0, 1] }) },
+        ]}
+      >
         <TouchableOpacity
           style={styles.unreadAction}
           activeOpacity={0.85}
@@ -130,7 +138,7 @@ function SwipeableRow({ children, onDismiss, onMarkUnread }: {
             <Ionicons name="trash-outline" size={18} color="#fff" />
           </View>
         </View>
-      </View>
+      </Animated.View>
       <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
         {children}
         {actionOpen && (
