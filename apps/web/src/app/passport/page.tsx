@@ -8,6 +8,7 @@ import { Share2, PenLine, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { DesktopHeader } from "@/components/desktop/DesktopHeader";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
+import { getParkGlyph } from "@parkquest/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -163,8 +164,26 @@ function Stamp({ park, idx, visitedDate }: { park: VisitedPark; idx: number; vis
               ★ {sc} ★
             </textPath>
           </text>
-          <path d="M30 60 L 42 44 L 50 52 L 60 38 L 70 60 Z" fill={c} opacity="0.85" />
-          <circle cx="60" cy="34" r="2" fill={c} opacity="0.85" />
+          {(() => {
+            const glyph = getParkGlyph(park.park_code);
+            if (glyph) {
+              return glyph.map((shape, i) => (
+                <path
+                  key={i}
+                  d={shape.d}
+                  fill={shape.fill === "white" ? "white" : c}
+                  opacity={shape.opacity ?? 1}
+                />
+              ));
+            }
+            // Default scene — used until a park gets a real illustrated glyph.
+            return (
+              <>
+                <path d="M30 60 L 42 44 L 50 52 L 60 38 L 70 60 Z" fill={c} opacity="0.85" />
+                <circle cx="60" cy="34" r="2" fill={c} opacity="0.85" />
+              </>
+            );
+          })()}
           <text x="50" y="76" fill={c} fontFamily="JetBrains Mono, monospace" fontWeight="700" fontSize="6.5" textAnchor="middle" letterSpacing="0.8" opacity="0.9">
             {dateStr}
           </text>

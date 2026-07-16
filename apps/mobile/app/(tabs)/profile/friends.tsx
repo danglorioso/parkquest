@@ -61,7 +61,7 @@ type ListRow =
   | { _t: 'header' }
   | { _t: 'searchbar' }
   | { _t: 'search_results'; results: SearchUser[] }
-  | { _t: 'section'; label: string; icon: string; count?: number; accent?: boolean }
+  | { _t: 'section'; label: string; icon: string; count?: number; accent?: boolean; collapsed?: boolean; onToggle?: () => void }
   | { _t: 'friend';    item: FriendUser }
   | { _t: 'incoming';  item: PendingUser }
   | { _t: 'outgoing';  item: PendingUser }
@@ -96,8 +96,16 @@ function SkeletonRow() {
 
 // ── Section head ──────────────────────────────────────────────────────────────
 
-function SectionHead({ label, icon, count, accent }: { label: string; icon: string; count?: number; accent?: boolean }) {
-  return (
+function SectionHead({
+  label, icon, count, accent, collapsed, onToggle,
+}: {
+  label: string; icon: string; count?: number; accent?: boolean;
+  // When present, the whole head becomes a toggle — used to collapse
+  // "People you may know" out of the way while there are incoming friend
+  // requests to act on first.
+  collapsed?: boolean; onToggle?: () => void;
+}) {
+  const content = (
     <View style={st.sectionHead}>
       <Ionicons name={icon as any} size={13} color={C.inkMute} />
       <Text style={st.sectionLabel}>{label}</Text>
@@ -106,8 +114,18 @@ function SectionHead({ label, icon, count, accent }: { label: string; icon: stri
           <Text style={st.badgeText}>{count}</Text>
         </View>
       )}
+      {onToggle && (
+        <Ionicons
+          name={collapsed ? 'chevron-down' : 'chevron-up'}
+          size={14}
+          color={C.inkMute}
+          style={{ marginLeft: 'auto' }}
+        />
+      )}
     </View>
   );
+  if (!onToggle) return content;
+  return <TouchableOpacity onPress={onToggle} activeOpacity={0.7}>{content}</TouchableOpacity>;
 }
 
 // ── User row ──────────────────────────────────────────────────────────────────
@@ -300,6 +318,10 @@ export default function FriendsScreen() {
   const [outgoing,   setOutgoing]   = useState<PendingUser[] | null>(null);
   const [suggested,  setSuggested]  = useState<SuggestedUser[]>([]);
   const [sugLoading, setSugLoading] = useState(true);
+  // Manual override once the user's tapped the "People you may know" head —
+  // otherwise it defaults collapsed whenever there are incoming requests
+  // (those are more important) and expanded when there aren't.
+  const [suggestionsToggle, setSuggestionsToggle] = useState<boolean | null>(null);
 
   const [searchQ,    setSearchQ]    = useState('');
   const [results,    setResults]    = useState<SearchUser[]>([]);
@@ -474,22 +496,31 @@ export default function FriendsScreen() {
   if (searchQ.trim()) {
     rows.push({ _t: 'search_results', results });
   } else {
-    // Suggestions (top, like web)
-    if (sugLoading || suggested.length > 0) {
-      rows.push({ _t: 'section', label: 'PEOPLE YOU MAY KNOW', icon: 'sparkles-outline' });
-      if (sugLoading) {
-        rows.push({ _t: 'skeleton' }, { _t: 'skeleton' }, { _t: 'skeleton' });
-      } else {
-        // Defensive cap in addition to the `limit` query param — keeps the section
-        // bounded even if the API ever returns more than asked.
-        suggested.slice(0, MAX_SUGGESTIONS).forEach(u => rows.push({ _t: 'suggested', item: u }));
-      }
-    }
-
-    // Incoming requests
+    // Incoming requests — listed first now: they're the most actionable
+    // thing on this screen, more so than suggestions.
     if (pendingIncoming.length > 0) {
       rows.push({ _t: 'section', label: 'FRIEND REQUESTS', icon: 'person-add-outline', count: pendingIncoming.length, accent: true });
       pendingIncoming.forEach(r => rows.push({ _t: 'incoming', item: r }));
+    }
+
+    // Suggestions — collapsed by default while there are incoming requests
+    // to deal with first; always open when there aren't, and the user's own
+    // toggle always wins once they've touched it either way.
+    if (sugLoading || suggested.length > 0) {
+      const collapsed = suggestionsToggle ?? pendingIncoming.length > 0;
+      rows.push({
+        _t: 'section', label: 'PEOPLE YOU MAY KNOW', icon: 'sparkles-outline',
+        collapsed, onToggle: () => setSuggestionsToggle(!collapsed),
+      });
+      if (!collapsed) {
+        if (sugLoading) {
+          rows.push({ _t: 'skeleton' }, { _t: 'skeleton' }, { _t: 'skeleton' });
+        } else {
+          // Defensive cap in addition to the `limit` query param — keeps the section
+          // bounded even if the API ever returns more than asked.
+          suggested.slice(0, MAX_SUGGESTIONS).forEach(u => rows.push({ _t: 'suggested', item: u }));
+        }
+      }
     }
 
     // Friends
@@ -576,7 +607,10 @@ export default function FriendsScreen() {
       case 'section':
         return (
           <View style={{ paddingHorizontal: 16, marginTop: 28, marginBottom: 8 }}>
-            <SectionHead label={item.label} icon={item.icon} count={item.count} accent={item.accent} />
+            <SectionHead
+              label={item.label} icon={item.icon} count={item.count} accent={item.accent}
+              collapsed={item.collapsed} onToggle={item.onToggle}
+            />
           </View>
         );
 

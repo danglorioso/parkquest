@@ -17,6 +17,7 @@ import { BadgeInfoModal } from '@/components/BadgeInfoModal';
 import { EmptyState } from '@/components/EmptyState';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { emitUserBlocked } from '@/lib/blocking';
+import { showToast } from '@/lib/toast';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -333,6 +334,7 @@ export default function UserProfileScreen() {
       });
       if (res.ok) {
         setProfile(p => p ? { ...p, friendship_status: 'accepted', friend_count: p.friend_count + 1 } : p);
+        showToast(`You and ${profile.display_name ?? profile.username} are now friends`);
       } else {
         Alert.alert('Error', 'Could not accept the request. Please try again.');
       }

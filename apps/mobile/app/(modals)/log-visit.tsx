@@ -247,8 +247,13 @@ function StarRating({ value, onChange, onDragChange }: {
   return (
     <View style={{ alignItems: 'center' }}>
       {/* Padded hit area — drags starting a bit outside the stars still rate.
-          Touch x maps off the inner row's pageX, so the padding is pure slack. */}
-      <View style={{ paddingVertical: 16, paddingHorizontal: 20 }} {...panResponder.panHandlers}>
+          Touch x maps off the inner row's pageX, so the padding is pure slack.
+          Generous on purpose: once PanResponder grants here, it keeps the
+          gesture for the rest of the drag regardless of later vertical
+          drift, so a wide starting margin is what actually stops a
+          slightly-off-horizontal swipe from instead being grabbed by the
+          sheet's own swipe-to-dismiss gesture. */}
+      <View style={{ paddingVertical: 28, paddingHorizontal: 20 }} {...panResponder.panHandlers}>
         <View
           ref={r => {
             if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; });
@@ -375,8 +380,11 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
     // Handlers live on this padded wrapper, not the track itself — drags that
     // start slightly above/below/beside the track still drive the slider (and
     // still suppress vertical scroll), since touch x maps off the inner
-    // track's own measured pageX.
-    <View style={{ paddingHorizontal: 10, paddingVertical: 16 }} {...panResponder.panHandlers}>
+    // track's own measured pageX. Generous padding on purpose — see StarRating's
+    // comment on the same pattern: it's the starting margin, not exact
+    // touch-to-thumb precision, that keeps a wobbly drag from being grabbed by
+    // the sheet's own swipe-to-dismiss gesture instead.
+    <View style={{ paddingHorizontal: 16, paddingVertical: 28 }} {...panResponder.panHandlers}>
       <View
         ref={r => { if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; }); }}
         onLayout={e => {
@@ -2316,6 +2324,15 @@ export default function LogVisitModal() {
   // So the native gesture is switched off for the whole duration of the drag-driven steps
   // (Rating/Crowd/Difficulty) and the per-drag counter is kept as a belt-and-braces signal
   // for any other step that hosts a draggable control.
+  //
+  // It's also switched off whenever there's something the exit prompt would ask about
+  // (an edit in progress, or a draft with real content) — otherwise the *interactive*
+  // swipe-down commits natively before beforeRemove's preventDefault() below ever runs:
+  // that listener fires on the JS thread, but UIKit's own sheet-dismiss animation isn't
+  // gated on JS and can finish first, so "Keep editing" was reopening a sheet that had
+  // already visually closed. Disabling the gesture up front means the only way to leave
+  // is the close button, whose handler calls promptExit() *before* triggering any
+  // navigation — so the prompt is guaranteed to land before anything disappears.
   const activeSliderDrags = useRef(0);
   const stepRef = useRef(step);
   stepRef.current = step;
@@ -2323,14 +2340,19 @@ export default function LogVisitModal() {
   // Also freezes the step ScrollView while a slider drag is live — a slightly
   // off-horizontal swipe on a slider was scrolling the content vertically.
   const [controlDragging, setControlDragging] = useState(false);
+  const hasUnsavedContent = isEditing || draftHasContent(draft);
   const setSliderDragging = useCallback((dragging: boolean) => {
     activeSliderDrags.current = Math.max(0, activeSliderDrags.current + (dragging ? 1 : -1));
     setControlDragging(activeSliderDrags.current > 0);
-    navigation.setOptions({ gestureEnabled: activeSliderDrags.current === 0 && !isDragStep(stepRef.current) });
-  }, [navigation]);
+    navigation.setOptions({
+      gestureEnabled: activeSliderDrags.current === 0 && !isDragStep(stepRef.current) && !hasUnsavedContent,
+    });
+  }, [navigation, hasUnsavedContent]);
   useEffect(() => {
-    navigation.setOptions({ gestureEnabled: !isDragStep(step) && activeSliderDrags.current === 0 });
-  }, [step, navigation]);
+    navigation.setOptions({
+      gestureEnabled: !isDragStep(step) && activeSliderDrags.current === 0 && !hasUnsavedContent,
+    });
+  }, [step, navigation, hasUnsavedContent]);
 
   useEffect(() => {
     if (isEdit) return;

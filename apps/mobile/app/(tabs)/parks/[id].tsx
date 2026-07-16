@@ -263,6 +263,9 @@ export default function ParkDetailScreen() {
   const [actionBtnHeight, setActionBtnHeight] = useState<number | null>(null);
   const [bottomOverlayHeight, setBottomOverlayHeight] = useState(0);
   const [showVisitPicker, setShowVisitPicker] = useState(false);
+  // Flips true if the frozen title's one line can't fit the full park name —
+  // it then re-renders with "National" abbreviated instead of an ellipsis.
+  const [abbrevFrozenTitle, setAbbrevFrozenTitle] = useState(false);
   const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
   const [visitors, setVisitors] = useState<ParkVisitorsSummary | null>(null);
   const [showFriendsSheet, setShowFriendsSheet] = useState(false);
@@ -461,6 +464,7 @@ export default function ParkDetailScreen() {
     setHeroIdx(0);
     setHeroLoaded(false);
     setPrevHeroImage(null);
+    setAbbrevFrozenTitle(false);
     prevHeroRef.current = null;
   }, [nps]);
 
@@ -759,7 +763,20 @@ export default function ParkDetailScreen() {
           ],
         }}
       >
-        <Text style={styles.frozenTitle} numberOfLines={1}>{park.name}</Text>
+        <Text
+          style={styles.frozenTitle}
+          numberOfLines={1}
+          onTextLayout={(e) => {
+            // Truncated one-liner reports a shorter visible substring than
+            // the full name — swap to the abbreviated form instead of "…".
+            const line = e.nativeEvent.lines[0];
+            if (!abbrevFrozenTitle && line && line.text.trim().length < park.name.length) {
+              setAbbrevFrozenTitle(true);
+            }
+          }}
+        >
+          {abbrevFrozenTitle ? park.name.replace(/National/g, "Nat'l") : park.name}
+        </Text>
       </Animated.View>
 
       {/* Back button — fixed overlay, always visible */}
@@ -858,45 +875,54 @@ export default function ParkDetailScreen() {
           opacity: actionsAnim.interpolate({ inputRange: [0.55, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
         }}
       >
-        <MenuView
-          onOpenMenu={() => setShowHeaderMenu(true)}
-          onCloseMenu={() => setShowHeaderMenu(false)}
-          onPressAction={({ nativeEvent }) => {
-            switch (nativeEvent.event) {
-              case 'log-visit':
-                router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never);
-                break;
-              case 'bucket':
-                toggleBucketList();
-                break;
-              case 'share':
-                handleShare();
-                break;
-            }
-          }}
-          actions={[
-            { id: 'log-visit', title: parkStatus === 'visited' ? 'Log another visit' : 'Log a visit', image: 'checkmark.circle' },
-            ...(parkStatus !== 'visited' ? [{
-              id: 'bucket',
-              title: onBucket ? 'Remove from bucket list' : 'Add to bucket list',
-              image: onBucket ? 'bookmark.fill' : 'bookmark',
-            }] : []),
-            { id: 'share', title: 'Share', image: 'square.and.arrow.up' },
-          ]}
-        >
-          <TouchableOpacity
-            hitSlop={8}
-            disabled={bucketBusy}
-            style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined, opacity: showHeaderMenu ? 0.6 : 1 }]}
+        {/* Glass circle lives on this plain wrapper, not inside MenuView's
+            child — MenuView wraps its trigger in its own native container
+            for the context-menu interaction, which doesn't reliably respect
+            the child's own overflow:hidden/borderRadius clipping, so the
+            glass fill wasn't rendering as a circle. A sibling wrapper with
+            the clipping is guaranteed to clip regardless of what MenuView
+            does internally. */}
+        <View style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined, opacity: showHeaderMenu ? 0.6 : 1 }]}>
+          <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+          <MenuView
+            onOpenMenu={() => setShowHeaderMenu(true)}
+            onCloseMenu={() => setShowHeaderMenu(false)}
+            onPressAction={({ nativeEvent }) => {
+              switch (nativeEvent.event) {
+                case 'log-visit':
+                  router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never);
+                  break;
+                case 'edit-visit':
+                  handleEditVisitPress();
+                  break;
+                case 'bucket':
+                  toggleBucketList();
+                  break;
+                case 'share':
+                  handleShare();
+                  break;
+              }
+            }}
+            actions={[
+              { id: 'log-visit', title: parkStatus === 'visited' ? 'Log another visit' : 'Log a visit', image: 'checkmark.circle' },
+              ...(parkStatus === 'visited' ? [{ id: 'edit-visit', title: 'Edit visit', image: 'pencil' }] : []),
+              ...(parkStatus !== 'visited' ? [{
+                id: 'bucket',
+                title: onBucket ? 'Remove from bucket list' : 'Add to bucket list',
+                image: onBucket ? 'bookmark.fill' : 'bookmark',
+              }] : []),
+              { id: 'share', title: 'Share', image: 'square.and.arrow.up' },
+            ]}
           >
-            <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
-            {bucketBusy ? (
-              <ActivityIndicator size="small" color="#FFFBF1" />
-            ) : (
-              <Ionicons name="ellipsis-horizontal" size={20} color="#FFFBF1" />
-            )}
-          </TouchableOpacity>
-        </MenuView>
+            <TouchableOpacity hitSlop={8} disabled={bucketBusy} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+              {bucketBusy ? (
+                <ActivityIndicator size="small" color="#FFFBF1" />
+              ) : (
+                <Ionicons name="ellipsis-horizontal" size={20} color="#FFFBF1" />
+              )}
+            </TouchableOpacity>
+          </MenuView>
+        </View>
       </Animated.View>
 
       <Animated.ScrollView

@@ -15,6 +15,7 @@ import {
   type NotificationItem, type NotificationType,
 } from '@/lib/api';
 import { STATIC as C, dyn, useColors, useThemedStyles, type Colors } from '@/lib/palette';
+import { showToast } from '@/lib/toast';
 
 const TYPE_CONFIG: Record<NotificationType, { icon: keyof typeof Ionicons.glyphMap; bg: string; color: string }> = {
   friend_request:  { icon: 'person-add', bg: '#EDE9FE', color: '#7C3AED' },
@@ -474,7 +475,11 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
     setFriendReqStatus(prev => ({ ...prev, [friendshipId]: action === 'accept' ? 'accepted' : 'declined' }));
     try {
       await respondFriendRequest(tok, friendshipId, action);
-      if (action === 'reject') {
+      if (action === 'accept') {
+        const actor = items.find(n => n.id === notificationId);
+        const name = actor?.actor_display_name || actor?.actor_username || 'them';
+        showToast(`You and ${name} are now friends`);
+      } else {
         // The server deletes the friend_request notification on decline; drop the
         // row here too instead of leaving a settled "Declined" state behind.
         setItems(prev => prev.filter(n => n.id !== notificationId));
@@ -487,7 +492,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
         return next;
       });
     }
-  }, []);
+  }, [items]);
 
   const handleDismiss = useCallback(async (id: number) => {
     setItems(prev => prev.filter(n => n.id !== id));
@@ -514,20 +519,27 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 
   return (
     <>
-      <TouchableOpacity style={style} activeOpacity={0.7} onPress={() => { dragY.setValue(800); backdropOpacity.setValue(0); setOpen(true); }}>
-        <GlassIconBg />
-        {open && <View style={[StyleSheet.absoluteFill, styles.bellActive]} pointerEvents="none" />}
-        {loading ? (
-          <ActivityIndicator size="small" color={T.primary} />
-        ) : (
-          <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? T.primary : C.inkSoft} />
-        )}
+      {/* The unread badge is a sibling of the clipped glass circle, not a
+          child of it — `style` carries the button's own overflow:hidden
+          (needed to clip GlassIconBg into a circle), and a corner-anchored
+          badge inside that same clip was getting sliced by the rounded
+          edge. Wrapping lets the badge sit fully on top instead. */}
+      <View style={{ position: 'relative' }}>
+        <TouchableOpacity style={style} activeOpacity={0.7} onPress={() => { dragY.setValue(800); backdropOpacity.setValue(0); setOpen(true); }}>
+          <GlassIconBg />
+          {open && <View style={[StyleSheet.absoluteFill, styles.bellActive]} pointerEvents="none" />}
+          {loading ? (
+            <ActivityIndicator size="small" color={T.primary} />
+          ) : (
+            <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? T.primary : C.inkSoft} />
+          )}
+        </TouchableOpacity>
         {displayCount > 0 && (
-          <View style={styles.badge}>
+          <View style={styles.badge} pointerEvents="none">
             <Text style={styles.badgeText}>{displayCount > 99 ? '99+' : displayCount}</Text>
           </View>
         )}
-      </TouchableOpacity>
+      </View>
 
       <Modal
         visible={open}

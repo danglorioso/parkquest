@@ -60,7 +60,7 @@ export async function GET() {
       ) t
     `).then(r => r.rows as { count: number }[]),
     db.execute(sql`
-      SELECT DATE(created_at) AS day, COUNT(*)::int AS count
+      SELECT to_char(DATE(created_at), 'YYYY-MM-DD') AS day, COUNT(*)::int AS count
       FROM user_profiles
       WHERE created_at > NOW() - INTERVAL '30 days'
       GROUP BY day ORDER BY day
@@ -68,12 +68,19 @@ export async function GET() {
     // One row per active user per day, over the trailing year — powers the
     // GitHub-style contribution heatmap. Distinct per (user, day) so a user
     // posting + commenting the same day only counts once.
+    //
+    // `day` is cast to a plain 'YYYY-MM-DD' string (to_char, not just DATE)
+    // because the client zero-fills missing days by building its own
+    // 'YYYY-MM-DD' keys and looking them up in a Map — the neon driver
+    // returns DATE columns as full ISO timestamps otherwise, so every
+    // lookup missed and both this chart and the 30-day active-users chart
+    // below always rendered zero regardless of real activity.
     db.execute(sql`
       SELECT day, COUNT(*)::int AS count FROM (
-        SELECT DISTINCT DATE(created_at) AS day, clerk_user_id AS user_id FROM posts WHERE created_at > NOW() - INTERVAL '365 days'
-        UNION SELECT DISTINCT DATE(created_at), clerk_user_id FROM visits WHERE created_at > NOW() - INTERVAL '365 days'
-        UNION SELECT DISTINCT DATE(created_at), user_id FROM likes WHERE created_at > NOW() - INTERVAL '365 days'
-        UNION SELECT DISTINCT DATE(created_at), user_id FROM comments WHERE created_at > NOW() - INTERVAL '365 days'
+        SELECT DISTINCT to_char(DATE(created_at), 'YYYY-MM-DD') AS day, clerk_user_id AS user_id FROM posts WHERE created_at > NOW() - INTERVAL '365 days'
+        UNION SELECT DISTINCT to_char(DATE(created_at), 'YYYY-MM-DD'), clerk_user_id FROM visits WHERE created_at > NOW() - INTERVAL '365 days'
+        UNION SELECT DISTINCT to_char(DATE(created_at), 'YYYY-MM-DD'), user_id FROM likes WHERE created_at > NOW() - INTERVAL '365 days'
+        UNION SELECT DISTINCT to_char(DATE(created_at), 'YYYY-MM-DD'), user_id FROM comments WHERE created_at > NOW() - INTERVAL '365 days'
       ) t
       GROUP BY day ORDER BY day
     `).then(r => r.rows as { day: string; count: number }[]),

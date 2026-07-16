@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 import Svg, { Circle, Defs, Line, Path as SvgPath, Text as SvgText, TextPath } from 'react-native-svg';
+import { getParkGlyph } from '@parkquest/types';
 
 // ── Stamp palette + helpers ───────────────────────────────────────────────────
 
@@ -94,20 +95,38 @@ export function ParkStamp({
         </SvgText>
 
         {/* Center scene ─────────────────────────────────────────── */}
-        {/* Back mountain (left, lighter for depth) */}
-        <SvgPath d="M 18 63 L 36 44 L 54 63 Z" fill={c} opacity="0.38" />
-        {/* Front mountain (center, taller) */}
-        <SvgPath d="M 33 63 L 53 37 L 73 63 Z" fill={c} opacity="0.88" />
-        {/* Snow cap on front peak */}
-        <SvgPath d="M 53 37 L 47 48 L 59 48 Z" fill="white" opacity="0.28" />
-        {/* Pine trees — left */}
-        <SvgPath d="M 18 63 L 21 56 L 24 63 Z" fill={c} opacity="0.9" />
-        <SvgPath d="M 23 63 L 27 55 L 31 63 Z" fill={c} opacity="0.9" />
-        {/* Pine trees — right */}
-        <SvgPath d="M 72 63 L 75 56 L 78 63 Z" fill={c} opacity="0.9" />
-        <SvgPath d="M 77 63 L 80 55 L 83 63 Z" fill={c} opacity="0.88" />
-        {/* Sun */}
-        <Circle cx="72" cy="43" r="2.8" fill={c} opacity="0.88" />
+        {(() => {
+          const glyph = getParkGlyph(parkCode);
+          if (glyph) {
+            return glyph.map((shape, i) => (
+              <SvgPath
+                key={i}
+                d={shape.d}
+                fill={shape.fill === 'white' ? 'white' : c}
+                opacity={shape.opacity ?? 1}
+              />
+            ));
+          }
+          // Default scene — used until a park gets a real illustrated glyph.
+          return (
+            <>
+              {/* Back mountain (left, lighter for depth) */}
+              <SvgPath d="M 18 63 L 36 44 L 54 63 Z" fill={c} opacity="0.38" />
+              {/* Front mountain (center, taller) */}
+              <SvgPath d="M 33 63 L 53 37 L 73 63 Z" fill={c} opacity="0.88" />
+              {/* Snow cap on front peak */}
+              <SvgPath d="M 53 37 L 47 48 L 59 48 Z" fill="white" opacity="0.28" />
+              {/* Pine trees — left */}
+              <SvgPath d="M 18 63 L 21 56 L 24 63 Z" fill={c} opacity="0.9" />
+              <SvgPath d="M 23 63 L 27 55 L 31 63 Z" fill={c} opacity="0.9" />
+              {/* Pine trees — right */}
+              <SvgPath d="M 72 63 L 75 56 L 78 63 Z" fill={c} opacity="0.9" />
+              <SvgPath d="M 77 63 L 80 55 L 83 63 Z" fill={c} opacity="0.88" />
+              {/* Sun */}
+              <Circle cx="72" cy="43" r="2.8" fill={c} opacity="0.88" />
+            </>
+          );
+        })()}
       </Svg>
     </View>
   );

@@ -6,6 +6,7 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, withTiming,
 } from 'react-native-reanimated';
@@ -264,6 +265,7 @@ export function ImageLightbox({
           onPress={handleClose}
           hitSlop={16}
         >
+          <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
           <Ionicons name="close" size={22} color="#FFFBF1" />
         </TouchableOpacity>
 
@@ -274,6 +276,7 @@ export function ImageLightbox({
             style={[styles.nav, { left: 16, opacity: chromeOpacity }]}
           >
             <TouchableOpacity onPress={() => goTo(idx - 1)} style={styles.navBtn}>
+              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
               <Ionicons name="chevron-back" size={24} color="#fff" />
             </TouchableOpacity>
           </Animated.View>
@@ -284,6 +287,7 @@ export function ImageLightbox({
             style={[styles.nav, { right: 16, opacity: chromeOpacity }]}
           >
             <TouchableOpacity onPress={() => goTo(idx + 1)} style={styles.navBtn}>
+              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
               <Ionicons name="chevron-forward" size={24} color="#fff" />
             </TouchableOpacity>
           </Animated.View>
@@ -345,7 +349,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
@@ -359,7 +363,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },

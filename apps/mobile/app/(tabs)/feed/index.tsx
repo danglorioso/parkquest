@@ -246,11 +246,23 @@ export default function FeedScreen() {
 
       {/* Filter chips — only show when there are posts */}
       {posts.length > 0 && (
-        <View style={styles.chips}>
-          <FilterChip label="All"     active={filter === 'all'}     primary={palette.primary} onPress={() => setFilter('all')} />
-          <FilterChip label="Friends" active={filter === 'friends'} primary={palette.primary} onPress={() => setFilter(f => f === 'friends' ? 'all' : 'friends')} />
-          <FilterChip label="Visits"  active={filter === 'visits'}  primary={palette.primary} onPress={() => setFilter(f => f === 'visits' ? 'all' : 'visits')} />
-          <FilterChip label="Badges"  active={filter === 'badges'}  primary={palette.primary} onPress={() => setFilter(f => f === 'badges' ? 'all' : 'badges')} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
+          <View style={[styles.chips, { marginTop: 0 }]}>
+            <FilterChip label="All"     active={filter === 'all'}     primary={palette.primary} onPress={() => setFilter('all')} />
+            <FilterChip label="Friends" active={filter === 'friends'} primary={palette.primary} onPress={() => setFilter(f => f === 'friends' ? 'all' : 'friends')} />
+            <FilterChip label="Visits"  active={filter === 'visits'}  primary={palette.primary} onPress={() => setFilter(f => f === 'visits' ? 'all' : 'visits')} />
+            <FilterChip label="Badges"  active={filter === 'badges'}  primary={palette.primary} onPress={() => setFilter(f => f === 'badges' ? 'all' : 'badges')} />
+          </View>
+          {filter === 'friends' && (
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/profile/friends' as never)}
+              hitSlop={8}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingRight: 2 }}
+            >
+              <Ionicons name="people-outline" size={13} color={palette.primary} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: palette.primary }}>Manage</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
     </View>

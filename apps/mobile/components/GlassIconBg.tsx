@@ -13,13 +13,24 @@ const glass = liquidGlassAvailable && GlassView != null;
 export function GlassIconBg({
   interactive = true, tintColor, fallbackColor,
 }: { interactive?: boolean; tintColor?: string; fallbackColor?: string }) {
+  // Real Liquid Glass's own press/highlight layer doesn't reliably respect
+  // the parent TouchableOpacity's overflow:hidden clip — on a hold it was
+  // showing a square edge escaping past the circular button (park page
+  // header buttons, settings back button). Setting the glass view's own
+  // borderRadius rounds its material (RN clamps to min(w,h)/2, so this is a
+  // true circle/pill regardless of the button's actual size) rather than
+  // relying entirely on an ancestor's clip.
   return glass && GlassView
-    ? <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={tintColor} isInteractive={interactive} />
+    ? <GlassView style={[StyleSheet.absoluteFill, styles.glass]} glassEffectStyle="regular" tintColor={tintColor} isInteractive={interactive} />
     : <View style={[StyleSheet.absoluteFill, styles.fallback, (fallbackColor ?? tintColor) ? { backgroundColor: fallbackColor ?? tintColor } : null]} />;
 }
 
 const styles = StyleSheet.create({
   fallback: {
     backgroundColor: dyn('rgba(255,251,241,0.55)', 'rgba(32,29,23,0.55)'),
+  },
+  glass: {
+    borderRadius: 999,
+    overflow: 'hidden',
   },
 });
