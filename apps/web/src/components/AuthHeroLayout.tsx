@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSignIn, useSignUp, useUser } from "@clerk/nextjs";
 import { Map, Pencil, Award, Compass, ArrowRight } from "lucide-react";
+import { AppStoreBadge } from "./AppStoreBadge";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1794,6 +1795,10 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
           }}
         >
           Scroll up to sign in or create an account.
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 26 }}>
+          <AppStoreBadge />
         </div>
 
         {/* Mini link row */}

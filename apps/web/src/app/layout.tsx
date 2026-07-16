@@ -21,11 +21,24 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://parkquest.me"),
   title: {
     template: "%s | ParkQuest",
     default: "ParkQuest - Track Your National Park Adventures",
   },
   description: "Track your visits, earn badges, and explore the beauty of national parks across the country with ParkQuest.",
+  openGraph: {
+    title: "ParkQuest - Track Your National Park Adventures",
+    description: "Track your visits, earn badges, and explore the beauty of national parks across the country with ParkQuest.",
+    url: "https://parkquest.me",
+    siteName: "ParkQuest",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ParkQuest - Track Your National Park Adventures",
+    description: "Track your visits, earn badges, and explore the beauty of national parks across the country with ParkQuest.",
+  },
   other: {
     // Safari's native Smart App Banner — shows "View"/"Open" at the top of the
     // page on iOS, linking to the App Store listing (or the app itself if installed).

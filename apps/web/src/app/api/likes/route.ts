@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { likes, posts, notifications, userProfiles } from '@/lib/db/schema';
 import { sendPushToUser } from '@/lib/push';
 import { getBlockedIds } from '@/lib/blocks';
+import { ensureUserProfile } from '@/lib/ensureUserProfile';
 
 export async function GET(request: Request) {
   try {
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    await ensureUserProfile(userId);
 
     const { postId } = await request.json();
     if (!postId) return NextResponse.json({ error: 'postId is required' }, { status: 400 });

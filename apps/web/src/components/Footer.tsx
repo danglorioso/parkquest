@@ -1,8 +1,11 @@
+import { AppStoreBadge } from "./AppStoreBadge";
+
 export default function Footer() {
   return (
     <footer className="bg-green-900 border-t border-white/10 mt-auto">
       <div className="max-w-6xl mx-auto px-6 py-4">
         <div className="flex flex-col items-center space-y-3">
+          <AppStoreBadge />
           <div className="text-center">
             <p className="text-white text-sm md:text-base mb-1">
               Created by{" "}

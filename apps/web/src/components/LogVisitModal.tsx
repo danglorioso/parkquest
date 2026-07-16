@@ -1075,11 +1075,12 @@ async function resizeImageFile(file: File, maxDim = PHOTO_MAX_DIMENSION, quality
   return blob ?? file;
 }
 
-function PhotoUploader({ photos, cover, onAddPhotos, onRemove, onSetCover }: {
+function PhotoUploader({ photos, cover, onAddPhotos, onRemove, onSetCover, onUploadingChange }: {
   photos: string[]; cover: string | null;
   onAddPhotos: (urls: string[]) => void;
   onRemove: (url: string) => void;
   onSetCover: (url: string) => void;
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -1089,6 +1090,7 @@ function PhotoUploader({ photos, cover, onAddPhotos, onRemove, onSetCover }: {
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setUploading(true);
+    onUploadingChange?.(true);
     setUploadError(null);
     const urls: string[] = [];
     let failed = 0;
@@ -1117,6 +1119,7 @@ function PhotoUploader({ photos, cover, onAddPhotos, onRemove, onSetCover }: {
     if (urls.length) onAddPhotos(urls);
     if (failed > 0) setUploadError(`${failed} photo${failed > 1 ? "s" : ""} failed to upload. Check your R2 configuration.`);
     setUploading(false);
+    onUploadingChange?.(false);
   };
 
   return (
@@ -1395,7 +1398,10 @@ function StepJournal({ draft, set, activities, npsActivityNames, originalPhotos 
       <div style={{ display: "flex", flexDirection: "column", gap: 18, marginBottom: 18 }}>
         <Section title="Highlight" tag="optional" mb={0}>
           <div style={{ position: "relative" }}>
-            <input value={draft.highlight} onChange={e => set("highlight", e.target.value.slice(0, 90))} placeholder="The one moment you'll remember"
+            <input value={draft.highlight} onChange={e => set("highlight", e.target.value.slice(0, 90))}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+              enterKeyHint="done"
+              placeholder="The one moment you'll remember"
               style={{ width: "100%", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 14, padding: "13px 52px 13px 14px", fontSize: 15, color: "var(--ink)", outline: "none", fontWeight: 600, boxSizing: "border-box", fontFamily: "inherit" }} />
             <div style={{ ...mono, position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 9.5, color: "var(--ink-mute)", letterSpacing: 0.6, pointerEvents: "none" }}>{draft.highlight.length}/90</div>
           </div>
@@ -1403,6 +1409,8 @@ function StepJournal({ draft, set, activities, npsActivityNames, originalPhotos 
         <Section title="Notes" tag="optional" mb={0}>
           <div style={{ position: "relative" }}>
             <textarea value={draft.notes} onChange={e => set("notes", e.target.value.slice(0, 2000))} placeholder="What did you see, hear, feel?"
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+              enterKeyHint="done"
               style={{ width: "100%", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 14, padding: "13px 14px 28px", fontSize: 15, color: "var(--ink)", outline: "none", lineHeight: 1.5, minHeight: 130, resize: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
             <div style={{ ...mono, position: "absolute", right: 12, bottom: 10, fontSize: 9.5, color: "var(--ink-mute)", letterSpacing: 0.6, pointerEvents: "none" }}>{draft.notes.length}/2000</div>
           </div>
@@ -1443,6 +1451,8 @@ function StepShare({ draft, set }: { draft: VisitDraft; set: SetFn }) {
         <textarea
           value={draft.caption}
           onChange={e => set("caption", e.target.value.slice(0, 500))}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+          enterKeyHint="done"
           placeholder="Share what made this trip special…"
           rows={4}
           style={{
@@ -1528,6 +1538,7 @@ export function LogVisitModal({ open, onClose, onPosted, initialDraft, editMode 
   const [parks, setParks]               = useState<ParkData[]>([]);
   const [showParkPicker, setShowParkPicker] = useState(false);
   const [submitting, setSubmitting]           = useState(false);
+  const [photosUploading, setPhotosUploading] = useState(false);
   const [npsActivityCache, setNpsActivityCache] = useState<{ parkCode: string; names: string[] } | null>(null);
   const [restoreBannerDraft, setRestoreBannerDraft] = useState<SavedDraft | null>(
     () => { const d = loadDrafts(); return d.length > 0 ? d[0] : null; }
