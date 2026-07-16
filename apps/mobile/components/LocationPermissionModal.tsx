@@ -25,9 +25,8 @@ export function LocationPermissionModal({
           </View>
           <Text style={styles.title}>Find parks near you</Text>
           <Text style={styles.body}>
-            ParkQuest uses your location to sort parks by distance to you, and to power
-            in-park features coming soon — like scavenger hunts and other activities you
-            can do while you're there.
+            ParkQuest uses your location to sort parks by distance to you and to power
+            in-park features.
           </Text>
           <TouchableOpacity
             style={[styles.allowBtn, { backgroundColor: T.primary }]}

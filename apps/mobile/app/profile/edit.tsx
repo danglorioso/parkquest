@@ -549,7 +549,7 @@ export default function EditProfileScreen() {
           </Field>
 
           {/* More settings */}
-          <View style={[fieldStyles.field, { gap: 10 }]}>
+          <View style={[fieldStyles.field, { gap: 10, marginTop: 14 }]}>
             <Text style={fieldStyles.fieldLabel}>More settings</Text>
             <TouchableOpacity style={styles.offlineRow} onPress={() => setEmailModal(true)} activeOpacity={0.7}>
               <Ionicons name="mail-outline" size={18} color={C.inkSoft} />
@@ -578,7 +578,7 @@ export default function EditProfileScreen() {
           </View>
 
           {/* Appearance */}
-          <View style={[fieldStyles.field, { gap: 10 }]}>
+          <View style={[fieldStyles.field, { gap: 10, marginTop: 14 }]}>
             <Text style={fieldStyles.fieldLabel}>Appearance</Text>
             <View style={styles.modeRow}>
               {([
@@ -631,7 +631,7 @@ export default function EditProfileScreen() {
           </View>
 
           {/* Offline Data */}
-          <View style={[fieldStyles.field, { gap: 10 }]}>
+          <View style={[fieldStyles.field, { gap: 10, marginTop: 14 }]}>
             <Text style={fieldStyles.fieldLabel}>Offline Data</Text>
             <View style={styles.offlineRow}>
               <View style={{ flex: 1, gap: 2 }}>

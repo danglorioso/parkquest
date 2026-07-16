@@ -142,7 +142,7 @@ function RootStack() {
   };
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: STATIC.bg } }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false, headerBackTitle: '' }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen
         name="(modals)/log-visit"

@@ -340,15 +340,21 @@ export function ReportSheet({
 
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
-// Cards have 16px horizontal margin on each side in the feed list.
-const CARD_W   = SCREEN_W - 32;
-const PHOTO_H  = 380;
+// Fallback only, used for the first frame before onLayout reports the real
+// width — the actual paging math below always uses the measured width, since
+// this card-minus-margins guess drifts from the true value (border width,
+// different padding in different screens the carousel is embedded in) just
+// enough to leave a sliver of the next/prev photo visible after a swipe.
+const CARD_W_FALLBACK = SCREEN_W - 32;
 
 const CAROUSEL_CHROME_FADE_DELAY = 2500;
 
 function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: string | null }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  // Measured from the carousel's own layout rather than assumed from screen
+  // width — square, so this doubles as both the paging width and photo height.
+  const [boxW, setBoxW] = useState(CARD_W_FALLBACK);
   const scrollRef = useRef<ScrollView>(null);
   const n = photos.length;
   const fallbackColor = parkColor(parkCode ?? 'xx');
@@ -375,12 +381,12 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
 
   const goTo = (k: number) => {
     const next = Math.max(0, Math.min(n - 1, k));
-    scrollRef.current?.scrollTo({ x: next * CARD_W, animated: true });
+    scrollRef.current?.scrollTo({ x: next * boxW, animated: true });
     setActiveIdx(next);
   };
 
   return (
-    <View>
+    <View onLayout={e => setBoxW(e.nativeEvent.layout.width)}>
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -389,7 +395,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         onScrollBeginDrag={showChromeBriefly}
         onMomentumScrollEnd={e => {
           const x = e.nativeEvent.contentOffset.x;
-          setActiveIdx(Math.round(x / CARD_W));
+          setActiveIdx(Math.round(x / boxW));
         }}
       >
         {photos.map((src, k) => (
@@ -397,17 +403,17 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
             key={k}
             activeOpacity={0.92}
             onPress={() => setLightboxIdx(k)}
-            style={{ width: CARD_W, height: PHOTO_H }}
+            style={{ width: boxW, height: boxW }}
           >
             {src ? (
               <Image
                 source={{ uri: src }}
-                style={{ width: CARD_W, height: PHOTO_H }}
+                style={{ width: boxW, height: boxW }}
                 contentFit="cover"
                 cachePolicy="memory-disk"
               />
             ) : (
-              <View style={{ width: CARD_W, height: PHOTO_H, backgroundColor: fallbackColor }} />
+              <View style={{ width: boxW, height: boxW, backgroundColor: fallbackColor }} />
             )}
           </TouchableOpacity>
         ))}
@@ -474,7 +480,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
           onClose={finalIndex => {
             setLightboxIdx(null);
             setActiveIdx(finalIndex);
-            scrollRef.current?.scrollTo({ x: finalIndex * CARD_W, animated: false });
+            scrollRef.current?.scrollTo({ x: finalIndex * boxW, animated: false });
           }}
         />
       )}
@@ -486,14 +492,33 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
 
 function BadgePostBody({ badgeId }: { badgeId: string }) {
   const [badge, setBadge] = useState(() => BADGE_MAP.get(badgeId));
+  // Defs load from the server (no static bundle) — until the first fetch
+  // resolves, badgeId is a raw slug like "hot_streak" and unfit to show.
+  const [ready, setReady] = useState(() => BADGE_MAP.has(badgeId));
 
-  // Static defs never carry admin edits (custom colors, renames), so always
-  // refresh from the server defs and re-read.
+  // Defs are always re-fetched (never trusted from a prior read) since names,
+  // colors, and tiers are admin-editable and can change between loads.
   useEffect(() => {
     let active = true;
-    ensureBadgeDefs().then(() => { if (active) setBadge(BADGE_MAP.get(badgeId)); });
+    ensureBadgeDefs().then(() => {
+      if (!active) return;
+      setBadge(BADGE_MAP.get(badgeId));
+      setReady(true);
+    });
     return () => { active = false; };
   }, [badgeId]);
+
+  if (!ready) {
+    return (
+      <View style={[styles.badgeBody, { borderColor: C.hairline, backgroundColor: C.surfaceAlt }]}>
+        <View style={[styles.badgeCircle, { backgroundColor: C.hairline, shadowOpacity: 0, elevation: 0 }]} />
+        <View style={styles.badgeText}>
+          <View style={{ width: 72, height: 11, borderRadius: 4, backgroundColor: C.hairline, marginBottom: 8 }} />
+          <View style={{ width: '55%', height: 15, borderRadius: 5, backgroundColor: C.hairline }} />
+        </View>
+      </View>
+    );
+  }
 
   const col = badgeColors(badge);
 
@@ -1518,7 +1543,7 @@ const styles = StyleSheet.create({
   carouselDotActive: { width: 22, backgroundColor: '#FFFBF1' },
   carouselDotInactive: { width: 6, backgroundColor: 'rgba(255,251,241,0.50)' },
   carouselNav: {
-    position: 'absolute', top: PHOTO_H / 2 - 18,
+    position: 'absolute', top: '50%', marginTop: -18,
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
   },
@@ -1778,8 +1803,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
   },
   actionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingRight: 4, paddingVertical: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: 6,
   },
   actionBtnLiked: {},
   actionBtnActive: {},

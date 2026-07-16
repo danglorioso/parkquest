@@ -1,5 +1,5 @@
 import {
-  Dimensions, FlatList, Image, LayoutAnimation, Linking, Platform, Pressable,
+  Animated, Dimensions, Easing, FlatList, Image, LayoutAnimation, Linking, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, UIManager, View,
   type ColorValue,
 } from 'react-native';
@@ -49,6 +49,7 @@ interface Visit {
 
 type ParkStatus = 'visited' | 'bucketList' | 'notVisited';
 type StatusFilter = 'all' | 'visited' | 'bucketList' | 'notVisited';
+type SortBy = 'closest' | 'az' | 'za';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,15 @@ function parkStatus(code: string, visits: Visit[]): ParkStatus {
   return 'notVisited';
 }
 
+function parkDistance(park: Park, loc: { lat: number; lng: number } | null): number | null {
+  if (!loc || !park.latitude || !park.longitude) return null;
+  return distanceMiles(loc.lat, loc.lng, parseFloat(park.latitude), parseFloat(park.longitude));
+}
+
+function formatDistance(mi: number): string {
+  return mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
+}
+
 async function apiFetch<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -112,24 +122,15 @@ function SkeletonCard() {
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: ParkStatus }) {
-  if (status === 'notVisited') {
-    return (
-      <View style={[styles.statusBadge, { backgroundColor: 'rgba(20,17,12,0.52)' }]}>
-        <Text style={styles.statusBadgeText}>Not visited</Text>
-      </View>
-    );
-  }
+  if (status === 'notVisited') return null;
   return (
     <View style={[styles.statusBadge, {
       backgroundColor: status === 'visited' ? C.visited : C.bucket,
     }]}>
       <Ionicons
         name={status === 'visited' ? 'checkmark' : 'bookmark'}
-        size={9} color="#FFFBF1"
+        size={13} color="#FFFBF1"
       />
-      <Text style={styles.statusBadgeText}>
-        {status === 'visited' ? 'Visited' : 'Bucket list'}
-      </Text>
     </View>
   );
 }
@@ -137,8 +138,8 @@ function StatusBadge({ status }: { status: ParkStatus }) {
 // ── Park card ─────────────────────────────────────────────────────────────────
 
 function ParkCard({
-  park, status, descLines = 2, onTitleLayout,
-}: { park: Park; status: ParkStatus; descLines?: number; onTitleLayout?: (lines: number) => void }) {
+  park, status, descLines = 2, onTitleLayout, distance,
+}: { park: Park; status: ParkStatus; descLines?: number; onTitleLayout?: (lines: number) => void; distance?: number | null }) {
   const router = useRouter();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
@@ -164,7 +165,12 @@ function ParkCard({
         <StatusBadge status={status} />
       </View>
       <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
-        <Text style={styles.cardState} numberOfLines={1}>{stateName}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <Text style={[styles.cardState, { marginBottom: 0 }]} numberOfLines={1}>{stateName}</Text>
+          {distance != null && (
+            <Text style={[styles.cardState, { marginBottom: 0 }]} numberOfLines={1}>{formatDistance(distance)}</Text>
+          )}
+        </View>
         <Text
           style={styles.cardName}
           numberOfLines={2}
@@ -184,8 +190,8 @@ function ParkCard({
 // to 2 lines on one side leaves spare height on the other — give that side's
 // description the extra line instead of truncating it needlessly.
 function ParkCardRow({
-  left, right, visits,
-}: { left: Park; right: Park | null; visits: Visit[] }) {
+  left, right, visits, userLocation,
+}: { left: Park; right: Park | null; visits: Visit[]; userLocation: { lat: number; lng: number } | null }) {
   const [leftTitleLines, setLeftTitleLines] = useState(1);
   const [rightTitleLines, setRightTitleLines] = useState(1);
   const maxTitleLines = Math.max(leftTitleLines, rightTitleLines);
@@ -197,6 +203,7 @@ function ParkCardRow({
         status={parkStatus(left.park_code, visits)}
         descLines={2 + (maxTitleLines - leftTitleLines)}
         onTitleLayout={setLeftTitleLines}
+        distance={parkDistance(left, userLocation)}
       />
       {right
         ? (
@@ -205,6 +212,7 @@ function ParkCardRow({
             status={parkStatus(right.park_code, visits)}
             descLines={2 + (maxTitleLines - rightTitleLines)}
             onTitleLayout={setRightTitleLines}
+            distance={parkDistance(right, userLocation)}
           />
         )
         : <View style={{ width: CARD_W }} />
@@ -213,7 +221,9 @@ function ParkCardRow({
   );
 }
 
-function ParkListRow({ park, status, visitCount }: { park: Park; status: ParkStatus; visitCount: number }) {
+function ParkListRow({
+  park, status, visitCount, distance,
+}: { park: Park; status: ParkStatus; visitCount: number; distance?: number | null }) {
   const router = useRouter();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
@@ -223,6 +233,7 @@ function ParkListRow({ park, status, visitCount }: { park: Park; status: ParkSta
   const statusLine =
     status === 'visited'    ? `Visited · ${visitCount} ${visitCount === 1 ? 'trip' : 'trips'}` :
     status === 'bucketList' ? 'On bucket list' :
+    distance != null        ? formatDistance(distance) :
     null;
   const statusColor =
     status === 'visited'    ? C.visited :
@@ -304,6 +315,12 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const animatePanel = () =>
   LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
 
+const SORT_OPTIONS: Array<{ key: SortBy; label: string; icon: string }> = [
+  { key: 'closest', label: 'Closest',  icon: 'location.fill' },
+  { key: 'az',      label: 'A to Z',   icon: 'arrow.up' },
+  { key: 'za',      label: 'Z to A',   icon: 'arrow.down' },
+];
+
 function FilterPanel({
   statusFilter, onStatusFilter,
   regionFilters, onRegionToggle, onClearRegions,
@@ -311,6 +328,7 @@ function FilterPanel({
   topicFilters, onTopicToggle, onClearTopics,
   allActivities, allTopics, filtersLoading,
   hasFilter, onReset,
+  sortBy, onSortChange,
 }: {
   statusFilter: StatusFilter; onStatusFilter: (s: StatusFilter) => void;
   regionFilters: string[]; onRegionToggle: (r: string) => void; onClearRegions: () => void;
@@ -318,10 +336,21 @@ function FilterPanel({
   topicFilters: string[]; onTopicToggle: (t: string) => void; onClearTopics: () => void;
   allActivities: string[]; allTopics: string[]; filtersLoading: boolean;
   hasFilter: boolean; onReset: () => void;
+  sortBy: SortBy; onSortChange: (s: SortBy) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [renderPanel, setRenderPanel] = useState(false);
+  // True once the open animation finishes — releases the maxHeight clamp so
+  // accordion sections inside can expand/collapse freely without being capped
+  // by whatever height was measured at panel-open time.
+  const [settled, setSettled] = useState(false);
+  // Real measured content height, kept current via onLayout — the animation
+  // grows toward this instead of an arbitrary constant, so the panel (and the
+  // park cards below it in the list) glide open instead of snapping to size.
+  const [panelHeight, setPanelHeight] = useState(0);
   const [section, setSection] = useState<FilterSection | null>(null);
   const { primary, accent } = useColors();
+  const panelAnim = useRef(new Animated.Value(0)).current;
 
   const activeCount =
     (statusFilter !== 'all' ? 1 : 0) +
@@ -330,9 +359,21 @@ function FilterPanel({
     topicFilters.length;
 
   const togglePanel = () => {
-    animatePanel();
-    setOpen(o => !o);
-    if (open) setSection(null);
+    if (open) {
+      setSettled(false);
+      setOpen(false);
+      setSection(null);
+      Animated.timing(panelAnim, {
+        toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: false,
+      }).start(({ finished }) => { if (finished) setRenderPanel(false); });
+    } else {
+      setRenderPanel(true);
+      setOpen(true);
+      panelAnim.setValue(0);
+      Animated.timing(panelAnim, {
+        toValue: 1, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: false,
+      }).start(({ finished }) => { if (finished) setSettled(true); });
+    }
   };
 
   const toggleSection = (s: FilterSection) => {
@@ -381,6 +422,20 @@ function FilterPanel({
           />
         </TouchableOpacity>
 
+        <MenuView
+          onPressAction={({ nativeEvent }) => onSortChange(nativeEvent.event as SortBy)}
+          actions={SORT_OPTIONS.map(o => ({
+            id: o.key, title: o.label, image: o.icon, state: sortBy === o.key ? 'on' : 'off',
+          }))}
+        >
+          <View style={styles.filterToggle}>
+            <Ionicons name="swap-vertical-outline" size={15} color={C.inkSoft} />
+            <Text style={styles.filterToggleText}>
+              {SORT_OPTIONS.find(o => o.key === sortBy)?.label}
+            </Text>
+          </View>
+        </MenuView>
+
         {hasFilter && (
           <TouchableOpacity onPress={onReset} activeOpacity={0.7} style={styles.pillReset}>
             <Ionicons name="close-circle" size={14} color={accent} />
@@ -416,8 +471,20 @@ function FilterPanel({
       )}
 
       {/* Expanded panel — one accordion per filter category */}
-      {open && (
-        <View style={styles.filterPanel}>
+      {renderPanel && (
+        <Animated.View
+          style={[
+            styles.filterPanel,
+            {
+              opacity: panelAnim,
+              transform: [{ translateY: panelAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+              maxHeight: settled ? undefined : panelAnim.interpolate({
+                inputRange: [0, 1], outputRange: [0, Math.max(panelHeight, 1)],
+              }),
+            },
+          ]}
+        >
+        <View onLayout={e => setPanelHeight(e.nativeEvent.layout.height)}>
           {sections.map((s, i) => (
             <View key={s.key} style={i > 0 ? { borderTopWidth: 0.5, borderTopColor: C.hairlineSoft } : null}>
               <TouchableOpacity
@@ -488,6 +555,7 @@ function FilterPanel({
             </View>
           ))}
         </View>
+        </Animated.View>
       )}
     </View>
   );
@@ -506,6 +574,7 @@ export default function ParksScreen() {
   const [error,   setError]   = useState(false);
   const [query,   setQuery]   = useState('');
   const [statusFilter,  setStatusFilter]  = useState<StatusFilter>('all');
+  const [sortBy, setSortBy] = useState<SortBy>('closest');
   const [regionFilters, setRegionFilters] = useState<string[]>([]);
   const [activityFilters, setActivityFilters] = useState<string[]>([]);
   const [topicFilters,    setTopicFilters]    = useState<string[]>([]);
@@ -603,6 +672,18 @@ export default function ParksScreen() {
     await markLocationPromptSeen();
   }, []);
 
+  // Picking "Closest" without a location fix yet — re-surface the explainer
+  // even if it was dismissed before, since the user is now explicitly asking
+  // for location-based sorting.
+  const handleSortChange = useCallback((s: SortBy) => {
+    setSortBy(s);
+    if (s !== 'closest' || userLocation) return;
+    Location.getForegroundPermissionsAsync().then(({ status }) => {
+      if (status === 'granted') fetchLocation();
+      else setShowLocationPrompt(true);
+    });
+  }, [userLocation, fetchLocation]);
+
   useFocusEffect(useCallback(() => {
     loadDataRef.current();
     const intent = consumeParkFilterIntent();
@@ -667,8 +748,8 @@ export default function ParksScreen() {
       }
       return true;
     }).sort((a, b) => {
-      // Default sort: nearest first once we have a location fix, alphabetical otherwise.
-      if (userLocation) {
+      if (sortBy === 'za') return b.name.localeCompare(a.name);
+      if (sortBy === 'closest' && userLocation) {
         const da = a.latitude && a.longitude
           ? distanceMiles(userLocation.lat, userLocation.lng, parseFloat(a.latitude), parseFloat(a.longitude))
           : Infinity;
@@ -677,9 +758,10 @@ export default function ParksScreen() {
           : Infinity;
         if (da !== db) return da - db;
       }
+      // 'az', or 'closest' without a location fix yet
       return a.name.localeCompare(b.name);
     });
-  }, [parks, visits, query, statusFilter, regionFilters, activityFilters, topicFilters, activitiesMap, topicsMap, userLocation]);
+  }, [parks, visits, query, statusFilter, regionFilters, activityFilters, topicFilters, activitiesMap, topicsMap, userLocation, sortBy]);
 
   const hasFilter = statusFilter !== 'all' || regionFilters.length > 0
     || activityFilters.length > 0 || topicFilters.length > 0;
@@ -798,6 +880,7 @@ export default function ParksScreen() {
         allActivities={allActivities} allTopics={allTopics}
         filtersLoading={filtersLoading}
         hasFilter={hasFilter} onReset={handleReset}
+        sortBy={sortBy} onSortChange={handleSortChange}
       />
 
       {/* Results count */}
@@ -868,12 +951,13 @@ export default function ParksScreen() {
               </View>
             );
           }
+          const distLoc = sortBy === 'closest' ? userLocation : null;
           if (item.type === 'single') {
             const s = parkStatus(item.park.park_code, visits);
             const vc = visits.filter(v => v.park_code === item.park.park_code && !v.is_bucket_list && v.visited_date).length;
-            return <ParkListRow park={item.park} status={s} visitCount={vc} />;
+            return <ParkListRow park={item.park} status={s} visitCount={vc} distance={parkDistance(item.park, distLoc)} />;
           }
-          return <ParkCardRow left={item.left} right={item.right} visits={visits} />;
+          return <ParkCardRow left={item.left} right={item.right} visits={visits} userLocation={distLoc} />;
         }}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={ListEmpty}
@@ -1140,18 +1224,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
     left: 10,
-    flexDirection: 'row',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 100,
-  },
-  statusBadgeText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.onPrimary,
-    letterSpacing: 0.3,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
 
   // Empty state

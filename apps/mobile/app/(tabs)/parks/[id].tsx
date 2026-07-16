@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal,
+  ActivityIndicator, Animated, Dimensions, FlatList, Image, Linking, Modal,
   PanResponder, Pressable, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View,
   type ColorValue,
 } from 'react-native';
@@ -12,6 +12,9 @@ import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker } from 'react-native-maps';
+import * as Location from 'expo-location';
+import { distanceMiles } from '@/lib/location';
+import { GlassView, liquidGlassAvailable } from '@/lib/glass';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { parkColor, parkGradient } from '@/lib/parkColors';
@@ -26,6 +29,20 @@ import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
+const glass = liquidGlassAvailable && GlassView != null;
+// Hero collapses from this height down to this as the page scrolls, and
+// stretches taller than this on overscroll (see heroHeightAnim below).
+const HERO_MAX = 340;
+const HERO_MIN = 110;
+
+// Frosted background for the floating header icon buttons / sticky title bar —
+// real Liquid Glass where available, a flat translucent surface otherwise
+// (Expo Go / older iOS / Android).
+function GlassBg({ interactive = false }: { interactive?: boolean }) {
+  return glass && GlassView
+    ? <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" isInteractive={interactive} />
+    : <View style={[StyleSheet.absoluteFill, styles.glassFallbackBg]} />;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -226,6 +243,7 @@ export default function ParkDetailScreen() {
   const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
   const [visitors, setVisitors] = useState<ParkVisitorsSummary | null>(null);
   const [showFriendsSheet, setShowFriendsSheet] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const isOnline = useIsOnline();
   const prevHeroRef = useRef<string | null>(null);
   const npsRef = useRef<NpsData | null>(null);
@@ -234,6 +252,7 @@ export default function ParkDetailScreen() {
   // Content-relative y of the journal section, captured via onLayout so the
   // "Visits" stat cell can jump straight to it.
   const journalY = useRef(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -384,6 +403,14 @@ export default function ParkDetailScreen() {
   useEffect(() => {
     loadDataRef.current();
     loadWeatherRef.current();
+    // Silent — only reads location if permission was already granted elsewhere
+    // (Parks tab's explainer flow); this screen never prompts for it itself.
+    Location.getForegroundPermissionsAsync().then(({ status }) => {
+      if (status !== 'granted') return;
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+        .then(pos => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }))
+        .catch(() => {});
+    });
   }, []);
 
   // Connectivity just returned — quietly refetch so live data (and weather,
@@ -496,6 +523,36 @@ export default function ParkDetailScreen() {
 
   const stateName = fullStateName(park.states);
 
+  const distanceAway = (userLocation && park.latitude && park.longitude)
+    ? distanceMiles(userLocation.lat, userLocation.lng, parseFloat(park.latitude), parseFloat(park.longitude))
+    : null;
+  const distanceLabel = distanceAway != null
+    ? (distanceAway < 10 ? `${distanceAway.toFixed(1)} mi` : `${Math.round(distanceAway)} mi`)
+    : null;
+
+  // AllTrails-style collapsing hero: stretches taller on overscroll (so the
+  // bounce reveals more image instead of the screen background), and shrinks
+  // to a slim strip as the page scrolls up, handing the title off to the
+  // sticky bar that fades in over the same range.
+  const heroMax = HERO_MAX + insets.top;
+  const heroMin = HERO_MIN + insets.top;
+  const collapseRange = heroMax - heroMin;
+  const heroHeightAnim = scrollY.interpolate({
+    inputRange: [-heroMax, 0, collapseRange],
+    outputRange: [heroMax * 2, heroMax, heroMin],
+    extrapolate: 'clamp',
+  });
+  const heroTitleOpacityAnim = scrollY.interpolate({
+    inputRange: [0, collapseRange * 0.6],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  const stickyBarOpacityAnim = scrollY.interpolate({
+    inputRange: [collapseRange * 0.5, collapseRange],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {lightbox && (
@@ -516,6 +573,7 @@ export default function ParkDetailScreen() {
         onPress={() => router.back()}
         hitSlop={8}
       >
+        <GlassBg interactive />
         <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
       </TouchableOpacity>
 
@@ -525,18 +583,64 @@ export default function ParkDetailScreen() {
         onPress={handleShare}
         hitSlop={8}
       >
+        <GlassBg interactive />
         <Ionicons name="share-outline" size={20} color="#FFFBF1" />
       </TouchableOpacity>
 
-      <ScrollView
+      {/* Log a visit button — fixed overlay, always visible */}
+      <TouchableOpacity
+        style={[styles.backBtn, { top: insets.top + 8, right: 60, left: undefined, zIndex: 10 }]}
+        onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+        hitSlop={8}
+      >
+        <GlassBg interactive />
+        <Ionicons name="checkmark" size={20} color="#FFFBF1" />
+      </TouchableOpacity>
+
+      {/* Bucket list toggle — fixed overlay, always visible */}
+      {parkStatus !== 'visited' && (
+        <TouchableOpacity
+          style={[styles.backBtn, { top: insets.top + 8, right: 104, left: undefined, zIndex: 10 }]}
+          onPress={toggleBucketList}
+          disabled={bucketBusy}
+          hitSlop={8}
+        >
+          <GlassBg interactive />
+          {bucketBusy ? (
+            <ActivityIndicator size="small" color="#FFFBF1" />
+          ) : (
+            <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={20} color={onBucket ? C.bucket : '#FFFBF1'} />
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Sticky title bar — fades in as the hero collapses, "locking" the
+          park name at the top once it scrolls out of the hero itself. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.stickyBar, { height: insets.top + 44, opacity: stickyBarOpacityAnim, zIndex: 5 }]}
+      >
+        <GlassBg />
+        <Text style={[styles.stickyBarTitle, { marginTop: insets.top }]} numberOfLines={1}>
+          {park.name}
+        </Text>
+      </Animated.View>
+
+      <Animated.ScrollView
         ref={scrollRef}
         style={styles.screen}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: tabBarSpace + 12 }}
+        contentInsetAdjustmentBehavior="never"
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
       >
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
-        <View
-          style={[styles.hero, { height: 260 + insets.top, backgroundColor: parkColor(park.park_code) }]}
+        <Animated.View
+          style={[styles.hero, { height: heroHeightAnim, backgroundColor: parkColor(park.park_code) }]}
           {...heroPan.panHandlers}
         >
           {/* Previous image stays visible as background during cross-dissolve */}
@@ -575,11 +679,11 @@ export default function ParkDetailScreen() {
             pointerEvents="none"
           />
 
-          <View style={styles.heroContent} pointerEvents="none">
+          <Animated.View style={[styles.heroContent, { opacity: heroTitleOpacityAnim }]} pointerEvents="none">
             <Text style={styles.heroDesignation}>{stateName.toUpperCase()}</Text>
             <Text style={styles.heroName}>{park.name}</Text>
-          </View>
-        </View>
+          </Animated.View>
+        </Animated.View>
 
         {/* ── Photo strip ──────────────────────────────────────────────────── */}
         {stripImages.length > 0 && (
@@ -632,6 +736,12 @@ export default function ParkDetailScreen() {
             value={String(visits.length)}
             onPress={() => scrollRef.current?.scrollTo({ y: journalY.current, animated: true })}
           />
+          {distanceLabel && (
+            <>
+              <View style={styles.statDivider} />
+              <StatCell label="Distance" value={distanceLabel} />
+            </>
+          )}
         </View>
 
         {/* ── Friends who've visited ──────────────────────────────────────────
@@ -967,7 +1077,7 @@ export default function ParkDetailScreen() {
             . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details with official sources before your visit.
           </Text>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -1046,9 +1156,28 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  glassFallbackBg: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  stickyBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  stickyBarTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: C.ink,
+    textAlign: 'center',
+    paddingBottom: 10,
+    paddingHorizontal: 72,
   },
   heroContent: {
     padding: 20,

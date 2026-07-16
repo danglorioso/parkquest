@@ -542,7 +542,10 @@ export default function UserProfileScreen() {
                     initialRegion={mapRegion}
                     rotateEnabled={false}
                     pitchEnabled={false}
+                    scrollEnabled={false}
+                    zoomEnabled={false}
                     toolbarEnabled={false}
+                    pointerEvents="none"
                   >
                     {mapParks.map(p => (
                       <Marker
