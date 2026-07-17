@@ -266,11 +266,17 @@ export default function ProfileScreen() {
     };
   }, [mapParks]);
 
-  // Most recent stamps first; colorIdx = chronological index so colors match the passport screen
+  // Most recently earned stamps first. A stamp is earned by the FIRST visit
+  // to a park, so dedupe keeps the earliest visit per park — the old
+  // last-write-wins dedupe kept whichever visit the API happened to return
+  // last, which scrambled the order for re-visited parks. colorIdx =
+  // chronological index so colors match the passport screen.
   const recentStamps = useMemo((): StampPreview[] => {
     const byPark = new Map<string, any>();
     rawVisits.forEach((v: any) => {
-      if (!v.is_bucket_list && v.visited_date) byPark.set(v.park_code, v);
+      if (v.is_bucket_list || !v.visited_date) return;
+      const cur = byPark.get(v.park_code);
+      if (!cur || v.visited_date.localeCompare(cur.visited_date) < 0) byPark.set(v.park_code, v);
     });
     return [...byPark.values()]
       .sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''))

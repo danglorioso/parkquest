@@ -57,6 +57,31 @@ export async function GET(request: Request) {
         .from(userProfiles)
         .where(inArray(userProfiles.clerk_user_id, visibleFriendIds.map(r => r.friend_id)));
 
+      // A friend with no user_profiles row silently vanishes from this list
+      // while the friend COUNT (raw friendships query, no join) still
+      // includes them — seen as "5 friends" opening a 4-person list. Profile
+      // rows are created lazily, so an account predating the Clerk webhook
+      // has none until one of its own routes runs ensureUserProfile. When
+      // the missing friend is the viewer themself, heal it right here
+      // (ensureUserProfile builds the row from the current session's Clerk
+      // user, so it can only self-heal; other orphans need
+      // scripts/backfill-orphan-profiles.mjs).
+      if (
+        viewerId &&
+        visibleFriendIds.some(r => r.friend_id === viewerId) &&
+        !profiles.some(p => p.clerk_user_id === viewerId)
+      ) {
+        try {
+          const self = await ensureUserProfile(viewerId);
+          profiles.push({
+            clerk_user_id: self.clerk_user_id,
+            username: self.username,
+            display_name: self.display_name,
+            avatar_url: self.avatar_url,
+          });
+        } catch { /* better a short list than a failed one */ }
+      }
+
       const sinceMap = new Map(visibleFriendIds.map(r => [r.friend_id, r.friends_since]));
       const rows = profiles.map(p => ({ ...p, friends_since: sinceMap.get(p.clerk_user_id) ?? null }));
       return NextResponse.json(rows);

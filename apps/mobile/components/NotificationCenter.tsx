@@ -576,7 +576,8 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
 
               <View style={styles.closeBtnWrap} pointerEvents="box-none">
                 <TouchableOpacity onPress={dismiss} style={styles.closeBtn} hitSlop={8}>
-                  <Ionicons name="close" size={17} color={C.inkMute} />
+                  <GlassIconBg />
+                  <Ionicons name="close" size={22} color={C.inkSoft} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -762,9 +763,11 @@ const makeStyles = (T: Colors) => StyleSheet.create({
     position: 'absolute', top: 0, bottom: 0, right: 18,
     justifyContent: 'center', alignItems: 'center',
   },
+  // 44pt Liquid Glass circle, matching the header buttons and the search
+  // overlay's X — no backgroundColor (GlassIconBg is the fill).
   closeBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: C.surfaceAlt,
+    width: 44, height: 44, borderRadius: 22,
+    overflow: 'hidden',
     borderWidth: 0.5, borderColor: C.hairline,
     alignItems: 'center', justifyContent: 'center',
   },

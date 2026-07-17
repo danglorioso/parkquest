@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, dyn, useColors } from '@/lib/palette';
 
@@ -274,7 +275,8 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
                 <Text style={styles.title}>Search</Text>
               </View>
               <TouchableOpacity onPress={close} style={styles.closeBtn} hitSlop={8}>
-                <Ionicons name="close" size={17} color={C.inkMute} />
+                <GlassIconBg />
+                <Ionicons name="close" size={22} color={C.inkSoft} />
               </TouchableOpacity>
             </View>
 
@@ -452,11 +454,13 @@ const styles = StyleSheet.create({
     color: C.ink,
     letterSpacing: -0.3,
   },
+  // Matches the header icon buttons (44pt Liquid Glass circle) — GlassIconBg
+  // needs overflow hidden and no backgroundColor of its own.
   closeBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: C.surfaceAlt,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
     borderWidth: 0.5,
     borderColor: C.hairline,
     alignItems: 'center',

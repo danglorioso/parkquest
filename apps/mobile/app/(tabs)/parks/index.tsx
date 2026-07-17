@@ -1,6 +1,6 @@
 import {
   Animated, Dimensions, Easing, FlatList, Image, Keyboard, LayoutAnimation, Linking, Platform, Pressable,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, UIManager, View,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, UIManager, View, useColorScheme,
   type ColorValue,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -574,6 +574,8 @@ export default function ParksScreen() {
   const { getToken } = useAuth();
   const { primary, accent } = useColors();
   const tabBarSpace = useTabBarSpace();
+  // Menu icon tint — see the imageColor note on the view-toggle MenuView.
+  const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
 
   const [parks,   setParks]   = useState<Park[]>([]);
   const [visits,  setVisits]  = useState<Visit[]>([]);
@@ -841,8 +843,10 @@ export default function ParksScreen() {
               onCloseMenu={() => setShowViewMenu(false)}
               onPressAction={({ nativeEvent }) => setViewMode(nativeEvent.event as 'grid' | 'list')}
               actions={[
-                { id: 'grid', title: 'Grid', image: 'square.grid.2x2', state: viewMode === 'grid' ? 'on' : 'off' },
-                { id: 'list', title: 'List', image: 'list.bullet', state: viewMode === 'list' ? 'on' : 'off' },
+                // Explicit imageColor: the menu lib's new-arch bridge tints
+                // unset icons with color 0 (transparent) — see parks/[id].
+                { id: 'grid', title: 'Grid', image: 'square.grid.2x2', imageColor: menuInk, state: viewMode === 'grid' ? 'on' : 'off' },
+                { id: 'list', title: 'List', image: 'list.bullet', imageColor: menuInk, state: viewMode === 'list' ? 'on' : 'off' },
               ]}
             >
               <TouchableOpacity

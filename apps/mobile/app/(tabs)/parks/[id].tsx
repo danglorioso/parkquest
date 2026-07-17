@@ -594,6 +594,8 @@ export default function ParkDetailScreen() {
     return () => { cancelled = true; };
   }, [heroImage]);
   const heroInk = heroIsLight && liquidGlassAvailable ? '#26231C' : '#FFFBF1';
+  // "..." context-menu icon tint — menu surface follows the system scheme.
+  const menuInk = isDark ? '#FFFBF1' : '#26231C';
 
   // Bumped on every manual swipe so the auto-rotate timer restarts — otherwise
   // an auto-advance could land right after the user swiped.
@@ -1077,14 +1079,19 @@ export default function ParkDetailScreen() {
               }
             }}
             actions={[
-              { id: 'log-visit', title: parkStatus === 'visited' ? 'Log another visit' : 'Log a visit', image: 'checkmark.circle' },
-              ...(parkStatus === 'visited' ? [{ id: 'edit-visit', title: 'Edit visit', image: 'pencil' }] : []),
+              // Explicit imageColor on every action: the menu lib's new-arch
+              // bridge always forwards imageColor (0 when unset) and the
+              // native side tints with it — color 0 is transparent, which
+              // made these SF Symbols render invisible.
+              { id: 'log-visit', title: parkStatus === 'visited' ? 'Log another visit' : 'Log a visit', image: 'checkmark.circle', imageColor: menuInk },
+              ...(parkStatus === 'visited' ? [{ id: 'edit-visit', title: 'Edit visit', image: 'pencil', imageColor: menuInk }] : []),
               ...(parkStatus !== 'visited' ? [{
                 id: 'bucket',
                 title: onBucket ? 'Remove from bucket list' : 'Add to bucket list',
                 image: onBucket ? 'bookmark.fill' : 'bookmark',
+                imageColor: menuInk,
               }] : []),
-              { id: 'share', title: 'Share', image: 'square.and.arrow.up' },
+              { id: 'share', title: 'Share', image: 'square.and.arrow.up', imageColor: menuInk },
             ]}
           >
             {/* Open-menu dim lives on the trigger, not the glass wrapper —
