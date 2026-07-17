@@ -457,7 +457,10 @@ export default function UserProfileScreen() {
                 { id: 'report', title: reportedUser ? 'Reported' : 'Report user', attributes: { destructive: true, disabled: reportedUser } },
               ]}
             >
-              <TouchableOpacity hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <TouchableOpacity
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+              >
                 <Ionicons name="ellipsis-horizontal" size={20} color={showProfileMenu ? T.primary : C.inkMute} />
               </TouchableOpacity>
             </MenuView>

@@ -1406,6 +1406,7 @@ export function PostCard({
           onLongPress={() => { if (likeCount > 0) setShowLikers(true); }}
           delayLongPress={300}
           activeOpacity={0.7}
+          hitSlop={6}
           style={[styles.actionBtn, liked && styles.actionBtnLiked]}
         >
           <Ionicons
@@ -1423,6 +1424,7 @@ export function PostCard({
         <TouchableOpacity
           onPress={() => setShowComments(true)}
           activeOpacity={0.7}
+          hitSlop={6}
           style={styles.actionBtn}
         >
           <Ionicons name="chatbubble-outline" size={20} color={C.inkSoft} />
@@ -1443,6 +1445,7 @@ export function PostCard({
             }
           }}
           activeOpacity={0.7}
+          hitSlop={6}
           style={styles.actionBtn}
           accessibilityLabel="Share post"
         >
@@ -1807,13 +1810,13 @@ const styles = StyleSheet.create({
   },
   padH: { paddingHorizontal: 18 },
   actionRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 28,
     paddingHorizontal: 18, paddingVertical: 6,
     borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
   },
   actionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingVertical: 6,
+    paddingVertical: 6, paddingHorizontal: 2,
   },
   actionBtnLiked: {},
   actionBtnActive: {},
