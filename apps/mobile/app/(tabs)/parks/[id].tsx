@@ -1,12 +1,18 @@
 import {
   ActivityIndicator, Animated, Dimensions, FlatList, Image, Linking, Modal,
   PanResponder, Pressable, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View,
+  useColorScheme,
   type ColorValue, type NativeScrollEvent, type NativeSyntheticEvent,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
+import { BlurView } from 'expo-blur';
+
+// Lets RN Animated drive the blur's `intensity` prop (JS driver — see the
+// scroll listener's blurAnim note).
+const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { PostCard, type FeedPost } from '@/components/PostCard';
 import { MenuView } from '@react-native-menu/menu';
@@ -16,13 +22,13 @@ import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { distanceMiles } from '@/lib/location';
 import { GlassIconBg } from '@/components/GlassIconBg';
+import { GrowTouchable } from '@/components/GrowTouchable';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors, colorStr } from '@/lib/palette';
 import { parkColor, parkGradient } from '@/lib/parkColors';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { FriendsVisitedSheet } from '@/components/FriendsVisitedSheet';
 import { VisitPickerSheet } from '@/components/VisitPickerSheet';
-import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { Avatar } from '@/components/Avatar';
 import { useIsOnline } from '@/lib/network';
@@ -34,10 +40,11 @@ const SW = Dimensions.get('window').width;
 
 // Hero collapses from this height down to this as the page scrolls, and
 // stretches taller than this on overscroll (see the hero interpolations).
-// HERO_MIN matches the map sheet's COLLAPSED_H (56 + insets.top) — a slim
-// title-bar strip, not a shrunken photo.
-const HERO_MAX = 340;
-const HERO_MIN = 56;
+// HERO_MIN was 56 (the map sheet's COLLAPSED_H) but that left only 4pt of
+// image below the 44pt header buttons (which end at insets.top + 52) —
+// 68 gives the locked strip 16pt of breathing room under them.
+const HERO_MAX = 320;
+const HERO_MIN = 60;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -316,8 +323,8 @@ export default function ParkDetailScreen() {
   const { getToken } = useAuth();
   const { user } = useUser();
   const insets = useSafeAreaInsets();
+  const isDark = useColorScheme() === 'dark';
   const C = useColors();
-  const tabBarSpace = useTabBarSpace();
 
   const [park,         setPark]         = useState<Park | null>(null);
   const [nps,          setNps]          = useState<NpsData | null>(null);
@@ -360,8 +367,17 @@ export default function ParkDetailScreen() {
   // half-in if the user stops scrolling mid-transition.
   const barAnim = useRef(new Animated.Value(0)).current;
   // Same 0/1 breakpoint, longer duration — the three action buttons slide
-  // into the "..." more lazily than the title swap.
+  // into the "..." more lazily than the title swap. The duration shrinks
+  // with scroll velocity (see the scroll listener): a fast fling brings the
+  // frozen title in on top of buttons still mid-travel, so the faster the
+  // scroll, the quicker the buttons must clear the title's lane.
   const actionsAnim = useRef(new Animated.Value(0)).current;
+  // Last scroll sample (offset + timestamp) for the velocity estimate above.
+  const lastScrollSample = useRef({ y: 0, t: 0 });
+  // Scroll progress (0 at top → 1 at the hero lock point), set from the
+  // scroll listener — drives the readability blur's `intensity`. JS-side
+  // value: a native-driven node can't feed a non-style prop.
+  const blurAnim = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
@@ -663,7 +679,10 @@ export default function ParkDetailScreen() {
   // locked (see `barAnim` below), not tied 1:1 to the image's shrink.
   const heroMax = HERO_MAX + insets.top;
   const barHeight = HERO_MIN + insets.top;
-  const shrinkDistance = heroMax - barHeight;
+  // Guarded: HERO_MIN >= HERO_MAX (e.g. a bad constant edit caught by Fast
+  // Refresh) would flip this negative and crash every scroll interpolation
+  // with "inputRange must be monotonically non-decreasing".
+  const shrinkDistance = Math.max(1, heroMax - barHeight);
   // Everything below is transforms only — no animated `height`. Animating
   // layout off scrollY forces the JS driver (every scroll frame does a JS
   // round-trip + a layout pass), which is what made the collapse stutter on
@@ -780,6 +799,7 @@ export default function ParkDetailScreen() {
               contentFit="cover"
               contentPosition="top"
               cachePolicy="memory-disk"
+              allowDownscaling={false}
             />
           )}
           {heroImage && (
@@ -796,6 +816,11 @@ export default function ParkDetailScreen() {
                 contentFit="cover"
                 contentPosition="top"
                 cachePolicy="memory-disk"
+                // Default downscaling decodes the bitmap at container size,
+                // so the pull-down stretch (up to 2x via heroStretchScale)
+                // magnifies a screen-sized decode and reads as blur. Full-res
+                // decode keeps the overscroll zoom sharp.
+                allowDownscaling={false}
                 onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
               />
             </TouchableOpacity>
@@ -809,6 +834,25 @@ export default function ParkDetailScreen() {
             pointerEvents="none"
           />
         </Animated.View>
+
+        {/* Readability blur for the frozen-title strip. Lives INSIDE the
+            clipped hero box so it always covers exactly the visible cover —
+            a screen-fixed band only matched the hero once locked, and
+            mid-shrink showed a hard blurred/sharp seam across the image.
+            Intensity ramps with scroll (blurAnim, set in the scroll
+            listener): zero under the big title, max at the lock point.
+            Animating `intensity` is safe where animating opacity is not —
+            it drives the effect's own fraction rather than alpha-ing a
+            UIVisualEffectView ancestor (which kills the effect, same
+            failure as the "..." glass circle). */}
+        <AnimatedBlurView
+          // Late onset: nothing until ~60% of the collapse (attention is
+          // still on the cover/big title), then ramps to max at the lock.
+          intensity={blurAnim.interpolate({ inputRange: [0.6, 1], outputRange: [0, 10], extrapolate: 'clamp' })}
+          tint="default"
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
       </Animated.View>
 
       {/* Title — a SEPARATE box from the hero above, not a child of it. RN
@@ -864,31 +908,37 @@ export default function ParkDetailScreen() {
           ],
         }}
       >
-        <Text
-          style={styles.frozenTitle}
-          numberOfLines={1}
-          onTextLayout={(e) => {
-            // Truncated one-liner reports a shorter visible substring than
-            // the full name — swap to the abbreviated form instead of "…".
-            const line = e.nativeEvent.lines[0];
-            if (!abbrevFrozenTitle && line && line.text.trim().length < park.name.length) {
-              setAbbrevFrozenTitle(true);
-            }
-          }}
-        >
+        {/* Invisible probe: the full name laid out with NO line limit. If it
+            wraps, the visible one-liner below would truncate — swap it to
+            the "Nat'l" abbreviation. Measuring the visible Text itself
+            (via onTextLayout under numberOfLines={1}) was unreliable: iOS
+            reports the full string for the single line even when it draws
+            an ellipsis, so the abbreviation never actually kicked in. */}
+        {!abbrevFrozenTitle && (
+          <Text
+            style={[styles.frozenTitle, { position: 'absolute', left: 0, right: 0, opacity: 0 }]}
+            pointerEvents="none"
+            onTextLayout={(e) => {
+              if (e.nativeEvent.lines.length > 1) setAbbrevFrozenTitle(true);
+            }}
+          >
+            {park.name}
+          </Text>
+        )}
+        <Text style={styles.frozenTitle} numberOfLines={1}>
           {abbrevFrozenTitle ? park.name.replace(/National/g, "Nat'l") : park.name}
         </Text>
       </Animated.View>
 
       {/* Back button — fixed overlay, always visible */}
-      <TouchableOpacity
+      <GrowTouchable
         style={[styles.backBtn, { top: insets.top + 8, zIndex: 10 }]}
         onPress={() => router.back()}
         hitSlop={8}
       >
         <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
         <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
-      </TouchableOpacity>
+      </GrowTouchable>
 
       {/* Expanded actions — full-size buttons shown over the cover photo.
           At the breakpoint they slide right into the "..." button's spot
@@ -913,27 +963,27 @@ export default function ParkDetailScreen() {
             transform: [{ translateX: actionsAnim.interpolate({ inputRange: [0, 1], outputRange: [0, dist] }) }],
           });
           const logVisitBtn = (
-            <TouchableOpacity
+            <GrowTouchable
               style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
               onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
               hitSlop={8}
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="checkmark" size={20} color="#FFFBF1" />
-            </TouchableOpacity>
+              <Ionicons name="checkmark" size={22} color="#FFFBF1" />
+            </GrowTouchable>
           );
           const secondBtn = parkStatus === 'visited' ? (
-            <TouchableOpacity
+            <GrowTouchable
               style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
               onPress={handleEditVisitPress}
               hitSlop={8}
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="pencil" size={18} color="#FFFBF1" />
-            </TouchableOpacity>
+              <Ionicons name="pencil" size={22} color="#FFFBF1" />
+            </GrowTouchable>
           ) : logVisitBtn;
           const firstBtn = parkStatus === 'visited' ? logVisitBtn : (
-            <TouchableOpacity
+            <GrowTouchable
               style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
               onPress={toggleBucketList}
               disabled={bucketBusy}
@@ -943,37 +993,41 @@ export default function ParkDetailScreen() {
               {bucketBusy ? (
                 <ActivityIndicator size="small" color="#FFFBF1" />
               ) : (
-                <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={20} color={onBucket ? C.bucket : '#FFFBF1'} />
+                <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={22} color={onBucket ? C.bucket : "#FFFBF1"} />
               )}
-            </TouchableOpacity>
+            </GrowTouchable>
           );
           return (
             <>
               <Animated.View style={travel(104)}>{firstBtn}</Animated.View>
               <Animated.View style={travel(52)}>{secondBtn}</Animated.View>
               <Animated.View style={{ opacity: actionsAnim.interpolate({ inputRange: [0.55, 0.9], outputRange: [1, 0], extrapolate: 'clamp' }) }}>
-                <TouchableOpacity
+                <GrowTouchable
                   style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
                   onPress={handleShare}
                   hitSlop={8}
                 >
                   <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-                  <Ionicons name="share-outline" size={20} color="#FFFBF1" />
-                </TouchableOpacity>
+                  <Ionicons name="share-outline" size={22} color="#FFFBF1" />
+                </GrowTouchable>
               </Animated.View>
             </>
           );
         })()}
       </View>
 
-      {/* Actions menu — the "..." the row above merges into. Fades in over
-          the share button's spot as that button fades out (late in the
-          timing, so the crossfade happens after the travelers arrive). */}
-      <Animated.View
-        pointerEvents={titleCollapsed ? 'auto' : 'none'}
+      {/* Actions menu — the "..." the row above merges into. Sits UNDER the
+          share button (zIndex 9 vs the row's 10) at the same spot, mounted
+          only while collapsed: the share button's own late fade-out reveals
+          it, which reads as the same crossfade as before. Deliberately NOT
+          opacity-animated itself — a Liquid Glass view that mounts (or
+          lives) inside an alpha-0 ancestor renders no glass material at all
+          on device (UIKit disables the effect under alpha < 1), which is
+          why this button had no circle while the back button did. */}
+      {titleCollapsed && (
+      <View
         style={{
-          position: 'absolute', top: insets.top + 8, right: 16, zIndex: 11,
-          opacity: actionsAnim.interpolate({ inputRange: [0.55, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+          position: 'absolute', top: insets.top + 8, right: 16, zIndex: 9,
         }}
       >
         {/* Glass circle lives on this plain wrapper, not inside MenuView's
@@ -983,7 +1037,7 @@ export default function ParkDetailScreen() {
             glass fill wasn't rendering as a circle. A sibling wrapper with
             the clipping is guaranteed to clip regardless of what MenuView
             does internally. */}
-        <View style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined, opacity: showHeaderMenu ? 0.6 : 1 }]}>
+        <View style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}>
           <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
           <MenuView
             onOpenMenu={() => setShowHeaderMenu(true)}
@@ -1015,22 +1069,25 @@ export default function ParkDetailScreen() {
               { id: 'share', title: 'Share', image: 'square.and.arrow.up' },
             ]}
           >
-            <TouchableOpacity hitSlop={8} disabled={bucketBusy} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+            {/* Open-menu dim lives on the trigger, not the glass wrapper —
+                alpha < 1 on a GlassView ancestor disables the material. */}
+            <TouchableOpacity hitSlop={8} disabled={bucketBusy} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', opacity: showHeaderMenu ? 0.6 : 1 }}>
               {bucketBusy ? (
                 <ActivityIndicator size="small" color="#FFFBF1" />
               ) : (
-                <Ionicons name="ellipsis-horizontal" size={20} color="#FFFBF1" />
+                <Ionicons name="ellipsis-horizontal" size={22} color="#FFFBF1" />
               )}
             </TouchableOpacity>
           </MenuView>
         </View>
-      </Animated.View>
+      </View>
+      )}
 
       <Animated.ScrollView
         ref={scrollRef}
         style={styles.screen}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: heroMax, paddingBottom: tabBarSpace + bottomOverlayHeight + 12 }}
+        contentContainerStyle={{ paddingTop: heroMax, paddingBottom: bottomOverlayHeight + 12 }}
         contentInsetAdjustmentBehavior="never"
         scrollEventThrottle={16}
         onScroll={Animated.event(
@@ -1043,6 +1100,20 @@ export default function ParkDetailScreen() {
             useNativeDriver: true,
             listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
               const y = e.nativeEvent.contentOffset.y;
+              // Blur over the shrinking cover ramps with scroll progress,
+              // hitting max exactly at the lock point (cover fully off
+              // screen). JS-driven on purpose: `intensity` isn't a style
+              // prop, so it can't ride the native-driver scrollY — and this
+              // listener already runs per scroll frame anyway.
+              blurAnim.setValue(Math.min(Math.max(y / shrinkDistance, 0), 1));
+              // Scroll velocity (px/ms) from consecutive samples. Gaps over
+              // 100ms mean the finger was resting between distinct scrolls,
+              // not moving — treat those as zero rather than dividing a big
+              // offset jump by a big time gap and calling it slow.
+              const now = Date.now();
+              const dt = now - lastScrollSample.current.t;
+              const vel = dt > 0 && dt < 100 ? Math.abs(y - lastScrollSample.current.y) / dt : 0;
+              lastScrollSample.current = { y, t: now };
               const collapsed = y >= collapseThreshold;
               if (collapsed !== titleCollapsedRef.current) {
                 titleCollapsedRef.current = collapsed;
@@ -1054,7 +1125,11 @@ export default function ParkDetailScreen() {
                 }).start();
                 Animated.timing(actionsAnim, {
                   toValue: collapsed ? 1 : 0,
-                  duration: 420,
+                  // Lazy 420ms at a leisurely scroll, tightening toward
+                  // 160ms as velocity climbs so the buttons are out of the
+                  // frozen title's lane (their fade completes at 70% of the
+                  // duration) by the time its own 220ms slide-in lands.
+                  duration: Math.max(160, Math.min(420, 420 - vel * 160)),
                   useNativeDriver: true,
                 }).start();
               }
@@ -1106,7 +1181,9 @@ export default function ParkDetailScreen() {
 
         {/* ── Quick stats ───────────────────────────────────────────────────── */}
         <View style={styles.statsRow}>
-          <StatCell label="State" value={fullStateName(park.states)} />
+          {/* Multi-state parks stack one state per line so a long list
+              ("California, Nevada") doesn't squeeze the other cells. */}
+          <StatCell label="State" value={fullStateName(park.states).split(', ').join('\n')} />
           <View style={styles.statDivider} />
           <StatCell
             label="Status"
@@ -1420,12 +1497,22 @@ export default function ParkDetailScreen() {
         </View>
       </Animated.ScrollView>
 
-      {/* Action row — overlays above the floating tab bar, mirroring the map
-          sheet's pinned action row. */}
+      {/* Pinned action bar — AllTrails-style: the tab bar hides on this
+          nested detail page (see FloatingTabBar) and these Liquid Glass
+          pills own the bottom edge, floating over the scrolling content. */}
       <View
-        style={[styles.actionOverlay, { paddingBottom: tabBarSpace }]}
+        style={[styles.actionOverlay, { paddingBottom: insets.bottom + 8 }]}
         onLayout={(e) => setBottomOverlayHeight(e.nativeEvent.layout.height)}
       >
+        {/* Readability fade behind the glass pills — bg-toned alpha ramp
+            (same recipe as log-visit's footer fade; a literal black ramp
+            reads smoky over the light theme). Literal stops per scheme:
+            LinearGradient can't take DynamicColorIOS. */}
+        <LinearGradient
+          colors={isDark ? ['rgba(23,21,17,0)', 'rgba(23,21,17,0.92)'] : ['rgba(242,235,219,0)', 'rgba(242,235,219,0.92)']}
+          style={[StyleSheet.absoluteFill, { top: -36 }]}
+          pointerEvents="none"
+        />
         <View style={styles.actionRow}>
           {parkStatus === 'visited' ? (
             <>
@@ -1435,17 +1522,17 @@ export default function ParkDetailScreen() {
                 onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
                 activeOpacity={0.8}
               >
-                <GlassIconBg borderRadius={12} tintColor={C.primary} fallbackColor={C.primary} />
-                <Ionicons name="checkmark" size={16} color="#FFFBF1" />
+                <GlassIconBg borderRadius={999} tintColor={C.primary} fallbackColor={C.primary} />
+                <Ionicons name="checkmark" size={18} color="#FFFBF1" />
                 <Text style={styles.actionBtnText}>Log another visit</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.actionBtnOutline, { borderColor: C.primary }]}
+                style={styles.actionBtnSecondary}
                 onPress={() => { if (lastVisit) router.push(`/profile/journal/${lastVisit.id}` as never); }}
                 activeOpacity={0.8}
               >
-                <GlassIconBg borderRadius={12} />
-                <Ionicons name="pencil-outline" size={16} color={C.primary} />
+                <GlassIconBg borderRadius={999} />
+                <Ionicons name="pencil-outline" size={18} color={C.primary} />
                 <Text style={[styles.actionBtnOutlineText, { color: C.primary }]}>Edit last visit</Text>
               </TouchableOpacity>
             </>
@@ -1457,30 +1544,28 @@ export default function ParkDetailScreen() {
                 onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
                 activeOpacity={0.8}
               >
-                <GlassIconBg borderRadius={12} tintColor={C.primary} fallbackColor={C.primary} />
-                <Ionicons name="checkmark" size={16} color="#FFFBF1" />
+                <GlassIconBg borderRadius={999} tintColor={C.primary} fallbackColor={C.primary} />
+                <Ionicons name="checkmark" size={18} color="#FFFBF1" />
                 <Text style={styles.actionBtnText}>Log a visit</Text>
               </TouchableOpacity>
+              {/* Bucket toggle — icon-only glass circle, the AllTrails
+                  "heart" slot. */}
               <TouchableOpacity
-                style={[styles.bucketBtn, { flex: 1, marginHorizontal: 0, marginBottom: 0 }]}
+                style={styles.bucketCircle}
                 onPress={toggleBucketList}
                 activeOpacity={0.8}
                 disabled={bucketBusy}
+                hitSlop={4}
               >
-                <GlassIconBg borderRadius={12} tintColor={onBucket ? colorStr(C.bucket) : undefined} fallbackColor={onBucket ? colorStr(C.bucket) : undefined} />
+                <GlassIconBg borderRadius={999} tintColor={onBucket ? colorStr(C.bucket) : undefined} fallbackColor={onBucket ? colorStr(C.bucket) : undefined} />
                 {bucketBusy ? (
                   <ActivityIndicator size="small" color={onBucket ? C.onPrimary : C.bucket} />
                 ) : (
-                  <>
-                    <Ionicons
-                      name={onBucket ? 'bookmark' : 'bookmark-outline'}
-                      size={16}
-                      color={onBucket ? C.onPrimary : C.bucket}
-                    />
-                    <Text style={[styles.bucketBtnText, onBucket && { color: C.onPrimary }]}>
-                      {onBucket ? 'On bucket list' : 'Add to bucket list'}
-                    </Text>
-                  </>
+                  <Ionicons
+                    name={onBucket ? 'bookmark' : 'bookmark-outline'}
+                    size={22}
+                    color={onBucket ? C.onPrimary : C.bucket}
+                  />
                 )}
               </TouchableOpacity>
             </>
@@ -1493,7 +1578,12 @@ export default function ParkDetailScreen() {
 
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 
-function StatCell({ label, value, valueColor, onPress }: { label: string; value: string; valueColor?: ColorValue; onPress?: () => void }) {
+// Cells size to their own text (flexBasis auto) and split only the leftover
+// space equally (flexGrow) — no fixed fourths, so "Hawaii" and "2333 mi"
+// each get what they actually need.
+function StatCell({ label, value, valueColor, onPress }: {
+  label: string; value: string; valueColor?: ColorValue; onPress?: () => void;
+}) {
   const body = (
     <>
       <Text style={styles.statLabel}>{label}</Text>
@@ -1562,6 +1652,8 @@ const styles = StyleSheet.create({
   backBtn: {
     position: 'absolute',
     left: 16,
+    // 44pt circle with ~24pt icons — the app-wide round icon button recipe
+    // (AllTrails' header buttons; ~0.55 icon-to-circle fill ratio).
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -1627,9 +1719,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   statCell: {
-    flex: 1,
+    // Content-based width: basis auto + grow shares only the leftover space.
+    flexGrow: 1,
+    flexShrink: 1,
     alignItems: 'center',
     paddingVertical: 12,
+    paddingHorizontal: 8,
   },
   statLabel: {
     fontSize: 13,
@@ -1679,39 +1774,58 @@ const styles = StyleSheet.create({
   },
 
   // Actions
+  // Transparent — the glass pills float directly over the scrolling
+  // content, no bar surface behind them (AllTrails-style).
   actionOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: C.surface,
-    borderTopWidth: 0.5,
-    borderTopColor: C.hairlineSoft,
     paddingTop: 12,
   },
   actionRow: {
     flexDirection: 'row',
     gap: 10,
     marginHorizontal: 16,
-    marginBottom: 12,
+    // No bottom margin — the overlay's tabBarSpace padding already leaves
+    // a 12pt gap above the floating pill; this was doubling it.
   },
+  // Pill buttons — full stadium radius, 52pt tall, real Liquid Glass fills
+  // (GlassIconBg with borderRadius 999).
   actionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    borderRadius: 12,
+    gap: 8,
+    height: 52,
+    borderRadius: 26,
     overflow: 'hidden',
-    paddingVertical: 11,
   },
   actionBtnText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
     color: C.onPrimary,
   },
-  actionBtnOutline: {
+  actionBtnSecondary: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 52,
+    borderRadius: 26,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+  },
+  actionBtnOutlineText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  // In-content outline button (visits section's "Log another visit") — not
+  // part of the pinned glass bar.
+  actionBtnOutline: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1722,33 +1836,16 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderWidth: 1.5,
   },
-  actionBtnOutlineText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  bucketBtn: {
-    flexDirection: 'row',
+  bucketCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    borderRadius: 12,
-    overflow: 'hidden',
-    paddingVertical: 11,
-    borderWidth: 1.5,
-    borderColor: C.bucket,
-    marginHorizontal: 16,
-    marginTop: 0,
-    marginBottom: 12,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
   },
-  bucketBtnActive: {
-    backgroundColor: C.bucket,
-  },
-  bucketBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.bucket,
-  },
-
   divider: {
     height: 0.5,
     backgroundColor: C.hairline,

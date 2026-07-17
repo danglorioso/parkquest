@@ -745,6 +745,9 @@ export default function ParksScreen() {
         const q = query.toLowerCase();
         return p.name.toLowerCase().includes(q)
           || p.states.toLowerCase().includes(q)
+          // Full names too — "Utah" should match states: "UT", same as the
+          // search overlay does.
+          || fullStateName(p.states).toLowerCase().includes(q)
           || (p.description ?? '').toLowerCase().includes(q);
       }
       return true;
@@ -844,7 +847,7 @@ export default function ParksScreen() {
                 <GlassIconBg />
                 <Ionicons
                   name={viewMode === 'grid' ? 'grid-outline' : 'list-outline'}
-                  size={18}
+                  size={22}
                   color={showViewMenu ? primary : C.inkSoft}
                 />
               </TouchableOpacity>
@@ -1152,11 +1155,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
 
-  // View toggle button
+  // View toggle button — 44pt, the app-wide round icon button size (matches
+  // the park page header buttons).
   viewToggle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 0.5,
     borderColor: C.hairline,

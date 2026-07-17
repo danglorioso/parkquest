@@ -343,7 +343,7 @@ export default function ProfileScreen() {
           onPress={() => setSearchOpen(true)}
         >
           <GlassIconBg />
-          <Ionicons name="search" size={17} color={C.inkSoft} />
+          <Ionicons name="search" size={22} color={C.inkSoft} />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.iconBtn}
@@ -351,7 +351,7 @@ export default function ProfileScreen() {
           onPress={() => router.push('/profile/edit' as never)}
         >
           <GlassIconBg />
-          <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
+          <Ionicons name="settings-outline" size={22} color={C.inkSoft} />
         </TouchableOpacity>
       </View>
     </View>
@@ -1027,7 +1027,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 6,
     borderBottomWidth: 0.5,
     borderBottomColor: C.hairline,
   },
@@ -1037,9 +1037,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    // 44pt — the app-wide round icon button size (matches the park page
+    // header buttons).
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 0.5,
     borderColor: C.hairline,

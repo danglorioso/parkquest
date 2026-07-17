@@ -359,11 +359,15 @@ export default function FeedScreen() {
           bar was a plain painted rgba tint, so the buttons' real glass had
           nothing but a near-solid color to sample. Same recipe as the
           floating tab bar's pill background. */}
-      <View style={[styles.topBar, { paddingTop: insets.top, height: TOP_BAR_H }]}>
+      {/* Safe-area offset lives on the inner row (not the bar's padding):
+          absolutely-positioned children (the GlassContainer) don't inherit
+          parent padding on the new architecture, which let the glass
+          branch's content ride up over the status bar. */}
+      <View style={[styles.topBar, { height: TOP_BAR_H }]}>
         {barGlass && GlassView && GlassContainer ? (
           <GlassContainer style={StyleSheet.absoluteFill}>
             <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" />
-            <View style={styles.topBarInner}>
+            <View style={[styles.topBarInner, { marginTop: insets.top }]}>
               <Wordmark onPress={triggerRefresh} />
               <View style={styles.topBarActions}>
                 <NotificationBell style={styles.iconBtn} />
@@ -373,7 +377,7 @@ export default function FeedScreen() {
                   onPress={() => setSearchOpen(true)}
                 >
                   <GlassIconBg />
-                  <Ionicons name="search" size={17} color={C.inkSoft} />
+                  <Ionicons name="search" size={22} color={C.inkSoft} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.iconBtn}
@@ -381,7 +385,7 @@ export default function FeedScreen() {
                   onPress={() => router.push('/profile/edit' as never)}
                 >
                   <GlassIconBg />
-                  <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
+                  <Ionicons name="settings-outline" size={22} color={C.inkSoft} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -398,7 +402,7 @@ export default function FeedScreen() {
               )}
               <View style={[StyleSheet.absoluteFill, styles.topBarFallbackFill]} />
             </View>
-            <View style={styles.topBarInner}>
+            <View style={[styles.topBarInner, { marginTop: insets.top }]}>
               <Wordmark onPress={triggerRefresh} />
               <View style={styles.topBarActions}>
                 <NotificationBell style={styles.iconBtn} />
@@ -408,7 +412,7 @@ export default function FeedScreen() {
                   onPress={() => setSearchOpen(true)}
                 >
                   <GlassIconBg />
-                  <Ionicons name="search" size={17} color={C.inkSoft} />
+                  <Ionicons name="search" size={22} color={C.inkSoft} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.iconBtn}
@@ -416,7 +420,7 @@ export default function FeedScreen() {
                   onPress={() => router.push('/profile/edit' as never)}
                 >
                   <GlassIconBg />
-                  <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
+                  <Ionicons name="settings-outline" size={22} color={C.inkSoft} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -458,9 +462,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    // 6 + 44 + 6 keeps the row at 56, inside the bar's fixed 56.5 height,
+    // with the 44pt standard icon buttons.
+    paddingVertical: 6,
   },
   topBarHairline: {
+    // Pinned to the bar's bottom edge — as an in-flow child it lands
+    // mid-bar in the glass branch, where the content is absolutely
+    // positioned and takes no layout space.
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     height: 0.5,
     backgroundColor: C.hairline,
   },
@@ -470,9 +483,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    // 44pt — the app-wide round icon button size (matches the park page
+    // header buttons).
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 0.5,
     borderColor: C.hairline,

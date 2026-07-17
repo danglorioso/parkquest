@@ -30,7 +30,10 @@ export function Avatar({ url, name, size = 40, style }: AvatarProps) {
         {url ? (
           <Image
             source={{ uri: url }}
-            style={{ width: size, height: size }}
+            // Fill the wrapper, don't restate `size`: a caller-passed border
+            // (e.g. the park page's overlapping mutuals row) shrinks the
+            // content box, and a fixed-size image overflows it off-center.
+            style={{ width: '100%', height: '100%' }}
             contentFit="cover"
             cachePolicy="memory-disk"
           />

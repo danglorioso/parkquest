@@ -276,8 +276,7 @@ export function ImageLightbox({
             style={[styles.nav, { left: 16, opacity: chromeOpacity }]}
           >
             <TouchableOpacity onPress={() => goTo(idx - 1)} style={styles.navBtn}>
-              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="chevron-back" size={24} color="#fff" />
+              <Ionicons name="chevron-back" size={28} color="#fff" style={styles.navIconShadow} />
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -287,8 +286,7 @@ export function ImageLightbox({
             style={[styles.nav, { right: 16, opacity: chromeOpacity }]}
           >
             <TouchableOpacity onPress={() => goTo(idx + 1)} style={styles.navBtn}>
-              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="chevron-forward" size={24} color="#fff" />
+              <Ionicons name="chevron-forward" size={28} color="#fff" style={styles.navIconShadow} />
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -346,9 +344,9 @@ const styles = StyleSheet.create({
   close: {
     position: 'absolute',
     right: 18,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -357,15 +355,20 @@ const styles = StyleSheet.create({
   nav: {
     position: 'absolute',
     top: '50%',
-    marginTop: -24,
+    marginTop: -22,
   },
+  // Bare chevrons, no circle — a text shadow keeps them readable over
+  // bright photos instead of a fill.
   navBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    overflow: 'hidden',
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  navIconShadow: {
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   caption: {
     position: 'absolute',

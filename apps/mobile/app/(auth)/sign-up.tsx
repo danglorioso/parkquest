@@ -179,14 +179,14 @@ export default function SignUpScreen() {
               />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Create Account" onPress={handleCreateAccount} loading={busy} disabled={!password} />
-              <SecondaryBtn label="Back" onPress={() => { setStep('email'); setError(''); setPassword(''); }} />
+              <SecondaryBtn icon="chevron-back" onPress={() => { setStep('email'); setError(''); setPassword(''); }} />
             </>}
 
             {step === 'verify' && <>
               <FField label="VERIFICATION CODE" value={code} onChange={setCode} keyboard="number-pad" autoFocus />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Verify Email" onPress={handleVerify} loading={busy} disabled={!code} />
-              <SecondaryBtn label="Back" onPress={() => { setStep('password'); setError(''); setCode(''); }} />
+              <SecondaryBtn icon="chevron-back" onPress={() => { setStep('password'); setError(''); setCode(''); }} />
             </>}
 
             {step === 'username' && <>

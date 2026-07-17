@@ -3,6 +3,7 @@ import {
   Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View, useColorScheme, useWindowDimensions,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -1306,253 +1307,61 @@ function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
   );
 }
 
-// ── Calendar date-range sheet ─────────────────────────────────────────────────
-
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const DOW = ['S','M','T','W','T','F','S'];
+// ── Date sheet (native inline picker in a bottom sheet) ───────────────────────
 
 function stripTime(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
-function sameDay(a: Date | null, b: Date | null): boolean {
-  return !!a && !!b && stripTime(a) === stripTime(b);
-}
 
-function CalendarSheet({ visible, start, end, maxDate, onApply, onClose }: {
+function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, onClose }: {
   visible: boolean;
-  start: Date | null;
-  end: Date | null;
-  maxDate: Date;
-  onApply: (start: Date | null, end: Date | null) => void;
+  title: string;
+  value: Date;
+  minimumDate?: Date;
+  maximumDate: Date;
+  onPick: (d: Date) => void;
   onClose: () => void;
 }) {
   const C = useColors();
-  const [selStart, setSelStart] = useState<Date | null>(start);
-  const [selEnd,   setSelEnd]   = useState<Date | null>(end);
-  const [view, setView] = useState(() => {
-    const d = start ?? new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
-  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   // Slide only the sheet; the modal itself fades so the backdrop doesn't ride up
   const slide = useRef(new Animated.Value(400)).current;
 
   useEffect(() => {
     if (visible) {
-      setSelStart(start);
-      setSelEnd(end);
-      const d = start ?? new Date();
-      setView(new Date(d.getFullYear(), d.getMonth(), 1));
-      setMonthPickerOpen(false);
       slide.setValue(400);
       Animated.spring(slide, {
         toValue: 0, useNativeDriver: true,
         damping: 26, mass: 0.8, stiffness: 220,
       }).start();
     }
-  }, [visible, start, end, slide]);
-
-  // Same range logic as web: 1st tap = start, 2nd tap (>= start) = end
-  const pick = (d: Date) => {
-    if (!selStart || (selStart && selEnd)) { setSelStart(d); setSelEnd(null); return; }
-    if (stripTime(d) < stripTime(selStart)) { setSelStart(d); setSelEnd(null); return; }
-    setSelEnd(d);
-  };
-
-  const today = new Date();
-
-  // Same quick-select chips as web: Today, This weekend
-  const applyToday = () => {
-    setSelStart(today);
-    setSelEnd(null);
-    setView(new Date(today.getFullYear(), today.getMonth(), 1));
-  };
-  const applyThisWeekend = () => {
-    const sat = new Date(today);
-    sat.setDate(today.getDate() + (6 - today.getDay()));
-    const sun = new Date(sat);
-    sun.setDate(sat.getDate() + 1);
-    setSelStart(sat);
-    setSelEnd(sun);
-    setView(new Date(sat.getFullYear(), sat.getMonth(), 1));
-  };
-  const rangeBg = 'rgba(31,61,46,0.13)';
-
-  const firstDow = new Date(view.getFullYear(), view.getMonth(), 1).getDay();
-  const daysInMonth = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
-  const cells: (Date | null)[] = [];
-  for (let i = 0; i < firstDow; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(view.getFullYear(), view.getMonth(), d));
-  while (cells.length % 7 !== 0) cells.push(null);
-  const weeks: (Date | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  }, [visible, slide]);
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <Pressable style={styles.dateBackdrop} onPress={onClose} />
       <Animated.View style={[styles.dateSheet, { transform: [{ translateY: slide }] }]}>
         <View style={styles.dateSheetHeader}>
-          <TouchableOpacity onPress={() => {
-            if (selStart || selEnd) { setSelStart(null); setSelEnd(null); }
-            else onClose();
-          }}>
-            <Text style={{ fontSize: 16, color: C.inkMute }}>{selStart || selEnd ? 'Clear' : 'Cancel'}</Text>
-          </TouchableOpacity>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>Dates</Text>
-          <TouchableOpacity onPress={() => { onApply(selStart, selEnd); onClose(); }}>
+          <View style={{ width: 48 }} />
+          <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>{title}</Text>
+          <TouchableOpacity onPress={onClose} style={{ width: 48, alignItems: 'flex-end' }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: C.primary }}>Done</Text>
           </TouchableOpacity>
         </View>
-
-        <View style={{ padding: 16 }}>
-          {/* Quick-select chips */}
-          <View style={styles.calChipsRow}>
-            <TouchableOpacity style={styles.calChip} onPress={applyToday}>
-              <Text style={styles.calChipText}>Today</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.calChip} onPress={applyThisWeekend}>
-              <Text style={styles.calChipText}>This weekend</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Month / year navigation */}
-          <View style={styles.calNavRow}>
-            <TouchableOpacity
-              style={styles.calNavBtn}
-              onPress={() => setView(v => new Date(v.getFullYear(), v.getMonth() - 1, 1))}
-            >
-              <Ionicons name="chevron-back" size={15} color={C.inkSoft} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.calMonthLabel}
-              onPress={() => setMonthPickerOpen(o => !o)}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontWeight: '700', fontSize: 15, color: C.ink }}>
-                {MONTHS[view.getMonth()]} {view.getFullYear()}
-              </Text>
-              <Ionicons name={monthPickerOpen ? 'chevron-up' : 'chevron-down'} size={13} color={C.inkMute} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.calNavBtn}
-              onPress={() => setView(v => new Date(v.getFullYear(), v.getMonth() + 1, 1))}
-            >
-              <Ionicons name="chevron-forward" size={15} color={C.inkSoft} />
-            </TouchableOpacity>
-          </View>
-
-          {monthPickerOpen ? (
-            /* Month + year picker */
-            <View>
-              <View style={[styles.calNavRow, { marginTop: 12 }]}>
-                <TouchableOpacity
-                  style={styles.calNavBtn}
-                  onPress={() => setView(v => new Date(v.getFullYear() - 1, v.getMonth(), 1))}
-                >
-                  <Ionicons name="chevron-back" size={15} color={C.inkSoft} />
-                </TouchableOpacity>
-                <Text style={{ fontWeight: '700', fontSize: 15, color: C.ink }}>{view.getFullYear()}</Text>
-                <TouchableOpacity
-                  style={[styles.calNavBtn, view.getFullYear() >= today.getFullYear() && { opacity: 0.3 }]}
-                  disabled={view.getFullYear() >= today.getFullYear()}
-                  onPress={() => setView(v => new Date(v.getFullYear() + 1, v.getMonth(), 1))}
-                >
-                  <Ionicons name="chevron-forward" size={15} color={C.inkSoft} />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.calMonthGrid}>
-                {MONTHS_ABBR.map((m, i) => {
-                  const isFuture = view.getFullYear() === today.getFullYear() && i > today.getMonth();
-                  const isViewMonth = i === view.getMonth();
-                  return (
-                    <TouchableOpacity
-                      key={m}
-                      disabled={isFuture}
-                      onPress={() => { setView(new Date(view.getFullYear(), i, 1)); setMonthPickerOpen(false); }}
-                      style={[styles.calMonthCell, isViewMonth && { backgroundColor: C.primary }]}
-                    >
-                      <Text style={{
-                        fontSize: 13,
-                        fontWeight: isViewMonth ? '700' : '500',
-                        color: isViewMonth ? C.onPrimary : isFuture ? 'rgba(122,116,106,0.4)' : C.inkSoft,
-                      }}>{m}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          ) : (
-            /* Day grid */
-            <View style={{ marginTop: 10 }}>
-              <View style={{ flexDirection: 'row' }}>
-                {DOW.map((d, i) => (
-                  <Text key={i} style={styles.calDow}>{d}</Text>
-                ))}
-              </View>
-              {weeks.map((week, wi) => (
-                <View key={wi} style={{ flexDirection: 'row' }}>
-                  {week.map((d, di) => {
-                    if (!d) return <View key={di} style={styles.calCell} />;
-                    const isStart    = sameDay(d, selStart);
-                    const isEnd      = selEnd ? sameDay(d, selEnd) : false;
-                    const endpoint   = isStart || isEnd;
-                    const mid        = !!(selStart && selEnd && stripTime(d) > stripTime(selStart) && stripTime(d) < stripTime(selEnd));
-                    const isToday    = sameDay(d, today);
-                    const disabled   = stripTime(d) > stripTime(maxDate);
-                    const isRowStart = di === 0;
-                    const isRowEnd   = di === 6;
-                    return (
-                      <View key={di} style={styles.calCell}>
-                        {/* Range background — pill strip, rounded at row edges and endpoints */}
-                        {mid && (
-                          <View style={{
-                            position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
-                            backgroundColor: rangeBg,
-                            borderTopLeftRadius:     isRowStart ? 999 : 0,
-                            borderBottomLeftRadius:  isRowStart ? 999 : 0,
-                            borderTopRightRadius:    isRowEnd   ? 999 : 0,
-                            borderBottomRightRadius: isRowEnd   ? 999 : 0,
-                          }} />
-                        )}
-                        {isStart && selEnd && !isEnd && (
-                          <View style={{
-                            position: 'absolute', top: 0, bottom: 0, right: 0, left: '50%',
-                            backgroundColor: rangeBg,
-                            borderTopRightRadius:    isRowEnd ? 999 : 0,
-                            borderBottomRightRadius: isRowEnd ? 999 : 0,
-                          }} />
-                        )}
-                        {isEnd && !isStart && (
-                          <View style={{
-                            position: 'absolute', top: 0, bottom: 0, left: 0, right: '50%',
-                            backgroundColor: rangeBg,
-                            borderTopLeftRadius:    isRowStart ? 999 : 0,
-                            borderBottomLeftRadius: isRowStart ? 999 : 0,
-                          }} />
-                        )}
-                        <TouchableOpacity
-                          disabled={disabled}
-                          onPress={() => pick(d)}
-                          style={[
-                            styles.calDayBtn,
-                            endpoint && { backgroundColor: C.primary },
-                            isToday && !endpoint && !mid && { borderWidth: 1.5, borderColor: 'rgba(31,61,46,0.4)' },
-                          ]}
-                        >
-                          <Text style={{
-                            fontSize: 13,
-                            fontWeight: endpoint ? '800' : mid ? '700' : '400',
-                            color: endpoint ? C.onPrimary : disabled ? 'rgba(122,116,106,0.35)' : mid ? C.primary : C.ink,
-                          }}>{d.getDate()}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
-          )}
+        <View style={{ paddingHorizontal: 12, paddingTop: 4 }}>
+          <DateTimePicker
+            value={value}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+            minimumDate={minimumDate}
+            maximumDate={maximumDate}
+            accentColor={C.primary}
+            onChange={(_, d) => {
+              if (Platform.OS !== 'ios') onClose();
+              if (!d) return;
+              Haptics.selectionAsync();
+              onPick(d);
+            }}
+          />
         </View>
       </Animated.View>
     </Modal>
@@ -1680,7 +1489,8 @@ function StepWhere({ draft, set, parks, onPickPark }: {
 }) {
   const C = useColors();
   const park = parks.find(p => p.park_code === draft.parkCode);
-  const [showCalendar, setShowCalendar] = useState(false);
+  // Which date the bottom-sheet picker is editing (null = closed)
+  const [openPicker, setOpenPicker] = useState<'start' | 'end' | null>(null);
   const today = new Date();
 
   const days = dayCount(draft.startDate, draft.endDate);
@@ -1699,13 +1509,24 @@ function StepWhere({ draft, set, parks, onPickPark }: {
 
   return (
     <View>
-      <CalendarSheet
-        visible={showCalendar}
-        start={draft.startDate}
-        end={draft.endDate}
-        maxDate={today}
-        onApply={(s, e) => { set('startDate', s); set('endDate', e); }}
-        onClose={() => setShowCalendar(false)}
+      <DateSheet
+        visible={openPicker !== null}
+        title={openPicker === 'end' ? 'End date' : 'Start date'}
+        value={openPicker === 'end'
+          ? (draft.endDate ?? draft.startDate ?? today)
+          : (draft.startDate ?? today)}
+        minimumDate={openPicker === 'end' ? (draft.startDate ?? undefined) : undefined}
+        maximumDate={today}
+        onPick={d => {
+          if (openPicker === 'end') {
+            set('endDate', d);
+          } else {
+            set('startDate', d);
+            // Keep the range valid — an end date before the new start is stale
+            if (draft.endDate && stripTime(draft.endDate) < stripTime(d)) set('endDate', null);
+          }
+        }}
+        onClose={() => setOpenPicker(null)}
       />
 
       <Reanimated.View entering={FadeInDown.duration(360)} style={{ marginBottom: 24 }}>
@@ -1795,7 +1616,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
         <Section title="Dates" tag="required" mb={0}>
           <View style={[styles.card, { paddingVertical: 4 }]}>
             <PressableScale
-              onPress={() => setShowCalendar(true)}
+              onPress={() => setOpenPicker('start')}
               style={[styles.dateRow, { borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft }]}
             >
               <View style={styles.dateIcon}>
@@ -1811,7 +1632,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
             </PressableScale>
 
             <PressableScale
-              onPress={() => setShowCalendar(true)}
+              onPress={() => setOpenPicker('end')}
               disabled={!draft.startDate}
               style={[styles.dateRow, { opacity: draft.startDate ? 1 : 0.4 }]}
             >
@@ -2325,14 +2146,15 @@ export default function LogVisitModal() {
   // (Rating/Crowd/Difficulty) and the per-drag counter is kept as a belt-and-braces signal
   // for any other step that hosts a draggable control.
   //
-  // It's also switched off whenever there's something the exit prompt would ask about
-  // (an edit in progress, or a draft with real content) — otherwise the *interactive*
-  // swipe-down commits natively before beforeRemove's preventDefault() below ever runs:
-  // that listener fires on the JS thread, but UIKit's own sheet-dismiss animation isn't
-  // gated on JS and can finish first, so "Keep editing" was reopening a sheet that had
-  // already visually closed. Disabling the gesture up front means the only way to leave
-  // is the close button, whose handler calls promptExit() *before* triggering any
-  // navigation — so the prompt is guaranteed to land before anything disappears.
+  // It's also switched off while editing an existing visit — the "Discard
+  // changes?" prompt has to land before anything disappears, and the
+  // *interactive* swipe-down commits natively before beforeRemove's
+  // preventDefault() below ever runs: that listener fires on the JS thread,
+  // but UIKit's own sheet-dismiss animation isn't gated on JS and can finish
+  // first, so "Keep editing" was reopening a sheet that had already visually
+  // closed. Fresh visits keep the swipe: their draft is continuously
+  // auto-saved (see the upsertDraft effect below), so a swipe-away loses
+  // nothing and the beforeRemove listener just flushes the pending save.
   const activeSliderDrags = useRef(0);
   const stepRef = useRef(step);
   stepRef.current = step;
@@ -2340,19 +2162,18 @@ export default function LogVisitModal() {
   // Also freezes the step ScrollView while a slider drag is live — a slightly
   // off-horizontal swipe on a slider was scrolling the content vertically.
   const [controlDragging, setControlDragging] = useState(false);
-  const hasUnsavedContent = isEditing || draftHasContent(draft);
   const setSliderDragging = useCallback((dragging: boolean) => {
     activeSliderDrags.current = Math.max(0, activeSliderDrags.current + (dragging ? 1 : -1));
     setControlDragging(activeSliderDrags.current > 0);
     navigation.setOptions({
-      gestureEnabled: activeSliderDrags.current === 0 && !isDragStep(stepRef.current) && !hasUnsavedContent,
+      gestureEnabled: activeSliderDrags.current === 0 && !isDragStep(stepRef.current) && !isEditing,
     });
-  }, [navigation, hasUnsavedContent]);
+  }, [navigation, isEditing]);
   useEffect(() => {
     navigation.setOptions({
-      gestureEnabled: !isDragStep(step) && activeSliderDrags.current === 0 && !hasUnsavedContent,
+      gestureEnabled: !isDragStep(step) && activeSliderDrags.current === 0 && !isEditing,
     });
-  }, [step, navigation, hasUnsavedContent]);
+  }, [step, navigation, isEditing]);
 
   useEffect(() => {
     if (isEdit) return;
@@ -2428,13 +2249,23 @@ export default function LogVisitModal() {
   }, [isEditing, isEdit, draft, parks]);
 
   // Catches dismissal we didn't initiate ourselves — the native swipe-down-to-dismiss
-  // gesture on this pageSheet, or the Android back button — and routes it through the
-  // same save/discard/keep-editing prompt as the explicit close button, instead of
-  // silently auto-saving (which used to stack a redundant draft on top of any other
-  // saved draft with zero warning).
+  // gesture on this pageSheet, or the Android back button. Fresh visits are let
+  // through: the draft auto-save effect above has been upserting all along (same id,
+  // so nothing stacks), and this just flushes the debounced write so the last 600ms
+  // of input isn't lost with the unmount. Edits still get the discard prompt — the
+  // swipe gesture is disabled while editing (see gestureEnabled above), so
+  // preventDefault here only ever races a button/back-key, which it wins.
   useEffect(() => {
     const unsub = navigation.addListener('beforeRemove', e => {
       if (leavingViaAction.current) return;
+      if (!isEditing) {
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        if (draftHasContent(draft)) {
+          const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
+          upsertDraft(draft, parkName, draftId.current);
+        }
+        return;
+      }
       e.preventDefault();
       promptExit(() => {
         leavingViaAction.current = true;
@@ -2442,7 +2273,7 @@ export default function LogVisitModal() {
       });
     });
     return unsub;
-  }, [navigation, promptExit]);
+  }, [navigation, promptExit, isEditing, draft, parks]);
 
   const resumeDraft = () => {
     if (!restoreBanner) return;
@@ -2824,8 +2655,7 @@ export default function LogVisitModal() {
           {step > 0 ? (
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <TouchableOpacity onPress={goBack} style={[styles.backBtn, { flex: 1, width: undefined }]} activeOpacity={0.7}>
-                <Ionicons name="chevron-back" size={15} color={C.ink} />
-                <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>Back</Text>
+                <Ionicons name="chevron-back" size={18} color={C.ink} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -3160,7 +2990,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
 
-  // Date picker
+  // Date sheet
   dateBackdrop: {
     ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)',
   },
@@ -3173,50 +3003,6 @@ const styles = StyleSheet.create({
   dateSheetHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     padding: 16, borderBottomWidth: 0.5, borderBottomColor: C.hairline,
-  },
-
-  // Calendar
-  calChipsRow: {
-    flexDirection: 'row', gap: 6, marginBottom: 12,
-  },
-  calChip: {
-    backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 100, paddingHorizontal: 10, paddingVertical: 5,
-  },
-  calChipText: {
-    fontSize: 12, fontWeight: '600', color: C.inkSoft,
-  },
-  calNavRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  calNavBtn: {
-    width: 30, height: 30, borderRadius: 8,
-    backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  calMonthLabel: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 4,
-  },
-  calMonthGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', marginTop: 12,
-  },
-  calMonthCell: {
-    width: '25%', paddingVertical: 11, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  calDow: {
-    flex: 1, textAlign: 'center',
-    fontSize: 13, fontWeight: '600', color: C.inkMute,
-    paddingVertical: 4,
-  },
-  calCell: {
-    flex: 1, height: 40,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  calDayBtn: {
-    width: 34, height: 34, borderRadius: 17,
-    alignItems: 'center', justifyContent: 'center',
   },
 
   // Park banner

@@ -8,6 +8,7 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +32,13 @@ const SPRING = { damping: 16, stiffness: 220, mass: 0.7 };
 // Critically damped so the bubble settles onto the target slot without
 // sliding past it and springing back (critical damping ≈ 2√(k·m) ≈ 25)
 const SLIDE_SPRING = { damping: 26, stiffness: 220, mass: 0.7 };
+// Underdamped on purpose — the press-and-hold swell should wobble into
+// place like a water droplet (Apple Music's tab bar hold behavior), not
+// glide there.
+const DROPLET_SPRING = { damping: 12, stiffness: 320, mass: 0.7 };
+// How much the bubble swells while the active tab is held. Matches the
+// drag grow (1.15) plus a touch more so the hold reads as its own state.
+const HOLD_SCALE = 1.22;
 
 function bottomOffset(insetBottom: number) {
   return Math.max(insetBottom - 8, 12);
@@ -94,6 +102,12 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
       bubbleCx.value = cx;
     } else if (dragging.value === 0) {
       bubbleCx.value = withSpring(cx, SLIDE_SPRING);
+      // Droplet pulse while traveling — the bubble swells as it leaves and
+      // settles back as it lands (AllTrails/Apple Music tab-switch feel).
+      bubbleScale.value = withSequence(
+        withSpring(HOLD_SCALE, DROPLET_SPRING),
+        withSpring(1, SPRING),
+      );
     }
   }, [state.index, slotW]);
 
@@ -108,6 +122,18 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   const tick = useCallback(() => {
     Haptics.selectionAsync();
   }, []);
+
+  // Press-and-hold on the active tab swells the glass bubble (droplet), and
+  // releasing settles it back. The bubble is a real GlassView inside the
+  // bar's shared GlassContainer, so at hold scale the materials melt
+  // together the way Apple's own tab bar selection does.
+  const holdBubble = useCallback((held: boolean) => {
+    // A drag cancels the Pressable (onPressOut fires as the pan activates) —
+    // don't let that release shrink the bubble mid-drag; onFinalize owns the
+    // settle in that path.
+    if (!held && dragging.value === 1) return;
+    bubbleScale.value = withSpring(held ? HOLD_SCALE : 1, held ? DROPLET_SPRING : SPRING);
+  }, [bubbleScale, dragging]);
 
   // Dropping the drag on the FAB slot opens the log-visit modal, same
   // destination as tapping the FAB itself — the slot has no navigable
@@ -195,6 +221,14 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
     };
   });
 
+  // Park profile pages own their bottom edge (AllTrails-style pinned action
+  // bar), so the floating pill gets out of the way on those nested detail
+  // routes: parks/[id] within the Parks tab, park/[id] within Feed.
+  const focusedTab = routes[state.index];
+  const nestedState = focusedTab?.state as { index?: number; routes?: { name: string }[] } | undefined;
+  const nestedName = nestedState?.routes?.[nestedState.index ?? 0]?.name;
+  if (nestedName === '[id]' || nestedName === 'park/[id]') return null;
+
   const bubble = (
     <Animated.View style={[styles.bubble, bubbleStyle]} pointerEvents="none">
       {glass && GlassView ? (
@@ -280,6 +314,8 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
                   accessibilityRole="button"
                   accessibilityState={focused ? { selected: true } : {}}
                   accessibilityLabel={options.title ?? route.name}
+                  onPressIn={() => { if (focused) holdBubble(true); }}
+                  onPressOut={() => { if (focused) holdBubble(false); }}
                   onPress={() => {
                     const event = navigation.emit({
                       type: 'tabPress',

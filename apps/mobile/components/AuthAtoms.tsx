@@ -114,10 +114,13 @@ export function PrimaryBtn({ label, onPress, loading = false, disabled = false }
   );
 }
 
-export function SecondaryBtn({ label, onPress }: { label: string; onPress: () => void }) {
+export function SecondaryBtn({ label, icon, onPress }: {
+  label?: string; icon?: keyof typeof Ionicons.glyphMap; onPress: () => void;
+}) {
   return (
-    <TouchableOpacity onPress={onPress} style={st.secondaryBtn} activeOpacity={0.7}>
-      <Text style={st.secondaryBtnText}>{label}</Text>
+    <TouchableOpacity onPress={onPress} style={st.secondaryBtn} activeOpacity={0.7} hitSlop={8}>
+      {icon != null && <Ionicons name={icon} size={18} color={C.inkMute} />}
+      {label != null && <Text style={st.secondaryBtnText}>{label}</Text>}
     </TouchableOpacity>
   );
 }

@@ -139,7 +139,7 @@ export default function LoginScreen() {
               <FField label="VERIFICATION CODE" value={mfaCode} onChange={setMfaCode} keyboard="number-pad" autoFocus />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Verify" onPress={handleMfa} loading={busy} />
-              <SecondaryBtn label="Back" onPress={() => { setStep('form'); setMfaCode(''); setError(''); }} />
+              <SecondaryBtn icon="chevron-back" onPress={() => { setStep('form'); setMfaCode(''); setError(''); }} />
             </>}
 
             {step === 'form' && <>
@@ -163,7 +163,7 @@ export default function LoginScreen() {
               <FField label="EMAIL" value={fgEmail} onChange={setFgEmail} keyboard="email-address" autoFocus />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Send Reset Code" onPress={handleForgotSend} loading={busy} disabled={!fgEmail} />
-              <SecondaryBtn label="Back to Sign In" onPress={() => { setStep('form'); setError(''); }} />
+              <SecondaryBtn icon="chevron-back" onPress={() => { setStep('form'); setError(''); }} />
             </>}
 
             {step === 'forgot_verify' && <>
@@ -179,7 +179,7 @@ export default function LoginScreen() {
               />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Reset Password" onPress={handleForgotReset} loading={busy} disabled={!fgCode || !fgPw} />
-              <SecondaryBtn label="Back" onPress={() => { setStep('forgot_email'); setFgCode(''); setError(''); }} />
+              <SecondaryBtn icon="chevron-back" onPress={() => { setStep('forgot_email'); setFgCode(''); setError(''); }} />
             </>}
           </View>
 

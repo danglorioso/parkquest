@@ -531,7 +531,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
           {loading ? (
             <ActivityIndicator size="small" color={T.primary} />
           ) : (
-            <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={18} color={open ? T.primary : C.inkSoft} />
+            <Ionicons name={open ? 'notifications' : 'notifications-outline'} size={22} color={open ? T.primary : C.inkSoft} />
           )}
         </TouchableOpacity>
         {displayCount > 0 && (

@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Alert, FlatList,
+  ActivityIndicator, Alert, Animated, FlatList,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -61,11 +61,11 @@ type ListRow =
   | { _t: 'header' }
   | { _t: 'searchbar' }
   | { _t: 'search_results'; results: SearchUser[] }
-  | { _t: 'section'; label: string; icon: string; count?: number; accent?: boolean; collapsed?: boolean; onToggle?: () => void }
+  | { _t: 'section'; label: string; icon: string; count?: number; accent?: boolean }
   | { _t: 'friend';    item: FriendUser }
   | { _t: 'incoming';  item: PendingUser }
   | { _t: 'outgoing';  item: PendingUser }
-  | { _t: 'suggested'; item: SuggestedUser }
+  | { _t: 'suggestions' }
   | { _t: 'skeleton' }
   | { _t: 'empty';    message: string };
 
@@ -116,7 +116,7 @@ function SectionHead({
       )}
       {onToggle && (
         <Ionicons
-          name={collapsed ? 'chevron-down' : 'chevron-up'}
+          name={collapsed ? 'chevron-up' : 'chevron-down'}
           size={14}
           color={C.inkMute}
           style={{ marginLeft: 'auto' }}
@@ -126,6 +126,61 @@ function SectionHead({
   );
   if (!onToggle) return content;
   return <TouchableOpacity onPress={onToggle} activeOpacity={0.7}>{content}</TouchableOpacity>;
+}
+
+// ── Collapsible body ──────────────────────────────────────────────────────────
+
+// Same measured-height technique as the park profile's Section wrapper:
+// LayoutAnimation doesn't animate child mount/unmount under Fabric, so the
+// children stay permanently mounted inside a clipped Animated.View whose
+// height is hand-driven between 0 and the content's measured height. An
+// invisible probe measures the natural height once, outside the animated
+// container, so mid-collapse layout passes can't corrupt the reading.
+function CollapsibleBody({ open, children }: { open: boolean; children: React.ReactNode }) {
+  const [contentHeight, setContentHeight] = useState(0);
+  const anim = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const openRef = useRef(open);
+  useEffect(() => {
+    if (openRef.current === open) return;
+    openRef.current = open;
+    Animated.timing(anim, { toValue: open ? 1 : 0, duration: 300, useNativeDriver: false }).start();
+  }, [open, anim]);
+  return (
+    <View>
+      {contentHeight === 0 && (
+        <View
+          style={{ position: 'absolute', opacity: 0, left: 0, right: 0, zIndex: -1 }}
+          pointerEvents="none"
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 0) setContentHeight(h);
+          }}
+        >
+          {children}
+        </View>
+      )}
+      <Animated.View
+        pointerEvents={open ? 'auto' : 'none'}
+        style={{
+          overflow: 'hidden',
+          opacity: anim,
+          height: contentHeight ? anim.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }) : undefined,
+        }}
+      >
+        <View
+          // Only trusted while settled open — during the close animation the
+          // shrinking ancestor propagates transient near-zero heights down.
+          onLayout={(e) => {
+            if (!openRef.current) return;
+            const h = e.nativeEvent.layout.height;
+            if (h > 0 && h !== contentHeight) setContentHeight(h);
+          }}
+        >
+          {children}
+        </View>
+      </Animated.View>
+    </View>
+  );
 }
 
 // ── User row ──────────────────────────────────────────────────────────────────
@@ -318,10 +373,9 @@ export default function FriendsScreen() {
   const [outgoing,   setOutgoing]   = useState<PendingUser[] | null>(null);
   const [suggested,  setSuggested]  = useState<SuggestedUser[]>([]);
   const [sugLoading, setSugLoading] = useState(true);
-  // Manual override once the user's tapped the "People you may know" head —
-  // otherwise it defaults collapsed whenever there are incoming requests
-  // (those are more important) and expanded when there aren't.
-  const [suggestionsToggle, setSuggestionsToggle] = useState<boolean | null>(null);
+  // "People you may know" is expanded by default; tapping the head collapses
+  // it (animated — see CollapsibleBody).
+  const [sugCollapsed, setSugCollapsed] = useState(false);
 
   const [searchQ,    setSearchQ]    = useState('');
   const [results,    setResults]    = useState<SearchUser[]>([]);
@@ -503,24 +557,10 @@ export default function FriendsScreen() {
       pendingIncoming.forEach(r => rows.push({ _t: 'incoming', item: r }));
     }
 
-    // Suggestions — collapsed by default while there are incoming requests
-    // to deal with first; always open when there aren't, and the user's own
-    // toggle always wins once they've touched it either way.
+    // Suggestions — one row carrying the whole block, so collapsing animates
+    // the content in place instead of yanking rows out of the list.
     if (sugLoading || suggested.length > 0) {
-      const collapsed = suggestionsToggle ?? pendingIncoming.length > 0;
-      rows.push({
-        _t: 'section', label: 'PEOPLE YOU MAY KNOW', icon: 'sparkles-outline',
-        collapsed, onToggle: () => setSuggestionsToggle(!collapsed),
-      });
-      if (!collapsed) {
-        if (sugLoading) {
-          rows.push({ _t: 'skeleton' }, { _t: 'skeleton' }, { _t: 'skeleton' });
-        } else {
-          // Defensive cap in addition to the `limit` query param — keeps the section
-          // bounded even if the API ever returns more than asked.
-          suggested.slice(0, MAX_SUGGESTIONS).forEach(u => rows.push({ _t: 'suggested', item: u }));
-        }
-      }
+      rows.push({ _t: 'suggestions' });
     }
 
     // Friends
@@ -609,7 +649,6 @@ export default function FriendsScreen() {
           <View style={{ paddingHorizontal: 16, marginTop: 28, marginBottom: 8 }}>
             <SectionHead
               label={item.label} icon={item.icon} count={item.count} accent={item.accent}
-              collapsed={item.collapsed} onToggle={item.onToggle}
             />
           </View>
         );
@@ -686,30 +725,56 @@ export default function FriendsScreen() {
         );
       }
 
-      case 'suggested': {
-        const { item: u } = item;
-        const name = displayName(u);
-        const subtext = u.mutual_friends > 0
-          ? `${u.mutual_friends} mutual friend${u.mutual_friends !== 1 ? 's' : ''}`
-          : u.shared_parks > 0
-          ? `${u.shared_parks} shared park${u.shared_parks !== 1 ? 's' : ''}`
-          : u.visit_count > 0
-          ? `${u.visit_count} park${u.visit_count !== 1 ? 's' : ''} visited`
-          : 'Explorer';
+      case 'suggestions':
         return (
-          <View style={{ paddingHorizontal: 16, marginBottom: 2 }}>
-            <View style={st.card}>
-              <SuggestedRow
-                avatarUrl={u.avatar_url} name={name} username={u.username}
-                subtext={subtext}
-                state={{ sent: sentSuggestion.has(u.clerk_user_id), busy: busySuggestion.has(u.clerk_user_id) }}
-                onAdd={() => handleAddSuggested(u)}
-                onPressUser={() => router.push(`/user/${u.clerk_user_id}` as never)}
+          <View style={{ marginTop: 28 }}>
+            <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+              <SectionHead
+                label="PEOPLE YOU MAY KNOW" icon="sparkles-outline"
+                collapsed={sugCollapsed} onToggle={() => setSugCollapsed(c => !c)}
               />
             </View>
+            <CollapsibleBody open={!sugCollapsed}>
+              {sugLoading ? (
+                <>
+                  {[0, 1, 2].map(i => (
+                    <View key={i} style={{ paddingHorizontal: 16, marginBottom: 2 }}>
+                      <View style={st.card}>
+                        <SkeletonRow />
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                // Defensive cap in addition to the `limit` query param — keeps
+                // the section bounded even if the API ever returns more than asked.
+                suggested.slice(0, MAX_SUGGESTIONS).map(u => {
+                  const name = displayName(u);
+                  const subtext = u.mutual_friends > 0
+                    ? `${u.mutual_friends} mutual friend${u.mutual_friends !== 1 ? 's' : ''}`
+                    : u.shared_parks > 0
+                    ? `${u.shared_parks} shared park${u.shared_parks !== 1 ? 's' : ''}`
+                    : u.visit_count > 0
+                    ? `${u.visit_count} park${u.visit_count !== 1 ? 's' : ''} visited`
+                    : 'Explorer';
+                  return (
+                    <View key={u.clerk_user_id} style={{ paddingHorizontal: 16, marginBottom: 2 }}>
+                      <View style={st.card}>
+                        <SuggestedRow
+                          avatarUrl={u.avatar_url} name={name} username={u.username}
+                          subtext={subtext}
+                          state={{ sent: sentSuggestion.has(u.clerk_user_id), busy: busySuggestion.has(u.clerk_user_id) }}
+                          onAdd={() => handleAddSuggested(u)}
+                          onPressUser={() => router.push(`/user/${u.clerk_user_id}` as never)}
+                        />
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </CollapsibleBody>
           </View>
         );
-      }
 
       default: return null;
     }
@@ -720,10 +785,12 @@ export default function FriendsScreen() {
       <FlatList
         data={rows}
         keyExtractor={(item, index) => {
-          if (item._t === 'friend')    return `friend-${item.item.clerk_user_id}`;
-          if (item._t === 'incoming')  return `incoming-${item.item.friendship_id}`;
-          if (item._t === 'outgoing')  return `outgoing-${item.item.friendship_id}`;
-          if (item._t === 'suggested') return `sug-${item.item.clerk_user_id}`;
+          if (item._t === 'friend')      return `friend-${item.item.clerk_user_id}`;
+          if (item._t === 'incoming')    return `incoming-${item.item.friendship_id}`;
+          if (item._t === 'outgoing')    return `outgoing-${item.item.friendship_id}`;
+          // Stable key so the collapsible block never remounts (and loses its
+          // animation state) when rows above it come and go.
+          if (item._t === 'suggestions') return 'suggestions';
           return `row-${index}`;
         }}
         renderItem={renderRow}
