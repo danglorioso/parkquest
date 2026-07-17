@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
-import { Users, Image as ImageIcon, MapPin, Award, Flag, UserPlus, ChevronRight } from 'lucide-react';
+import {
+  Users, Image as ImageIcon, MapPin, Award, Flag, UserPlus, Download, HeartHandshake,
+  ArrowUpRight, ArrowDownRight, Heart, MessageCircle,
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import {
   SignupsChart, ContributionHeatmap, ActivityInsights, ReportsStatusBar, TopParksList, HourlyActivityChart,
-  DailyActiveUsersChart,
+  DailyActiveUsersChart, AppStoreDownloadsChart,
 } from './AdminCharts';
-import { ActiveUsersCard } from './ActiveUsersCard';
 import { UsageGauges } from './UsageGauges';
 
 interface Stats {
@@ -14,15 +16,27 @@ interface Stats {
   total_posts: number;
   total_visits: number;
   total_badges: number;
+  total_likes: number;
+  total_comments: number;
+  total_friendships: number;
+  active_users_15m: number;
   active_users_1h: number;
   active_users_today: number;
   active_users_7d: number;
   active_users_30d: number;
   signups_by_day: { day: string; count: number }[];
+  dau_30d: { day: string; count: number }[];
   activity_by_day: { day: string; count: number }[];
   reports_by_status: { open: number; actioned: number; dismissed: number };
   top_parks: { park_code: string; name: string; visit_count: number }[];
   hourly_activity: { hour: number; active_users: number; posts: number; likes: number; comments: number; visits: number }[];
+  app_store_by_day: { day: string; units: number; proceeds: number }[];
+  app_store_units_30d: number;
+  app_store_proceeds_30d: number;
+  deltas_24h: {
+    users: number; posts: number; visits: number;
+    badges: number; likes: number; comments: number; friendships: number; reports: number;
+  };
 }
 
 async function getStats(): Promise<Stats> {
@@ -36,20 +50,83 @@ async function getStats(): Promise<Stats> {
   return res.json();
 }
 
-function StatCard({
-  href, icon: Icon, label, value, accent,
-}: { href: string; icon: React.ElementType; label: string; value: number; accent?: boolean }) {
+// Live-presence hero: the 15-minute number is the "is anyone on right now"
+// glance, the four windows alongside replace the old cramped toggle card
+// (all visible at once — no clicking through to compare).
+function PulseCard({ stats }: { stats: Stats }) {
+  const windows = [
+    { label: 'Past hour', value: stats.active_users_1h },
+    { label: 'Past 24h', value: stats.active_users_today },
+    { label: 'Past 7d', value: stats.active_users_7d },
+    { label: 'Past 30d', value: stats.active_users_30d },
+  ];
   return (
-    <Link href={href}>
-      <Card className="group relative cursor-pointer items-start gap-2 border-hairline p-3.5 shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5">
-        <div className="flex w-full items-start justify-between">
-          <span className={`shrink-0 rounded-md p-2 ${accent ? 'bg-destructive/10 text-destructive' : 'bg-surface-alt text-primary'}`}>
-            <Icon size={15} strokeWidth={2.25} />
-          </span>
-          <ChevronRight size={14} className="shrink-0 text-ink-mute opacity-0 transition-opacity group-hover:opacity-100" />
+    <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+      <div className="flex flex-col gap-6 md:flex-row md:items-center">
+        <div className="shrink-0 md:w-56 md:border-r md:border-hairline md:pr-6">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: 'var(--status-good)' }} />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ background: 'var(--status-good)' }} />
+            </span>
+            <span className="text-[11px] font-bold uppercase tracking-wide text-ink-mute">Active now</span>
+          </div>
+          <div className="mt-1 text-4xl font-extrabold leading-none tracking-tight text-ink">
+            {stats.active_users_15m.toLocaleString()}
+          </div>
+          <div className="mt-1 text-xs text-ink-mute">users in the last 15 minutes</div>
         </div>
-        <div className="text-xl font-extrabold leading-tight tracking-tight text-ink">{value.toLocaleString()}</div>
-        <div className="text-[11px] font-semibold uppercase leading-snug tracking-wide text-ink-mute">{label}</div>
+        {/* Evenly distributed across the card's remaining width — this row
+            is what fills the right side on desktop. */}
+        <div className="flex flex-1 items-center justify-between text-center md:justify-around">
+          {windows.map(w => (
+            <div key={w.label}>
+              <div className="text-3xl font-extrabold leading-tight tracking-tight text-ink">{w.value.toLocaleString()}</div>
+              <div className="mt-0.5 text-[10px] font-semibold uppercase leading-snug tracking-wide text-ink-mute">{w.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// 24h change badge for a stat tile. Two flavors:
+//  - 'count':   green +N / red −N (new rows in the last day)
+//  - 'percent': green ↑X% / red ↓X% (today vs. yesterday)
+// Zero renders muted so a quiet day doesn't paint the dashboard green/red.
+function DeltaBadge({ kind, value }: { kind: 'count' | 'percent'; value: number }) {
+  const color = value > 0 ? 'var(--status-good)' : value < 0 ? 'var(--destructive)' : 'var(--ink-mute)';
+  return (
+    <span className="ml-auto flex shrink-0 items-center gap-0.5 text-[11px] font-bold" style={{ color }} title="Change over the past day">
+      {kind === 'percent' && value > 0 && <ArrowUpRight size={12} strokeWidth={2.5} />}
+      {kind === 'percent' && value < 0 && <ArrowDownRight size={12} strokeWidth={2.5} />}
+      {kind === 'percent'
+        ? `${Math.abs(value)}%`
+        : value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : '±0'}
+    </span>
+  );
+}
+
+// Compact horizontal tile — icon beside the number instead of the old tall
+// card with a floating icon and dead space under it.
+function StatCard({
+  href, icon: Icon, label, value, accent, delta,
+}: {
+  href: string; icon: React.ElementType; label: string; value: number; accent?: boolean;
+  delta?: { kind: 'count' | 'percent'; value: number };
+}) {
+  return (
+    <Link href={href} className="block">
+      <Card className="group flex-row items-center gap-3 border-hairline p-3 shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5">
+        <span className={`shrink-0 rounded-md p-2 ${accent ? 'bg-destructive/10 text-destructive' : 'bg-surface-alt text-primary'}`}>
+          <Icon size={15} strokeWidth={2.25} />
+        </span>
+        <div className="min-w-0">
+          <div className="text-lg font-extrabold leading-tight tracking-tight text-ink">{value.toLocaleString()}</div>
+          <div className="truncate text-[10px] font-semibold uppercase leading-snug tracking-wide text-ink-mute">{label}</div>
+        </div>
+        {delta && <DeltaBadge kind={delta.kind} value={delta.value} />}
       </Card>
     </Link>
   );
@@ -57,39 +134,88 @@ function StatCard({
 
 export default async function AdminDashboardPage() {
   const stats = await getStats();
+  const d = stats.deltas_24h;
+
+  // Day-over-day percentages, derived from the zero-filled series (last
+  // entry = today-so-far, one before = full yesterday).
+  const pctChange = (curr: number, prev: number) =>
+    Math.round(((curr - prev) / Math.max(prev, 1)) * 100);
+  const signupsPct = pctChange(
+    stats.signups_by_day.at(-1)?.count ?? 0,
+    stats.signups_by_day.at(-2)?.count ?? 0,
+  );
+  // Apple's reports lag ~48h, so "day over day" means the two most recent
+  // days that actually have data, not literal today/yesterday.
+  const reportedDays = stats.app_store_by_day.filter(x => x.units > 0);
+  const downloadsPct = reportedDays.length >= 2
+    ? pctChange(reportedDays.at(-1)!.units, reportedDays.at(-2)!.units)
+    : undefined;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight text-ink">Dashboard</h1>
         <p className="mt-1 text-sm text-ink-mute">Click any card for the full breakdown.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-        <ActiveUsersCard h1={stats.active_users_1h} h24={stats.active_users_today} d7={stats.active_users_7d} d30={stats.active_users_30d} />
-        <StatCard href="/admin/users" icon={Users} label="Total users" value={stats.total_users} />
-        <StatCard href="/admin/posts" icon={ImageIcon} label="Total posts" value={stats.total_posts} />
-        <StatCard href="/admin/visits" icon={MapPin} label="Total visits" value={stats.total_visits} />
-        <StatCard href="/admin/badges" icon={Award} label="Badges earned" value={stats.total_badges} />
+      <PulseCard stats={stats} />
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5">
+        <StatCard href="/admin/users" icon={Users} label="Total users" value={stats.total_users} delta={{ kind: 'count', value: d.users }} />
+        <StatCard
+          href="/admin/users"
+          icon={UserPlus}
+          label="Signups (30d)"
+          value={stats.signups_by_day.reduce((sum, x) => sum + x.count, 0)}
+          delta={{ kind: 'percent', value: signupsPct }}
+        />
+        <StatCard
+          href="/admin/visits"
+          icon={Download}
+          label="Downloads (30d)"
+          value={stats.app_store_units_30d}
+          delta={downloadsPct !== undefined ? { kind: 'percent', value: downloadsPct } : undefined}
+        />
         <StatCard
           href="/admin/reports"
           icon={Flag}
           label="Open reports"
           value={stats.reports_by_status.open}
           accent={stats.reports_by_status.open > 0}
+          delta={{ kind: 'count', value: d.reports }}
         />
-        <StatCard
-          href="/admin/users"
-          icon={UserPlus}
-          label="Signups (30d)"
-          value={stats.signups_by_day.reduce((sum, d) => sum + d.count, 0)}
-        />
+        <StatCard href="/admin/posts" icon={ImageIcon} label="Total posts" value={stats.total_posts} delta={{ kind: 'count', value: d.posts }} />
+        <StatCard href="/admin/visits" icon={MapPin} label="Total visits" value={stats.total_visits} delta={{ kind: 'count', value: d.visits }} />
+        <StatCard href="/admin/posts" icon={Heart} label="Likes" value={stats.total_likes} delta={{ kind: 'count', value: d.likes }} />
+        <StatCard href="/admin/posts" icon={MessageCircle} label="Comments" value={stats.total_comments} delta={{ kind: 'count', value: d.comments }} />
+        <StatCard href="/admin/badges" icon={Award} label="Badges earned" value={stats.total_badges} delta={{ kind: 'count', value: d.badges }} />
+        <StatCard href="/admin/users" icon={HeartHandshake} label="Friendships" value={stats.total_friendships} delta={{ kind: 'count', value: d.friendships }} />
       </div>
 
-      <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Active users — last 30 days</h2>
-        <DailyActiveUsersChart data={stats.activity_by_day} />
-      </Card>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Active users — last 30 days</h2>
+          <DailyActiveUsersChart data={stats.dau_30d} />
+        </Card>
+
+        <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-ink-mute">App Store downloads</h2>
+            <div className="flex items-center gap-1.5 text-xs text-ink-mute">
+              <Download size={13} />
+              <span className="font-semibold text-ink">{stats.app_store_units_30d.toLocaleString()}</span>
+              units in 30d
+            </div>
+          </div>
+          {stats.app_store_units_30d > 0 ? (
+            <AppStoreDownloadsChart data={stats.app_store_by_day} />
+          ) : (
+            <p className="text-sm text-ink-mute">
+              No data yet — the daily cron backfills this once App Store Connect has published a report.
+            </p>
+          )}
+        </Card>
+      </div>
 
       <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Activity — last 12 months</h2>
@@ -108,7 +234,7 @@ export default async function AdminDashboardPage() {
           Activity by hour of day
         </h2>
         <p className="mb-4 mt-1 text-xs text-ink-mute">
-          All actions from the last 30 days, summed into each hour of day — not a single day&apos;s timeline.
+          All actions from the last 30 days, summed into each hour of day (Eastern time) — not a single day&apos;s timeline.
         </p>
         <HourlyActivityChart data={stats.hourly_activity} />
       </Card>
@@ -128,18 +254,20 @@ export default async function AdminDashboardPage() {
         </Card>
       </div>
 
-      <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-ink-mute">Top parks by visits</h2>
-          <Link href="/admin/parks" className="text-xs font-semibold text-primary hover:underline">All parks →</Link>
-        </div>
-        <TopParksList parks={stats.top_parks} />
-      </Card>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-ink-mute">Top parks by visits</h2>
+            <Link href="/admin/parks" className="text-xs font-semibold text-primary hover:underline">All parks →</Link>
+          </div>
+          <TopParksList parks={stats.top_parks} />
+        </Card>
 
-      <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Usage &amp; limits</h2>
-        <UsageGauges />
-      </Card>
+        <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Usage &amp; limits</h2>
+          <UsageGauges />
+        </Card>
+      </div>
     </div>
   );
 }

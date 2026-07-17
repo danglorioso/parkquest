@@ -31,6 +31,7 @@ import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
+
 // Hero collapses from this height down to this as the page scrolls, and
 // stretches taller than this on overscroll (see the hero interpolations).
 // HERO_MIN matches the map sheet's COLLAPSED_H (56 + insets.top) — a slim
@@ -148,22 +149,94 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const C = useColors();
   const [open, setOpen] = useState(true);
+  // LayoutAnimation.configureNext (tried first) only reliably animates the
+  // chevron's own transform update — under the New Architecture / Fabric,
+  // it's a well-known gap that LayoutAnimation doesn't animate layout shifts
+  // caused by a child actually mounting/unmounting, which is exactly what
+  // `{open && children}` was doing. So: children stay permanently mounted
+  // (never conditionally removed) inside a clipped Animated.View whose
+  // height is driven by hand instead, between 0 and the content's own
+  // measured height — that's a real Animated.timing on an actual layout
+  // property, which always animates regardless of architecture.
+  const [contentHeight, setContentHeight] = useState(0);
+  const anim = useRef(new Animated.Value(1)).current;
+  const toggle = () => {
+    const next = !open;
+    Animated.timing(anim, { toValue: next ? 1 : 0, duration: 300, useNativeDriver: false }).start();
+    setOpen(next);
+  };
   return (
     <View style={styles.section}>
       <TouchableOpacity
-        onPress={() => setOpen(v => !v)}
+        onPress={toggle}
         activeOpacity={0.6}
-        style={[styles.sectionHeader, open && { marginBottom: 12 }]}
+        style={styles.sectionHeader}
       >
         <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{title}</Text>
-        <Ionicons
-          name="chevron-down"
-          size={16}
-          color={C.inkMute}
-          style={{ transform: [{ rotate: open ? '0deg' : '-90deg' }] }}
-        />
+        <Animated.View
+          style={{
+            transform: [{
+              rotate: anim.interpolate({ inputRange: [0, 1], outputRange: ['-90deg', '0deg'] }),
+            }],
+          }}
+        >
+          <Ionicons name="chevron-down" size={16} color={C.inkMute} />
+        </Animated.View>
       </TouchableOpacity>
-      {open && children}
+
+      {/* Was a conditional marginBottom on the header, toggled instantly by
+          `open` while the content below was still 300ms into shrinking —
+          the gap vanished immediately but the (still tall) content didn't,
+          so it visibly crowded/overlapped the header for the rest of the
+          animation. An animated spacer in step with `anim` closes in time
+          with the content instead of snapping ahead of it. */}
+      <Animated.View style={{ height: anim.interpolate({ inputRange: [0, 1], outputRange: [0, 12] }) }} />
+
+      {/* Invisible, always-natural-size probe — measures content height
+          without ever being inside the animated/clipped container below.
+          That matters: this container's own height is mid-animation-driven,
+          and letting the *visible* copy's onLayout report back during its
+          own collapse was capturing transient near-zero readings (Fabric
+          propagates the shrinking ancestor's constraint down), corrupting
+          contentHeight into a sliver — which is why a closed section could
+          come back near-empty on reopen. Unmounts after the first
+          measurement; only content whose shape changes while genuinely
+          open (a chip grid's "show more") needs the gated re-measure below. */}
+      {contentHeight === 0 && (
+        <View
+          style={{ position: 'absolute', opacity: 0, left: 0, right: 0, zIndex: -1 }}
+          pointerEvents="none"
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 0) setContentHeight(h);
+          }}
+        >
+          {children}
+        </View>
+      )}
+
+      <Animated.View
+        pointerEvents={open ? 'auto' : 'none'}
+        style={{
+          overflow: 'hidden',
+          opacity: anim,
+          height: contentHeight ? anim.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }) : undefined,
+        }}
+      >
+        <View
+          // Only trusted while `open` is actually settled true — during the
+          // close animation `open` is already false for the full 300ms, so
+          // this can't re-capture the same corrupting transient height the
+          // probe above was built to avoid.
+          onLayout={(e) => {
+            if (!open) return;
+            const h = e.nativeEvent.layout.height;
+            if (h > 0 && h !== contentHeight) setContentHeight(h);
+          }}
+        >
+          {children}
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -1232,36 +1305,41 @@ export default function ParkDetailScreen() {
         ) : null}
 
         {/* ── Weather ───────────────────────────────────────────────────────── */}
-        {forecastDays.length > 0 ? (
-          <Section title="Weather Forecast">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }}>
-              <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 4 }}>
-                {forecastDays.map((p, i) => {
-                  const night = forecastNights[i];
-                  return (
-                    <View key={i} style={styles.weatherCard}>
-                      <Text style={styles.weatherDay}>{dayLabel(p)}</Text>
-                      <Text style={styles.weatherEmoji}>{weatherEmoji(p.shortForecast)}</Text>
-                      <Text style={styles.weatherTemp}>{p.temperature}°{p.temperatureUnit}</Text>
-                      {night && (
-                        <Text style={styles.weatherLow}>{night.temperature}° low</Text>
-                      )}
-                      <Text style={styles.weatherDesc} numberOfLines={2}>{p.shortForecast}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-            </ScrollView>
-            {nps?.weatherInfo ? (
-              <Text style={[styles.bodyText, { marginTop: 12 }]}>{nps.weatherInfo}</Text>
-            ) : null}
+        {/* One Section for both data sources, not two swapped by which has
+            loaded — nps.weatherInfo (bundled with the rest of the NPS fetch)
+            typically arrives well before forecastDays (a separate, slower
+            NWS call), and remounting an entirely different Section
+            ("Weather" -> "Weather Forecast") the moment the forecast caught
+            up threw away its open/animation state and popped visibly. This
+            mounts once as soon as either is available and just fills in the
+            forecast row underneath when it arrives, same as any other
+            section whose content grows while open. */}
+        {(forecastDays.length > 0 || nps?.weatherInfo) && (
+          <Section title="Weather">
+            {forecastDays.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }}>
+                <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 4 }}>
+                  {forecastDays.map((p, i) => {
+                    const night = forecastNights[i];
+                    return (
+                      <View key={i} style={styles.weatherCard}>
+                        <Text style={styles.weatherDay}>{dayLabel(p)}</Text>
+                        <Text style={styles.weatherEmoji}>{weatherEmoji(p.shortForecast)}</Text>
+                        <Text style={styles.weatherTemp}>{p.temperature}°{p.temperatureUnit}</Text>
+                        {night && (
+                          <Text style={styles.weatherLow}>{night.temperature}° low</Text>
+                        )}
+                        <Text style={styles.weatherDesc} numberOfLines={2}>{p.shortForecast}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            )}
+            {nps?.weatherInfo && (
+              <Text style={[styles.bodyText, forecastDays.length > 0 && { marginTop: 12 }]}>{nps.weatherInfo}</Text>
+            )}
           </Section>
-        ) : (
-          nps?.weatherInfo ? (
-            <Section title="Weather">
-              <Text style={styles.bodyText}>{nps.weatherInfo}</Text>
-            </Section>
-          ) : null
         )}
 
         <View

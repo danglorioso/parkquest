@@ -1,4 +1,7 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm install -g pnpm && cd ../.. && pnpm install"
+  "installCommand": "npm install -g pnpm && cd ../.. && pnpm install",
+  "crons": [
+    { "path": "/api/cron/app-store-stats", "schedule": "0 13 * * *" }
+  ]
 }

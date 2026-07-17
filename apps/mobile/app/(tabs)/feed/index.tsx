@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DeviceEventEmitter, View, Text, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, StyleSheet,
+  ActivityIndicator, RefreshControl, StyleSheet, Platform, useColorScheme,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -13,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { PostCard, type FeedPost } from '@/components/PostCard';
 import { Wordmark } from '@/components/Wordmark';
 import { GlassIconBg } from '@/components/GlassIconBg';
+import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -71,6 +73,8 @@ export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const tabBarSpace = useTabBarSpace();
   const TOP_BAR_H = insets.top + 56.5;
+  const barGlass = liquidGlassAvailable && GlassView != null && GlassContainer != null;
+  const isDark = useColorScheme() === 'dark';
 
   const [token, setToken]         = useState<string | null>(null);
   const [posts, setPosts]         = useState<FeedPost[]>([]);
@@ -347,30 +351,77 @@ export default function FeedScreen() {
         maxToRenderPerBatch={3}
       />
 
-      {/* Floating glass top bar */}
+      {/* Floating glass top bar. The bar's own fill and the buttons floating
+          on top of it must share one GlassContainer — stacked GlassViews
+          outside a shared container can't sample each other and the lower
+          one (here, the bar) renders as opaque white, which is what made
+          this bar and its buttons read as flat/non-adaptive before: the
+          bar was a plain painted rgba tint, so the buttons' real glass had
+          nothing but a near-solid color to sample. Same recipe as the
+          floating tab bar's pill background. */}
       <View style={[styles.topBar, { paddingTop: insets.top, height: TOP_BAR_H }]}>
-        <View style={styles.topBarInner}>
-          <Wordmark onPress={triggerRefresh} />
-          <View style={styles.topBarActions}>
-            <NotificationBell style={styles.iconBtn} />
-            <TouchableOpacity
-              style={styles.iconBtn}
-              activeOpacity={0.7}
-              onPress={() => setSearchOpen(true)}
-            >
-              <GlassIconBg />
-              <Ionicons name="search" size={17} color={C.inkSoft} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              activeOpacity={0.7}
-              onPress={() => router.push('/profile/edit' as never)}
-            >
-              <GlassIconBg />
-              <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        {barGlass && GlassView && GlassContainer ? (
+          <GlassContainer style={StyleSheet.absoluteFill}>
+            <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" />
+            <View style={styles.topBarInner}>
+              <Wordmark onPress={triggerRefresh} />
+              <View style={styles.topBarActions}>
+                <NotificationBell style={styles.iconBtn} />
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  activeOpacity={0.7}
+                  onPress={() => setSearchOpen(true)}
+                >
+                  <GlassIconBg />
+                  <Ionicons name="search" size={17} color={C.inkSoft} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  activeOpacity={0.7}
+                  onPress={() => router.push('/profile/edit' as never)}
+                >
+                  <GlassIconBg />
+                  <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </GlassContainer>
+        ) : (
+          <>
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              {Platform.OS === 'ios' && (
+                <BlurView
+                  intensity={90}
+                  tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
+                  style={StyleSheet.absoluteFill}
+                />
+              )}
+              <View style={[StyleSheet.absoluteFill, styles.topBarFallbackFill]} />
+            </View>
+            <View style={styles.topBarInner}>
+              <Wordmark onPress={triggerRefresh} />
+              <View style={styles.topBarActions}>
+                <NotificationBell style={styles.iconBtn} />
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  activeOpacity={0.7}
+                  onPress={() => setSearchOpen(true)}
+                >
+                  <GlassIconBg />
+                  <Ionicons name="search" size={17} color={C.inkSoft} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  activeOpacity={0.7}
+                  onPress={() => router.push('/profile/edit' as never)}
+                >
+                  <GlassIconBg />
+                  <Ionicons name="settings-outline" size={17} color={C.inkSoft} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
         <View style={styles.topBarHairline} />
       </View>
 
@@ -391,7 +442,6 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
 
-  // Glass top bar — semi-transparent until expo-blur lands in a native build
   topBar: {
     position: 'absolute',
     top: 0,
@@ -399,6 +449,8 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
     overflow: 'hidden',
+  },
+  topBarFallbackFill: {
     backgroundColor: dyn('rgba(242,235,219,0.88)', 'rgba(23,21,17,0.88)'),
   },
   topBarInner: {

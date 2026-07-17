@@ -1,6 +1,6 @@
 import {
   pgTable, text, timestamp, varchar, integer, real,
-  serial, jsonb, boolean, unique, primaryKey,
+  serial, jsonb, boolean, unique, primaryKey, date,
 } from 'drizzle-orm/pg-core';
 
 export const parks = pgTable('parks', {
@@ -20,9 +20,25 @@ export const userProfiles = pgTable('user_profiles', {
   display_name: varchar('display_name', { length: 100 }),
   bio: text('bio'),
   avatar_url: text('avatar_url'),
+  last_seen_at: timestamp('last_seen_at'), // updated by touchActivity() on authed reads
+  // Mirrors Clerk publicMetadata.role === 'admin'. Synced lazily by
+  // requireAdmin() — Clerk is the source of truth for authZ; this column
+  // only exists so feeds/comments can render the admin star without a
+  // per-author Clerk lookup. Never grant access based on it.
+  is_admin: boolean('is_admin').notNull().default(false),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 });
+
+// One row per user per Eastern-time day, upserted by touchActivity() — the
+// concrete "opened the app" record behind the admin dashboard's DAU stats.
+// Write actions (posts/likes/...) are visible in their own tables; this
+// exists so read-only sessions count too.
+export const userActivityDays = pgTable('user_activity_days', {
+  clerk_user_id: varchar('clerk_user_id', { length: 255 }).notNull(),
+  day: date('day').notNull(),
+  last_seen_at: timestamp('last_seen_at').defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.clerk_user_id, t.day] })]);
 
 export const visits = pgTable('visits', {
   id: serial('id').primaryKey(),
@@ -187,3 +203,17 @@ export const expoPushTokens = pgTable('expo_push_tokens', {
   token: text('token').notNull().unique(),
   created_at: timestamp('created_at').defaultNow().notNull(),
 });
+
+// One row per calendar day, upserted from the App Store Connect Sales
+// Reports API (see src/lib/appStoreConnect.ts). Apple's own reports lag
+// 24-48h, so a given day's row can be re-fetched and overwritten as later,
+// more complete data becomes available.
+export const appStoreDailyStats = pgTable('app_store_daily_stats', {
+  report_date: date('report_date').notNull().primaryKey(),
+  units: integer('units').notNull(),
+  proceeds: real('proceeds').notNull(),
+  proceeds_currency: varchar('proceeds_currency', { length: 3 }).notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type AppStoreDailyStats = typeof appStoreDailyStats.$inferSelect;

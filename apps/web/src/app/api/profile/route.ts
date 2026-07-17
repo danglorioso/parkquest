@@ -4,11 +4,13 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles } from '@/lib/db/schema';
 import { ensureUserProfile } from '@/lib/ensureUserProfile';
+import { touchActivity } from '@/lib/activity';
 
 export async function GET() {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    touchActivity(userId);
 
     const existing = await db
       .select()

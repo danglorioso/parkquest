@@ -3,11 +3,15 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { notifications, userProfiles, parks } from '@/lib/db/schema';
+import { touchActivity } from '@/lib/activity';
 
 export async function GET(request: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Clients poll this for the bell badge — the most reliable "app is open"
+    // signal we have, which is why presence is recorded here.
+    touchActivity(userId);
 
     const { searchParams } = new URL(request.url);
     const countOnly = searchParams.get('count') === 'true';

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, X, AlertCircle } from "lucide-react";
 
@@ -77,6 +77,13 @@ function ToastItem({ item, onDismiss }: { item: Toast; onDismiss: (id: number) =
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  // Portal only after mount. `typeof window !== 'undefined'` is true during
+  // hydration too, so the client's first render had a portal div the
+  // server-rendered HTML didn't — React 19 flags the mismatch and regenerates
+  // the whole tree. A mounted flag keeps the first client render identical to
+  // the server's, then adds the portal in an effect.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const dismiss = useCallback((id: number) => {
     clearTimeout(timers.current.get(id));
@@ -100,7 +107,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         }
       `}</style>
       {children}
-      {typeof window !== "undefined" && createPortal(
+      {mounted && createPortal(
         <div style={{
           position: "fixed",
           bottom: 24,

@@ -16,6 +16,7 @@ import { OpenInAppOverlay } from "@/components/OpenInAppOverlay";
 import type { MapPark } from "@/components/USAMapGL";
 import { PostCard, ReportDialog, type FeedPost } from "@/components/PostCard";
 import { useToast } from "@/components/ToastProvider";
+import { AdminStar } from "@/components/AdminStar";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
 
 const APP_STORE_URL: string | null = 'https://apps.apple.com/us/app/parkquest-national-park-log/id6778208311';
@@ -55,6 +56,7 @@ interface ProfileData {
   display_name: string | null;
   bio: string | null;
   avatar_url: string | null;
+  is_admin?: boolean;
   created_at: string | null;
   parks_visited: number;
   states_visited: number;
@@ -822,8 +824,9 @@ export default function ProfilePage() {
         )}
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 26, color: "var(--ink)", letterSpacing: -0.5, lineHeight: 1.1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 26, color: "var(--ink)", letterSpacing: -0.5, lineHeight: 1.1 }}>
             {profile.display_name || `@${profile.username}`}
+            {profile.is_admin && <AdminStar size={20} />}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-mute)", fontWeight: 600, letterSpacing: "0.8px" }}>

@@ -25,6 +25,7 @@ export async function GET(request: Request) {
         username: userProfiles.username,
         display_name: userProfiles.display_name,
         avatar_url: userProfiles.avatar_url,
+        is_admin: userProfiles.is_admin,
       })
       .from(comments)
       .leftJoin(userProfiles, eq(comments.user_id, userProfiles.clerk_user_id))

@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { parkGradient } from "@/lib/parkGradient";
 import { useToast } from "@/components/ToastProvider";
+import { AdminStar } from "@/components/AdminStar";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ export interface FeedPost {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  author_is_admin?: boolean | null;
   like_count: number;
   comment_count: number;
   liked_by_me: boolean;
@@ -657,6 +659,7 @@ function LikesTooltip({ postId, likeCount, onLike, children }: {
 interface CommentRow {
   id: number; content: string; created_at: string;
   user_id: string; username: string | null; display_name: string | null; avatar_url: string | null;
+  is_admin?: boolean | null;
 }
 
 const COMMENT_LIMIT = 500;
@@ -782,7 +785,10 @@ function CommentsPanel({ postId, initialRows, onCountChange }: {
               </div>
             );
             const nameEl = (
-              <span style={{ fontWeight: 700, fontSize: 12, color: "var(--ink)", marginRight: 6 }}>{cname}</span>
+              <span style={{ fontWeight: 700, fontSize: 12, color: "var(--ink)", marginRight: 6 }}>
+                {cname}
+                {c.is_admin && <span style={{ marginLeft: 4, display: "inline-flex", verticalAlign: "text-bottom" }}><AdminStar size={12} /></span>}
+              </span>
             );
             return (
               <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1444,7 +1450,10 @@ export function PostCard({
         </Link>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Link href={`/profile/${post.username}${from ? `?from=${from}` : ""}`} style={{ textDecoration: "none" }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{name}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>
+              {name}
+              {post.author_is_admin && <AdminStar />}
+            </div>
           </Link>
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-mute)", marginTop: 1 }}>
             <span>

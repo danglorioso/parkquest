@@ -12,6 +12,13 @@ interface TooltipState {
   value: string;
 }
 
+// new Date('YYYY-MM-DD') parses as UTC midnight, which toLocaleDateString
+// renders as the PREVIOUS day anywhere west of Greenwich — parse day keys
+// as local time instead.
+function parseDay(day: string): Date {
+  return new Date(`${day}T00:00:00`);
+}
+
 function ChartTooltip({ tip }: { tip: TooltipState | null }) {
   if (!tip) return null;
   return (
@@ -37,22 +44,59 @@ export function SignupsChart({ data }: { data: { day: string; count: number }[] 
         {data.map(d => (
           <div
             key={d.day}
-            className="group flex-1"
+            className="group flex h-full flex-1 items-end"
             onMouseEnter={e => {
               const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
               const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
               setTip({
                 x: r.left - parent.left + r.width / 2,
                 y: r.top - parent.top,
-                title: new Date(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
                 value: `${d.count} signup${d.count !== 1 ? 's' : ''}`,
               });
             }}
             onMouseLeave={() => setTip(null)}
           >
             <div
-              className="rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
+              className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
               style={{ height: `${Math.max((d.count / max) * 100, d.count > 0 ? 6 : 2)}%`, minHeight: 2 }}
+            />
+          </div>
+        ))}
+      </div>
+      <ChartTooltip tip={tip} />
+    </div>
+  );
+}
+
+// ── App Store downloads (units), trailing 30 days ────────────────────────────────
+
+export function AppStoreDownloadsChart({ data }: { data: { day: string; units: number }[] }) {
+  const [tip, setTip] = useState<TooltipState | null>(null);
+  const max = Math.max(...data.map(d => d.units), 1);
+
+  return (
+    <div className="relative">
+      <div className="flex h-28 items-end gap-[3px]">
+        {data.map(d => (
+          <div
+            key={d.day}
+            className="group flex h-full flex-1 items-end"
+            onMouseEnter={e => {
+              const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+              const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
+              setTip({
+                x: r.left - parent.left + r.width / 2,
+                y: r.top - parent.top,
+                title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                value: `${d.units} unit${d.units !== 1 ? 's' : ''}`,
+              });
+            }}
+            onMouseLeave={() => setTip(null)}
+          >
+            <div
+              className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
+              style={{ height: `${Math.max((d.units / max) * 100, d.units > 0 ? 6 : 2)}%`, minHeight: 2 }}
             />
           </div>
         ))}
@@ -67,22 +111,13 @@ export function SignupsChart({ data }: { data: { day: string; count: number }[] 
 export function DailyActiveUsersChart({ data }: { data: { day: string; count: number }[] }) {
   const [tip, setTip] = useState<TooltipState | null>(null);
 
-  // `data` is the trailing-year activity feed (one row per day with ≥1 active
-  // user); slice the last 30 calendar days and zero-fill the quiet ones so the
-  // axis is a true 30-day window.
-  const days = useMemo(() => {
-    const byDay = new Map(data.map(d => [d.day, d.count]));
-    const out: { day: string; date: Date; count: number }[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      out.push({ day: key, date: d, count: byDay.get(key) ?? 0 });
-    }
-    return out;
-  }, [data]);
+  // `data` arrives zero-filled from SQL (30 Eastern-time days) — render it
+  // as-is. Rebuilding day keys client-side is exactly how this chart broke
+  // before (driver day-key format vs. locally-built keys never matching).
+  const days = useMemo(
+    () => data.map(d => ({ ...d, date: parseDay(d.day) })),
+    [data],
+  );
 
   const max = Math.max(...days.map(d => d.count), 1);
 
@@ -92,7 +127,7 @@ export function DailyActiveUsersChart({ data }: { data: { day: string; count: nu
         {days.map(d => (
           <div
             key={d.day}
-            className="group flex-1"
+            className="group flex h-full flex-1 items-end"
             onMouseEnter={e => {
               const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
               const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
@@ -106,7 +141,7 @@ export function DailyActiveUsersChart({ data }: { data: { day: string; count: nu
             onMouseLeave={() => setTip(null)}
           >
             <div
-              className="rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
+              className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
               style={{ height: `${Math.max((d.count / max) * 100, d.count > 0 ? 6 : 2)}%`, minHeight: 2 }}
             />
           </div>
@@ -262,7 +297,7 @@ export function ActivityInsights({ data }: { data: { day: string; count: number 
     let currentRun = 0;
     let prev: Date | null = null;
     for (const key of activeDates) {
-      const d = new Date(key);
+      const d = parseDay(key);
       if (prev) {
         const gapDays = Math.round((d.getTime() - prev.getTime()) / 86_400_000);
         currentRun = gapDays === 1 ? currentRun + 1 : 1;
@@ -274,7 +309,7 @@ export function ActivityInsights({ data }: { data: { day: string; count: number 
     }
 
     const dowTotals = [0, 0, 0, 0, 0, 0, 0];
-    for (const [key, count] of byDay) dowTotals[new Date(key).getDay()] += count;
+    for (const [key, count] of byDay) dowTotals[parseDay(key).getDay()] += count;
 
     return { totalActiveDays, longestStreak, dowTotals };
   }, [data]);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Megaphone, Users, MapPin, Send, Eye } from 'lucide-react';
+import { Megaphone, Users, MapPin, Send, Eye, UserCheck, Search, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
 interface ParkOption { park_code: string; name: string }
@@ -17,12 +17,18 @@ const btnBase =
 export default function BroadcastPage() {
   const [title, setTitle] = useState('ParkQuest');
   const [message, setMessage] = useState('');
-  const [audience, setAudience] = useState<'all' | 'segment'>('all');
+  const [audience, setAudience] = useState<'all' | 'segment' | 'users'>('all');
   const [minVisitsOn, setMinVisitsOn] = useState(false);
   const [minVisits, setMinVisits] = useState(3);
   const [parkOn, setParkOn] = useState(false);
   const [parkCode, setParkCode] = useState('');
   const [parks, setParks] = useState<ParkOption[]>([]);
+
+  // Specific-users picker. `selected` keeps full user objects (not just ids)
+  // so chips stay renderable when a search narrows the list below.
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerResults, setPickerResults] = useState<RecipientPreview[]>([]);
+  const [selected, setSelected] = useState<Map<string, RecipientPreview>>(new Map());
 
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [previewUsers, setPreviewUsers] = useState<RecipientPreview[] | null>(null);
@@ -42,6 +48,18 @@ export default function BroadcastPage() {
     loadHistory();
   }, []);
 
+  // Debounced user search for the specific-users picker.
+  useEffect(() => {
+    if (audience !== 'users') return;
+    const t = setTimeout(() => {
+      fetch(`/api/admin/notifications/recipients?q=${encodeURIComponent(pickerQuery)}`)
+        .then(r => r.json())
+        .then(d => setPickerResults(d.users ?? []))
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [audience, pickerQuery]);
+
   // Any change to the audience (not the message — that doesn't affect who
   // matches) invalidates the last preview count — never let a stale count be
   // used to justify sending to a now-different group.
@@ -58,12 +76,14 @@ export default function BroadcastPage() {
 
   const audienceLabel = audience === 'all'
     ? 'All users'
-    : filters.length === 0
-      ? 'Segment'
-      : filters.map(f => f.type === 'min_visits'
-          ? `≥${f.value} visits`
-          : `Visited ${parks.find(p => p.park_code === f.park_code)?.name ?? f.park_code}`
-        ).join(' & ');
+    : audience === 'users'
+      ? `${selected.size} hand-picked user${selected.size === 1 ? '' : 's'}`
+      : filters.length === 0
+        ? 'Segment'
+        : filters.map(f => f.type === 'min_visits'
+            ? `≥${f.value} visits`
+            : `Visited ${parks.find(p => p.park_code === f.park_code)?.name ?? f.park_code}`
+          ).join(' & ');
 
   const requestBody = (dryRun: boolean) => ({
     title: title.trim() || undefined,
@@ -71,10 +91,21 @@ export default function BroadcastPage() {
     audience,
     audience_label: audienceLabel,
     filters,
+    user_ids: audience === 'users' ? [...selected.keys()] : [],
     dry_run: dryRun,
   });
 
-  const canPreview = audience === 'all' || filters.length > 0;
+  const canPreview = audience === 'all' || (audience === 'users' ? selected.size > 0 : filters.length > 0);
+
+  const toggleUser = (u: RecipientPreview) => {
+    setSelected(prev => {
+      const next = new Map(prev);
+      if (next.has(u.clerk_user_id)) next.delete(u.clerk_user_id);
+      else next.set(u.clerk_user_id, u);
+      return next;
+    });
+    resetPreview();
+  };
   const canSend = previewCount !== null && previewCount > 0 && message.trim().length > 0;
 
   const preview = async () => {
@@ -113,6 +144,7 @@ export default function BroadcastPage() {
       setPreviewCount(null);
       setPreviewUsers(null);
       setConfirmArmed(false);
+      setSelected(new Map());
       loadHistory();
     } finally {
       setSending(false);
@@ -170,8 +202,80 @@ export default function BroadcastPage() {
             >
               <MapPin size={14} /> Segment
             </button>
+            <button
+              type="button"
+              onClick={() => { setAudience('users'); resetPreview(); }}
+              className={`${btnBase} ${audience === 'users' ? 'border-primary bg-primary text-primary-foreground' : 'border-hairline bg-surface text-ink-soft hover:bg-surface-alt'}`}
+            >
+              <UserCheck size={14} /> Specific users
+            </button>
           </div>
         </div>
+
+        {audience === 'users' && (
+          <div className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface-alt p-3.5">
+            {selected.size > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {[...selected.values()].map(u => (
+                  <button
+                    key={u.clerk_user_id}
+                    type="button"
+                    onClick={() => toggleUser(u)}
+                    className="flex items-center gap-1 rounded-full border border-hairline bg-surface px-2 py-0.5 text-xs font-semibold text-ink-soft hover:bg-surface"
+                    title="Remove"
+                  >
+                    {u.display_name || (u.username ? `@${u.username}` : u.clerk_user_id)}
+                    <X size={11} />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="relative">
+              <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-mute" />
+              <input
+                value={pickerQuery}
+                onChange={e => setPickerQuery(e.target.value)}
+                className={`${fieldClass} pl-8`}
+                placeholder="Search by username or name…"
+              />
+            </div>
+
+            <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
+              {pickerResults.length === 0 ? (
+                <p className="px-1 py-2 text-sm text-ink-mute">No users found.</p>
+              ) : (
+                pickerResults.map(u => {
+                  const isSelected = selected.has(u.clerk_user_id);
+                  return (
+                    <button
+                      key={u.clerk_user_id}
+                      type="button"
+                      onClick={() => toggleUser(u)}
+                      className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm transition-colors ${
+                        isSelected ? 'bg-primary/10' : 'hover:bg-surface'
+                      }`}
+                    >
+                      <input type="checkbox" checked={isSelected} readOnly className="pointer-events-none" />
+                      {u.avatar_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={u.avatar_url} alt="" className="h-6 w-6 flex-shrink-0 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                          {(u.username ?? '?')[0]?.toUpperCase()}
+                        </div>
+                      )}
+                      <span className="min-w-0 truncate text-ink-soft">
+                        {u.display_name || (u.username ? `@${u.username}` : u.clerk_user_id)}
+                        {u.display_name && u.username && <span className="ml-1.5 text-xs text-ink-mute">@{u.username}</span>}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
 
         {audience === 'segment' && (
           <div className="flex flex-col gap-3 rounded-lg border border-hairline bg-surface-alt p-3.5">

@@ -7,6 +7,7 @@ import {
 import { MenuView } from '@react-native-menu/menu';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Avatar } from '@/components/Avatar';
+import { AdminStar } from '@/components/AdminStar';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -38,6 +39,7 @@ export interface FeedPost {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  author_is_admin?: boolean | null;
   like_count: number;
   comment_count: number;
   liked_by_me: boolean;
@@ -65,6 +67,7 @@ interface CommentRow {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  is_admin?: boolean | null;
 }
 
 interface Liker {
@@ -913,12 +916,15 @@ function CommentsSheet({
                           </View>
                         ) : (
                           <>
-                            <Text
-                              style={styles.commentAuthor}
-                              onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}
-                            >
-                              {cname}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Text
+                                style={styles.commentAuthor}
+                                onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}
+                              >
+                                {cname}
+                              </Text>
+                              {c.is_admin ? <AdminStar size={12} /> : null}
+                            </View>
                             <Text style={[styles.commentInlineText, { marginTop: 2 }]}>
                               {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
                                 ? c.content
@@ -1241,7 +1247,10 @@ export function PostCard({
         >
           <Avatar url={post.avatar_url} name={name} size={40} />
           <View style={styles.cardHeaderMeta}>
-            <Text style={styles.authorName}>{name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Text style={styles.authorName}>{name}</Text>
+              {post.author_is_admin ? <AdminStar /> : null}
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 1 }}>
               <Text style={[styles.authorSub, { marginTop: 0 }]}>
                 {post.username ? `@${post.username} · ` : ''}

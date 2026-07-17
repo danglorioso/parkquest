@@ -8,6 +8,9 @@ import { sendPushToUsers } from '@/lib/push';
 const MESSAGE_MAX_LEN = 300;
 const TITLE_MAX_LEN = 80;
 const INSERT_CHUNK_SIZE = 500;
+const MAX_PICKED_USERS = 1000;
+
+type Audience = 'all' | 'segment' | 'users';
 
 type Filter =
   | { type: 'min_visits'; value: number }
@@ -38,9 +41,19 @@ interface Recipient {
 
 const PREVIEW_LIMIT = 60;
 
-async function getRecipients(audience: 'all' | 'segment', filters: Filter[]): Promise<Recipient[]> {
+async function getRecipients(audience: Audience, filters: Filter[], userIds: string[]): Promise<Recipient[]> {
   if (audience === 'all') {
     const rows = await db.execute(sql`SELECT clerk_user_id, username, display_name, avatar_url FROM user_profiles`);
+    return rows.rows as unknown as Recipient[];
+  }
+  if (audience === 'users') {
+    if (userIds.length === 0) return [];
+    // Resolved through user_profiles rather than trusted as-is, so stale or
+    // mistyped ids silently drop out instead of inserting orphan notifications.
+    const rows = await db.execute(sql`
+      SELECT clerk_user_id, username, display_name, avatar_url
+      FROM user_profiles WHERE clerk_user_id = ANY(${userIds})
+    `);
     return rows.rows as unknown as Recipient[];
   }
   if (filters.length === 0) return [];
@@ -66,11 +79,14 @@ export async function POST(request: Request) {
 
   const message = typeof body.message === 'string' ? body.message.trim() : '';
   const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'ParkQuest';
-  const audience = body.audience === 'segment' ? 'segment' : 'all';
+  const audience: Audience = body.audience === 'segment' ? 'segment' : body.audience === 'users' ? 'users' : 'all';
   const audienceLabel = typeof body.audience_label === 'string' && body.audience_label.trim()
     ? body.audience_label.trim().slice(0, 120)
-    : (audience === 'all' ? 'All users' : 'Segment');
+    : (audience === 'all' ? 'All users' : audience === 'users' ? 'Selected users' : 'Segment');
   const filters: Filter[] = Array.isArray(body.filters) ? body.filters.filter(isFilter) : [];
+  const userIds: string[] = Array.isArray(body.user_ids)
+    ? body.user_ids.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0).slice(0, MAX_PICKED_USERS)
+    : [];
   const dryRun = body.dry_run === true;
 
   // A message is only required to actually send — previewing who a segment
@@ -85,8 +101,11 @@ export async function POST(request: Request) {
   if (audience === 'segment' && filters.length === 0) {
     return NextResponse.json({ error: 'Add at least one segment filter' }, { status: 400 });
   }
+  if (audience === 'users' && userIds.length === 0) {
+    return NextResponse.json({ error: 'Select at least one user' }, { status: 400 });
+  }
 
-  const recipients = await getRecipients(audience, filters);
+  const recipients = await getRecipients(audience, filters, userIds);
   const recipientIds = recipients.map(r => r.clerk_user_id);
 
   if (dryRun) {

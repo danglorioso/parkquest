@@ -13,6 +13,7 @@ import { badgeColors, type BadgeColors } from '@/lib/badges';
 import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline';
 import { PostCard, ReportSheet, type FeedPost } from '@/components/PostCard';
 import { Avatar } from '@/components/Avatar';
+import { AdminStar } from '@/components/AdminStar';
 import { BadgeInfoModal } from '@/components/BadgeInfoModal';
 import { EmptyState } from '@/components/EmptyState';
 import { STATIC as C, useColors } from '@/lib/palette';
@@ -47,6 +48,7 @@ interface UserProfile {
   display_name: string | null;
   bio: string | null;
   avatar_url: string | null;
+  is_admin?: boolean;
   created_at: string | null;
   parks_visited: number;
   friend_count: number;
@@ -484,7 +486,10 @@ export default function UserProfileScreen() {
             <View style={styles.hero}>
               <Avatar url={profile.avatar_url} name={displayName} size={88} style={styles.avatar} />
 
-              <Text style={styles.name}>{displayName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.name}>{displayName}</Text>
+                {profile.is_admin ? <AdminStar size={18} /> : null}
+              </View>
               {profile.username ? (
                 <Text style={styles.handle}>@{profile.username}</Text>
               ) : null}

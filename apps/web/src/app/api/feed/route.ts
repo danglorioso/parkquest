@@ -5,11 +5,13 @@ import { db } from '@/lib/db';
 import { posts, friendships, parks, userProfiles, visits } from '@/lib/db/schema';
 import { getBlockedIds } from '@/lib/blocks';
 import { getReportedPostIds } from '@/lib/reportedContent';
+import { touchActivity } from '@/lib/activity';
 
 export async function GET(request: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    touchActivity(userId);
 
     const { searchParams } = new URL(request.url);
     const limit = Math.min(Number(searchParams.get('limit') ?? '20'), 50);
@@ -54,6 +56,7 @@ export async function GET(request: Request) {
         username: userProfiles.username,
         display_name: userProfiles.display_name,
         avatar_url: userProfiles.avatar_url,
+        author_is_admin: userProfiles.is_admin,
         like_count: sql<number>`(SELECT COUNT(*)::int FROM likes WHERE likes.post_id = ${posts.id})`,
         comment_count: sql<number>`(SELECT COUNT(*)::int FROM comments WHERE comments.post_id = ${posts.id})`,
         liked_by_me: sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${userId})`,
