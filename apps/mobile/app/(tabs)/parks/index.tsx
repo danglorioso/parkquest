@@ -166,10 +166,16 @@ function ParkCard({
         <StatusBadge status={status} />
       </View>
       <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <Text style={[styles.cardState, { marginBottom: 0 }]} numberOfLines={1}>{stateName}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+          {/* Long state names fall back to the two-letter code when the
+              distance shares the line — "New Hampshire" + "2333 mi" can't
+              both fit a half-width card. flex keeps them from ever
+              overlapping regardless. */}
+          <Text style={[styles.cardState, { marginBottom: 0, flexShrink: 1 }]} numberOfLines={1}>
+            {distance != null && stateName.length > 12 ? stateCode : stateName}
+          </Text>
           {distance != null && (
-            <Text style={[styles.cardState, { marginBottom: 0 }]} numberOfLines={1}>{formatDistance(distance)}</Text>
+            <Text style={[styles.cardState, { marginBottom: 0, flexShrink: 0 }]} numberOfLines={1}>{formatDistance(distance)}</Text>
           )}
         </View>
         <Text

@@ -203,7 +203,10 @@ export default function ProfileScreen() {
       }
       if (badgesRes.status === 'fulfilled') {
         const all = badgesRes.value.badges ?? [];
-        const earned = all.filter((b: any) => b.earned);
+        const earned = all
+          .filter((b: any) => b.earned)
+          // Most recently earned first; badges with no timestamp sink to the end.
+          .sort((a: any, b: any) => (b.earned_at ?? '').localeCompare(a.earned_at ?? ''));
         setBadgesEarned(earned.length);
         setTotalBadges(all.length);
         setEarnedBadges(earned.slice(0, 5));

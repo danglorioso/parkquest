@@ -2155,10 +2155,17 @@ export default function LogVisitModal() {
   // closed. Fresh visits keep the swipe: their draft is continuously
   // auto-saved (see the upsertDraft effect below), so a swipe-away loses
   // nothing and the beforeRemove listener just flushes the pending save.
+  // Exception: when ANOTHER saved draft already exists, a silent save would
+  // bury it (the resume banner only surfaces the newest draft), so that case
+  // blocks the swipe too and routes through the save/discard prompt.
   const activeSliderDrags = useRef(0);
   const stepRef = useRef(step);
   stepRef.current = step;
   const isDragStep = (s: number) => s >= 1 && s <= 3;
+  const [otherDraftExists, setOtherDraftExists] = useState(false);
+  const blockSwipe = isEditing || (otherDraftExists && draftHasContent(draft));
+  const blockSwipeRef = useRef(blockSwipe);
+  blockSwipeRef.current = blockSwipe;
   // Also freezes the step ScrollView while a slider drag is live — a slightly
   // off-horizontal swipe on a slider was scrolling the content vertically.
   const [controlDragging, setControlDragging] = useState(false);
@@ -2166,18 +2173,21 @@ export default function LogVisitModal() {
     activeSliderDrags.current = Math.max(0, activeSliderDrags.current + (dragging ? 1 : -1));
     setControlDragging(activeSliderDrags.current > 0);
     navigation.setOptions({
-      gestureEnabled: activeSliderDrags.current === 0 && !isDragStep(stepRef.current) && !isEditing,
+      gestureEnabled: activeSliderDrags.current === 0 && !isDragStep(stepRef.current) && !blockSwipeRef.current,
     });
-  }, [navigation, isEditing]);
+  }, [navigation]);
   useEffect(() => {
     navigation.setOptions({
-      gestureEnabled: !isDragStep(step) && activeSliderDrags.current === 0 && !isEditing,
+      gestureEnabled: !isDragStep(step) && activeSliderDrags.current === 0 && !blockSwipe,
     });
-  }, [step, navigation, isEditing]);
+  }, [step, navigation, blockSwipe]);
 
   useEffect(() => {
     if (isEdit) return;
-    loadDrafts().then(d => { if (d.length > 0) setRestoreBanner(d[0]); });
+    loadDrafts().then(d => {
+      if (d.length > 0) setRestoreBanner(d[0]);
+      setOtherDraftExists(d.some(s => s.id !== draftId.current));
+    });
   }, [isEdit]);
 
   // Seed a fresh visit's visibility from the user's saved default (Privacy &
@@ -2258,14 +2268,18 @@ export default function LogVisitModal() {
   useEffect(() => {
     const unsub = navigation.addListener('beforeRemove', e => {
       if (leavingViaAction.current) return;
-      if (!isEditing) {
+      if (!blockSwipe) {
         if (saveTimer.current) clearTimeout(saveTimer.current);
         if (draftHasContent(draft)) {
           const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
           upsertDraft(draft, parkName, draftId.current);
+          showToast('Draft saved');
         }
         return;
       }
+      // Editing, or a second draft would bury an existing one — the swipe
+      // gesture is disabled for these cases (see blockSwipe above), so this
+      // interception only ever races a button/back-key, which it wins.
       e.preventDefault();
       promptExit(() => {
         leavingViaAction.current = true;
@@ -2273,12 +2287,15 @@ export default function LogVisitModal() {
       });
     });
     return unsub;
-  }, [navigation, promptExit, isEditing, draft, parks]);
+  }, [navigation, promptExit, blockSwipe, draft, parks]);
 
   const resumeDraft = () => {
     if (!restoreBanner) return;
     setDraftState(restoreBanner.draft);
     draftId.current = restoreBanner.id;
+    // The resumed draft is now "ours" — recheck whether any OTHER draft
+    // remains, since that's what gates the silent swipe-away save.
+    loadDrafts().then(d => setOtherDraftExists(d.some(s => s.id !== restoreBanner.id)));
     if (restoreBanner.editVisitId != null) {
       const visitId = restoreBanner.editVisitId;
       setResumedEdit({ visitId, postId: restoreBanner.editPostId ?? null });

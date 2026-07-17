@@ -8,7 +8,6 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -101,13 +100,9 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
       // First layout: place instantly instead of flying in from off-screen
       bubbleCx.value = cx;
     } else if (dragging.value === 0) {
+      // Slide only — no scale pulse. The droplet swell is reserved for
+      // press-and-hold (holdBubble) and dragging.
       bubbleCx.value = withSpring(cx, SLIDE_SPRING);
-      // Droplet pulse while traveling — the bubble swells as it leaves and
-      // settles back as it lands (AllTrails/Apple Music tab-switch feel).
-      bubbleScale.value = withSequence(
-        withSpring(HOLD_SCALE, DROPLET_SPRING),
-        withSpring(1, SPRING),
-      );
     }
   }, [state.index, slotW]);
 
@@ -224,10 +219,21 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   // Park profile pages own their bottom edge (AllTrails-style pinned action
   // bar), so the floating pill gets out of the way on those nested detail
   // routes: parks/[id] within the Parks tab, park/[id] within Feed.
+  // Slides off-screen rather than unmounting — navigation state only updates
+  // once a back-swipe commits, so an unmounted bar would pop in with no
+  // transition at the end of the gesture.
   const focusedTab = routes[state.index];
   const nestedState = focusedTab?.state as { index?: number; routes?: { name: string }[] } | undefined;
   const nestedName = nestedState?.routes?.[nestedState.index ?? 0]?.name;
-  if (nestedName === '[id]' || nestedName === 'park/[id]') return null;
+  const barHidden = nestedName === '[id]' || nestedName === 'park/[id]';
+  const hiddenSV = useSharedValue(barHidden ? 1 : 0);
+  useEffect(() => {
+    hiddenSV.value = withSpring(barHidden ? 1 : 0, SLIDE_SPRING);
+  }, [barHidden, hiddenSV]);
+  const slideDistance = bottomOffset(insets.bottom) + PILL_HEIGHT + 24;
+  const wrapSlideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: hiddenSV.value * slideDistance }],
+  }));
 
   const bubble = (
     <Animated.View style={[styles.bubble, bubbleStyle]} pointerEvents="none">
@@ -246,9 +252,9 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   );
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={[styles.wrap, { bottom: bottomOffset(insets.bottom) }]}
+    <Animated.View
+      pointerEvents={barHidden ? 'none' : 'box-none'}
+      style={[styles.wrap, { bottom: bottomOffset(insets.bottom) }, wrapSlideStyle]}
     >
       <GestureDetector gesture={pan}>
         <View
@@ -345,7 +351,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
           </View>
         </View>
       </GestureDetector>
-    </View>
+    </Animated.View>
   );
 }
 

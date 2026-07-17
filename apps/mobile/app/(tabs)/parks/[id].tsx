@@ -23,6 +23,7 @@ import * as Location from 'expo-location';
 import { distanceMiles } from '@/lib/location';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import { GrowTouchable } from '@/components/GrowTouchable';
+import { liquidGlassAvailable } from '@/lib/glass';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors, colorStr } from '@/lib/palette';
 import { parkColor, parkGradient } from '@/lib/parkColors';
@@ -37,6 +38,16 @@ import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
+
+// Average luminance of an image, decoded from a 1x1 blurhash's DC component —
+// the four base83 chars after the header ARE the mean sRGB color, so this
+// needs no pixel access and no new dependencies.
+const B83 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#$%*+,-.:;=?@[]^_{|}~';
+function blurhashLuma(hash: string): number {
+  let v = 0;
+  for (const c of hash.slice(2, 6)) v = v * 83 + B83.indexOf(c);
+  return (0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255)) / 255;
+}
 
 // Hero collapses from this height down to this as the page scrolls, and
 // stretches taller than this on overscroll (see the hero interpolations).
@@ -345,7 +356,6 @@ export default function ParkDetailScreen() {
   const [showVisitPicker, setShowVisitPicker] = useState(false);
   // Flips true if the frozen title's one line can't fit the full park name —
   // it then re-renders with "National" abbreviated instead of an ellipsis.
-  const [abbrevFrozenTitle, setAbbrevFrozenTitle] = useState(false);
   const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
   const [visitors, setVisitors] = useState<ParkVisitorsSummary | null>(null);
   const [showFriendsSheet, setShowFriendsSheet] = useState(false);
@@ -553,7 +563,6 @@ export default function ParkDetailScreen() {
     setHeroIdx(0);
     setHeroLoaded(false);
     setPrevHeroImage(null);
-    setAbbrevFrozenTitle(false);
     prevHeroRef.current = null;
   }, [nps]);
 
@@ -567,6 +576,24 @@ export default function ParkDetailScreen() {
       prevHeroRef.current = heroImage;
     }
   }, [heroImage]);
+
+  // Header icons flip to dark ink over bright covers (sky-heavy photos) —
+  // the glass itself is untouched. Luminance comes from a 1x1 blurhash of
+  // the current hero image (see blurhashLuma above). Only meaningful where
+  // real Liquid Glass renders; the fallback circle is a fixed dark fill, so
+  // light ink stays correct there.
+  const [heroIsLight, setHeroIsLight] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!heroImage) { setHeroIsLight(false); return; }
+    ExpoImage.generateBlurhashAsync(heroImage, [1, 1])
+      .then(hash => {
+        if (!cancelled && hash) setHeroIsLight(blurhashLuma(hash) > 0.6);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [heroImage]);
+  const heroInk = heroIsLight && liquidGlassAvailable ? '#26231C' : '#FFFBF1';
 
   // Bumped on every manual swipe so the auto-rotate timer restarts — otherwise
   // an auto-advance could land right after the user swiped.
@@ -908,25 +935,16 @@ export default function ParkDetailScreen() {
           ],
         }}
       >
-        {/* Invisible probe: the full name laid out with NO line limit. If it
-            wraps, the visible one-liner below would truncate — swap it to
-            the "Nat'l" abbreviation. Measuring the visible Text itself
-            (via onTextLayout under numberOfLines={1}) was unreliable: iOS
-            reports the full string for the single line even when it draws
-            an ellipsis, so the abbreviation never actually kicked in. */}
-        {!abbrevFrozenTitle && (
-          <Text
-            style={[styles.frozenTitle, { position: 'absolute', left: 0, right: 0, opacity: 0 }]}
-            pointerEvents="none"
-            onTextLayout={(e) => {
-              if (e.nativeEvent.lines.length > 1) setAbbrevFrozenTitle(true);
-            }}
-          >
-            {park.name}
-          </Text>
-        )}
+        {/* Abbreviation is decided up front from a character-width estimate,
+            not measured: both onTextLayout probes tried here (visible
+            one-liner, then a hidden unclamped copy) failed to report
+            truncation reliably on device. Heavy 19pt glyphs average ~9.5pt,
+            and the bar has SW - 144 to work with; erring slightly early
+            just shows "Nat'l" a touch sooner, which is harmless. */}
         <Text style={styles.frozenTitle} numberOfLines={1}>
-          {abbrevFrozenTitle ? park.name.replace(/National/g, "Nat'l") : park.name}
+          {park.name.length > Math.floor((SW - 144) / 9.5)
+            ? park.name.replace(/National/g, "Nat'l")
+            : park.name}
         </Text>
       </Animated.View>
 
@@ -937,7 +955,7 @@ export default function ParkDetailScreen() {
         hitSlop={8}
       >
         <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-        <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
+        <Ionicons name="chevron-back" size={24} color={heroInk} />
       </GrowTouchable>
 
       {/* Expanded actions — full-size buttons shown over the cover photo.
@@ -969,7 +987,7 @@ export default function ParkDetailScreen() {
               hitSlop={8}
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="checkmark" size={22} color="#FFFBF1" />
+              <Ionicons name="checkmark" size={22} color={heroInk} />
             </GrowTouchable>
           );
           const secondBtn = parkStatus === 'visited' ? (
@@ -979,7 +997,7 @@ export default function ParkDetailScreen() {
               hitSlop={8}
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="pencil" size={22} color="#FFFBF1" />
+              <Ionicons name="pencil" size={22} color={heroInk} />
             </GrowTouchable>
           ) : logVisitBtn;
           const firstBtn = parkStatus === 'visited' ? logVisitBtn : (
@@ -991,9 +1009,9 @@ export default function ParkDetailScreen() {
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
               {bucketBusy ? (
-                <ActivityIndicator size="small" color="#FFFBF1" />
+                <ActivityIndicator size="small" color={heroInk} />
               ) : (
-                <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={22} color={onBucket ? C.bucket : "#FFFBF1"} />
+                <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={22} color={onBucket ? C.bucket : heroInk} />
               )}
             </GrowTouchable>
           );
@@ -1008,7 +1026,7 @@ export default function ParkDetailScreen() {
                   hitSlop={8}
                 >
                   <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-                  <Ionicons name="share-outline" size={22} color="#FFFBF1" />
+                  <Ionicons name="share-outline" size={22} color={heroInk} />
                 </GrowTouchable>
               </Animated.View>
             </>
@@ -1073,9 +1091,9 @@ export default function ParkDetailScreen() {
                 alpha < 1 on a GlassView ancestor disables the material. */}
             <TouchableOpacity hitSlop={8} disabled={bucketBusy} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', opacity: showHeaderMenu ? 0.6 : 1 }}>
               {bucketBusy ? (
-                <ActivityIndicator size="small" color="#FFFBF1" />
+                <ActivityIndicator size="small" color={heroInk} />
               ) : (
-                <Ionicons name="ellipsis-horizontal" size={22} color="#FFFBF1" />
+                <Ionicons name="ellipsis-horizontal" size={22} color={heroInk} />
               )}
             </TouchableOpacity>
           </MenuView>
