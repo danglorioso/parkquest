@@ -142,10 +142,10 @@ function GlassBackButton() {
     <TouchableOpacity
       onPress={() => router.back()}
       hitSlop={8}
-      style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}
+      style={{ width: 44, height: 44, borderRadius: 22, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}
     >
       <GlassIconBg />
-      <Ionicons name="chevron-back" size={22} color={colorStr(STATIC.ink)} />
+      <Ionicons name="chevron-back" size={24} color={colorStr(STATIC.ink)} />
     </TouchableOpacity>
   );
 }

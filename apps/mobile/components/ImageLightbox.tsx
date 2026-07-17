@@ -265,7 +265,7 @@ export function ImageLightbox({
           onPress={handleClose}
           hitSlop={16}
         >
-          <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+          <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
           <Ionicons name="close" size={22} color="#FFFBF1" />
         </TouchableOpacity>
 
@@ -276,7 +276,7 @@ export function ImageLightbox({
             style={[styles.nav, { left: 16, opacity: chromeOpacity }]}
           >
             <TouchableOpacity onPress={() => goTo(idx - 1)} style={styles.navBtn}>
-              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
               <Ionicons name="chevron-back" size={24} color="#fff" />
             </TouchableOpacity>
           </Animated.View>
@@ -287,7 +287,7 @@ export function ImageLightbox({
             style={[styles.nav, { right: 16, opacity: chromeOpacity }]}
           >
             <TouchableOpacity onPress={() => goTo(idx + 1)} style={styles.navBtn}>
-              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
               <Ionicons name="chevron-forward" size={24} color="#fff" />
             </TouchableOpacity>
           </Animated.View>

@@ -617,6 +617,17 @@ export default function ParkDetailScreen() {
     outputRange: [2, 1],
     extrapolate: 'clamp',
   });
+  // heroStretchScale grows the hero box from its top edge (transformOrigin:
+  // 'top'), so its bottom edge moves down by heroMax * (scale - 1) — the
+  // title needs to move down by exactly that much on overscroll too, to
+  // stay the same distance from the (now lower) bottom of the image,
+  // without inheriting the scale itself (see heroTitleTranslateY below).
+  const heroTitleOverscrollY = Animated.multiply(Animated.subtract(heroStretchScale, 1), heroMax);
+  // heroTranslateY is 0 for any overscroll (negative scrollY, clamped) and
+  // heroTitleOverscrollY is 0 for any normal scroll (positive scrollY,
+  // clamped) — exactly one of the two is ever nonzero, so adding them just
+  // picks whichever applies to the current scroll direction.
+  const heroTitleTranslateY = Animated.add(heroTranslateY, heroTitleOverscrollY);
   const heroImageCounterY = scrollY.interpolate({
     inputRange: [0, shrinkDistance],
     outputRange: [0, shrinkDistance],
@@ -632,11 +643,12 @@ export default function ParkDetailScreen() {
   });
   // The big title is bottom-anchored in the hero (heroContent's 22px bottom
   // padding + the 32px title line height), while the back/action buttons sit
-  // fixed at insets.top+8 through insets.top+44. Once the shrinking hero's
-  // height puts the title's top edge at or below the buttons' bottom edge,
-  // the title is unreadable behind them — that's the actual moment to swap
-  // to the frozen title + "..." menu, not an arbitrary point in the shrink.
-  const collapseThreshold = heroMax - (insets.top + 8 + 36) - (22 + 32);
+  // fixed at insets.top+8 through insets.top+52 (44px circles). Once the
+  // shrinking hero's height puts the title's top edge at or below the
+  // buttons' bottom edge, the title is unreadable behind them — that's the
+  // actual moment to swap to the frozen title + "..." menu, not an
+  // arbitrary point in the shrink.
+  const collapseThreshold = heroMax - (insets.top + 8 + 44) - (22 + 32);
   // The two titles swap on this threshold as a hard switch (see
   // `titleCollapsed` renders below), not a scroll-scrubbed cross-fade — the
   // big one unmounts the instant the frozen one starts animating in, so
@@ -724,7 +736,24 @@ export default function ParkDetailScreen() {
             pointerEvents="none"
           />
         </Animated.View>
+      </Animated.View>
 
+      {/* Title — a SEPARATE box from the hero above, not a child of it. RN
+          transforms apply to the whole subtree, so when this lived inside
+          the hero it inherited heroStretchScale along with the image,
+          ballooning the title up to 2x on pull-down overscroll. This box
+          only ever translates (heroTitleTranslateY — shrink tracking while
+          scrolling, or matching the image's overscroll growth from the
+          bottom, never both at once), so the title stays the same distance
+          from the image's bottom edge in both directions without ever
+          scaling itself. */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 6,
+          height: heroMax, transform: [{ translateY: heroTitleTranslateY }],
+        }}
+      >
         {/* Fades out (1 - barAnim) as the frozen title fades in — always
             mounted so the fade actually animates (same native-driver
             mid-flight-mount caveat as the frozen title). */}
@@ -733,7 +762,6 @@ export default function ParkDetailScreen() {
             position: 'absolute', left: 0, right: 0, bottom: 0,
             opacity: barAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
           }]}
-          pointerEvents="none"
         >
           <Text style={styles.heroDesignation}>{stateName.toUpperCase()}</Text>
           <Text style={styles.heroName}>{park.name}</Text>
@@ -751,7 +779,7 @@ export default function ParkDetailScreen() {
       <Animated.View
         pointerEvents="none"
         style={{
-          position: 'absolute', top: insets.top + 8, left: 64, right: 64, height: 36, zIndex: 8, justifyContent: 'center',
+          position: 'absolute', top: insets.top + 8, left: 72, right: 72, height: 44, zIndex: 8, justifyContent: 'center',
           opacity: barAnim,
           // Plain slide-down + fade. Deliberately NOT the 3D flip
           // (perspective + rotateX) — a 3D-rotated layer's projected plane
@@ -785,7 +813,7 @@ export default function ParkDetailScreen() {
         onPress={() => router.back()}
         hitSlop={8}
       >
-        <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+        <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
         <Ionicons name="chevron-back" size={24} color="#FFFBF1" />
       </TouchableOpacity>
 
@@ -802,11 +830,11 @@ export default function ParkDetailScreen() {
         }}
       >
         {(() => {
-          // Row is [first, second, share], 36px buttons + 8px gaps. On
-          // collapse the two left buttons travel right into the share
-          // button's slot (+88 / +44), fading out as they arrive; the share
-          // button stays put and crossfades into the "..." rendered on top
-          // of the same spot. Reads as all three merging into one.
+          // Row is [first, second, share], 44px buttons + 8px gaps (52px per
+          // slot). On collapse the two left buttons travel right into the
+          // share button's slot (+104 / +52), fading out as they arrive; the
+          // share button stays put and crossfades into the "..." rendered on
+          // top of the same spot. Reads as all three merging into one.
           const travel = (dist: number) => ({
             opacity: actionsAnim.interpolate({ inputRange: [0, 0.7], outputRange: [1, 0], extrapolate: 'clamp' as const }),
             transform: [{ translateX: actionsAnim.interpolate({ inputRange: [0, 1], outputRange: [0, dist] }) }],
@@ -817,7 +845,7 @@ export default function ParkDetailScreen() {
               onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
               hitSlop={8}
             >
-              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
               <Ionicons name="checkmark" size={20} color="#FFFBF1" />
             </TouchableOpacity>
           );
@@ -827,7 +855,7 @@ export default function ParkDetailScreen() {
               onPress={handleEditVisitPress}
               hitSlop={8}
             >
-              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
               <Ionicons name="pencil" size={18} color="#FFFBF1" />
             </TouchableOpacity>
           ) : logVisitBtn;
@@ -838,7 +866,7 @@ export default function ParkDetailScreen() {
               disabled={bucketBusy}
               hitSlop={8}
             >
-              <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
               {bucketBusy ? (
                 <ActivityIndicator size="small" color="#FFFBF1" />
               ) : (
@@ -848,15 +876,15 @@ export default function ParkDetailScreen() {
           );
           return (
             <>
-              <Animated.View style={travel(88)}>{firstBtn}</Animated.View>
-              <Animated.View style={travel(44)}>{secondBtn}</Animated.View>
+              <Animated.View style={travel(104)}>{firstBtn}</Animated.View>
+              <Animated.View style={travel(52)}>{secondBtn}</Animated.View>
               <Animated.View style={{ opacity: actionsAnim.interpolate({ inputRange: [0.55, 0.9], outputRange: [1, 0], extrapolate: 'clamp' }) }}>
                 <TouchableOpacity
                   style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
                   onPress={handleShare}
                   hitSlop={8}
                 >
-                  <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+                  <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
                   <Ionicons name="share-outline" size={20} color="#FFFBF1" />
                 </TouchableOpacity>
               </Animated.View>
@@ -883,7 +911,7 @@ export default function ParkDetailScreen() {
             the clipping is guaranteed to clip regardless of what MenuView
             does internally. */}
         <View style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined, opacity: showHeaderMenu ? 0.6 : 1 }]}>
-          <GlassIconBg fallbackColor="rgba(0,0,0,0.35)" />
+          <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
           <MenuView
             onOpenMenu={() => setShowHeaderMenu(true)}
             onCloseMenu={() => setShowHeaderMenu(false)}
@@ -1329,7 +1357,7 @@ export default function ParkDetailScreen() {
                 onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
                 activeOpacity={0.8}
               >
-                <GlassIconBg tintColor={C.primary} fallbackColor={C.primary} />
+                <GlassIconBg borderRadius={12} tintColor={C.primary} fallbackColor={C.primary} />
                 <Ionicons name="checkmark" size={16} color="#FFFBF1" />
                 <Text style={styles.actionBtnText}>Log another visit</Text>
               </TouchableOpacity>
@@ -1338,7 +1366,7 @@ export default function ParkDetailScreen() {
                 onPress={() => { if (lastVisit) router.push(`/profile/journal/${lastVisit.id}` as never); }}
                 activeOpacity={0.8}
               >
-                <GlassIconBg />
+                <GlassIconBg borderRadius={12} />
                 <Ionicons name="pencil-outline" size={16} color={C.primary} />
                 <Text style={[styles.actionBtnOutlineText, { color: C.primary }]}>Edit last visit</Text>
               </TouchableOpacity>
@@ -1351,7 +1379,7 @@ export default function ParkDetailScreen() {
                 onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
                 activeOpacity={0.8}
               >
-                <GlassIconBg tintColor={C.primary} fallbackColor={C.primary} />
+                <GlassIconBg borderRadius={12} tintColor={C.primary} fallbackColor={C.primary} />
                 <Ionicons name="checkmark" size={16} color="#FFFBF1" />
                 <Text style={styles.actionBtnText}>Log a visit</Text>
               </TouchableOpacity>
@@ -1361,7 +1389,7 @@ export default function ParkDetailScreen() {
                 activeOpacity={0.8}
                 disabled={bucketBusy}
               >
-                <GlassIconBg tintColor={onBucket ? colorStr(C.bucket) : undefined} fallbackColor={onBucket ? colorStr(C.bucket) : undefined} />
+                <GlassIconBg borderRadius={12} tintColor={onBucket ? colorStr(C.bucket) : undefined} fallbackColor={onBucket ? colorStr(C.bucket) : undefined} />
                 {bucketBusy ? (
                   <ActivityIndicator size="small" color={onBucket ? C.onPrimary : C.bucket} />
                 ) : (
@@ -1456,9 +1484,9 @@ const styles = StyleSheet.create({
   backBtn: {
     position: 'absolute',
     left: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
