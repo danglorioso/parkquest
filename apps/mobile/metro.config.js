@@ -22,6 +22,7 @@ config.resolver.extraNodeModules = {
   'expo-glass-effect': rootPkg('expo-glass-effect'),
   'expo-haptics': rootPkg('expo-haptics'),
   'expo-image-manipulator': rootPkg('expo-image-manipulator'),
+  'expo-sensors': rootPkg('expo-sensors'),
   '@react-native-community/netinfo': rootPkg('@react-native-community/netinfo'),
   '@sentry/react-native': rootPkg('@sentry/react-native'),
 };

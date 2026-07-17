@@ -1,5 +1,7 @@
 import { View } from 'react-native';
-import Svg, { Circle, Defs, Line, Path as SvgPath, Text as SvgText, TextPath } from 'react-native-svg';
+import Svg, {
+  Circle, Defs, G, Line, Path as SvgPath, RadialGradient, Stop, Text as SvgText, TextPath,
+} from 'react-native-svg';
 import { getParkGlyph } from '@parkquest/types';
 
 // ── Stamp palette + helpers ───────────────────────────────────────────────────
@@ -8,6 +10,52 @@ const STAMP_COLORS = ['#5A2418', '#1F3D2E', '#2D4F66', '#3A2E5C', '#7B3A1F'];
 
 export function stampColor(idx: number): string {
   return STAMP_COLORS[idx % STAMP_COLORS.length];
+}
+
+// ── Ink-worn texture ─────────────────────────────────────────────────────────
+// A vector stamp with perfectly uniform rings reads as a sticker, not ink on
+// paper. These add the texture of an actual rubber-stamp impression — uneven
+// pickup, speckle, a faint double-strike — without SVG filter primitives
+// (feTurbulence etc. render inconsistently across react-native-svg's
+// iOS/Android backends). Everything here is seeded off parkCode so a given
+// park's stamp looks identical everywhere it appears, not re-randomized
+// per mount.
+
+function seededRand(seed: string, i: number): number {
+  let h = 0;
+  const s = `${seed}#${i}`;
+  for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) >>> 0;
+  return (h % 10000) / 10000;
+}
+
+// Irregular dash/gap pairs around a ring's circumference — reads as ink
+// worn thin in some stretches, pooled dark in others, instead of a
+// machine-even stroke.
+function distressedDasharray(seed: string, circumference: number, segments: number): string {
+  const dashBase = (circumference / segments) * 0.72;
+  const gapBase = (circumference / segments) * 0.28;
+  const parts: string[] = [];
+  for (let i = 0; i < segments; i++) {
+    const dash = Math.max(0.5, dashBase * (0.5 + seededRand(seed, i * 2) * 1.1));
+    const gap = Math.max(0.2, gapBase * (0.4 + seededRand(seed, i * 2 + 1) * 1.5));
+    parts.push(dash.toFixed(2), gap.toFixed(2));
+  }
+  return parts.join(' ');
+}
+
+// Scattered ink specks in and around the ring band — the fine grain a rubber
+// stamp leaves from uneven ink-pad contact.
+function inkSpecks(seed: string, count: number): { x: number; y: number; r: number; op: number }[] {
+  return Array.from({ length: count }, (_, i) => {
+    const angle = seededRand(seed, i * 4) * Math.PI * 2;
+    const radius = 26 + seededRand(seed, i * 4 + 1) * 22;
+    return {
+      x: 50 + Math.cos(angle) * radius,
+      y: 50 + Math.sin(angle) * radius,
+      r: 0.3 + seededRand(seed, i * 4 + 2) * 0.6,
+      op: 0.08 + seededRand(seed, i * 4 + 3) * 0.22,
+    };
+  });
 }
 
 const STATE_ABBR: Record<string, string> = {
@@ -52,6 +100,20 @@ export function ParkStamp({
   const rotate    = rotated ? `${((colorIdx * 37) % 16) - 8}deg` : '0deg';
   const topId     = `top-${parkCode}${idSuffix}`;
   const botId     = `bot-${parkCode}${idSuffix}`;
+  const bleedId   = `bleed-${parkCode}${idSuffix}`;
+
+  // Seed off parkCode alone (not idSuffix) — the same park's stamp should
+  // look identical on every screen it appears, only the DOM ids need to
+  // stay unique per mount.
+  const outerDash = distressedDasharray(parkCode, 2 * Math.PI * 44, 26);
+  const innerDash = distressedDasharray(`${parkCode}-inner`, 2 * Math.PI * 37, 20);
+  const specks = inkSpecks(parkCode, 16);
+  // A second, faint impression offset a fraction of a mm — the classic
+  // tell of a hand-stamped mark that shifted slightly between the first
+  // and second press.
+  const ghostDx = (seededRand(parkCode, 900) - 0.5) * 1.6;
+  const ghostDy = (seededRand(parkCode, 901) - 0.5) * 1.6;
+  const ghostRotate = (seededRand(parkCode, 902) - 0.5) * 6;
 
   return (
     <View style={{ transform: [{ rotate }] }}>
@@ -59,22 +121,43 @@ export function ParkStamp({
         <Defs>
           <SvgPath id={topId} d="M 14 50 A 36 36 0 0 1 86 50" />
           <SvgPath id={botId} d="M 14 50 A 36 36 0 0 0 86 50" />
+          <RadialGradient id={bleedId} cx="50%" cy="50%" r="50%">
+            <Stop offset="70%" stopColor={c} stopOpacity="0" />
+            <Stop offset="100%" stopColor={c} stopOpacity="0.16" />
+          </RadialGradient>
         </Defs>
 
-        {/* Outer thick ring — matches real stamp border weight */}
-        <Circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" />
-        {/* Inner ring */}
-        <Circle cx="50" cy="50" r="37" fill="none" stroke={c} strokeWidth="1.1" opacity="0.85" />
+        {/* Ink-bleed halo — paper soaking up ink at the ring's edge */}
+        <Circle cx="50" cy="50" r="48" fill={`url(#${bleedId})`} />
 
-        {/* Tick marks between rings at 8 positions (cardinal + diagonal) */}
-        <Line x1="88.5" y1="50"   x2="93"   y2="50"   stroke={c} strokeWidth="1.4" opacity="0.85" />
-        <Line x1="11.5" y1="50"   x2="7"    y2="50"   stroke={c} strokeWidth="1.4" opacity="0.85" />
-        <Line x1="50"   y1="88.5" x2="50"   y2="93"   stroke={c} strokeWidth="1.4" opacity="0.85" />
-        <Line x1="50"   y1="11.5" x2="50"   y2="7"    stroke={c} strokeWidth="1.4" opacity="0.85" />
-        <Line x1="77.2" y1="77.2" x2="80.4" y2="80.4" stroke={c} strokeWidth="1.4" opacity="0.85" />
-        <Line x1="22.8" y1="77.2" x2="19.6" y2="80.4" stroke={c} strokeWidth="1.4" opacity="0.85" />
-        <Line x1="22.8" y1="22.8" x2="19.6" y2="19.6" stroke={c} strokeWidth="1.4" opacity="0.85" />
-        <Line x1="77.2" y1="22.8" x2="80.4" y2="19.6" stroke={c} strokeWidth="1.4" opacity="0.85" />
+        {/* Faint double-strike ghost, offset — a hand stamp rarely lands twice
+            in exactly the same spot */}
+        <G transform={`translate(${ghostDx} ${ghostDy}) rotate(${ghostRotate} 50 50)`} opacity="0.14">
+          <Circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="3.5" />
+          <Circle cx="50" cy="50" r="37" fill="none" stroke={c} strokeWidth="1.1" />
+        </G>
+
+        {/* Outer thick ring — matches real stamp border weight, dashed
+            irregularly so the ink reads as worn rather than machine-even */}
+        <Circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" strokeDasharray={outerDash} />
+        {/* Inner ring */}
+        <Circle cx="50" cy="50" r="37" fill="none" stroke={c} strokeWidth="1.1" opacity="0.85" strokeDasharray={innerDash} />
+
+        {/* Ink specks — the fine grain an ink pad leaves around the ring */}
+        {specks.map((s, i) => (
+          <Circle key={i} cx={s.x} cy={s.y} r={s.r} fill={c} opacity={s.op} />
+        ))}
+
+        {/* Tick marks between rings at 8 positions (cardinal + diagonal),
+            each with a touch of seeded wear so they don't all match */}
+        {([
+          ['88.5', '50', '93', '50'], ['11.5', '50', '7', '50'],
+          ['50', '88.5', '50', '93'], ['50', '11.5', '50', '7'],
+          ['77.2', '77.2', '80.4', '80.4'], ['22.8', '77.2', '19.6', '80.4'],
+          ['22.8', '22.8', '19.6', '19.6'], ['77.2', '22.8', '80.4', '19.6'],
+        ] as const).map(([x1, y1, x2, y2], i) => (
+          <Line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c} strokeWidth="1.4" opacity={0.6 + seededRand(parkCode, 800 + i) * 0.35} />
+        ))}
 
         {/* Horizontal band dividers — create 3-section stamp layout */}
         <Line x1="17"   y1="34"   x2="83"   y2="34"   stroke={c} strokeWidth="0.9" opacity="0.8" />

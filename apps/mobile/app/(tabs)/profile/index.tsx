@@ -437,9 +437,10 @@ export default function ProfileScreen() {
             style={styles.shareBtn}
             activeOpacity={0.7}
             onPress={handleShare}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            hitSlop={8}
           >
-            <Ionicons name="share-outline" size={15} color="#C9A94A" />
+            <GlassIconBg onMedia tintColor="rgba(201,169,74,0.16)" />
+            <Ionicons name="share-outline" size={20} color="#C9A94A" />
           </TouchableOpacity>
 
           <View style={styles.passportHeader}>
@@ -851,9 +852,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 16,
   },
   shareBtn: {
-    position: 'absolute', top: 28, right: 12, zIndex: 2,
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: 'rgba(201,169,74,0.12)',
+    // 44pt — matches the app-wide round icon button size (topBar's search/
+    // settings buttons, park page header buttons).
+    position: 'absolute', top: 16, right: 4, zIndex: 2,
+    width: 44, height: 44, borderRadius: 22,
+    overflow: 'hidden',
     borderWidth: 1, borderColor: 'rgba(201,169,74,0.35)',
     alignItems: 'center', justifyContent: 'center',
   },
