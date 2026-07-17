@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Dimensions, StyleSheet, View } from 'react-native';
+import { Animated, Dimensions, Easing, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Ellipse, G, Line, Path } from 'react-native-svg';
 
@@ -209,18 +209,31 @@ function SunGlow() {
 
 export default function LoadingScreen({ visible }: { visible: boolean }) {
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
   const contentFade = useRef(new Animated.Value(0)).current;
   const contentRise = useRef(new Animated.Value(16)).current;
 
   useEffect(() => {
     if (!visible) {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }).start();
+      // Exit: zoom-through + fade, like iOS's own launch-screen handoff —
+      // the splash swells slightly as it dissolves into the app behind it.
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 450,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1.08,
+          duration: 450,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
     } else {
       fadeAnim.setValue(1);
+      scaleAnim.setValue(1);
       contentFade.setValue(0);
       contentRise.setValue(16);
       Animated.parallel([
@@ -233,7 +246,7 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
   return (
     <Animated.View
       pointerEvents={visible ? 'auto' : 'none'}
-      style={[StyleSheet.absoluteFill, { opacity: fadeAnim, zIndex: 999 }]}
+      style={[StyleSheet.absoluteFill, { opacity: fadeAnim, transform: [{ scale: scaleAnim }], zIndex: 999 }]}
     >
       <LinearGradient
         colors={['#0D2B1E', '#1F3D2E', '#2A5240']}
