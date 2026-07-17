@@ -1,20 +1,35 @@
 #!/bin/sh
 set -e
 
-export HOMEBREW_NO_AUTO_UPDATE=1
-export HOMEBREW_NO_INSTALL_CLEANUP=1
-
-# Newer Xcode Cloud images ship node; installing over it makes brew fail on
-# link conflicts, so only install when it's actually missing.
+# Newer Xcode Cloud images ship node; when it's missing, install a pinned
+# build straight from nodejs.org — a single retried download. (`brew install
+# node` pulled 20+ bottles from ghcr.io, which reset connections mid-fetch
+# and failed the build; nodejs.org is one artifact behind a stable CDN.)
+NODE_VERSION=22.20.0
 if command -v node >/dev/null 2>&1; then
   echo "==> node already present: $(node --version)"
 else
-  echo "==> installing node via brew"
-  brew install node
+  echo "==> installing node v${NODE_VERSION} from nodejs.org"
+  case "$(uname -m)" in
+    arm64) NODE_DIST="node-v${NODE_VERSION}-darwin-arm64" ;;
+    *) NODE_DIST="node-v${NODE_VERSION}-darwin-x64" ;;
+  esac
+  curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
+    "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_DIST}.tar.gz" -o "$HOME/node.tar.gz"
+  tar -xzf "$HOME/node.tar.gz" -C "$HOME"
+  export PATH="$HOME/$NODE_DIST/bin:$PATH"
 fi
 
+# Xcode build phases don't inherit this script's PATH; .xcode.env resolves
+# node via `command -v node` in a fresh shell, which misses the tarball
+# install above. Pin the absolute path in .xcode.env.local (gitignored, so
+# absent from CI clones — writing it here can't clobber anything).
+echo "export NODE_BINARY=$(command -v node)" > "$CI_PRIMARY_REPOSITORY_PATH/apps/mobile/ios/.xcode.env.local"
+
 echo "==> installing pnpm"
-npm install -g pnpm
+# Major pinned; pnpm self-switches to the exact version in the root
+# package.json `packageManager` field.
+npm install -g pnpm@10
 
 echo "==> pnpm install"
 cd "$CI_PRIMARY_REPOSITORY_PATH"
