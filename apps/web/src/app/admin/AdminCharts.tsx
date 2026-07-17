@@ -509,6 +509,151 @@ export function HourlyActivityChart({ data }: { data: HourlyPoint[] }) {
   );
 }
 
+// ── App Store acquisition mini bar chart ─────────────────────────────────────────
+
+// One 30-day metric (impressions, page views, downloads, conversion %) as a
+// compact bar strip under its stat number — same zero-filled-series contract
+// as the other daily charts: render exactly what SQL sent, never rebuild
+// day keys client-side.
+export function AppStoreMetricChart({ data, unit }: {
+  data: { day: string; value: number }[];
+  unit?: string;
+}) {
+  const [tip, setTip] = useState<TooltipState | null>(null);
+  const max = Math.max(...data.map(d => d.value), 1);
+
+  return (
+    <div className="relative">
+      <div className="flex h-16 items-end gap-[2px]">
+        {data.map(d => (
+          <div
+            key={d.day}
+            className="group flex h-full flex-1 items-end"
+            onMouseEnter={e => {
+              const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+              const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
+              setTip({
+                x: r.left - parent.left + r.width / 2,
+                y: r.top - parent.top,
+                title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                value: `${d.value.toLocaleString()}${unit ?? ''}`,
+              });
+            }}
+            onMouseLeave={() => setTip(null)}
+          >
+            <div
+              className="w-full rounded-t-[3px] bg-primary transition-opacity group-hover:opacity-70"
+              style={{ height: `${Math.max((d.value / max) * 100, d.value > 0 ? 6 : 2)}%`, minHeight: 2 }}
+            />
+          </div>
+        ))}
+      </div>
+      <ChartTooltip tip={tip} />
+    </div>
+  );
+}
+
+// ── Downloads by device donut ────────────────────────────────────────────────────
+
+// Fixed categorical slot order (series-1..5), assigned to devices sorted by
+// download count — never cycled. Anything past the 4th device folds into
+// "Other" so the palette is never exhausted.
+const DEVICE_SLOTS = [
+  'var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)', 'var(--series-5)',
+];
+
+function donutArcPath(cx: number, cy: number, rOuter: number, rInner: number, start: number, end: number): string {
+  const pt = (r: number, a: number) => `${cx + r * Math.sin(a)} ${cy - r * Math.cos(a)}`;
+  const large = end - start > Math.PI ? 1 : 0;
+  return [
+    `M ${pt(rOuter, start)}`,
+    `A ${rOuter} ${rOuter} 0 ${large} 1 ${pt(rOuter, end)}`,
+    `L ${pt(rInner, end)}`,
+    `A ${rInner} ${rInner} 0 ${large} 0 ${pt(rInner, start)}`,
+    'Z',
+  ].join(' ');
+}
+
+export function DeviceDonutChart({ data }: { data: { device: string; downloads: number }[] }) {
+  const [tip, setTip] = useState<TooltipState | null>(null);
+
+  // `data` arrives sorted desc from SQL; fold the tail into "Other".
+  const slices = useMemo(() => {
+    const head = data.slice(0, 4);
+    const tail = data.slice(4);
+    const rows = tail.length
+      ? [...head, { device: 'Other', downloads: tail.reduce((s, d) => s + d.downloads, 0) }]
+      : head;
+    const total = rows.reduce((s, d) => s + d.downloads, 0);
+    let angle = 0;
+    return rows.map((d, i) => {
+      const sweep = (d.downloads / total) * Math.PI * 2;
+      const slice = {
+        ...d,
+        color: DEVICE_SLOTS[i],
+        pct: Math.round((d.downloads / total) * 100),
+        start: angle,
+        end: angle + sweep,
+      };
+      angle += sweep;
+      return slice;
+    });
+  }, [data]);
+
+  const R_OUT = 54;
+  const R_IN = 34;
+  // 2px surface gap between fills, expressed as half a pad-angle per edge.
+  const pad = 2 / R_OUT / 2;
+
+  const showTip = (e: React.MouseEvent, s: (typeof slices)[number]) => {
+    const parent = (e.currentTarget as SVGElement).closest('.relative')!.getBoundingClientRect();
+    setTip({
+      x: e.clientX - parent.left,
+      y: e.clientY - parent.top,
+      title: s.device,
+      value: `${s.downloads.toLocaleString()} download${s.downloads !== 1 ? 's' : ''} · ${s.pct}%`,
+    });
+  };
+
+  return (
+    <div className="relative flex items-center gap-6">
+      <svg viewBox="0 0 120 120" className="h-32 w-32 shrink-0">
+        {slices.length === 1 ? (
+          // A full 360° arc degenerates (start == end mod 2π) — draw a ring.
+          <circle
+            cx={60} cy={60} r={(R_OUT + R_IN) / 2}
+            fill="none" stroke={slices[0].color} strokeWidth={R_OUT - R_IN}
+            onMouseMove={e => showTip(e, slices[0])}
+            onMouseLeave={() => setTip(null)}
+          />
+        ) : (
+          slices.map(s => (
+            <path
+              key={s.device}
+              d={donutArcPath(60, 60, R_OUT, R_IN, s.start + pad, Math.max(s.end - pad, s.start + pad))}
+              fill={s.color}
+              className="transition-opacity hover:opacity-70"
+              onMouseMove={e => showTip(e, s)}
+              onMouseLeave={() => setTip(null)}
+            />
+          ))
+        )}
+      </svg>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {slices.map(s => (
+          <div key={s.device} className="flex items-center gap-2 text-xs">
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
+            <span className="truncate text-ink-soft">{s.device}</span>
+            <span className="ml-auto font-semibold text-ink">{s.downloads.toLocaleString()}</span>
+            <span className="w-8 text-right text-ink-mute">{s.pct}%</span>
+          </div>
+        ))}
+      </div>
+      <ChartTooltip tip={tip} />
+    </div>
+  );
+}
+
 // ── Top parks list ───────────────────────────────────────────────────────────────
 
 export function TopParksList({ parks }: { parks: { park_code: string; name: string; visit_count: number }[] }) {

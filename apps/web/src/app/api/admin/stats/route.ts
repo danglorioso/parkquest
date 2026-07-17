@@ -42,6 +42,7 @@ export async function GET() {
     topParks,
     appStoreByDay,
     [appStoreTotals],
+    appStoreDevices,
     [deltas24h],
   ] = await Promise.all([
     db.execute(sql`
@@ -166,15 +167,46 @@ export async function GET() {
       )
       SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
              COALESCE(s.units, 0)::int AS units,
-             COALESCE(s.proceeds, 0)::float AS proceeds
+             COALESCE(s.proceeds, 0)::float AS proceeds,
+             COALESCE(s.impressions, 0)::int AS impressions,
+             COALESCE(s.product_page_views, 0)::int AS page_views,
+             COALESCE(s.first_time_downloads, 0)::int AS first_time_downloads,
+             COALESCE(s.redownloads, 0)::int AS redownloads,
+             -- Apple's definition: total downloads ÷ unique impressions.
+             CASE WHEN COALESCE(s.impressions_unique, 0) > 0
+               THEN ROUND(100.0 * (COALESCE(s.first_time_downloads, 0) + COALESCE(s.redownloads, 0))
+                          / s.impressions_unique, 1)::float
+               ELSE NULL END AS conversion
       FROM days d LEFT JOIN app_store_daily_stats s ON s.report_date = d.day
       ORDER BY d.day
-    `).then(r => r.rows as { day: string; units: number; proceeds: number }[]),
+    `).then(r => r.rows as {
+      day: string; units: number; proceeds: number; impressions: number;
+      page_views: number; first_time_downloads: number; redownloads: number; conversion: number | null;
+    }[]),
     db.execute(sql`
-      SELECT COALESCE(SUM(units), 0)::int AS units, COALESCE(SUM(proceeds), 0)::float AS proceeds
+      SELECT COALESCE(SUM(units), 0)::int AS units, COALESCE(SUM(proceeds), 0)::float AS proceeds,
+             COALESCE(SUM(impressions), 0)::int AS impressions,
+             COALESCE(SUM(product_page_views), 0)::int AS page_views,
+             COALESCE(SUM(first_time_downloads), 0)::int AS first_time_downloads,
+             COALESCE(SUM(redownloads), 0)::int AS redownloads,
+             CASE WHEN COALESCE(SUM(impressions_unique), 0) > 0
+               THEN ROUND(100.0 * SUM(COALESCE(first_time_downloads, 0) + COALESCE(redownloads, 0))
+                          / SUM(impressions_unique), 1)::float
+               ELSE NULL END AS conversion
       FROM app_store_daily_stats
       WHERE report_date > CURRENT_DATE - INTERVAL '30 days'
-    `).then(r => r.rows as { units: number; proceeds: number }[]),
+    `).then(r => r.rows as {
+      units: number; proceeds: number; impressions: number; page_views: number;
+      first_time_downloads: number; redownloads: number; conversion: number | null;
+    }[]),
+    db.execute(sql`
+      SELECT device, SUM(first_time_downloads + redownloads)::int AS downloads
+      FROM app_store_device_downloads
+      WHERE report_date > CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY device
+      HAVING SUM(first_time_downloads + redownloads) > 0
+      ORDER BY downloads DESC
+    `).then(r => r.rows as { device: string; downloads: number }[]),
     // 24h additions for the stat tiles' +N badges. Additions only — hard
     // deletes (removed posts, unfriends) aren't tracked, so this is "new in
     // the last day", not strict net change.
@@ -219,6 +251,12 @@ export async function GET() {
     app_store_by_day: appStoreByDay,
     app_store_units_30d: appStoreTotals.units,
     app_store_proceeds_30d: appStoreTotals.proceeds,
+    app_store_impressions_30d: appStoreTotals.impressions,
+    app_store_page_views_30d: appStoreTotals.page_views,
+    app_store_first_time_downloads_30d: appStoreTotals.first_time_downloads,
+    app_store_redownloads_30d: appStoreTotals.redownloads,
+    app_store_conversion_30d: appStoreTotals.conversion,
+    app_store_devices_30d: appStoreDevices,
     deltas_24h: deltas24h,
   });
 }

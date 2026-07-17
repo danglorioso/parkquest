@@ -213,7 +213,29 @@ export const appStoreDailyStats = pgTable('app_store_daily_stats', {
   units: integer('units').notNull(),
   proceeds: real('proceeds').notNull(),
   proceeds_currency: varchar('proceeds_currency', { length: 3 }).notNull(),
+  // Analytics Reports API metrics (impressions/page views/download splits) —
+  // a separate Apple pipeline from the sales report above, so these arrive
+  // on their own schedule. NULL = not fetched for this day yet, distinct
+  // from a real zero.
+  impressions: integer('impressions'),
+  impressions_unique: integer('impressions_unique'),
+  product_page_views: integer('product_page_views'),
+  first_time_downloads: integer('first_time_downloads'),
+  redownloads: integer('redownloads'),
   updated_at: timestamp('updated_at').defaultNow().notNull(),
 });
 
 export type AppStoreDailyStats = typeof appStoreDailyStats.$inferSelect;
+
+// Per-device split of App Store downloads (admin dashboard's device donut),
+// from the same Analytics "App Downloads" report — keyed by Apple's Device
+// dimension (iPhone, iPad, Desktop, …).
+export const appStoreDeviceDownloads = pgTable('app_store_device_downloads', {
+  report_date: date('report_date').notNull(),
+  device: varchar('device', { length: 64 }).notNull(),
+  first_time_downloads: integer('first_time_downloads').notNull().default(0),
+  redownloads: integer('redownloads').notNull().default(0),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.report_date, t.device] })]);
+
+export type AppStoreDeviceDownloads = typeof appStoreDeviceDownloads.$inferSelect;
