@@ -8,6 +8,18 @@ import { getParkGlyph } from '@parkquest/types';
 
 const STAMP_COLORS = ['#5A2418', '#1F3D2E', '#2D4F66', '#3A2E5C', '#7B3A1F'];
 
+// react-native-svg's iOS backend doesn't honor textAnchor on <TextPath> —
+// text always renders start-aligned from startOffset regardless of the
+// anchor value, so a 50%/"middle" pairing (which would center on other
+// renderers) reads left-shifted here. The state-code text is short and
+// near-constant length ("★ XX ★"), so instead of relying on textAnchor at
+// all, force it to a known width via textLength and hand-compute the
+// startOffset that centers exactly that width on the arc.
+const TEXT_ARC_R        = 33; // matches the topId/botId path radius below
+const TEXT_ARC_LEN      = Math.PI * TEXT_ARC_R; // semicircle (180° sweep)
+const STATE_TEXT_LEN    = 44; // forced glyph width for "★ XX ★" at fontSize 6.5
+const STATE_START_OFFSET = `${((TEXT_ARC_LEN - STATE_TEXT_LEN) / 2 / TEXT_ARC_LEN * 100).toFixed(2)}%`;
+
 export function stampColor(idx: number): string {
   return STAMP_COLORS[idx % STAMP_COLORS.length];
 }
@@ -26,21 +38,6 @@ function seededRand(seed: string, i: number): number {
   const s = `${seed}#${i}`;
   for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) >>> 0;
   return (h % 10000) / 10000;
-}
-
-// Irregular dash/gap pairs around a ring's circumference — reads as ink
-// worn thin in some stretches, pooled dark in others, instead of a
-// machine-even stroke.
-function distressedDasharray(seed: string, circumference: number, segments: number): string {
-  const dashBase = (circumference / segments) * 0.72;
-  const gapBase = (circumference / segments) * 0.28;
-  const parts: string[] = [];
-  for (let i = 0; i < segments; i++) {
-    const dash = Math.max(0.5, dashBase * (0.5 + seededRand(seed, i * 2) * 1.1));
-    const gap = Math.max(0.2, gapBase * (0.4 + seededRand(seed, i * 2 + 1) * 1.5));
-    parts.push(dash.toFixed(2), gap.toFixed(2));
-  }
-  return parts.join(' ');
 }
 
 // Scattered ink specks in and around the ring band — the fine grain a rubber
@@ -94,7 +91,10 @@ export function ParkStamp({
 }) {
   const c         = stampColor(colorIdx);
   const sc        = stateCode(states);
-  const raw       = name.toUpperCase();
+  // "National Park" is implied by the stamp itself (ring text/compass motif) —
+  // drop it so e.g. "Wrangell-St. Elias National Park & Preserve" leaves room
+  // for the part that actually distinguishes the park, "& Preserve".
+  const raw       = name.toUpperCase().replace(/NATIONAL PARK/g, '').replace(/\s+/g, ' ').trim();
   const shortName = raw.length > 18 ? raw.slice(0, 16) + '…' : raw;
   const nameFontSize = shortName.length > 16 ? 7 : shortName.length > 13 ? 7.5 : shortName.length > 10 ? 8 : 9;
   const rotate    = rotated ? `${((colorIdx * 37) % 16) - 8}deg` : '0deg';
@@ -102,11 +102,6 @@ export function ParkStamp({
   const botId     = `bot-${parkCode}${idSuffix}`;
   const bleedId   = `bleed-${parkCode}${idSuffix}`;
 
-  // Seed off parkCode alone (not idSuffix) — the same park's stamp should
-  // look identical on every screen it appears, only the DOM ids need to
-  // stay unique per mount.
-  const outerDash = distressedDasharray(parkCode, 2 * Math.PI * 44, 26);
-  const innerDash = distressedDasharray(`${parkCode}-inner`, 2 * Math.PI * 37, 20);
   const specks = inkSpecks(parkCode, 16);
   // A second, faint impression offset a fraction of a mm — the classic
   // tell of a hand-stamped mark that shifted slightly between the first
@@ -119,8 +114,8 @@ export function ParkStamp({
     <View style={{ transform: [{ rotate }] }}>
       <Svg width={size} height={size} viewBox="0 0 100 100">
         <Defs>
-          <SvgPath id={topId} d="M 14 50 A 36 36 0 0 1 86 50" />
-          <SvgPath id={botId} d="M 14 50 A 36 36 0 0 0 86 50" />
+          <SvgPath id={topId} d="M 17 50 A 33 33 0 0 1 83 50" />
+          <SvgPath id={botId} d="M 17 50 A 33 33 0 0 0 83 50" />
           <RadialGradient id={bleedId} cx="50%" cy="50%" r="50%">
             <Stop offset="70%" stopColor={c} stopOpacity="0" />
             <Stop offset="100%" stopColor={c} stopOpacity="0.16" />
@@ -137,11 +132,12 @@ export function ParkStamp({
           <Circle cx="50" cy="50" r="37" fill="none" stroke={c} strokeWidth="1.1" />
         </G>
 
-        {/* Outer thick ring — matches real stamp border weight, dashed
-            irregularly so the ink reads as worn rather than machine-even */}
-        <Circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" strokeDasharray={outerDash} />
-        {/* Inner ring */}
-        <Circle cx="50" cy="50" r="37" fill="none" stroke={c} strokeWidth="1.1" opacity="0.85" strokeDasharray={innerDash} />
+        {/* Outer ring, doubled — a thin line just inside the main border,
+            like an engraved medal/seal edge rather than a plain circle.
+            Stops at r=40.5, clear of the r=33 name/state text arcs below —
+            a ring any closer overlaps the lettering. */}
+        <Circle cx="50" cy="50" r="44"   fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" />
+        <Circle cx="50" cy="50" r="40.5" fill="none" stroke={c} strokeWidth="1"   opacity="0.75" />
 
         {/* Ink specks — the fine grain an ink pad leaves around the ring */}
         {specks.map((s, i) => (
@@ -163,16 +159,24 @@ export function ParkStamp({
         <Line x1="17"   y1="34"   x2="83"   y2="34"   stroke={c} strokeWidth="0.9" opacity="0.8" />
         <Line x1="17"   y1="66"   x2="83"   y2="66"   stroke={c} strokeWidth="0.9" opacity="0.8" />
 
-        {/* Park name on top arc */}
-        <SvgText fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.92">
+        {/* Park name on top arc — textAnchor set on both the Text and
+            TextPath since react-native-svg doesn't reliably honor it from
+            just one or the other across iOS/Android */}
+        <SvgText fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.92" textAnchor="middle">
           <TextPath href={`#${topId}`} startOffset="50%" textAnchor="middle">
             {shortName}
           </TextPath>
         </SvgText>
 
-        {/* State code on bottom arc */}
+        {/* State code on bottom arc — startOffset/textLength hand-computed
+            to center (see TEXT_ARC_* constants above), not textAnchor */}
         <SvgText fill={c} fontWeight="700" fontSize="6.5" letterSpacing="1.8" opacity="0.88">
-          <TextPath href={`#${botId}`} startOffset="50%" textAnchor="middle">
+          <TextPath
+            href={`#${botId}`}
+            startOffset={STATE_START_OFFSET}
+            textLength={STATE_TEXT_LEN}
+            lengthAdjust="spacingAndGlyphs"
+          >
             ★ {sc} ★
           </TextPath>
         </SvgText>

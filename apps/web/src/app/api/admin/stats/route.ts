@@ -152,11 +152,13 @@ export async function GET() {
       ORDER BY visit_count DESC
       LIMIT 8
     `).then(r => r.rows as { park_code: string; name: string; visit_count: number }[]),
-    // Zero-filled like the other 30-day series so the bars line up 1:1 with
-    // the DAU chart beside it (two sparse rows rendered as two half-width
-    // mega-bars otherwise). A zero here means "no report yet" as well as
-    // "zero sales" — Apple publishes 24-48h behind, so the last day or two
-    // are always zero.
+    // Day keys are zero-filled (via generate_series) so the bars line up 1:1
+    // with the DAU chart beside it, but the metric VALUES are left NULL, not
+    // zero-filled — a day Apple hasn't published yet (row absent, or present
+    // with a null analytics column, see the schema comment on
+    // app_store_daily_stats) must stay NULL through to the client so the
+    // chart can leave it blank instead of drawing a fake zero bar. Apple
+    // publishes 24-48h behind, so the last day or two are always NULL, not 0.
     db.execute(sql`
       WITH days AS (
         SELECT generate_series(
@@ -166,12 +168,12 @@ export async function GET() {
         )::date AS day
       )
       SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
-             COALESCE(s.units, 0)::int AS units,
-             COALESCE(s.proceeds, 0)::float AS proceeds,
-             COALESCE(s.impressions, 0)::int AS impressions,
-             COALESCE(s.product_page_views, 0)::int AS page_views,
-             COALESCE(s.first_time_downloads, 0)::int AS first_time_downloads,
-             COALESCE(s.redownloads, 0)::int AS redownloads,
+             s.units::int AS units,
+             s.proceeds::float AS proceeds,
+             s.impressions::int AS impressions,
+             s.product_page_views::int AS page_views,
+             s.first_time_downloads::int AS first_time_downloads,
+             s.redownloads::int AS redownloads,
              -- Apple's definition: total downloads ÷ unique impressions.
              CASE WHEN COALESCE(s.impressions_unique, 0) > 0
                THEN ROUND(100.0 * (COALESCE(s.first_time_downloads, 0) + COALESCE(s.redownloads, 0))
@@ -180,8 +182,8 @@ export async function GET() {
       FROM days d LEFT JOIN app_store_daily_stats s ON s.report_date = d.day
       ORDER BY d.day
     `).then(r => r.rows as {
-      day: string; units: number; proceeds: number; impressions: number;
-      page_views: number; first_time_downloads: number; redownloads: number; conversion: number | null;
+      day: string; units: number | null; proceeds: number | null; impressions: number | null;
+      page_views: number | null; first_time_downloads: number | null; redownloads: number | null; conversion: number | null;
     }[]),
     db.execute(sql`
       SELECT COALESCE(SUM(units), 0)::int AS units, COALESCE(SUM(proceeds), 0)::float AS proceeds,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated, DeviceEventEmitter, Dimensions, Keyboard, Linking, PanResponder, Platform,
   Pressable, ScrollView, Share, StyleSheet,
@@ -34,6 +34,109 @@ const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get('window');
 
 const SHEET_PEEK = SCREEN_H * 0.48;
 const SHEET_FULL = SCREEN_H;
+
+// ── Park label declutter ────────────────────────────────────────────────────────
+// Below LABEL_ZOOM_GATE, labels aren't gated by zoom at all — parks are unevenly
+// spread (a tight Utah/California cluster vs. a lone Hawai'i or American Samoa
+// pin), so a flat cutoff either clutters the clusters or hides isolated parks
+// that had room to show all along. Instead, on every region change we project
+// each park to approximate screen pixels and greedily keep a park's label only
+// if its reserved rectangle doesn't overlap another park's dot or an
+// already-placed label.
+
+// The default whole-US view (latitudeDelta 35) shows no labels regardless —
+// that resting state should read as dots-only. A small zoom in past this hands
+// off to the declutter pass above.
+const LABEL_ZOOM_GATE = 25;
+// Horizontal gap (px) between a dot's coordinate and where its label pill starts.
+// Clears the unselected halo (max radius 13); a selected dot's larger halo (17)
+// tucks slightly under the pill's rounded corner, which reads fine since only
+// one marker is ever selected at a time.
+const LABEL_GAP = 12;
+// Reserved space to the left of the dot's coordinate, covering the halo so a
+// neighboring label can't be placed on top of this dot.
+const DOT_RESERVE = 18;
+// Reserved vertical space per label — generous enough to clear a selected dot's
+// halo (34px tall) above/below.
+const LABEL_RECT_H = 34;
+// Pill's own horizontal padding (7 left + 7 right, see mapLabelPill style).
+const LABEL_PILL_PAD = 14;
+const LABEL_PILL_MAX_TEXT_W = 150 - LABEL_PILL_PAD;
+// Rough average glyph width for the 11.5pt bold label font — doesn't need to be
+// pixel-exact, only good enough for a collision heuristic and a width the pill can
+// be pre-sized to (see ParkLabelMarker — a *known* width, not just a shrink-to-fit
+// one, is what lets iOS's centerOffset placement land correctly without an
+// onLayout measure-then-reposition round trip).
+const LABEL_CHAR_W = 7;
+
+// Pill's own rendered width (excludes the gap to the dot) — shared by the
+// collision estimate below and by ParkLabelMarker's actual layout, so the two
+// stay in lockstep.
+function pillContentWidth(name: string): number {
+  const textW = Math.min(shortParkName(name).length * LABEL_CHAR_W, LABEL_PILL_MAX_TEXT_W);
+  return textW + LABEL_PILL_PAD;
+}
+
+function estimateLabelRectWidth(name: string): number {
+  return DOT_RESERVE + LABEL_GAP + pillContentWidth(name);
+}
+
+interface LabelRect { x: number; y: number; w: number; h: number }
+
+function rectsOverlap(a: LabelRect, b: LabelRect): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+type MapRegion = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
+
+// Greedy label declutter. Projects lat/lng to approximate screen pixels using the
+// region's own deltas — react-native-maps already normalizes those to the screen's
+// aspect ratio, so no separate latitude/Mercator correction is needed for a
+// show/hide heuristic like this. `parks` order determines priority on ties.
+//
+// Layered on top of that is a flat gate: at the default whole-US view
+// (latitudeDelta 35), no label shows even if it'd technically clear the
+// collision test — that view is the map's resting state and should read as
+// dots-only. A small zoom in past LABEL_ZOOM_GATE lifts the gate and lets the
+// declutter pass take over.
+function computeVisibleLabelCodes(parks: ParkForMap[], region: MapRegion): Set<string> {
+  if (region.latitudeDelta <= 0 || region.longitudeDelta <= 0) return new Set();
+  if (region.latitudeDelta >= LABEL_ZOOM_GATE) return new Set();
+  const pxPerDegLat = SCREEN_H / region.latitudeDelta;
+  const pxPerDegLon = SCREEN_W / region.longitudeDelta;
+
+  const points = parks.map(p => ({
+    park: p,
+    x: (p.longitude - region.longitude) * pxPerDegLon,
+    y: (region.latitude - p.latitude) * pxPerDegLat,
+  }));
+
+  const placed: LabelRect[] = [];
+  const visible = new Set<string>();
+
+  for (const pt of points) {
+    const rect: LabelRect = {
+      x: pt.x - DOT_RESERVE,
+      y: pt.y - LABEL_RECT_H / 2,
+      w: estimateLabelRectWidth(pt.park.name),
+      h: LABEL_RECT_H,
+    };
+
+    const dotCollision = points.some(other =>
+      other.park.park_code !== pt.park.park_code &&
+      other.x >= rect.x && other.x <= rect.x + rect.w &&
+      other.y >= rect.y && other.y <= rect.y + rect.h
+    );
+    const labelCollision = !dotCollision && placed.some(pr => rectsOverlap(rect, pr));
+
+    if (!dotCollision && !labelCollision) {
+      placed.push(rect);
+      visible.add(pt.park.park_code);
+    }
+  }
+
+  return visible;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -129,6 +232,17 @@ function formatDateRange(start: string, end?: string | null): string {
   return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}–${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ${days}d`;
 }
 
+// Strips the "National Park" designation for map labels, where space is tight —
+// "Grand Canyon National Park" → "Grand Canyon". Handles the "X National Park &
+// Preserve" / "National and State Parks" variants and the one park named
+// "National Park of American Samoa" (designation is a prefix, not a suffix).
+function shortParkName(name: string): string {
+  return name
+    .replace(/^National Park of /i, '')
+    .replace(/ National (?:and State )?Parks?(?: (?:&|and) Preserve)?$/i, '')
+    .trim();
+}
+
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
 function dayLabel(period: WeatherPeriod): string {
@@ -220,6 +334,69 @@ function ParkMapMarker({
       anchor={{ x: 0.5, y: 0.5 }}
     >
       <ParkMarker park={park} selected={selected} />
+    </Marker>
+  );
+}
+
+// Floating name label, anchored at the same coordinate as its dot but shifted
+// right so the dot stays uncovered. Only mounted for parks the declutter pass
+// (computeVisibleLabelCodes) keeps clear of overlap. Tapping the label opens
+// the same sheet as tapping the dot.
+//
+// Placement is platform-split because react-native-maps' custom marker-view
+// anchoring works differently per backend: `anchor` (a 0–1 fraction of the
+// view) is only wired up for Google Maps, which is what Android always uses
+// here — but this app's iOS provider is Apple Maps (PROVIDER_DEFAULT), where
+// `anchor` is silently ignored and the view is always center-anchored on the
+// coordinate instead. Apple Maps only exposes `centerOffset`, a raw-pixel shift
+// applied on top of that center anchor — so on iOS we shift right by half the
+// view's own width to land its left edge on the coordinate, matching what
+// `anchor={{x:0}}` already gives Android.
+//
+// The pill hugs its text exactly (no fixed/estimated width — the declutter
+// pass's width estimate is only for the show/hide decision, not the render),
+// so the real width isn't known until the first layout pass. tracksViewChanges
+// stays on through that first pass — invisible until measured, so the wrong
+// (default centered) snapshot is never seen — then settles false once the
+// measured width has been applied for one more frame, same re-snapshot pattern
+// ParkMapMarker uses for a status/theme flip.
+function ParkLabelMarker({
+  park, onSelect,
+}: { park: ParkForMap; onSelect: (park: ParkForMap) => void }) {
+  const [pillW, setPillW] = useState<number | null>(null);
+  const [tracking, setTracking] = useState(true);
+
+  useEffect(() => {
+    if (pillW === null) return;
+    const t = setTimeout(() => setTracking(false), 50);
+    return () => clearTimeout(t);
+  }, [pillW]);
+
+  const totalW = LABEL_GAP + (pillW ?? 0);
+
+  return (
+    <Marker
+      coordinate={{ latitude: park.latitude, longitude: park.longitude }}
+      onPress={e => { e.stopPropagation(); onSelect(park); }}
+      anchor={{ x: 0, y: 0.5 }}
+      centerOffset={{ x: totalW / 2, y: 0 }}
+      tracksViewChanges={tracking}
+      zIndex={5}
+    >
+      <View style={[styles.mapLabelRow, pillW === null && { opacity: 0 }]}>
+        <View style={{ width: LABEL_GAP }} />
+        <View
+          style={styles.mapLabelPill}
+          onLayout={e => {
+            const w = Math.ceil(e.nativeEvent.layout.width);
+            setPillW(prev => (prev === w ? prev : w));
+          }}
+        >
+          <Text style={styles.mapLabelText} numberOfLines={1}>
+            {shortParkName(park.name)}
+          </Text>
+        </View>
+      </View>
     </Marker>
   );
 }
@@ -1472,6 +1649,11 @@ export default function MapScreen() {
   }>>([]);
   const currentRegionRef = useRef({ latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 });
   const preZoomRegionRef = useRef<typeof currentRegionRef.current | null>(null);
+  // Drives the label declutter recompute below — kept separate from
+  // currentRegionRef (read synchronously by zoomIn/zoomOut/goHome without waiting
+  // on a re-render) since this one exists purely to trigger the useMemo.
+  const [labelRegion, setLabelRegion] = useState(currentRegionRef.current);
+  const [labelsEnabled, setLabelsEnabled] = useState(true);
 
   const counts: Record<FilterStatus, number> = {
     all:        parks.length,
@@ -1484,6 +1666,11 @@ export default function MapScreen() {
     filterStatus === 'all'        ? parks :
     filterStatus === 'notVisited' ? parks.filter(p => p.status === 'notVisited' || p.status === 'bucketList') :
     parks.filter(p => p.status === filterStatus);
+
+  const visibleLabelCodes = useMemo(
+    () => computeVisibleLabelCodes(filteredParks, labelRegion),
+    [filteredParks, labelRegion]
+  );
 
   const mergeVisits = useCallback((
     parksData: typeof rawParksRef.current,
@@ -1747,7 +1934,10 @@ export default function MapScreen() {
         showsUserLocation
         showsMyLocationButton={false}
         showsCompass={false}
-        onRegionChangeComplete={region => { currentRegionRef.current = region; }}
+        onRegionChangeComplete={region => {
+          currentRegionRef.current = region;
+          setLabelRegion(region);
+        }}
         onPress={() => { setSelectedPark(null); setMapPressKey(k => k + 1); }}
       >
         {filteredParks.map(park => (
@@ -1757,6 +1947,9 @@ export default function MapScreen() {
             selected={selectedPark?.park_code === park.park_code}
             onSelect={handleSelectPark}
           />
+        ))}
+        {labelsEnabled && filteredParks.filter(park => visibleLabelCodes.has(park.park_code)).map(park => (
+          <ParkLabelMarker key={`label-${park.park_code}`} park={park} onSelect={handleSelectPark} />
         ))}
       </MapView>
 
@@ -1807,6 +2000,18 @@ export default function MapScreen() {
         </TouchableOpacity>
         <TouchableOpacity style={styles.mapControlBtn} onPress={goHome} activeOpacity={0.75}>
           <Ionicons name="home-outline" size={14} color={dyn('#4A4535', '#F0EAD9')} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          onPress={() => setLabelsEnabled(v => !v)}
+          activeOpacity={0.75}
+        >
+          <View style={styles.mapLabelToggleIcon}>
+            <Ionicons name="text" size={16} color={dyn('#4A4535', '#F0EAD9')} />
+            {!labelsEnabled && (
+              <View style={[styles.mapLabelToggleSlash, { backgroundColor: dyn('#4A4535', '#F0EAD9') }]} />
+            )}
+          </View>
         </TouchableOpacity>
       </Animated.View>
 
@@ -1919,6 +2124,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: C.inkMute,
     marginTop: 1,
+  },
+
+  // Park name labels (floating, next to each dot)
+  mapLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mapLabelPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    backgroundColor: dyn('rgba(255,251,241,0.9)', 'rgba(32,29,23,0.9)'),
+  },
+  mapLabelText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  mapLabelToggleIcon: {
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapLabelToggleSlash: {
+    position: 'absolute',
+    width: 20,
+    height: 1.5,
+    borderRadius: 1,
+    transform: [{ rotate: '-45deg' }],
   },
 
   // Filter pill

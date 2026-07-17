@@ -30,9 +30,12 @@ interface Stats {
   reports_by_status: { open: number; actioned: number; dismissed: number };
   top_parks: { park_code: string; name: string; visit_count: number }[];
   hourly_activity: { hour: number; active_users: number; posts: number; likes: number; comments: number; visits: number }[];
+  // Per-metric values are null, not zero, on a day Apple hasn't published
+  // yet — charts must render those as blank, not a fake zero bar.
   app_store_by_day: {
-    day: string; units: number; proceeds: number; impressions: number;
-    page_views: number; first_time_downloads: number; redownloads: number; conversion: number | null;
+    day: string; units: number | null; proceeds: number | null; impressions: number | null;
+    page_views: number | null; first_time_downloads: number | null; redownloads: number | null;
+    conversion: number | null;
   }[];
   app_store_units_30d: number;
   app_store_proceeds_30d: number;
@@ -167,7 +170,7 @@ function AcquisitionCard({ stats }: { stats: Stats }) {
     {
       label: 'Conversion rate',
       total: stats.app_store_conversion_30d != null ? `${stats.app_store_conversion_30d}%` : '—',
-      data: days.map(d => ({ day: d.day, value: d.conversion ?? 0 })),
+      data: days.map(d => ({ day: d.day, value: d.conversion })),
       unit: '%',
     },
     {
@@ -231,10 +234,10 @@ export default async function AdminDashboardPage() {
     stats.signups_by_day.at(-2)?.count ?? 0,
   );
   // Apple's reports lag ~48h, so "day over day" means the two most recent
-  // days that actually have data, not literal today/yesterday.
-  const reportedDays = stats.app_store_by_day.filter(x => x.units > 0);
-  const downloadsPct = reportedDays.length >= 2
-    ? pctChange(reportedDays.at(-1)!.units, reportedDays.at(-2)!.units)
+  // days that actually have data (units not null), not literal today/yesterday.
+  const reportedUnits = stats.app_store_by_day.map(x => x.units).filter((u): u is number => u != null);
+  const downloadsPct = reportedUnits.length >= 2
+    ? pctChange(reportedUnits.at(-1)!, reportedUnits.at(-2)!)
     : undefined;
 
   return (

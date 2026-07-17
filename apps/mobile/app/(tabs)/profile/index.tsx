@@ -854,7 +854,7 @@ const styles = StyleSheet.create({
   shareBtn: {
     // 44pt — matches the app-wide round icon button size (topBar's search/
     // settings buttons, park page header buttons).
-    position: 'absolute', top: 16, right: 4, zIndex: 2,
+    position: 'absolute', top: 16, right: 16, zIndex: 2,
     width: 44, height: 44, borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 1, borderColor: 'rgba(201,169,74,0.35)',

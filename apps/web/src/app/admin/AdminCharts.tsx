@@ -71,9 +71,13 @@ export function SignupsChart({ data }: { data: { day: string; count: number }[] 
 
 // ── App Store downloads (units), trailing 30 days ────────────────────────────────
 
-export function AppStoreDownloadsChart({ data }: { data: { day: string; units: number }[] }) {
+// `units: null` means Apple hasn't published that day yet (report lag, or
+// the row simply doesn't exist) — distinct from a real 0-download day.
+// Those slots render as an empty gap, not a fake zero-height bar.
+export function AppStoreDownloadsChart({ data }: { data: { day: string; units: number | null }[] }) {
   const [tip, setTip] = useState<TooltipState | null>(null);
-  const max = Math.max(...data.map(d => d.units), 1);
+  const known = data.map(d => d.units).filter((u): u is number => u != null);
+  const max = Math.max(...known, 1);
 
   return (
     <div className="relative">
@@ -89,15 +93,17 @@ export function AppStoreDownloadsChart({ data }: { data: { day: string; units: n
                 x: r.left - parent.left + r.width / 2,
                 y: r.top - parent.top,
                 title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-                value: `${d.units} unit${d.units !== 1 ? 's' : ''}`,
+                value: d.units == null ? 'No data yet' : `${d.units} unit${d.units !== 1 ? 's' : ''}`,
               });
             }}
             onMouseLeave={() => setTip(null)}
           >
-            <div
-              className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
-              style={{ height: `${Math.max((d.units / max) * 100, d.units > 0 ? 6 : 2)}%`, minHeight: 2 }}
-            />
+            {d.units != null && (
+              <div
+                className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
+                style={{ height: `${Math.max((d.units / max) * 100, d.units > 0 ? 6 : 2)}%`, minHeight: 2 }}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -515,12 +521,16 @@ export function HourlyActivityChart({ data }: { data: HourlyPoint[] }) {
 // compact bar strip under its stat number — same zero-filled-series contract
 // as the other daily charts: render exactly what SQL sent, never rebuild
 // day keys client-side.
+// `value: null` means this day hasn't been published by Apple yet — an
+// empty gap, not a fake zero-height bar. Only a day Apple actually reported
+// a real 0 for renders as a (minimum-height) zero bar.
 export function AppStoreMetricChart({ data, unit }: {
-  data: { day: string; value: number }[];
+  data: { day: string; value: number | null }[];
   unit?: string;
 }) {
   const [tip, setTip] = useState<TooltipState | null>(null);
-  const max = Math.max(...data.map(d => d.value), 1);
+  const known = data.map(d => d.value).filter((v): v is number => v != null);
+  const max = Math.max(...known, 1);
 
   return (
     <div className="relative">
@@ -536,15 +546,17 @@ export function AppStoreMetricChart({ data, unit }: {
                 x: r.left - parent.left + r.width / 2,
                 y: r.top - parent.top,
                 title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-                value: `${d.value.toLocaleString()}${unit ?? ''}`,
+                value: d.value == null ? 'No data yet' : `${d.value.toLocaleString()}${unit ?? ''}`,
               });
             }}
             onMouseLeave={() => setTip(null)}
           >
-            <div
-              className="w-full rounded-t-[3px] bg-primary transition-opacity group-hover:opacity-70"
-              style={{ height: `${Math.max((d.value / max) * 100, d.value > 0 ? 6 : 2)}%`, minHeight: 2 }}
-            />
+            {d.value != null && (
+              <div
+                className="w-full rounded-t-[3px] bg-primary transition-opacity group-hover:opacity-70"
+                style={{ height: `${Math.max((d.value / max) * 100, d.value > 0 ? 6 : 2)}%`, minHeight: 2 }}
+              />
+            )}
           </div>
         ))}
       </div>

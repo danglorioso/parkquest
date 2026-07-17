@@ -957,7 +957,7 @@ export default function ParkDetailScreen() {
         hitSlop={8}
       >
         <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-        <Ionicons name="chevron-back" size={24} color={heroInk} />
+        <Ionicons name="chevron-back" size={22} color={heroInk} />
       </GrowTouchable>
 
       {/* Expanded actions — full-size buttons shown over the cover photo.
@@ -989,7 +989,7 @@ export default function ParkDetailScreen() {
               hitSlop={8}
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="checkmark" size={22} color={heroInk} />
+              <Ionicons name="checkmark-outline" size={22} color={heroInk} />
             </GrowTouchable>
           );
           const secondBtn = parkStatus === 'visited' ? (
@@ -999,7 +999,7 @@ export default function ParkDetailScreen() {
               hitSlop={8}
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="pencil" size={22} color={heroInk} />
+              <Ionicons name="pencil-outline" size={19} color={heroInk} />
             </GrowTouchable>
           ) : logVisitBtn;
           const firstBtn = parkStatus === 'visited' ? logVisitBtn : (
@@ -1532,10 +1532,15 @@ export default function ParkDetailScreen() {
         {/* Readability fade behind the glass pills — bg-toned alpha ramp
             (same recipe as log-visit's footer fade; a literal black ramp
             reads smoky over the light theme). Literal stops per scheme:
-            LinearGradient can't take DynamicColorIOS. */}
+            LinearGradient can't take DynamicColorIOS. A mid stop front-loads
+            the opacity so the ramp is already dark by the button row instead
+            of only opaque in the safe-area strip below it. */}
         <LinearGradient
-          colors={isDark ? ['rgba(23,21,17,0)', 'rgba(23,21,17,0.92)'] : ['rgba(242,235,219,0)', 'rgba(242,235,219,0.92)']}
-          style={[StyleSheet.absoluteFill, { top: -36 }]}
+          colors={isDark
+            ? ['rgba(23,21,17,0)', 'rgba(23,21,17,0.85)', 'rgba(23,21,17,0.97)']
+            : ['rgba(242,235,219,0)', 'rgba(242,235,219,0.85)', 'rgba(242,235,219,0.97)']}
+          locations={[0, 0.6, 1]}
+          style={[StyleSheet.absoluteFill, { top: -70 }]}
           pointerEvents="none"
         />
         <View style={styles.actionRow}>
@@ -1736,7 +1741,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: 16,
     backgroundColor: C.surface,
-    borderRadius: 14,
+    borderRadius: 10,
     borderWidth: 0.5,
     borderColor: C.hairline,
     overflow: 'hidden',
@@ -1779,7 +1784,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     backgroundColor: C.surface,
-    borderRadius: 14,
+    borderRadius: 10,
     borderWidth: 0.5,
     borderColor: C.hairline,
     paddingHorizontal: 14,

@@ -1,11 +1,12 @@
 import {
-  Dimensions, FlatList, Image, Platform, StyleSheet,
+  Animated, Dimensions, Image, Platform, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import Svg, { Path } from 'react-native-svg';
 import { HolographicShine } from '@/components/HolographicShine';
 import { ParkStamp } from '@/components/ParkStamp';
+import { PassportWatermark } from '@/components/PassportWatermark';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -21,9 +22,6 @@ const PAPER  = '#FAF3E0';
 const GOLD   = '#C9A94A';
 const P_INK  = '#3A2E1C';
 const P_MUTE = 'rgba(58,46,28,0.45)';
-// Gold reads fine on the dark cover but is too low-contrast on paper —
-// this is the "foil stamped into cream paper" color for labels there.
-const GOLD_ON_PAPER = '#8A6D2F';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const W    = Dimensions.get('window').width;
@@ -135,12 +133,23 @@ function SkeletonRow() {
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
+// Background moves slower than the content as you scroll — depth cue, not
+// a literal "printed on this page" scroll (that'd need a seamlessly
+// tileable pattern keyed off scrollY % tileHeight instead of a fixed-size
+// watermark). See PassportWatermark's PARALLAX_BUFFER for the matching
+// height slack this factor draws down as you scroll.
+const PARALLAX_FACTOR = 0.25;
+
 export default function PassportScreen() {
   const { getToken }  = useAuth();
   const tabBarSpace = useTabBarSpace();
   const { user }      = useUser();
   const router        = useRouter();
   const T             = useColors();
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const handleScroll = useRef(
+    Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })
+  ).current;
 
   const [profile,     setProfile]     = useState<ProfileInfo | null>(null);
   const [visits,      setVisits]      = useState<Visit[]>([]);
@@ -209,9 +218,19 @@ export default function PassportScreen() {
 
   const visitedCount = useMemo(() => allStampItems.filter(s => s.visited).length, [allStampItems]);
   const bucketCount  = useMemo(() => visits.filter(v => v.is_bucket_list).length, [visits]);
+  // Distinct from visitedCount — a park visited twice is one stamped park
+  // but two trips, so this counts visit log entries, not unique parks.
+  const tripsCount   = useMemo(() => visits.filter(v => !v.is_bucket_list && v.visited_date).length, [visits]);
   const statesCount  = useMemo(() => {
     const s = new Set<string>();
     allStampItems.filter(si => si.visited).forEach(si => si.states.split(',').forEach(st => s.add(st.trim())));
+    return s.size;
+  }, [allStampItems]);
+  // Not all 50 states have a national park — the real denominator is however
+  // many distinct states appear across the 63 parks themselves.
+  const totalParkStates = useMemo(() => {
+    const s = new Set<string>();
+    allStampItems.forEach(si => si.states.split(',').forEach(st => s.add(st.trim())));
     return s.size;
   }, [allStampItems]);
 
@@ -249,6 +268,7 @@ export default function PassportScreen() {
   if (error && allParks.length === 0) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: PAPER }} edges={['bottom']}>
+        <StatusBar style="light" />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
@@ -265,8 +285,17 @@ export default function PassportScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: PAPER }} edges={['bottom']}>
-      <FlatList
+      <StatusBar style="light" />
+      <Animated.View
+        pointerEvents="none"
+        style={{ transform: [{ translateY: Animated.multiply(scrollY, -PARALLAX_FACTOR) }] }}
+      >
+        <PassportWatermark />
+      </Animated.View>
+      <Animated.FlatList
         data={listData}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         keyExtractor={(item, idx) => {
           if (item.type === 'header') return 'header';
           if (item.type === 'divider') return `div-${item.pageNum}`;
@@ -280,108 +309,106 @@ export default function PassportScreen() {
           if (item.type === 'header') {
             return (
               <View>
-                {/* ── Cover — a slim book-cover strip, just identity ── */}
-                <View style={[st.cover, { backgroundColor: T.primaryDeep }]}>
-                  <Svg
-                    width="100%"
-                    height="100%"
-                    viewBox="0 0 360 140"
-                    style={StyleSheet.absoluteFillObject}
-                    preserveAspectRatio="xMidYMid slice"
-                    pointerEvents="none"
-                  >
-                    {[0, 24, 48, 72, 96, 120, 144].map((y, i) => (
-                      <Path
-                        key={i}
-                        d={`M-20 ${y} C 40 ${y-14}, 80 ${y+14}, 120 ${y} S 200 ${y-14}, 240 ${y} S 320 ${y+14}, 380 ${y}`}
-                        stroke={`rgba(201,169,74,0.07)`}
-                        strokeWidth={1.5}
-                        fill="none"
-                      />
-                    ))}
-                  </Svg>
+                {/* ── Cover — a slim book-cover strip, just identity ──
+                    Shadow lives on this outer wrapper, not st.cover itself —
+                    st.cover has overflow:hidden to clip the Svg background,
+                    and overflow:hidden on the same view would clip its own shadow too. */}
+                <View style={[st.coverShadow, { backgroundColor: T.primaryDeep }]}>
+                  <View style={[st.cover, { backgroundColor: T.primaryDeep }]}>
+                    <HolographicShine />
 
-                  <View style={st.coverMeta}>
-                    <Text style={st.headerKicker}>PARKQUEST · NATIONAL PARK PASSPORT</Text>
-                    <Text style={st.headerPNo}>NO · {pNo}</Text>
-                  </View>
-
-                  <View style={st.coverIdentity}>
-                    <View style={[st.coverAvatar, { backgroundColor: T.primary }]}>
-                      {avatarUrl ? (
-                        // Slight overscale — some avatar sources (e.g. Clerk's default
-                        // silhouette image) have their graphic inset from the image's
-                        // own edges, so a plain 100% cover still shows a sliver of its
-                        // background at top/bottom inside our circular mask.
-                        <Image
-                          source={{ uri: avatarUrl }}
-                          style={{ width: '100%', height: '100%', transform: [{ scale: 1.15 }] }}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                          {name ? (
-                            <Text style={{ fontSize: 20, fontWeight: '900', color: GOLD }}>{name.slice(0,2).toUpperCase()}</Text>
-                          ) : (
-                            <Ionicons name="person" size={20} color={GOLD} style={{ opacity: 0.5 }} />
-                          )}
-                        </View>
-                      )}
+                    <View style={st.coverMeta}>
+                      <Text style={st.headerKicker}>PARKQUEST · NATIONAL PARK PASSPORT</Text>
+                      <Text style={st.headerPNo}>NO · {pNo}</Text>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      {name ? (
-                        <Text style={st.coverName} numberOfLines={1} adjustsFontSizeToFit>{name}</Text>
-                      ) : (
-                        <View style={{ width: 140, height: 18, borderRadius: 5, backgroundColor: 'rgba(201,169,74,0.25)', marginBottom: 4 }} />
-                      )}
-                      {profile?.username ? (
-                        <Text style={st.coverHandle}>@{profile.username}</Text>
-                      ) : null}
+
+                    <View style={st.coverIdentity}>
+                      <View style={[st.coverAvatar, { backgroundColor: T.primary }]}>
+                        {avatarUrl ? (
+                          // Slight overscale — some avatar sources (e.g. Clerk's default
+                          // silhouette image) have their graphic inset from the image's
+                          // own edges, so a plain 100% cover still shows a sliver of its
+                          // background at top/bottom inside our circular mask.
+                          <Image
+                            source={{ uri: avatarUrl }}
+                            style={{ width: '100%', height: '100%', transform: [{ scale: 1.15 }] }}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                            {name ? (
+                              <Text style={{ fontSize: 30, fontWeight: '900', color: GOLD }}>{name.slice(0,2).toUpperCase()}</Text>
+                            ) : (
+                              <Ionicons name="person" size={30} color={GOLD} style={{ opacity: 0.5 }} />
+                            )}
+                          </View>
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        {name ? (
+                          <Text style={st.coverName} numberOfLines={1} adjustsFontSizeToFit>{name}</Text>
+                        ) : (
+                          <View style={{ width: 180, height: 24, borderRadius: 5, backgroundColor: 'rgba(201,169,74,0.25)', marginBottom: 4 }} />
+                        )}
+                        {profile?.username ? (
+                          <Text style={st.coverHandle}>@{profile.username}</Text>
+                        ) : null}
+                      </View>
                     </View>
-                  </View>
 
-                  <HolographicShine />
-                </View>
-
-                {/* ── Info page — bio/stats/progress printed on paper, like a
-                    passport's own data page rather than the cover ── */}
-                <View style={st.infoPage}>
-                  {profile?.bio ? (
-                    <Text style={st.infoBio}>{profile.bio}</Text>
-                  ) : null}
-
-                  <View style={st.infoStats}>
-                    {[
-                      { label: 'PARKS',  value: loading ? '–' : `${visitedCount}/63` },
-                      { label: 'STATES', value: loading ? '–' : `${statesCount}/50` },
-                      // Only stat that links anywhere — it's the sole way to reach the
-                      // bucket list, which otherwise has no dedicated entry point.
-                      { label: 'BUCKET', value: loading ? '–' : String(bucketCount), onPress: () => router.push('/(tabs)/map?filter=bucketList' as never) },
-                      { label: 'BADGES', value: loading ? '–' : `${badgeCount}/${totalBadges}` },
-                    ].map((s, i) => {
-                      const Wrap = s.onPress ? TouchableOpacity : View;
-                      return (
-                        <Wrap
-                          key={s.label}
-                          style={[st.infoStat, i > 0 && st.infoStatBorder]}
-                          {...(s.onPress ? { onPress: s.onPress, activeOpacity: 0.6 } : {})}
-                        >
-                          <Text style={st.infoStatLabel}>{s.label}</Text>
-                          <Text style={st.infoStatVal}>{s.value}</Text>
-                        </Wrap>
-                      );
-                    })}
-                  </View>
-
-                  <View style={st.infoProgress}>
-                    <Text style={st.infoProgressText}>
-                      {loading ? 'Loading…' : `${visitedCount} of 63 parks stamped`}
+                    {/* Watermark band — same repeating-text security-print
+                        motif as the profile page's passport card */}
+                    <Text style={st.coverWatermark} numberOfLines={1} ellipsizeMode="clip" pointerEvents="none">
+                      {'PARKQUEST • '.repeat(20)}
                     </Text>
-                    <View style={st.progressTrack}>
-                      <View style={[st.progressFill, { width: `${(visitedCount / 63) * 100}%` as `${number}%` }]} />
+
+                    {/* Solid scrim behind the numbers — the guilloche pattern reads
+                        fine as texture against plain gold text, but not against
+                        dense stat digits; this plate guarantees contrast regardless
+                        of how the pattern underneath gets tuned later. */}
+                    <View style={st.statsPlate}>
+                      <View style={st.infoStats}>
+                        {[
+                          { label: 'TRIPS',  value: loading ? '–' : String(tripsCount) },
+                          { label: 'STATES', value: loading ? '–' : `${statesCount}/${totalParkStates}` },
+                          // Only stat that links anywhere — it's the sole way to reach the
+                          // bucket list, which otherwise has no dedicated entry point.
+                          { label: 'BUCKET', value: loading ? '–' : String(bucketCount), onPress: () => router.push('/(tabs)/map?filter=bucketList' as never) },
+                          { label: 'BADGES', value: loading ? '–' : `${badgeCount}/${totalBadges}` },
+                        ].map((s, i) => {
+                          const Wrap = s.onPress ? TouchableOpacity : View;
+                          return (
+                            <Wrap
+                              key={s.label}
+                              style={[st.infoStat, i > 0 && st.infoStatBorder]}
+                              {...(s.onPress ? { onPress: s.onPress, activeOpacity: 0.6 } : {})}
+                            >
+                              <Text style={st.infoStatLabel}>{s.label}</Text>
+                              <Text style={st.infoStatVal}>{s.value}</Text>
+                            </Wrap>
+                          );
+                        })}
+                      </View>
+
+                      <View style={st.infoProgress}>
+                        <Text style={st.infoProgressText}>
+                          {loading ? 'Loading…' : `${visitedCount} of 63 parks stamped`}
+                        </Text>
+                        <View style={st.progressTrack}>
+                          <View style={[st.progressFill, { width: `${(visitedCount / 63) * 100}%` as `${number}%` }]} />
+                        </View>
+                      </View>
                     </View>
                   </View>
                 </View>
+
+                {/* Bio — kept on paper below the cover, like a passport's
+                    own data page rather than the shiny cover itself */}
+                {profile?.bio ? (
+                  <View style={st.infoPage}>
+                    <Text style={st.infoBio}>{profile.bio}</Text>
+                  </View>
+                ) : null}
               </View>
             );
           }
@@ -435,11 +462,21 @@ export default function PassportScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const st = StyleSheet.create({
+  // Outer shadow layer — full-bleed (no margins/radius), so the shadow is
+  // only visible peeking out along the bottom edge, like the cover lifting
+  // slightly off the paper page beneath it.
+  coverShadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
+  },
   // ── Cover strip (green, like a book's front cover — identity only) ──
   cover: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 14,
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    paddingBottom: 20,
     overflow: 'hidden',
     borderBottomWidth: 3,
     borderBottomColor: GOLD + '44',
@@ -448,17 +485,17 @@ const st = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   headerKicker: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: GOLD,
     letterSpacing: 1.8,
     opacity: 0.8,
   },
   headerPNo: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: GOLD,
     letterSpacing: 1.2,
@@ -467,19 +504,20 @@ const st = StyleSheet.create({
   coverIdentity: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 16,
+    marginBottom: 18,
   },
   coverAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
     borderWidth: 2,
     borderColor: GOLD + '66',
     overflow: 'hidden',
     flexShrink: 0,
   },
   coverName: {
-    fontSize: 19,
+    fontSize: 27,
     fontWeight: '800',
     color: GOLD,
     letterSpacing: -0.4,
@@ -488,17 +526,35 @@ const st = StyleSheet.create({
     textShadowRadius: 3,
   },
   coverHandle: {
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '600',
     color: GOLD,
     opacity: 0.75,
     letterSpacing: 0.4,
-    marginTop: 2,
+    marginTop: 3,
+  },
+  // Repeating-text security-print band — same motif as the profile page's
+  // passport card watermark, bled full-width past the cover's own padding.
+  coverWatermark: {
+    marginHorizontal: -24,
+    marginBottom: 14,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 2.4,
+    color: 'rgba(201,169,74,0.22)',
+  },
+  // Solid-ish backing so the stat digits stay legible over the guilloche
+  // pattern regardless of how that pattern's own opacity gets tuned.
+  statsPlate: {
+    backgroundColor: 'rgba(8,16,12,0.42)',
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
 
-  // ── Info page (paper — bio/stats/progress, like a passport's own data page) ──
+  // ── Info page (paper — bio only, like a passport's own data page) ──
+  // No backgroundColor here — the screen-level PassportWatermark shows through.
   infoPage: {
-    backgroundColor: PAPER,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 6,
@@ -511,14 +567,13 @@ const st = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 14,
   },
+  // Stats + progress now live inside the dark cover, not the paper page
+  // below it — gold-on-green like the rest of the cover, matching the
+  // profile page's own passport-card stats.
   infoStats: {
     flexDirection: 'row',
-    borderTopWidth: 0.5,
-    borderTopColor: GOLD_ON_PAPER + '55',
-    borderBottomWidth: 0.5,
-    borderBottomColor: GOLD_ON_PAPER + '55',
     paddingVertical: 12,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   infoStat: {
     flex: 1,
@@ -526,41 +581,47 @@ const st = StyleSheet.create({
   },
   infoStatBorder: {
     borderLeftWidth: 0.5,
-    borderLeftColor: GOLD_ON_PAPER + '55',
+    borderLeftColor: 'rgba(201,169,74,0.3)',
   },
   infoStatLabel: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
-    color: GOLD_ON_PAPER,
+    color: GOLD,
     letterSpacing: 1.5,
     opacity: 0.85,
   },
   infoStatVal: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '800',
-    color: P_INK,
+    color: GOLD,
     letterSpacing: -0.3,
     marginTop: 2,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   infoProgress: {
     gap: 6,
-    marginBottom: 4,
+    paddingBottom: 12,
   },
   infoProgressText: {
     fontSize: 11,
     fontWeight: '600',
-    color: P_MUTE,
-    letterSpacing: 0.3,
+    color: GOLD,
+    opacity: 0.75,
+    letterSpacing: 0.5,
+    marginLeft: 16, // lines up with progressTrack's own inset below, without touching the bar's width
   },
   progressTrack: {
     height: 3,
-    backgroundColor: 'rgba(58,46,28,0.1)',
+    marginHorizontal: 16,
+    backgroundColor: GOLD + '22',
     borderRadius: 2,
     overflow: 'hidden',
   },
   progressFill: {
     height: 3,
-    backgroundColor: GOLD_ON_PAPER,
+    backgroundColor: GOLD,
     borderRadius: 2,
     opacity: 0.9,
   },
@@ -570,7 +631,6 @@ const st = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     gap: 8,
-    backgroundColor: PAPER,
   },
   stampCell: {
     width: CELL_W,
@@ -608,7 +668,6 @@ const st = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     gap: 10,
-    backgroundColor: PAPER,
   },
   pageDividerLine: {
     flex: 1,
