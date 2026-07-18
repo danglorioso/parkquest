@@ -216,24 +216,9 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
     };
   });
 
-  // Park profile pages own their bottom edge (AllTrails-style pinned action
-  // bar), so the floating pill gets out of the way on those nested detail
-  // routes: parks/[id] within the Parks tab, park/[id] within Feed.
-  // Slides off-screen rather than unmounting — navigation state only updates
-  // once a back-swipe commits, so an unmounted bar would pop in with no
-  // transition at the end of the gesture.
-  const focusedTab = routes[state.index];
-  const nestedState = focusedTab?.state as { index?: number; routes?: { name: string }[] } | undefined;
-  const nestedName = nestedState?.routes?.[nestedState.index ?? 0]?.name;
-  const barHidden = nestedName === '[id]' || nestedName === 'park/[id]';
-  const hiddenSV = useSharedValue(barHidden ? 1 : 0);
-  useEffect(() => {
-    hiddenSV.value = withSpring(barHidden ? 1 : 0, SLIDE_SPRING);
-  }, [barHidden, hiddenSV]);
-  const slideDistance = bottomOffset(insets.bottom) + PILL_HEIGHT + 24;
-  const wrapSlideStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: hiddenSV.value * slideDistance }],
-  }));
+  // Park detail now lives on the root stack (app/park/[id]) and covers the
+  // tabs entirely, so the bar no longer needs to slide itself away for any
+  // nested detail route.
 
   const bubble = (
     <Animated.View style={[styles.bubble, bubbleStyle]} pointerEvents="none">
@@ -253,8 +238,8 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
 
   return (
     <Animated.View
-      pointerEvents={barHidden ? 'none' : 'box-none'}
-      style={[styles.wrap, { bottom: bottomOffset(insets.bottom) }, wrapSlideStyle]}
+      pointerEvents="box-none"
+      style={[styles.wrap, { bottom: bottomOffset(insets.bottom) }]}
     >
       <GestureDetector gesture={pan}>
         <View

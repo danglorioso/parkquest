@@ -205,7 +205,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
 
   const openPark = (code: string) => {
     close();
-    router.push(`/parks/${code}` as never);
+    router.push(`/park/${code}` as never);
   };
 
   const openUser = (id: string) => {

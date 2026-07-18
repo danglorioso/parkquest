@@ -327,7 +327,7 @@ export default function FeedScreen() {
               myAvatarUrl={user?.imageUrl}
               myName={user?.fullName ?? user?.username}
               onDelete={handleDelete}
-              onParkPress={(code) => router.push(`/(tabs)/feed/park/${code}` as never)}
+              onParkPress={(code) => router.push(`/park/${code}` as never)}
             />
           ) : null
         }
@@ -367,7 +367,7 @@ export default function FeedScreen() {
         {barGlass && GlassView && GlassContainer ? (
           <GlassContainer style={StyleSheet.absoluteFill}>
             <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" />
-            <View style={[styles.topBarInner, { marginTop: insets.top }]}>
+            <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
               <Wordmark onPress={triggerRefresh} />
               <View style={styles.topBarActions}>
                 <NotificationBell style={styles.iconBtn} />
@@ -402,7 +402,7 @@ export default function FeedScreen() {
               )}
               <View style={[StyleSheet.absoluteFill, styles.topBarFallbackFill]} />
             </View>
-            <View style={[styles.topBarInner, { marginTop: insets.top }]}>
+            <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
               <Wordmark onPress={triggerRefresh} />
               <View style={styles.topBarActions}>
                 <NotificationBell style={styles.iconBtn} />

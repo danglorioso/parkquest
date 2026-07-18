@@ -6,11 +6,17 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { STATIC as C } from '@/lib/palette';
-import { getAdminUsers, setUserBanned, type AdminUserRow } from '@/lib/api';
+import { getAdminUsers, setUserBanned, type AdminUserRow, type AdminUserSort } from '@/lib/api';
 
 const LOGIN_ICON: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
   apple: 'logo-apple', google: 'logo-google', email: 'mail-outline',
 };
+
+const SORTS: Array<{ key: AdminUserSort; label: string }> = [
+  { key: 'joined', label: 'Joined' },
+  { key: 'parks',  label: 'Parks' },
+  { key: 'posts',  label: 'Posts' },
+];
 
 export default function AdminUsersScreen() {
   const { getToken } = useAuth();
@@ -20,12 +26,13 @@ export default function AdminUsersScreen() {
 
   const [users, setUsers] = useState<AdminUserRow[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [sort, setSort] = useState<AdminUserSort>('joined');
 
   const load = useCallback(async () => {
     const tok = await getToken();
     if (!tok) return;
-    getAdminUsers(tok, 1, activeWindow).then(r => setUsers(r.users)).catch(() => setUsers([]));
-  }, [getToken, activeWindow]);
+    getAdminUsers(tok, 1, activeWindow, sort).then(r => setUsers(r.users)).catch(() => setUsers([]));
+  }, [getToken, activeWindow, sort]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -44,10 +51,26 @@ export default function AdminUsersScreen() {
 
   return (
     <View style={st.screen}>
+      {/* Sort chips — the active-window filter (from the dashboard's Active
+          tiles) sorts by recency on the server and ignores these. */}
+      {!activeWindow && (
+        <View style={st.sortRow}>
+          {SORTS.map(s => (
+            <TouchableOpacity
+              key={s.key}
+              onPress={() => { if (s.key !== sort) { setUsers(null); setSort(s.key); } }}
+              style={[st.sortChip, sort === s.key && st.sortChipActive]}
+              activeOpacity={0.7}
+            >
+              <Text style={[st.sortChipText, sort === s.key && st.sortChipTextActive]}>{s.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
       <FlatList
         data={users ?? []}
         keyExtractor={u => u.clerk_user_id}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, paddingTop: activeWindow ? 16 : 4 }}
         ListEmptyComponent={users === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
         renderItem={({ item: u }) => (
           <View style={st.row}>
@@ -58,6 +81,7 @@ export default function AdminUsersScreen() {
                 <Ionicons name={LOGIN_ICON[u.login_method]} size={11} color={C.inkMute} />
                 <Text style={st.meta}>
                   {u.parks_visited} parks · {u.post_count} posts
+                  {` · joined ${new Date(u.created_at).toLocaleDateString()}`}
                   {u.last_active ? ` · active ${new Date(u.last_active).toLocaleDateString()}` : ''}
                 </Text>
               </View>
@@ -78,6 +102,14 @@ export default function AdminUsersScreen() {
 
 const st = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
+  sortRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingTop: 12 },
+  sortChip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100,
+    borderWidth: 0.5, borderColor: C.hairline, backgroundColor: C.surface,
+  },
+  sortChipActive: { backgroundColor: C.visited, borderColor: C.visited },
+  sortChipText: { fontSize: 12.5, fontWeight: '600', color: C.inkSoft },
+  sortChipTextActive: { color: '#FFFBF1', fontWeight: '700' },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: C.surface, borderRadius: 12,

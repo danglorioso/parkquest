@@ -75,7 +75,7 @@ export default function PostDetailScreen() {
             myAvatarUrl={me?.imageUrl}
             myName={me?.fullName ?? me?.username}
             onDelete={() => router.replace('/(tabs)/feed' as never)}
-            onParkPress={code => router.push(`/parks/${code}` as never)}
+            onParkPress={code => router.push(`/park/${code}` as never)}
             openOnPress={false}
             autoOpenComments={open !== 'likes' && post.comment_count > 0}
             autoOpenLikers={open === 'likes'}
@@ -88,7 +88,7 @@ export default function PostDetailScreen() {
       )}
 
       {/* Floating glass top bar — matches the feed tab's header */}
-      <View style={[styles.topBar, { paddingTop: insets.top, height: TOP_BAR_H }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top - 8, height: TOP_BAR_H }]}>
         <View style={styles.topBarInner}>
           <TouchableOpacity onPress={goBack} hitSlop={8} style={styles.backBtn} activeOpacity={0.7}>
             <Ionicons name="chevron-back" size={24} color={T.primary} />

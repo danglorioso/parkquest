@@ -635,7 +635,7 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                       }}
                       onNavigateToPark={(parkCode) => {
                         dismiss();
-                        router.push(`/parks/${parkCode}` as any);
+                        router.push(`/park/${parkCode}` as any);
                       }}
                     />
                   </SwipeableRow>

@@ -149,7 +149,7 @@ function ParkCard({
 
   return (
     <TouchableOpacity
-      onPress={() => router.push(`/parks/${park.park_code}` as never)}
+      onPress={() => router.push(`/park/${park.park_code}` as never)}
       style={[styles.card, { width: CARD_W }]}
       activeOpacity={0.85}
     >
@@ -249,7 +249,7 @@ function ParkListRow({
 
   return (
     <TouchableOpacity
-      onPress={() => router.push(`/parks/${park.park_code}` as never)}
+      onPress={() => router.push(`/park/${park.park_code}` as never)}
       style={styles.listCard}
       activeOpacity={0.85}
     >

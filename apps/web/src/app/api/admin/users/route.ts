@@ -16,7 +16,9 @@ interface DbRow {
   last_active: string | null;
 }
 
-async function getRows(page: number, activeWindow: number | null): Promise<DbRow[]> {
+type SortKey = 'joined' | 'parks' | 'posts';
+
+async function getRows(page: number, activeWindow: number | null, sort: SortKey): Promise<DbRow[]> {
   const offset = (page - 1) * PAGE_SIZE;
 
   if (activeWindow) {
@@ -41,6 +43,14 @@ async function getRows(page: number, activeWindow: number | null): Promise<DbRow
     return rows.rows as unknown as DbRow[];
   }
 
+  // Output-column aliases are valid ORDER BY targets in Postgres; created_at
+  // (date joined) is the default. Ties broken by created_at so count sorts
+  // stay stable page to page.
+  const orderBy =
+    sort === 'parks' ? sql.raw('parks_visited DESC, up.created_at DESC') :
+    sort === 'posts' ? sql.raw('post_count DESC, up.created_at DESC') :
+    sql.raw('up.created_at DESC');
+
   const rows = await db.execute(sql`
     SELECT
       up.clerk_user_id, up.username, up.display_name, up.created_at,
@@ -48,7 +58,7 @@ async function getRows(page: number, activeWindow: number | null): Promise<DbRow
       (SELECT COUNT(*)::int FROM posts p WHERE p.clerk_user_id = up.clerk_user_id) AS post_count,
       NULL AS last_active
     FROM user_profiles up
-    ORDER BY up.created_at DESC
+    ORDER BY ${orderBy}
     LIMIT ${PAGE_SIZE + 1} OFFSET ${offset}
   `);
   return rows.rows as unknown as DbRow[];
@@ -69,8 +79,10 @@ export async function GET(request: Request) {
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const activeParam = searchParams.get('active');
   const activeWindow = activeParam ? Number(activeParam) : null;
+  const sortParam = searchParams.get('sort');
+  const sort: SortKey = sortParam === 'parks' || sortParam === 'posts' ? sortParam : 'joined';
 
-  const rows = await getRows(page, activeWindow);
+  const rows = await getRows(page, activeWindow, sort);
   const hasMore = rows.length > PAGE_SIZE;
   const pageRows = rows.slice(0, PAGE_SIZE);
 

@@ -44,10 +44,11 @@ const SHEET_FULL = SCREEN_H;
 // if its reserved rectangle doesn't overlap another park's dot or an
 // already-placed label.
 
-// The default whole-US view (latitudeDelta 35) shows no labels regardless —
-// that resting state should read as dots-only. Just a touch of zoom past this
-// hands off to the declutter pass above.
-const LABEL_ZOOM_GATE = 34.5;
+// The default whole-US view (latitudeDelta 35) shows no labels — that resting
+// state should read as dots-only. Labels arrive once you're a full zoom notch
+// in from home (zoomIn halves the delta: 35 → 17.5), so the gate sits just
+// above that. A slight pinch that barely leaves home stays dots-only.
+const LABEL_ZOOM_GATE = 18;
 // Horizontal gap (px) between a dot's coordinate and where its label pill starts.
 // Clears the unselected halo (max radius 13); a selected dot's larger halo (17)
 // tucks slightly under the pill's rounded corner, which reads fine since only
@@ -1564,7 +1565,7 @@ function ParkBottomSheet({
           <View style={[styles.heroActionsRight, { top: insets.top + 8 }]}>
             <TouchableOpacity
               style={styles.heroIconBtn}
-              onPress={() => router.push(`/parks/${park.park_code}` as never)}
+              onPress={() => router.push(`/park/${park.park_code}` as never)}
               hitSlop={8}
             >
               <Ionicons name="open-outline" size={20} color="#FFFBF1" />
@@ -2122,7 +2123,8 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 9,
+    // Fixed 36pt — matches the map control buttons' height exactly
+    height: 36,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -2247,7 +2249,7 @@ const styles = StyleSheet.create({
     backgroundColor: dyn('rgba(255,251,241,0.92)', 'rgba(32,29,23,0.92)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
-    borderRadius: 100,
+    borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 12,
     shadowColor: '#000',
@@ -2270,8 +2272,7 @@ const styles = StyleSheet.create({
     backgroundColor: dyn('rgba(255,251,241,0.97)', 'rgba(32,29,23,0.97)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
-    borderRadius: 16,
-    paddingVertical: 4,
+    borderRadius: 14,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },

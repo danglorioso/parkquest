@@ -1348,7 +1348,7 @@ export function PostCard({
           onPress={() =>
             onParkPress
               ? onParkPress(post.park_code!)
-              : router.push(`/parks/${post.park_code}` as never)
+              : router.push(`/park/${post.park_code}` as never)
           }
         >
           <Ionicons name="location-sharp" size={11} color={C.primary} />
@@ -1416,7 +1416,7 @@ export function PostCard({
             onPress={post.park_code
               ? () => (onParkPress
                   ? onParkPress(post.park_code!)
-                  : router.push(`/parks/${post.park_code}` as never))
+                  : router.push(`/park/${post.park_code}` as never))
               : undefined}
           />
         </View>

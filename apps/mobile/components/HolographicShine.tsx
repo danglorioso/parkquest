@@ -7,7 +7,7 @@ import Svg, {
   RadialGradient, Rect, Stop, Text as SvgText,
 } from 'react-native-svg';
 
-const TILT_RANGE = 0.12; // radians — barely-perceptible tilts already sweep the full hue range
+const TILT_RANGE = 0.04; // radians — barely-perceptible tilts already sweep the full hue range
 const UPDATE_MS  = 40;  // ~25Hz — smooth enough for a sheen, light on the JS bridge
 
 const TILT_A = -14; // primary guilloche family — also carries the shimmer
@@ -53,7 +53,7 @@ const N_HUES = 4;
 // opaque, solid-colored lines" since hueStops are plain opaque hex, not
 // rgba. Scale everything down against this so the lines stay as faint
 // background texture, not a solid rainbow drawn over the readable text.
-const LINE_INTENSITY = 0.32;
+const LINE_INTENSITY = 0.45;
 const hueStops = (offsetDeg: number) =>
   [0, 1, 2, 3, 4].map(i => hslToHex(offsetDeg + i * 72, 0.85, 0.62));
 
@@ -81,6 +81,52 @@ function waveRows(w: number, h: number, yStart: number, rowGap: number, amp: num
   const rows: string[] = [];
   for (let y = yStart; y < 1.6 * h; y += rowGap) rows.push(tiledWaveD(y, xStart, xEnd, amp));
   return rows;
+}
+
+// Flowing ribbon mesh — a bundle of near-parallel curves whose offsets flip
+// sign along the run (off·cos), so the bundle pinches and crosses itself
+// mid-sweep like the braided wave meshes on banknotes. It sweeps around the
+// bottom-left corner: enters from the left edge and exits through the bottom
+// edge, squaring the corner off, balancing the seal/rosette at top-right.
+function ribbonPaths(w: number, h: number, count = 26): string[] {
+  const spread = h * 0.16;
+  const steps = 30;
+  // Corner arc the bundle follows, filling the bottom-left quadrant: enters
+  // already off-screen past the left edge (x −0.10w at 0.42h), sweeps
+  // through the corner, and exits off-screen below the bottom edge (0.60w,
+  // 1.10h) — both ends start/finish outside the visible cover. The eased
+  // exponents keep it hugging the left edge before turning out through the
+  // bottom.
+  const base = (t: number) => ({
+    x: w * (-0.10 + 0.70 * Math.pow(t, 1.30)),
+    y: h * (0.42 + 0.68 * Math.pow(t, 0.75)),
+  });
+  const paths: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const off = (i / (count - 1) - 0.5) * 2; // -1..1 across the bundle
+    let d = '';
+    let prev = base(0);
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const p = base(t);
+      // Unit normal of the arc (tangent rotated 90°), from the last sample —
+      // offsets ride perpendicular to the sweep so the bundle stays a ribbon
+      // through the turn instead of shearing.
+      const next = base(Math.min(1, t + 1 / steps));
+      const tx = next.x - prev.x, ty = next.y - prev.y;
+      const len = Math.hypot(tx, ty) || 1;
+      const nx = -ty / len, ny = tx / len;
+      const wobble =
+        Math.sin(t * Math.PI * 1.6 + 0.4) * h * 0.04 +
+        off * spread * Math.cos(t * Math.PI * 1.15);
+      const x = p.x + nx * wobble;
+      const y = p.y + ny * wobble;
+      d += `${s === 0 ? 'M' : ' L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+      prev = p;
+    }
+    paths.push(d);
+  }
+  return paths;
 }
 
 // A ring of overlapping circles around a shared center — the classic
@@ -159,7 +205,7 @@ function SealMark({ cx, cy, r, stroke, strokeWidth = 1 }: {
 // Fabric prop-commit path on this RN/reanimated/svg version combo). Plain
 // RN Animated on a normal View only ever touches opacity, which is the
 // standard, safe path.
-export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
+export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize }: {
   /** Fixed px size for the vertical PARKQUEST edge text. Defaults to scaling
       with container height — right for card-sized containers, oversized on
       the passport page's near-full-screen cover. */
@@ -168,8 +214,15 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
       spans. Defaults to nearly the full height; the passport page pins it
       to the name-through-stats zone instead. */
   edgeTextSpan?: [number, number];
+  /** Fixed geometry size in px — skips self-measurement entirely. Use when
+      the container's height changes across loading states (e.g. the passport
+      cover): measured geometry would rebuild + visibly rescale when content
+      lands, whereas a fixed size keeps the pattern rock-steady and lets the
+      container's overflow clipping absorb the difference. */
+  staticSize?: { w: number; h: number };
 } = {}) {
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [measured, setMeasured] = useState<{ w: number; h: number } | null>(null);
+  const size = staticSize ?? measured;
   const glow = useRef(new Animated.Value(0.08)).current;
   const REST_PHASE = (N_HUES - 1) / 2;
   const hueGlows = useRef(
@@ -182,7 +235,7 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
     // rebuild the whole pattern geometry; a visible reshuffle for nothing.
     const width  = Math.round(e.nativeEvent.layout.width / 16) * 16;
     const height = Math.round(e.nativeEvent.layout.height / 16) * 16;
-    setSize(prev => (prev && prev.w === width && prev.h === height) ? prev : { w: width, h: height });
+    setMeasured(prev => (prev && prev.w === width && prev.h === height) ? prev : { w: width, h: height });
   }, []);
 
   const w = size?.w ?? 0;
@@ -200,7 +253,7 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
         const { beta, gamma } = rotation;
         const tiltMag = clamp((Math.abs(gamma) + Math.abs(beta)) / (TILT_RANGE * 1.2), 0, 1);
         Animated.timing(glow, {
-          toValue: 0.08 + tiltMag * 0.22, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
+          toValue: 0.10 + tiltMag * 0.34, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
         }).start();
 
         // Whichever axis you're actually tilting more drives the hue phase —
@@ -224,7 +277,9 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
     const rowsB = waveRows(w, h, -0.6 * h + h / 17,   h / 7.6, h * 0.08); // secondary — static crosshatch
     // Kept deliberately small — the seal + mandala is background texture on
     // a card full of real text; at h*0.42 with three bands it dominated.
-    const sealCx = w * 0.82, sealCy = h * 0.5, sealR = h * 0.21;
+    // Shrunk further (0.21 → 0.13) so the bottom-left ribbon sweep has the
+    // whole lower-left quadrant to itself without tangling with the rings.
+    const sealCx = w * 0.82, sealCy = h * 0.5, sealR = h * 0.13;
     // Two interleaved rosette rings — different radius, size, and a
     // half-step phase shift, so the circles weave through each other into a
     // moiré lattice instead of one string of evenly-spaced rings. circR is
@@ -244,11 +299,12 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
       ...webBand(sealCx, sealCy, sealR * 1.44, sealR * 1.74, 72, -6),
     ];
     const frameRings = [1.42, 1.76].map(k => sealR * k);
-    return { rowsA, rowsB, sealCx, sealCy, sealR, rosetteCircles, webLines, frameRings };
+    const ribbon = ribbonPaths(w, h);
+    return { rowsA, rowsB, sealCx, sealCy, sealR, rosetteCircles, webLines, frameRings, ribbon };
   }, [size, w, h]);
 
   return (
-    <View style={StyleSheet.absoluteFillObject} onLayout={onLayout} pointerEvents="none">
+    <View style={StyleSheet.absoluteFillObject} onLayout={staticSize ? undefined : onLayout} pointerEvents="none">
       {size && layers && (
         <>
           {/* Wave lines — always fully colorful (not faint-gold-then-shimmer
@@ -262,7 +318,7 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
               pointerEvents="none"
               style={[StyleSheet.absoluteFillObject, { opacity: hueGlows[vi] }]}
             >
-              <Svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
+              <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
                 <Defs>
                   <LinearGradient id={`hue${vi}`} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={w} y2={0}>
                     {hueStops(vi * (360 / N_HUES)).map((color, si) => (
@@ -279,7 +335,7 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
             </Animated.View>
           ))}
 
-          <Svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
+          <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
             <Defs>
               <RadialGradient id="spotlight" cx="18%" cy="8%" r="70%">
                 <Stop offset="0" stopColor="#fff8e6" stopOpacity={0.16} />
@@ -322,6 +378,14 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
                 <Circle key={i} cx={layers.sealCx} cy={layers.sealCy} r={r} stroke="rgba(120,182,170,0.01)" strokeWidth={i === 0 ? 0.8 : 0.5} fill="none" />
               ))}
             </G>
+
+            {/* Bottom-left corner ribbon mesh — static base copy, faint like
+                the mandala's; the shimmer copy below carries the color. */}
+            <G>
+              {layers.ribbon.map((d, i) => (
+                <Path key={i} d={d} stroke="rgba(142,196,166,0.01)" strokeWidth={0.5} fill="none" />
+              ))}
+            </G>
           </Svg>
 
           {/* Holo shimmer copy of the seal/rosette/text — plain Animated.View,
@@ -331,7 +395,7 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
             pointerEvents="none"
             style={[StyleSheet.absoluteFillObject, { opacity: glow }]}
           >
-            <Svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
+            <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
               <Defs>
                 <LinearGradient id="holo" gradientUnits="userSpaceOnUse" x1={-w * 0.2} y1={0} x2={w * 1.2} y2={h}>
                   <Stop offset="0"    stopColor="#ff6ec7" />
@@ -354,6 +418,13 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
                 ))}
                 {layers.frameRings.map((r, i) => (
                   <Circle key={i} cx={layers.sealCx} cy={layers.sealCy} r={r} stroke="url(#holo)" strokeWidth={i === 0 ? 0.8 : 0.5} fill="none" />
+                ))}
+              </G>
+
+              {/* Ribbon mesh shimmer — same holo treatment as the mandala */}
+              <G opacity={0.45}>
+                {layers.ribbon.map((d, i) => (
+                  <Path key={i} d={d} stroke="url(#holo)" strokeWidth={0.5} fill="none" />
                 ))}
               </G>
 

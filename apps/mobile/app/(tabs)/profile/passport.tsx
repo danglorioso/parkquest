@@ -419,10 +419,25 @@ export default function PassportScreen() {
                   style={[st.coverShadow, { backgroundColor: T.primaryDeep }]}
                   onLayout={e => setCoverH(e.nativeEvent.layout.height)}
                 >
+                  {/* Pull-down slab: solid green painted well above the cover
+                      so overscroll reveals cover color, never the paper
+                      behind the list — content itself doesn't move or scale. */}
+                  <View
+                    pointerEvents="none"
+                    style={{ position: 'absolute', top: -600, left: 0, right: 0, height: 600, backgroundColor: T.primaryDeep }}
+                  />
                   {/* paddingTop clears the status bar + floating back button */}
                   <View style={[st.cover, { backgroundColor: T.primaryDeep, paddingTop: insets.top + 56 }]}>
-                    {/* Edge text pinned to roughly name-top → stats-bottom */}
-                    <HolographicShine edgeTextSize={30} edgeTextSpan={[0.16, 0.62]} />
+                    {/* Edge text pinned to roughly name-top → stats-bottom.
+                        staticSize (window dims — the cover is near-full-screen
+                        and full-bleed) instead of self-measurement: the cover's
+                        height shifts when data lands, and measured geometry
+                        rebuilt + visibly rescaled the whole pattern mid-look. */}
+                    <HolographicShine
+                      edgeTextSize={30}
+                      edgeTextSpan={[0.16, 0.62]}
+                      staticSize={{ w: W, h: Dimensions.get('window').height }}
+                    />
 
                     <View style={st.coverMeta}>
                       {/* numberOfLines=1 + clip (no ellipsis) forces this onto one
@@ -460,7 +475,13 @@ export default function PassportScreen() {
                         {name ? (
                           <Text style={st.coverName} numberOfLines={1} adjustsFontSizeToFit>{name}</Text>
                         ) : (
-                          <View style={{ width: 180, height: 24, borderRadius: 5, backgroundColor: 'rgba(201,169,74,0.25)', marginBottom: 4 }} />
+                          // Skeleton bars sized to the real name (27pt ≈ 32 line)
+                          // + handle (15pt ≈ 18 line, marginTop 3) so the cover
+                          // holds its final height while the profile loads.
+                          <>
+                            <View style={{ width: 180, height: 32, borderRadius: 6, backgroundColor: 'rgba(201,169,74,0.25)' }} />
+                            <View style={{ width: 110, height: 18, borderRadius: 5, backgroundColor: 'rgba(201,169,74,0.18)', marginTop: 3 }} />
+                          </>
                         )}
                         {profile?.username ? (
                           <Text style={st.coverHandle}>@{profile.username}</Text>
@@ -517,17 +538,16 @@ export default function PassportScreen() {
                       </View>
                     </View>
 
-                    {/* While loading, hold the chips' + records' space with
-                        fixed-height skeletons — otherwise the cover grows when
-                        data lands, and the guilloche background re-measures and
-                        visibly reshuffles mid-look. */}
+                    {/* While loading, hold the chips' space with fixed-height
+                        skeletons sized exactly like a loaded chip — otherwise
+                        the cover changes height when data lands. (No records
+                        skeleton: most accounts have no records rows, and
+                        reserving 78px for them left the loading cover taller
+                        than the finished one.) */}
                     {loading && (
-                      <>
-                        <View style={st.stampChipRow}>
-                          {[0, 1].map(i => <View key={i} style={[st.stampChip, st.chipSkeleton]} />)}
-                        </View>
-                        <View style={[st.statsPlate, { marginTop: 10, height: 78 }]} />
-                      </>
+                      <View style={st.stampChipRow}>
+                        {[0, 1].map(i => <View key={i} style={[st.stampChip, st.chipSkeleton]} />)}
+                      </View>
                     )}
 
                     {/* First/latest earned stamps — the real stamp art, straight
@@ -542,7 +562,7 @@ export default function PassportScreen() {
                             key={label}
                             style={st.stampChip}
                             activeOpacity={0.8}
-                            onPress={() => router.push(`/parks/${s.park_code}` as never)}
+                            onPress={() => router.push(`/park/${s.park_code}` as never)}
                           >
                             <Text style={st.stampChipLabel}>{label}</Text>
                             {/* idSuffix: the same park also renders in the stamp
@@ -637,7 +657,7 @@ export default function PassportScreen() {
           return (
             <View style={st.stampRow}>
               {item.items.map(s => s.visited ? (
-                <StampCell key={s.park_code} item={s} onPress={() => router.push(`/parks/${s.park_code}` as never)} />
+                <StampCell key={s.park_code} item={s} onPress={() => router.push(`/park/${s.park_code}` as never)} />
               ) : (
                 <StampPlaceholder key={s.park_code} item={s} />
               ))}

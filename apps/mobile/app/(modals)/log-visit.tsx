@@ -1324,7 +1324,13 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   onClose: () => void;
 }) {
   const C = useColors();
+  const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
+  // Natural height of the inline picker, measured on first layout — used to
+  // crop a constant gray slack strip off its bottom (see below). Locking the
+  // picker to this height matters: shrinking its frame instead makes the
+  // native view resize its background while the grid keeps drawing past it.
+  const [pickerH, setPickerH] = useState<number | null>(null);
   // Slide only the sheet; the modal itself fades so the backdrop doesn't ride up
   const slide = useRef(new Animated.Value(400)).current;
 
@@ -1350,20 +1356,37 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
           </TouchableOpacity>
         </View>
         <View style={{ paddingHorizontal: 12, paddingTop: 4, alignItems: 'center' }}>
-          <DateTimePicker
-            value={value}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            minimumDate={minimumDate}
-            maximumDate={maximumDate}
-            accentColor={C.primary}
-            onChange={(_, d) => {
-              if (Platform.OS !== 'ios') onClose();
-              if (!d) return;
-              Haptics.selectionAsync();
-              onPick(d);
-            }}
-          />
+          {/* Crop window: 16pt less than the picker's measured natural
+              height, overflow hidden. The picker itself is locked to its
+              full natural height inside, so the native view never resizes —
+              the window just crops the gray slack strip iOS paints under the
+              grid (a private subview that can't be recolored). Only 16 of
+              its ~20pt: some months push the last row's selection circle a
+              few points into the strip, and a deeper crop clipped it. The
+              wrapper hugs the picker's natural width so the parent's
+              alignItems keeps the calendar centered. */}
+          <View style={Platform.OS === 'ios' && pickerH ? { height: pickerH - 16, overflow: 'hidden' } : null}>
+            <DateTimePicker
+              value={value}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              minimumDate={minimumDate}
+              maximumDate={maximumDate}
+              accentColor={C.primary}
+              themeVariant={isDark ? 'dark' : 'light'}
+              style={Platform.OS === 'ios' && pickerH ? { height: pickerH } : undefined}
+              onLayout={e => {
+                const h = e.nativeEvent.layout.height;
+                if (Platform.OS === 'ios' && pickerH == null && h > 100) setPickerH(h);
+              }}
+              onChange={(_, d) => {
+                if (Platform.OS !== 'ios') onClose();
+                if (!d) return;
+                Haptics.selectionAsync();
+                onPick(d);
+              }}
+            />
+          </View>
         </View>
       </Animated.View>
     </Modal>
@@ -2126,7 +2149,9 @@ export default function LogVisitModal() {
   // ── Drafts ──────────────────────────────────────────────────────────────────
   const draftId = useRef(`draft-${Date.now()}`);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [restoreBanner, setRestoreBanner] = useState<SavedDraft | null>(null);
+  // Every saved draft, newest first — all of them are listed in the restore
+  // banner (not just the newest), since older drafts were otherwise unreachable.
+  const [savedDrafts, setSavedDrafts] = useState<SavedDraft[]>([]);
   // Set when the restored draft was itself saved mid-edit of an existing visit
   // (see handleSubmit's catch-all draft save) — lets a "+"-opened session
   // still PATCH that original visit on submit instead of creating a new one.
@@ -2187,7 +2212,7 @@ export default function LogVisitModal() {
   useEffect(() => {
     if (isEdit) return;
     loadDrafts().then(d => {
-      if (d.length > 0) setRestoreBanner(d[0]);
+      setSavedDrafts(d);
       setOtherDraftExists(d.some(s => s.id !== draftId.current));
     });
   }, [isEdit]);
@@ -2291,16 +2316,17 @@ export default function LogVisitModal() {
     return unsub;
   }, [navigation, promptExit, blockSwipe, draft, parks]);
 
-  const resumeDraft = () => {
-    if (!restoreBanner) return;
-    setDraftState(restoreBanner.draft);
-    draftId.current = restoreBanner.id;
+  const resumeDraft = (sd: SavedDraft) => {
+    setDraftState(sd.draft);
+    draftId.current = sd.id;
     // The resumed draft is now "ours" — recheck whether any OTHER draft
-    // remains, since that's what gates the silent swipe-away save.
-    loadDrafts().then(d => setOtherDraftExists(d.some(s => s.id !== restoreBanner.id)));
-    if (restoreBanner.editVisitId != null) {
-      const visitId = restoreBanner.editVisitId;
-      setResumedEdit({ visitId, postId: restoreBanner.editPostId ?? null });
+    // remains, since that's what gates the silent swipe-away save. (The banner
+    // list filters out the active id, so the restored row disappears on its
+    // own while any remaining drafts stay reachable.)
+    loadDrafts().then(d => setOtherDraftExists(d.some(s => s.id !== sd.id)));
+    if (sd.editVisitId != null) {
+      const visitId = sd.editVisitId;
+      setResumedEdit({ visitId, postId: sd.editPostId ?? null });
       // Re-fetch the original photo set so the cleanup/cover-photo logic in
       // handleSubmit has the same baseline it would from a route-driven edit.
       getFreshToken().then(tok => {
@@ -2309,20 +2335,22 @@ export default function LogVisitModal() {
           .then(v => { originalPhotos.current = new Set(v.photos ?? []); })
           .catch(() => {});
       });
+    } else {
+      setResumedEdit(null);
+      originalPhotos.current = new Set();
     }
-    setRestoreBanner(null);
   };
 
-  const discardSavedDraft = () => {
-    if (!restoreBanner) return;
-    deleteDraft(restoreBanner.id);
+  const discardSavedDraft = (sd: SavedDraft) => {
+    deleteDraft(sd.id);
     // An edit-tagged draft's photo list can include photos still live on the
     // original visit — safest to leave storage cleanup to the visit's own
     // photo diffing rather than risk deleting a still-in-use file here.
-    if (restoreBanner.editVisitId == null) {
-      getFreshToken().then(tok => deletePhotos(restoreBanner.draft.photos, tok));
+    if (sd.editVisitId == null) {
+      getFreshToken().then(tok => deletePhotos(sd.draft.photos, tok));
     }
-    setRestoreBanner(null);
+    setSavedDrafts(list => list.filter(s => s.id !== sd.id));
+    loadDrafts().then(d => setOtherDraftExists(d.some(s => s.id !== draftId.current && s.id !== sd.id)));
   };
 
   useEffect(() => {
@@ -2563,7 +2591,9 @@ export default function LogVisitModal() {
           </View>
           <Text style={styles.modalTitle}>{isEditing ? 'Edit visit' : 'Log a visit'}</Text>
         </View>
-        <TouchableOpacity onPress={handleCancel} style={styles.modalClose} hitSlop={8}>
+        {/* +4 centers the circle in the full sheet-top → step-divider span
+            (row padding is 10/10 but the divider sits 8 further down) */}
+        <TouchableOpacity onPress={handleCancel} style={[styles.modalClose, { transform: [{ translateY: 4 }] }]} hitSlop={8}>
           <GlassIconBg />
           <Ionicons name="close" size={22} color={C.inkSoft} />
         </TouchableOpacity>
@@ -2596,24 +2626,34 @@ export default function LogVisitModal() {
         showsVerticalScrollIndicator={false}
         scrollEnabled={!controlDragging}
       >
-        {step === 0 && restoreBanner && restoreBanner.id !== draftId.current && (
-          <View style={styles.draftBanner}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.draftBannerTitle}>You have a saved draft</Text>
-              <Text style={styles.draftBannerSub} numberOfLines={1}>
-                {restoreBanner.parkName ?? 'No park selected'}
-                {restoreBanner.draft.title ? ` — ${restoreBanner.draft.title}` : ''}
+        {step === 0 && (() => {
+          const visibleDrafts = savedDrafts.filter(s => s.id !== draftId.current);
+          if (visibleDrafts.length === 0) return null;
+          return (
+            <View style={styles.draftBanner}>
+              <Text style={styles.draftBannerTitle}>
+                {visibleDrafts.length === 1 ? 'You have a saved draft' : `Saved drafts (${visibleDrafts.length})`}
               </Text>
-              <Text style={styles.draftBannerAge}>{draftAge(restoreBanner.savedAt)}</Text>
+              {visibleDrafts.map((sd, i) => (
+                <View key={sd.id} style={[styles.draftBannerRow, i > 0 && styles.draftBannerRowBorder]}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.draftBannerSub} numberOfLines={1}>
+                      {sd.parkName ?? 'No park selected'}
+                      {sd.draft.title ? ` — ${sd.draft.title}` : ''}
+                    </Text>
+                    <Text style={styles.draftBannerAge}>{draftAge(sd.savedAt)}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => resumeDraft(sd)} style={[styles.draftResumeBtn, { backgroundColor: C.primary }]} activeOpacity={0.8}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: C.onPrimary }}>Restore</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => discardSavedDraft(sd)} hitSlop={6} style={styles.draftDiscardBtn} activeOpacity={0.7}>
+                    <Ionicons name="trash-outline" size={16} color={C.inkMute} />
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>
-            <TouchableOpacity onPress={resumeDraft} style={[styles.draftResumeBtn, { backgroundColor: C.primary }]} activeOpacity={0.8}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: C.onPrimary }}>Restore</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={discardSavedDraft} hitSlop={6} style={styles.draftDiscardBtn} activeOpacity={0.7}>
-              <Ionicons name="trash-outline" size={16} color={C.inkMute} />
-            </TouchableOpacity>
-          </View>
-        )}
+          );
+        })()}
         {editLoading && (
           <View style={{ paddingTop: 80, alignItems: 'center' }}>
             <ActivityIndicator size="small" color={C.inkMute} />
@@ -2758,7 +2798,6 @@ export default function LogVisitModal() {
 const styles = StyleSheet.create({
   // Draft restore banner
   draftBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: 'rgba(31,61,46,0.07)',
     borderWidth: 0.5, borderColor: 'rgba(31,61,46,0.18)',
     borderRadius: 12,
@@ -2767,6 +2806,14 @@ const styles = StyleSheet.create({
   },
   draftBannerTitle: {
     fontSize: 13, fontWeight: '700', color: C.ink,
+  },
+  draftBannerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingTop: 8,
+  },
+  draftBannerRowBorder: {
+    marginTop: 8,
+    borderTopWidth: 0.5, borderTopColor: 'rgba(31,61,46,0.18)',
   },
   draftBannerSub: {
     fontSize: 13, color: C.inkMute, marginTop: 1,

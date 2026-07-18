@@ -14,7 +14,7 @@ import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline
 import { PostCard, ReportSheet, type FeedPost } from '@/components/PostCard';
 import { Avatar } from '@/components/Avatar';
 import { AdminStar } from '@/components/AdminStar';
-import { BadgeInfoModal } from '@/components/BadgeInfoModal';
+import { BadgeDetailModal } from '@/components/BadgeDetailModal';
 import { EmptyState } from '@/components/EmptyState';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { emitUserBlocked } from '@/lib/blocking';
@@ -631,7 +631,7 @@ export default function UserProfileScreen() {
                         coordinate={{ latitude: p.lat, longitude: p.lng }}
                         title={p.name}
                         tracksViewChanges={false}
-                        onCalloutPress={() => router.push(`/parks/${p.park_code}` as never)}
+                        onCalloutPress={() => router.push(`/park/${p.park_code}` as never)}
                       >
                         <View style={styles.markerDot} />
                       </Marker>
@@ -688,7 +688,7 @@ export default function UserProfileScreen() {
                     myAvatarUrl={me?.imageUrl}
                     myName={me?.fullName ?? me?.username}
                     onDelete={pid => setPosts(prev => prev.filter(x => x.id !== pid))}
-                    onParkPress={code => router.push(`/parks/${code}` as never)}
+                    onParkPress={code => router.push(`/park/${code}` as never)}
                   />
                 ))}
               </View>
@@ -706,13 +706,14 @@ export default function UserProfileScreen() {
         )}
 
         {selectedBadge ? (
-          <BadgeInfoModal
+          <BadgeDetailModal
             badge={{
               id: selectedBadge.badge_id,
               name: selectedBadge.name,
               emoji: selectedBadge.emoji,
               tier: selectedBadge.tier,
               colors: selectedBadge.colors,
+              earned: true,
               earned_at: selectedBadge.earned_at,
             }}
             onClose={() => setSelectedBadge(null)}

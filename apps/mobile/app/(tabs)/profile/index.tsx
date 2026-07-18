@@ -9,7 +9,7 @@ import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { badgeColors, type BadgeColors } from '@/lib/badges';
-import { BadgeInfoModal } from '@/components/BadgeInfoModal';
+import { BadgeDetailModal } from '@/components/BadgeDetailModal';
 import { Wordmark } from '@/components/Wordmark';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import { ParkStamp } from '@/components/ParkStamp';
@@ -422,7 +422,7 @@ export default function ProfileScreen() {
             onPress={handleShare}
             hitSlop={8}
           >
-            <Ionicons name="share-outline" size={20} color="#C9A94A" />
+            <Ionicons name="share-outline" size={16} color="#C9A94A" />
           </TouchableOpacity>
 
           <View style={styles.passportHeader}>
@@ -497,13 +497,21 @@ export default function ProfileScreen() {
             <View style={styles.sectionHeader}>
               <Ionicons name="book-outline" size={13} color={C.inkMute} />
               <Text style={styles.sectionKicker}>RECENT STAMPS</Text>
+              <TouchableOpacity
+                onPress={() => router.push('/profile/passport' as never)}
+                hitSlop={10}
+                style={{ marginLeft: -3 }}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="chevron-forward" size={16} color={C.primary} />
+              </TouchableOpacity>
             </View>
             {!visitsLoaded ? <PreviewSkeleton /> : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
               {recentStamps.map(s => (
                 <TouchableOpacity
                   key={s.park_code}
-                  onPress={() => router.push(`/parks/${s.park_code}` as never)}
+                  onPress={() => router.push(`/park/${s.park_code}` as never)}
                   activeOpacity={0.7}
                   style={styles.badgePreviewItem}
                 >
@@ -565,6 +573,14 @@ export default function ProfileScreen() {
             <View style={styles.sectionHeader}>
               <Ionicons name="ribbon-outline" size={13} color={C.inkMute} />
               <Text style={styles.sectionKicker}>EARNED</Text>
+              <TouchableOpacity
+                onPress={() => router.push('/profile/badges' as never)}
+                hitSlop={10}
+                style={{ marginLeft: -3 }}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="chevron-forward" size={16} color={C.primary} />
+              </TouchableOpacity>
             </View>
             {!badgesLoaded ? <PreviewSkeleton /> : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
@@ -770,7 +786,7 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {selectedBadge ? (
-        <BadgeInfoModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+        <BadgeDetailModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
       ) : null}
 
       <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
@@ -836,10 +852,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 16,
   },
   shareBtn: {
-    // 44pt — matches the app-wide round icon button size (topBar's search/
-    // settings buttons, park page header buttons).
+    // Deliberately smaller than the app-wide 44pt round buttons — it's a
+    // quiet corner affordance on the passport card, not primary chrome.
     position: 'absolute', top: 34, right: 16, zIndex: 2,
-    width: 44, height: 44, borderRadius: 22,
+    width: 34, height: 34, borderRadius: 17,
     overflow: 'hidden',
     borderWidth: 1, borderColor: 'rgba(201,169,74,0.35)',
     alignItems: 'center', justifyContent: 'center',
@@ -1018,12 +1034,17 @@ const styles = StyleSheet.create({
   },
 
   // Top bar — matches feed
+  // Row rides 8px up into the safe-area gap (centers the buttons between the
+  // dynamic island and the bar's bottom edge); paddingBottom grows by the same
+  // 8 so the hairline stays put.
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 6,
+    marginTop: -8,
+    paddingTop: 6,
+    paddingBottom: 14,
     borderBottomWidth: 0.5,
     borderBottomColor: C.hairline,
   },

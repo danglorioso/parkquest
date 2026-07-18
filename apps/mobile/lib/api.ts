@@ -139,17 +139,51 @@ export interface AdminStats {
   total_posts: number;
   total_visits: number;
   total_badges: number;
+  total_likes: number;
+  total_comments: number;
+  total_friendships: number;
+  active_users_15m: number;
+  active_users_1h: number;
   active_users_today: number;
   active_users_7d: number;
   active_users_30d: number;
   signups_by_day: { day: string; count: number }[];
+  dau_30d: { day: string; count: number }[];
   activity_by_day: { day: string; count: number }[];
   reports_by_status: { open: number; actioned: number; dismissed: number };
   top_parks: { park_code: string; name: string; visit_count: number }[];
+  hourly_activity: { hour: number; active_users: number; posts: number; likes: number; comments: number; visits: number }[];
+  // Per-metric values are null (not zero) on days Apple hasn't published yet —
+  // charts must leave those blank rather than drawing a fake zero bar.
+  app_store_by_day: {
+    day: string; units: number | null; proceeds: number | null; impressions: number | null;
+    page_views: number | null; first_time_downloads: number | null; redownloads: number | null;
+    conversion: number | null;
+  }[];
+  app_store_units_30d: number;
+  app_store_proceeds_30d: number;
+  app_store_impressions_30d: number;
+  app_store_page_views_30d: number;
+  app_store_first_time_downloads_30d: number;
+  app_store_redownloads_30d: number;
+  app_store_conversion_30d: number | null;
+  app_store_devices_30d: { device: string; downloads: number }[];
+  deltas_24h: {
+    users: number; posts: number; visits: number;
+    badges: number; likes: number; comments: number; friendships: number; reports: number;
+  };
 }
 
 export const getAdminStats = (token: string) =>
   req<AdminStats>('/api/admin/stats', token);
+
+export interface AdminUsage {
+  database: { used_bytes: number; limit_bytes: number; approximate: boolean };
+  storage: { used_bytes: number; limit_bytes: number; object_count: number };
+}
+
+export const getAdminUsage = (token: string) =>
+  req<AdminUsage>('/api/admin/usage', token);
 
 export const getAdminReports = (token: string, status: 'open' | 'dismissed' | 'actioned' = 'open') =>
   req<EnrichedReport[]>(`/api/admin/reports?status=${status}`, token);
@@ -170,9 +204,12 @@ export interface AdminUserRow {
   banned: boolean;
 }
 
-export const getAdminUsers = (token: string, page = 1, activeWindow?: number) => {
+export type AdminUserSort = 'joined' | 'parks' | 'posts';
+
+export const getAdminUsers = (token: string, page = 1, activeWindow?: number, sort: AdminUserSort = 'joined') => {
   const qs = new URLSearchParams({ page: String(page) });
   if (activeWindow) qs.set('active', String(activeWindow));
+  if (sort !== 'joined') qs.set('sort', sort);
   return req<{ users: AdminUserRow[]; has_more: boolean }>(`/api/admin/users?${qs}`, token);
 };
 
