@@ -73,10 +73,14 @@ export default function AdminUsersScreen() {
         contentContainerStyle={{ padding: 16, paddingTop: activeWindow ? 16 : 4 }}
         ListEmptyComponent={users === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
         renderItem={({ item: u }) => (
-          <View style={st.row}>
+          <View style={[st.row, u.deleted && { opacity: 0.45 }]}>
             <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/user/${u.clerk_user_id}` as never)}>
-              <Text style={st.name}>{u.display_name ?? u.username}</Text>
-              <Text style={st.meta}>@{u.username} {u.email ? `· ${u.email}` : ''}</Text>
+              <Text style={[st.name, u.deleted && { textDecorationLine: 'line-through' }]}>
+                {u.display_name ?? u.username}
+              </Text>
+              <Text style={st.meta}>
+                @{u.username} {u.email ? `· ${u.email}` : ''}{u.deleted ? ' · account deleted' : ''}
+              </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
                 <Ionicons name={LOGIN_ICON[u.login_method]} size={11} color={C.inkMute} />
                 <Text style={st.meta}>
@@ -86,13 +90,16 @@ export default function AdminUsersScreen() {
                 </Text>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[st.banBtn, u.banned && { borderColor: C.hairline }]}
-              disabled={busyId === u.clerk_user_id}
-              onPress={() => toggleBan(u)}
-            >
-              <Text style={[st.banBtnText, !u.banned && { color: '#C04040' }]}>{u.banned ? 'Unban' : 'Ban'}</Text>
-            </TouchableOpacity>
+            {/* No ban button for deleted accounts — there's no Clerk user to act on */}
+            {!u.deleted && (
+              <TouchableOpacity
+                style={[st.banBtn, u.banned && { borderColor: C.hairline }]}
+                disabled={busyId === u.clerk_user_id}
+                onPress={() => toggleBan(u)}
+              >
+                <Text style={[st.banBtnText, !u.banned && { color: '#C04040' }]}>{u.banned ? 'Unban' : 'Ban'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       />

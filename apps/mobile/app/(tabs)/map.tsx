@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated, DeviceEventEmitter, Dimensions, Keyboard, LayoutAnimation, Linking, PanResponder, Platform,
-  Pressable, ScrollView, Share, StyleSheet,
+  Pressable, ScrollView, Share, StyleSheet, Switch,
   Text, TextInput, TouchableOpacity, View, useColorScheme,
   type ColorValue,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import Slider from '@react-native-community/slider';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
@@ -44,11 +45,14 @@ const SHEET_FULL = SCREEN_H;
 // if its reserved rectangle doesn't overlap another park's dot or an
 // already-placed label.
 
-// The default whole-US view (latitudeDelta 35) shows no labels — that resting
-// state should read as dots-only. Labels arrive once you're a full zoom notch
-// in from home (zoomIn halves the delta: 35 → 17.5), so the gate sits just
-// above that. A slight pinch that barely leaves home stays dots-only.
-const LABEL_ZOOM_GATE = 18;
+// The default whole-US view (both coasts on screen) shows no labels — that
+// resting state reads as dots-only; the slightest zoom past home hands off to
+// the declutter pass above. The home region is REQUESTED as lat/lon deltas
+// 35/55, but Apple Maps normalizes to the screen's aspect ratio and reports
+// latitudeDelta ≈ 55 · (screenH/screenW) (~119 on a tall iPhone) — so the
+// gate is derived from that normalized value, not the requested 35, or one
+// whole zoom notch (halving to ~60) would still read as "at home".
+const LABEL_ZOOM_GATE = Math.max(35, 55 * (SCREEN_H / SCREEN_W)) * 0.98;
 // Horizontal gap (px) between a dot's coordinate and where its label pill starts.
 // Clears the unselected halo (max radius 13); a selected dot's larger halo (17)
 // tucks slightly under the pill's rounded corner, which reads fine since only
@@ -70,16 +74,24 @@ const LABEL_PILL_MAX_TEXT_W = 150 - LABEL_PILL_PAD;
 // onLayout measure-then-reposition round trip).
 const LABEL_CHAR_W = 7;
 
+// User-adjustable label size (labels menu next to the filter chip). The
+// declutter estimate scales its glyph width by fontSize/11.5 so bigger text
+// reserves proportionally more room. Snapped to 0.5pt steps so a drag doesn't
+// re-measure every marker on every frame.
+const LABEL_FONT_MIN = 9;
+const LABEL_FONT_MAX = 15;
+const LABEL_FONT_DEFAULT = 11.5;
+
 // Pill's own rendered width (excludes the gap to the dot) — shared by the
 // collision estimate below and by ParkLabelMarker's actual layout, so the two
 // stay in lockstep.
-function pillContentWidth(name: string): number {
-  const textW = Math.min(shortParkName(name).length * LABEL_CHAR_W, LABEL_PILL_MAX_TEXT_W);
+function pillContentWidth(name: string, fontScale: number): number {
+  const textW = Math.min(shortParkName(name).length * LABEL_CHAR_W * fontScale, LABEL_PILL_MAX_TEXT_W * fontScale);
   return textW + LABEL_PILL_PAD;
 }
 
-function estimateLabelRectWidth(name: string): number {
-  return DOT_RESERVE + LABEL_GAP + pillContentWidth(name);
+function estimateLabelRectWidth(name: string, fontScale: number): number {
+  return DOT_RESERVE + LABEL_GAP + pillContentWidth(name, fontScale);
 }
 
 interface LabelRect { x: number; y: number; w: number; h: number }
@@ -100,7 +112,7 @@ type MapRegion = { latitude: number; longitude: number; latitudeDelta: number; l
 // collision test — that view is the map's resting state and should read as
 // dots-only. A small zoom in past LABEL_ZOOM_GATE lifts the gate and lets the
 // declutter pass take over.
-function computeVisibleLabelCodes(parks: ParkForMap[], region: MapRegion): Set<string> {
+function computeVisibleLabelCodes(parks: ParkForMap[], region: MapRegion, fontScale: number): Set<string> {
   if (region.latitudeDelta <= 0 || region.longitudeDelta <= 0) return new Set();
   if (region.latitudeDelta >= LABEL_ZOOM_GATE) return new Set();
   const pxPerDegLat = SCREEN_H / region.latitudeDelta;
@@ -119,7 +131,7 @@ function computeVisibleLabelCodes(parks: ParkForMap[], region: MapRegion): Set<s
     const rect: LabelRect = {
       x: pt.x - DOT_RESERVE,
       y: pt.y - LABEL_RECT_H / 2,
-      w: estimateLabelRectWidth(pt.park.name),
+      w: estimateLabelRectWidth(pt.park.name, fontScale),
       h: LABEL_RECT_H,
     };
 
@@ -362,8 +374,8 @@ function ParkMapMarker({
 // measured width has been applied for one more frame, same re-snapshot pattern
 // ParkMapMarker uses for a status/theme flip.
 function ParkLabelMarker({
-  park, onSelect,
-}: { park: ParkForMap; onSelect: (park: ParkForMap) => void }) {
+  park, onSelect, fontSize,
+}: { park: ParkForMap; onSelect: (park: ParkForMap) => void; fontSize: number }) {
   const [pillW, setPillW] = useState<number | null>(null);
   const [tracking, setTracking] = useState(true);
 
@@ -372,6 +384,13 @@ function ParkLabelMarker({
     const t = setTimeout(() => setTracking(false), 50);
     return () => clearTimeout(t);
   }, [pillW]);
+
+  // A size change alters the measured width — retrack until remeasured so the
+  // stale marker snapshot isn't left on screen at the old size.
+  useEffect(() => {
+    setPillW(null);
+    setTracking(true);
+  }, [fontSize]);
 
   const totalW = LABEL_GAP + (pillW ?? 0);
 
@@ -393,7 +412,7 @@ function ParkLabelMarker({
             setPillW(prev => (prev === w ? prev : w));
           }}
         >
-          <Text style={styles.mapLabelText} numberOfLines={1}>
+          <Text style={[styles.mapLabelText, { fontSize }]} numberOfLines={1}>
             {shortParkName(park.name)}
           </Text>
         </View>
@@ -1679,12 +1698,13 @@ export default function MapScreen() {
     description: string | null; image_url: string | null;
   }>>([]);
   const currentRegionRef = useRef({ latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 });
-  const preZoomRegionRef = useRef<typeof currentRegionRef.current | null>(null);
   // Drives the label declutter recompute below — kept separate from
   // currentRegionRef (read synchronously by zoomIn/zoomOut/goHome without waiting
   // on a re-render) since this one exists purely to trigger the useMemo.
   const [labelRegion, setLabelRegion] = useState(currentRegionRef.current);
   const [labelsEnabled, setLabelsEnabled] = useState(true);
+  const [labelFontSize, setLabelFontSize] = useState(LABEL_FONT_DEFAULT);
+  const [labelMenuOpen, setLabelMenuOpen] = useState(false);
   const [filterExpanded, setFilterExpanded] = useState(false);
 
   const counts: Record<FilterStatus, number> = {
@@ -1700,8 +1720,8 @@ export default function MapScreen() {
     parks.filter(p => p.status === filterStatus);
 
   const visibleLabelCodes = useMemo(
-    () => computeVisibleLabelCodes(filteredParks, labelRegion),
-    [filteredParks, labelRegion]
+    () => computeVisibleLabelCodes(filteredParks, labelRegion, labelFontSize / LABEL_FONT_DEFAULT),
+    [filteredParks, labelRegion, labelFontSize]
   );
 
   const mergeVisits = useCallback((
@@ -1892,21 +1912,10 @@ export default function MapScreen() {
     ? parks.find(p => p.park_code === selectedPark.park_code) ?? selectedPark
     : null;
 
+  // Opens the sheet only — no zoom-to-pin, so the map view stays exactly
+  // where the user had it (and there's nothing to restore on close).
   const handleSelectPark = useCallback((park: ParkForMap) => {
     setSelectedPark(park);
-    preZoomRegionRef.current = currentRegionRef.current;
-    const LAT_DELTA = 1.5;
-    // Offset center southward so pin appears at vertical center of visible area (above sheet)
-    const latOffset = (SHEET_PEEK * LAT_DELTA) / (2 * SCREEN_H);
-    mapRef.current?.animateToRegion(
-      {
-        latitude:       park.latitude - latOffset,
-        longitude:      park.longitude,
-        latitudeDelta:  LAT_DELTA,
-        longitudeDelta: 1.5,
-      },
-      500
-    );
   }, []);
 
   useEffect(() => {
@@ -1945,19 +1954,10 @@ export default function MapScreen() {
     );
   }, []);
 
-  // Restore the map to its pre-selection view once the sheet closes.
-  useEffect(() => {
-    if (selectedPark === null && preZoomRegionRef.current) {
-      mapRef.current?.animateToRegion(preZoomRegionRef.current, 500);
-      preZoomRegionRef.current = null;
-    }
-  }, [selectedPark]);
-
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('mapTabPress', () => {
       setSelectedPark(null);
       setFilterStatus('all');
-      preZoomRegionRef.current = null; // goHome supersedes the restore-on-close animation
       goHome();
     });
     return () => sub.remove();
@@ -1994,7 +1994,7 @@ export default function MapScreen() {
           />
         ))}
         {labelsEnabled && filteredParks.filter(park => visibleLabelCodes.has(park.park_code)).map(park => (
-          <ParkLabelMarker key={`label-${park.park_code}`} park={park} onSelect={handleSelectPark} />
+          <ParkLabelMarker key={`label-${park.park_code}`} park={park} onSelect={handleSelectPark} fontSize={labelFontSize} />
         ))}
       </MapView>
 
@@ -2004,8 +2004,11 @@ export default function MapScreen() {
         </View>
       )}
 
-      {filterExpanded && (
-        <Pressable style={styles.filterBackdrop} onPress={() => setFilterExpanded(false)} />
+      {(filterExpanded || labelMenuOpen) && (
+        <Pressable
+          style={styles.filterBackdrop}
+          onPress={() => { setFilterExpanded(false); setLabelMenuOpen(false); }}
+        />
       )}
 
       <View
@@ -2019,6 +2022,7 @@ export default function MapScreen() {
           onToggle={() => {
             LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
             setFilterExpanded(v => !v);
+            setLabelMenuOpen(false);
           }}
           onSelect={f => {
             LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
@@ -2028,19 +2032,55 @@ export default function MapScreen() {
           }}
         />
 
-        {/* Labels toggle — sits next to the filter dropdown trigger */}
-        <TouchableOpacity
-          style={styles.mapControlBtn}
-          onPress={() => setLabelsEnabled(v => !v)}
-          activeOpacity={0.75}
-        >
-          <View style={styles.mapLabelToggleIcon}>
-            <Ionicons name="text" size={16} color={dyn('#4A4535', '#F0EAD9')} />
-            {!labelsEnabled && (
-              <View style={[styles.mapLabelToggleSlash, { backgroundColor: dyn('#4A4535', '#F0EAD9') }]} />
-            )}
-          </View>
-        </TouchableOpacity>
+        {/* Labels button — opens a menu with the visibility toggle + size options */}
+        <View>
+          <TouchableOpacity
+            style={styles.mapControlBtn}
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
+              setLabelMenuOpen(v => !v);
+              setFilterExpanded(false);
+            }}
+            activeOpacity={0.75}
+          >
+            <View style={styles.mapLabelToggleIcon}>
+              <Ionicons name="text" size={16} color={dyn('#4A4535', '#F0EAD9')} />
+              {!labelsEnabled && (
+                <View style={[styles.mapLabelToggleSlash, { backgroundColor: dyn('#4A4535', '#F0EAD9') }]} />
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {labelMenuOpen && (
+            <View style={[styles.pillDropdown, { minWidth: 208 }]}>
+              <View style={[styles.pillDropdownRow, { paddingVertical: 6 }]}>
+                <Text style={[styles.pillLabel, styles.pillLabelActive]}>Show labels</Text>
+                <Switch
+                  value={labelsEnabled}
+                  onValueChange={setLabelsEnabled}
+                  trackColor={{ true: C.visited as string }}
+                  style={[styles.pillDropdownCheck, { transform: [{ scale: 0.75 }] }]}
+                />
+              </View>
+              {/* Text size — native UISlider; the small/large "A"s bracket it */}
+              <View style={[styles.pillDropdownRow, styles.pillDropdownRowBorder, !labelsEnabled && { opacity: 0.4 }]}>
+                <Text style={[styles.pillLabel, { fontSize: 10 }]}>A</Text>
+                <Slider
+                  style={{ flex: 1, height: 28 }}
+                  minimumValue={LABEL_FONT_MIN}
+                  maximumValue={LABEL_FONT_MAX}
+                  step={0.5}
+                  value={labelFontSize}
+                  onValueChange={setLabelFontSize}
+                  disabled={!labelsEnabled}
+                  minimumTrackTintColor={C.visited as string}
+                  maximumTrackTintColor={C.hairline as string}
+                />
+                <Text style={[styles.pillLabel, { fontSize: 16 }]}>A</Text>
+              </View>
+            </View>
+          )}
+        </View>
       </View>
 
       {showLoadingOverlay && (
@@ -2249,7 +2289,8 @@ const styles = StyleSheet.create({
     backgroundColor: dyn('rgba(255,251,241,0.92)', 'rgba(32,29,23,0.92)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
-    borderRadius: 12,
+    // Matches mapControlBtn (home/zoom buttons) exactly
+    borderRadius: 9,
     paddingVertical: 8,
     paddingHorizontal: 12,
     shadowColor: '#000',

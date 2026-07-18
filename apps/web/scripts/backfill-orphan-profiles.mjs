@@ -1,8 +1,10 @@
 /**
- * Finds clerk_user_ids referenced in app tables (posts, visits, likes,
- * comments, friendships, user_badges, notifications, push subscriptions)
- * that have no matching row in user_profiles, and creates one from Clerk
- * data — mirroring the auto-create logic in src/lib/ensureUserProfile.ts.
+ * Finds clerk_user_ids with no matching row in user_profiles — both ids
+ * referenced in app tables (posts, visits, likes, comments, friendships,
+ * user_badges, notifications, push subscriptions) AND every user in the
+ * Clerk instance itself (zero-activity signups leave no table references) —
+ * and creates one from Clerk data, mirroring the auto-create logic in
+ * src/lib/ensureUserProfile.ts.
  *
  * These orphans happen when GET /api/profile (called once, client-side,
  * right after signup) fails silently and the user is left fully
@@ -86,8 +88,32 @@ for (const [table, column] of idSources) {
   `;
   for (const r of rows) orphanIds.add(r.id);
 }
-
 console.log(`Found ${orphanIds.size} clerk_user_id(s) with activity but no user_profiles row.`);
+
+// --- 1b. Also sweep the full Clerk user list — a signup with ZERO activity
+// (never posted, visited, liked, got a notification…) is invisible to the
+// table scan above, yet still has no profile row until they next open the
+// app. These are real accounts that should show on the admin users table.
+
+const profileIds = new Set(
+  (await sql`SELECT clerk_user_id FROM user_profiles`).map((r) => r.clerk_user_id)
+);
+let clerkTotal = 0;
+let offset = 0;
+for (;;) {
+  const res = await fetch(`https://api.clerk.com/v1/users?limit=500&offset=${offset}`, {
+    headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+  });
+  if (!res.ok) throw new Error(`Clerk API ${res.status}: ${await res.text()}`);
+  const page = await res.json();
+  clerkTotal += page.length;
+  for (const u of page) {
+    if (!profileIds.has(u.id)) orphanIds.add(u.id);
+  }
+  if (page.length < 500) break;
+  offset += 500;
+}
+console.log(`Swept ${clerkTotal} Clerk user(s); ${orphanIds.size} total missing a user_profiles row.`);
 if (orphanIds.size === 0) process.exit(0);
 
 // --- 2. Fetch each from Clerk, derive a username the same way the app does

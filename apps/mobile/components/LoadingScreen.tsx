@@ -123,7 +123,7 @@ function CloudLayer() {
         opacity: 0.11,
       }}
     >
-      <Svg width={W * 0.55} height={36} viewBox="0 0 200 36">
+      <Svg width={W * 0.55} height={58} viewBox="0 0 200 36">
         <Ellipse cx="40" cy="16" rx="32" ry="9" fill="#FFFBF1" />
         <Ellipse cx="82" cy="14" rx="38" ry="10" fill="#FFFBF1" />
         <Ellipse cx="128" cy="17" rx="28" ry="8" fill="#FFFBF1" />
@@ -158,7 +158,7 @@ function CloudLayer2() {
         opacity: 0.08,
       }}
     >
-      <Svg width={W * 0.35} height={28} viewBox="0 0 200 36">
+      <Svg width={W * 0.35} height={44} viewBox="0 0 200 36">
         <Ellipse cx="30" cy="17" rx="22" ry="5" fill="#FFFBF1" />
         <Ellipse cx="75" cy="15" rx="45" ry="7" fill="#FFFBF1" />
         <Ellipse cx="140" cy="16" rx="48" ry="6" fill="#FFFBF1" />
@@ -253,6 +253,10 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
         style={StyleSheet.absoluteFill}
       />
 
+      {/* Clouds — rendered before the sun so they drift behind it */}
+      <CloudLayer />
+      <CloudLayer2 />
+
       {/* Sun glow behind mountains */}
       <SunGlow />
 
@@ -260,10 +264,6 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
       {STARS.map(([x, y, o, delay], i) => (
         <Star key={i} x={x} y={y} size={2 + (i % 3)} opacity={o} delay={delay} />
       ))}
-
-      {/* Clouds */}
-      <CloudLayer />
-      <CloudLayer2 />
 
       {/* Mountains — 3 SVG layers */}
       <View style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}>

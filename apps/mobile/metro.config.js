@@ -24,6 +24,7 @@ config.resolver.extraNodeModules = {
   'expo-image-manipulator': rootPkg('expo-image-manipulator'),
   'expo-sensors': rootPkg('expo-sensors'),
   '@react-native-community/netinfo': rootPkg('@react-native-community/netinfo'),
+  '@react-native-community/slider': rootPkg('@react-native-community/slider'),
   '@sentry/react-native': rootPkg('@sentry/react-native'),
 };
 

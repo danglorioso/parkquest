@@ -107,6 +107,10 @@ export async function GET(request: Request) {
     login_method: clerkById.get(r.clerk_user_id)?.login_method ?? 'email',
     banned: clerkById.get(r.clerk_user_id)?.banned ?? false,
     last_signed_in_at: clerkById.get(r.clerk_user_id)?.last_signed_in_at ?? null,
+    // No Clerk record for this profile row = the account was deleted (there's
+    // no user.deleted webhook, so the DB row outlives the account). Surfaced
+    // instead of hidden so the dashboard can gray these out.
+    deleted: !clerkById.has(r.clerk_user_id),
   }));
 
   return NextResponse.json({ users, page, has_more: hasMore });

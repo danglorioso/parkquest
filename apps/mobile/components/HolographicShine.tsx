@@ -7,8 +7,16 @@ import Svg, {
   RadialGradient, Rect, Stop, Text as SvgText,
 } from 'react-native-svg';
 
-const TILT_RANGE = 0.04; // radians — barely-perceptible tilts already sweep the full hue range
-const UPDATE_MS  = 40;  // ~25Hz — smooth enough for a sheen, light on the JS bridge
+// Hue steps advanced per radian of tilt *change* — the phase accumulates
+// tilt deltas rather than mapping absolute orientation, so it works the same
+// whether the phone lies flat or is held up at a normal in-hand angle, and a
+// ~0.01 rad wobble already visibly shifts the blend.
+const PHASE_GAIN = 20;
+// Deltas above this per 40ms sample are orientation flips/sensor glitches
+// (e.g. gamma's sign flip past vertical), not real motion — skipped so the
+// colors don't jump a full cycle in one frame.
+const MAX_DELTA = 0.35;
+const UPDATE_MS = 40; // ~25Hz — smooth enough for a sheen, light on the JS bridge
 
 const TILT_A = -14; // primary guilloche family — also carries the shimmer
 const TILT_B = 11;  // secondary family, crossing the first for a woven look
@@ -16,17 +24,20 @@ const TILT_B = 11;  // secondary family, crossing the first for a woven look
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
-function mapRange(v: number, inLo: number, inHi: number, outLo: number, outHi: number) {
-  const t = clamp((v - inLo) / (inHi - inLo), 0, 1);
-  return outLo + t * (outHi - outLo);
-}
 
-// Triangular crossfade weights across n stops for a continuous phase — 1 at
-// the nearest stop, falling linearly to 0 by the time phase is a full step
-// away. Weights always sum to ~1, so blending them as layered opacities
-// never dims or brightens the total, only shifts which hue dominates.
+// Triangular crossfade weights across n stops on a RING for a continuous,
+// unbounded phase — 1 at the nearest stop, falling linearly to 0 a full step
+// away, measured circularly so the fade from the last hue wraps back into
+// the first without a seam. Weights always sum to ~1, so blending them as
+// layered opacities never dims or brightens the total, only shifts which hue
+// dominates — and the cycle repeats forever as the phase keeps growing in
+// either direction.
 function crossfadeWeights(phase: number, n: number): number[] {
-  return Array.from({ length: n }, (_, i) => clamp(1 - Math.abs(phase - i), 0, 1));
+  const p = ((phase % n) + n) % n;
+  return Array.from({ length: n }, (_, i) => {
+    const d = Math.abs(p - i);
+    return clamp(1 - Math.min(d, n - d), 0, 1);
+  });
 }
 
 function hslToHex(h: number, s: number, l: number): string {
@@ -228,6 +239,9 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize }: {
   const hueGlows = useRef(
     crossfadeWeights(REST_PHASE, N_HUES).map(wt => new Animated.Value(wt * LINE_INTENSITY))
   ).current;
+  // Unbounded hue phase, advanced by tilt deltas — see the listener below.
+  const phaseRef = useRef(REST_PHASE);
+  const prevRotRef = useRef<{ beta: number; gamma: number } | null>(null);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     // Quantized to 16px steps — containers whose height settles a few px
@@ -251,23 +265,35 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize }: {
       const sub = DeviceMotion.addListener(({ rotation }) => {
         if (!rotation) return;
         const { beta, gamma } = rotation;
-        const tiltMag = clamp((Math.abs(gamma) + Math.abs(beta)) / (TILT_RANGE * 1.2), 0, 1);
+
+        // Phase accumulates CHANGE in tilt, both axes summed — not absolute
+        // orientation. That makes it orientation-agnostic (works identically
+        // held flat or upright in the hand) and endless: keep tilting in any
+        // direction and the hues keep cycling around the ring, instead of
+        // saturating after one sweep of an absolute range.
+        const prev = prevRotRef.current;
+        prevRotRef.current = { beta, gamma };
+        if (!prev) return;
+        const db = beta - prev.beta;
+        const dg = gamma - prev.gamma;
+        // Orientation flips (gamma's sign jump past vertical) read as huge
+        // deltas — skip them so the colors don't leap a cycle in one frame.
+        if (Math.abs(db) > MAX_DELTA || Math.abs(dg) > MAX_DELTA) return;
+        phaseRef.current += (db + dg) * PHASE_GAIN;
+
+        // Shimmer brightness tracks how fast you're tilting right now.
+        const rateMag = clamp((Math.abs(db) + Math.abs(dg)) / 0.02, 0, 1);
         Animated.timing(glow, {
-          toValue: 0.10 + tiltMag * 0.34, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
+          toValue: 0.10 + rateMag * 0.34, duration: UPDATE_MS * 2, easing: Easing.linear, useNativeDriver: true,
         }).start();
 
-        // Whichever axis you're actually tilting more drives the hue phase —
-        // was gamma-only (left-right roll), so tilting forward/back (beta),
-        // the more natural "look at the hologram" gesture, never moved it.
-        const dominant = Math.abs(gamma) >= Math.abs(beta) ? gamma : beta;
-        const phase = mapRange(dominant, -TILT_RANGE, TILT_RANGE, 0, N_HUES - 1);
-        crossfadeWeights(phase, N_HUES).forEach((wt, i) => {
+        crossfadeWeights(phaseRef.current, N_HUES).forEach((wt, i) => {
           Animated.timing(hueGlows[i], {
             toValue: wt * LINE_INTENSITY, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
           }).start();
         });
       });
-      return () => sub.remove();
+      return () => { sub.remove(); prevRotRef.current = null; };
     }, [size, glow, hueGlows])
   );
 

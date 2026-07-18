@@ -2182,15 +2182,13 @@ export default function LogVisitModal() {
   // closed. Fresh visits keep the swipe: their draft is continuously
   // auto-saved (see the upsertDraft effect below), so a swipe-away loses
   // nothing and the beforeRemove listener just flushes the pending save.
-  // Exception: when ANOTHER saved draft already exists, a silent save would
-  // bury it (the resume banner only surfaces the newest draft), so that case
-  // blocks the swipe too and routes through the save/discard prompt.
+  // (Other saved drafts are no obstacle — the resume banner lists every
+  // draft, so a swipe-away save can't bury one.)
   const activeSliderDrags = useRef(0);
   const stepRef = useRef(step);
   stepRef.current = step;
   const isDragStep = (s: number) => s >= 1 && s <= 3;
-  const [otherDraftExists, setOtherDraftExists] = useState(false);
-  const blockSwipe = isEditing || (otherDraftExists && draftHasContent(draft));
+  const blockSwipe = isEditing;
   const blockSwipeRef = useRef(blockSwipe);
   blockSwipeRef.current = blockSwipe;
   // Also freezes the step ScrollView while a slider drag is live — a slightly
@@ -2211,10 +2209,7 @@ export default function LogVisitModal() {
 
   useEffect(() => {
     if (isEdit) return;
-    loadDrafts().then(d => {
-      setSavedDrafts(d);
-      setOtherDraftExists(d.some(s => s.id !== draftId.current));
-    });
+    loadDrafts().then(setSavedDrafts);
   }, [isEdit]);
 
   // Seed a fresh visit's visibility from the user's saved default (Privacy &
@@ -2304,9 +2299,9 @@ export default function LogVisitModal() {
         }
         return;
       }
-      // Editing, or a second draft would bury an existing one — the swipe
-      // gesture is disabled for these cases (see blockSwipe above), so this
-      // interception only ever races a button/back-key, which it wins.
+      // Editing — the swipe gesture is disabled for that case (see blockSwipe
+      // above), so this interception only ever races a button/back-key,
+      // which it wins.
       e.preventDefault();
       promptExit(() => {
         leavingViaAction.current = true;
@@ -2319,11 +2314,8 @@ export default function LogVisitModal() {
   const resumeDraft = (sd: SavedDraft) => {
     setDraftState(sd.draft);
     draftId.current = sd.id;
-    // The resumed draft is now "ours" — recheck whether any OTHER draft
-    // remains, since that's what gates the silent swipe-away save. (The banner
-    // list filters out the active id, so the restored row disappears on its
-    // own while any remaining drafts stay reachable.)
-    loadDrafts().then(d => setOtherDraftExists(d.some(s => s.id !== sd.id)));
+    // The banner list filters out the active id, so the restored row
+    // disappears on its own while any remaining drafts stay reachable.
     if (sd.editVisitId != null) {
       const visitId = sd.editVisitId;
       setResumedEdit({ visitId, postId: sd.editPostId ?? null });
@@ -2350,7 +2342,6 @@ export default function LogVisitModal() {
       getFreshToken().then(tok => deletePhotos(sd.draft.photos, tok));
     }
     setSavedDrafts(list => list.filter(s => s.id !== sd.id));
-    loadDrafts().then(d => setOtherDraftExists(d.some(s => s.id !== draftId.current && s.id !== sd.id)));
   };
 
   useEffect(() => {

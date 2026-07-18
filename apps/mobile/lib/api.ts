@@ -202,6 +202,7 @@ export interface AdminUserRow {
   email: string | null;
   login_method: 'apple' | 'google' | 'email';
   banned: boolean;
+  deleted: boolean;
 }
 
 export type AdminUserSort = 'joined' | 'parks' | 'posts';

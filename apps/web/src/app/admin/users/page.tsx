@@ -17,6 +17,7 @@ interface UserRow {
   email: string | null;
   login_method: 'apple' | 'google' | 'email';
   banned: boolean;
+  deleted: boolean;
 }
 
 const LOGIN_ICON = { apple: Apple, google: Chrome, email: Mail } as const;
@@ -94,9 +95,13 @@ export default async function AdminUsersPage({
               {users.map(u => {
                 const LoginIcon = LOGIN_ICON[u.login_method];
                 return (
-                  <tr key={u.clerk_user_id} className="border-b border-hairline-soft last:border-0">
+                  <tr key={u.clerk_user_id} className={`border-b border-hairline-soft last:border-0 ${u.deleted ? 'opacity-45' : ''}`}>
                     <td className="px-4 py-3">
-                      <Link href={`/u/${u.username}`} className="font-semibold text-ink hover:text-primary" target="_blank">
+                      <Link
+                        href={`/u/${u.username}`}
+                        className={`font-semibold text-ink hover:text-primary ${u.deleted ? 'line-through' : ''}`}
+                        target="_blank"
+                      >
                         {u.display_name ?? u.username}
                       </Link>
                       <div className="text-xs text-ink-mute">@{u.username}</div>
@@ -121,14 +126,17 @@ export default async function AdminUsersPage({
                       </td>
                     )}
                     <td className="px-4 py-3">
-                      {u.banned ? (
+                      {u.deleted ? (
+                        <span className="rounded-full bg-surface-alt px-2 py-0.5 text-xs font-bold text-ink-mute">Deleted</span>
+                      ) : u.banned ? (
                         <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-bold text-destructive">Banned</span>
                       ) : (
                         <span className="text-xs text-ink-mute">Active</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <BanButton userId={u.clerk_user_id} banned={u.banned} />
+                      {/* No Clerk user left to ban */}
+                      {!u.deleted && <BanButton userId={u.clerk_user_id} banned={u.banned} />}
                     </td>
                   </tr>
                 );

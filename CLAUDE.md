@@ -24,7 +24,7 @@ pnpm-workspaces monorepo:
 
 - Schema: `apps/web/src/lib/db/schema.ts`.
 - **Never run `drizzle-kit generate`/`push`** — migration journal is stale and push offers destructive TRUNCATEs. Hand-write SQL in `apps/web/scripts/*.mjs` (see `create-app-store-stats-table.mjs` for the pattern) and run with `node`.
-- Local `.env.local` DATABASE_URL ≠ prod DB. Schema changes must be applied to each separately.
+- Local `apps/web/.env.local` DATABASE_URL **is the production Neon DB** — every local script/query runs against real user data; treat deletes/updates accordingly.
 - The neon serverless driver returns `DATE` columns as full ISO timestamps. Any query whose day-keys a client compares as strings needs `to_char(..., 'YYYY-MM-DD')` — or better, zero-fill the series in SQL (`generate_series`) so the client never builds its own keys.
 - User-facing timestamps/aggregations should use `America/New_York`, not raw UTC.
 
