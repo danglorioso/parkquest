@@ -358,6 +358,7 @@ function FilterPanel({
   const [section, setSection] = useState<FilterSection | null>(null);
   const { primary, accent } = useColors();
   const panelAnim = useRef(new Animated.Value(0)).current;
+  const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
 
   const activeCount =
     (statusFilter !== 'all' ? 1 : 0) +
@@ -432,7 +433,9 @@ function FilterPanel({
         <MenuView
           onPressAction={({ nativeEvent }) => onSortChange(nativeEvent.event as SortBy)}
           actions={SORT_OPTIONS.map(o => ({
-            id: o.key, title: o.label, image: o.icon, state: sortBy === o.key ? 'on' : 'off',
+            // imageColor explicit for the same reason as the grid/list menu below —
+            // the menu lib's new-arch bridge tints unset icons transparent.
+            id: o.key, title: o.label, image: o.icon, imageColor: menuInk, state: sortBy === o.key ? 'on' : 'off',
           }))}
         >
           <View style={styles.filterToggle}>
@@ -485,8 +488,11 @@ function FilterPanel({
             {
               opacity: panelAnim,
               transform: [{ translateY: panelAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
-              maxHeight: settled ? undefined : panelAnim.interpolate({
-                inputRange: [0, 1], outputRange: [0, Math.max(panelHeight, 1)],
+              // panelHeight is 0 until the first onLayout pass — on the very first
+              // open there's nothing measured yet to animate toward, so skip the
+              // height clamp entirely rather than growing from a 1px sliver.
+              maxHeight: (settled || panelHeight === 0) ? undefined : panelAnim.interpolate({
+                inputRange: [0, 1], outputRange: [0, panelHeight],
               }),
             },
           ]}

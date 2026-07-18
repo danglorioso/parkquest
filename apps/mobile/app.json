@@ -23,6 +23,7 @@
       ],
       "infoPlist": {
         "NSCameraUsageDescription": "ParkQuest uses your camera to capture and share photos from your park visits.",
+        "NSMotionUsageDescription": "ParkQuest uses motion data to power the holographic shimmer effect on your passport cover.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },

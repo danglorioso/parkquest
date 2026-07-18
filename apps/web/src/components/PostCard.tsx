@@ -62,7 +62,11 @@ export interface FeedPost {
   visit_companion_count: number | null;
   visit_companion_names: Array<{ username: string; display_name: string | null; avatar_url: string | null }> | null;
   visit_highlight: string | null;
+  visit_title: string | null;
   visit_ordinal?: number | null;
+  // Only present on the single-post detail fetch (/api/posts/[id]), not feed lists
+  visit_notes?: string | null;
+  visit_would_return?: string | null;
 }
 
 // ── Badge lookup ──────────────────────────────────────────────────────────────
@@ -1018,6 +1022,7 @@ const WEATHER_LABELS: Record<string, string> = {
 };
 const CROWD_LABELS  = ["Empty", "Quiet", "Moderate", "Busy", "Packed"];
 const DIFF_LABELS   = ["Easy", "Light", "Moderate", "Hard", "Strenuous"];
+const WOULD_RETURN_LABELS: Record<string, string> = { yes: "Definitely", maybe: "Maybe", no: "Probably not" };
 
 function StarRating({ rating }: { rating: number }) {
   return (
@@ -1116,7 +1121,8 @@ function MetaChip({ children }: { children: React.ReactNode }) {
 function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: boolean }) {
   const hasAny = post.visit_date || post.visit_rating || (post.visit_activities?.length ?? 0) > 0
     || (post.visit_weather?.length ?? 0) > 0 || post.visit_crowd || post.visit_difficulty
-    || (post.visit_companion_count ?? 0) > 0 || post.visit_highlight;
+    || (post.visit_companion_count ?? 0) > 0 || post.visit_highlight || post.visit_title
+    || post.visit_notes || post.visit_would_return;
 
   if (!hasAny) return null;
 
@@ -1126,6 +1132,13 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
 
   return (
     <div style={{ padding: "0 18px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Title */}
+      {post.visit_title && (
+        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
+          {post.visit_title}
+        </div>
+      )}
+
       {/* Highlight */}
       {post.visit_highlight && (
         <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45, fontStyle: "italic" }}>
@@ -1154,6 +1167,9 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
         ))}
         {post.visit_crowd ? <MetaChip>{CROWD_LABELS[post.visit_crowd - 1]} crowd</MetaChip> : null}
         {post.visit_difficulty ? <MetaChip>{DIFF_LABELS[post.visit_difficulty - 1]}</MetaChip> : null}
+        {post.visit_would_return ? (
+          <MetaChip>{WOULD_RETURN_LABELS[post.visit_would_return] ?? post.visit_would_return}</MetaChip>
+        ) : null}
         {post.visit_activities?.map(a => (
           <MetaChip key={a}>{a.charAt(0).toUpperCase() + a.slice(1)}</MetaChip>
         ))}
@@ -1183,6 +1199,18 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
           );
         })()}
       </div>
+
+      {/* Notes */}
+      {post.visit_notes && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-mute)", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+            Notes
+          </div>
+          <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>
+            {post.visit_notes}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

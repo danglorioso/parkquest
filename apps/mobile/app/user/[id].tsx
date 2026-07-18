@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, Animated, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View, Alert,
+  Text, TouchableOpacity, View, Alert, useColorScheme,
 } from 'react-native';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -176,6 +176,9 @@ export default function UserProfileScreen() {
   const { user: me } = useUser();
   const router = useRouter();
   const T = useColors();
+  // Literal resolved hex, not a DynamicColorIOS token — the menu lib's
+  // native bridge can't render SF Symbols tinted with one.
+  const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -453,8 +456,8 @@ export default function UserProfileScreen() {
                 }
               }}
               actions={[
-                { id: 'block', title: 'Block user', attributes: { destructive: true, disabled: blockBusy } },
-                { id: 'report', title: reportedUser ? 'Reported' : 'Report user', attributes: { destructive: true, disabled: reportedUser } },
+                { id: 'block', title: 'Block user', image: 'person.crop.circle.badge.xmark', imageColor: menuInk, attributes: { destructive: true, disabled: blockBusy } },
+                { id: 'report', title: reportedUser ? 'Reported' : 'Report user', image: 'flag', imageColor: menuInk, attributes: { destructive: true, disabled: reportedUser } },
               ]}
             >
               <TouchableOpacity

@@ -1347,7 +1347,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
             <Text style={{ fontSize: 16, fontWeight: '700', color: C.primary }}>Done</Text>
           </TouchableOpacity>
         </View>
-        <View style={{ paddingHorizontal: 12, paddingTop: 4 }}>
+        <View style={{ paddingHorizontal: 12, paddingTop: 4, alignItems: 'center' }}>
           <DateTimePicker
             value={value}
             mode="date"

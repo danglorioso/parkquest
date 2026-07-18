@@ -7,7 +7,7 @@ import { HolographicShine } from '@/components/HolographicShine';
 import { ParkStamp } from '@/components/ParkStamp';
 import { PassportWatermark } from '@/components/PassportWatermark';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,6 +49,7 @@ interface Visit {
   park_code: string;
   is_bucket_list: boolean;
   visited_date: string | null;
+  rating?: number | null;
 }
 
 interface StampItem {
@@ -138,7 +139,7 @@ function SkeletonRow() {
 // tileable pattern keyed off scrollY % tileHeight instead of a fixed-size
 // watermark). See PassportWatermark's PARALLAX_BUFFER for the matching
 // height slack this factor draws down as you scroll.
-const PARALLAX_FACTOR = 0.25;
+const PARALLAX_FACTOR = 0.6;
 
 export default function PassportScreen() {
   const { getToken }  = useAuth();
@@ -146,11 +147,13 @@ export default function PassportScreen() {
   const { user }      = useUser();
   const router        = useRouter();
   const T             = useColors();
+  const insets        = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
   const handleScroll = useRef(
     Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })
   ).current;
 
+  const [coverH,      setCoverH]      = useState<number | null>(null);
   const [profile,     setProfile]     = useState<ProfileInfo | null>(null);
   const [visits,      setVisits]      = useState<Visit[]>([]);
   const [allParks,    setAllParks]    = useState<Park[]>([]);
@@ -234,10 +237,65 @@ export default function PassportScreen() {
     return s.size;
   }, [allStampItems]);
 
+  // First/latest earned stamps — rendered as the actual ParkStamp art on the
+  // cover, not text rows. allStampItems already sorts visited chronologically.
+  const visitedStamps = useMemo(() => allStampItems.filter(s => s.visited), [allStampItems]);
+  const firstStamp  = visitedStamps[0] ?? null;
+  const latestStamp = visitedStamps.length > 1 ? visitedStamps[visitedStamps.length - 1] : null;
+
+  // Text "records" rows — computed from real visit logs. Each is null when
+  // there's no data to back it, and its row just doesn't render.
+  const records = useMemo(() => {
+    const parkName = (code: string) => allParks.find(p => p.park_code === code)?.name?.replace(/ National Park.*$/, '') ?? code;
+    const dated = visits.filter(v => !v.is_bucket_list && v.visited_date);
+    if (dated.length === 0) return { mostVisited: null, topRated: null };
+
+    const counts = new Map<string, number>();
+    dated.forEach(v => counts.set(v.park_code, (counts.get(v.park_code) ?? 0) + 1));
+    let mvCode: string | null = null, mvCount = 1;
+    counts.forEach((n, code) => { if (n > mvCount) { mvCount = n; mvCode = code; } });
+
+    // Highest rating wins; among ties, the most recent visit
+    const rated = dated.filter(v => typeof v.rating === 'number');
+    const top = rated.sort((a, b) =>
+      (b.rating! - a.rating!) || (a.visited_date ?? '').localeCompare(b.visited_date ?? '')
+    )[0] ?? null;
+
+    return {
+      // Only meaningful once some park has 2+ visits
+      mostVisited: mvCode ? { name: parkName(mvCode), detail: `${mvCount} visits` } : null,
+      topRated:    top ? { name: parkName(top.park_code), detail: `${'★'.repeat(Math.round(top.rating!))}` } : null,
+    };
+  }, [visits, allParks]);
+
   const avatarUrl = profile?.avatar_url || user?.imageUrl || null;
   // null = profile not loaded yet — header shows a skeleton bar, not "Explorer"
   const name = profile?.display_name ?? profile?.username ?? null;
   const pNo  = passportNo(profile?.username ?? user?.username ?? 'explorer');
+  const joinDate = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : null;
+
+  // MRZ-style bottom strip — same format as the profile page's passport card
+  const mrzName = name ?? 'Explorer';
+  const mrzUsername = profile?.username ?? user?.username ?? '';
+  const mrzLine1 = (() => {
+    const parts = mrzName.toUpperCase().replace(/[^A-Z ]/g, '').split(' ');
+    const surname = (parts[0] ?? 'UNKNOWN').slice(0, 12);
+    const given = (parts.slice(1).join('<') || 'EXPLORER').slice(0, 10);
+    const raw = `P<USA<<${surname}<<${given}`;
+    return raw.padEnd(44, '<').slice(0, 44);
+  })();
+  const mrzLine2 = (() => {
+    const uid = user?.id?.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(-7).padStart(7, '0') ?? '0000000';
+    const joined = user?.createdAt
+      ? new Date(user.createdAt).toISOString().slice(2, 10).replace(/-/g, '')
+      : '000000';
+    const parks3 = String(visitedCount).padStart(3, '0');
+    const uname = mrzUsername.toUpperCase().slice(0, 9).padEnd(9, '<');
+    const raw = `${uid}<USA${joined}${parks3}${uname}`;
+    return raw.padEnd(44, '<').slice(0, 44);
+  })();
 
   // Build FlatList rows: header + stamp rows (with page dividers)
   const listData = useMemo((): RowItem[] => {
@@ -265,10 +323,51 @@ export default function PassportScreen() {
     return rows;
   }, [loading, allStampItems]);
 
+  // This route renders with no native stack header (see profile/_layout) —
+  // the green cover owns the whole top of the screen, including under the
+  // status bar. These two float above everything: a green underlay that
+  // keeps the status-bar strip green even mid-scroll, and the back button
+  // the native header would otherwise have provided.
+  // Invisible while the cover itself is under the status bar (so the cover's
+  // guilloche pattern — not a flat green strip — shows at the very top), then
+  // fades in as the cover's bottom edge scrolls past the status bar, keeping
+  // that strip green over the paper below.
+  const statusBarUnderlay = (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: insets.top,
+        backgroundColor: T.primaryDeep, zIndex: 10,
+        opacity: coverH
+          ? scrollY.interpolate({
+              inputRange: [coverH - insets.top - 30, coverH - insets.top],
+              outputRange: [0, 1],
+              extrapolate: 'clamp',
+            })
+          : 0,
+      }}
+    />
+  );
+  const backButton = (
+    <TouchableOpacity
+      onPress={() => {
+        if (router.canGoBack()) router.back();
+        else router.replace('/(tabs)/profile');
+      }}
+      hitSlop={8}
+      style={{ position: 'absolute', top: insets.top + 4, left: 10, zIndex: 20, flexDirection: 'row', alignItems: 'center' }}
+    >
+      <Ionicons name="chevron-back" size={26} color={GOLD} />
+      <Text style={{ fontSize: 16, fontWeight: '600', color: GOLD, marginLeft: -2 }}>Profile</Text>
+    </TouchableOpacity>
+  );
+
   if (error && allParks.length === 0) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: PAPER }} edges={['bottom']}>
         <StatusBar style="light" />
+        {statusBarUnderlay}
+        {backButton}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
@@ -286,6 +385,8 @@ export default function PassportScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: PAPER }} edges={['bottom']}>
       <StatusBar style="light" />
+      {statusBarUnderlay}
+      {backButton}
       <Animated.View
         pointerEvents="none"
         style={{ transform: [{ translateY: Animated.multiply(scrollY, -PARALLAX_FACTOR) }] }}
@@ -309,17 +410,28 @@ export default function PassportScreen() {
           if (item.type === 'header') {
             return (
               <View>
-                {/* ── Cover — a slim book-cover strip, just identity ──
-                    Shadow lives on this outer wrapper, not st.cover itself —
-                    st.cover has overflow:hidden to clip the Svg background,
-                    and overflow:hidden on the same view would clip its own shadow too. */}
-                <View style={[st.coverShadow, { backgroundColor: T.primaryDeep }]}>
-                  <View style={[st.cover, { backgroundColor: T.primaryDeep }]}>
-                    <HolographicShine />
+                {/* ── Cover — near-full-screen green passport, extending up
+                    under the status bar. Shadow lives on this outer wrapper,
+                    not st.cover itself — st.cover has overflow:hidden to clip
+                    the Svg background, and overflow:hidden on the same view
+                    would clip its own shadow too. */}
+                <View
+                  style={[st.coverShadow, { backgroundColor: T.primaryDeep }]}
+                  onLayout={e => setCoverH(e.nativeEvent.layout.height)}
+                >
+                  {/* paddingTop clears the status bar + floating back button */}
+                  <View style={[st.cover, { backgroundColor: T.primaryDeep, paddingTop: insets.top + 56 }]}>
+                    {/* Edge text pinned to roughly name-top → stats-bottom */}
+                    <HolographicShine edgeTextSize={30} edgeTextSpan={[0.16, 0.62]} />
 
                     <View style={st.coverMeta}>
-                      <Text style={st.headerKicker}>PARKQUEST · NATIONAL PARK PASSPORT</Text>
-                      <Text style={st.headerPNo}>NO · {pNo}</Text>
+                      {/* numberOfLines=1 + clip (no ellipsis) forces this onto one
+                          line and lets it bleed off the cover's right edge — same
+                          "runs past the page" printed-document feel as the corner
+                          watermark band, rather than wrapping to a second line. */}
+                      <Text style={st.headerKicker} numberOfLines={1} ellipsizeMode="clip">
+                        PARKQUEST.ME · NATIONAL PARK PASSPORT · OFFICIAL RECORD OF VISITATION
+                      </Text>
                     </View>
 
                     <View style={st.coverIdentity}>
@@ -352,6 +464,9 @@ export default function PassportScreen() {
                         )}
                         {profile?.username ? (
                           <Text style={st.coverHandle}>@{profile.username}</Text>
+                        ) : null}
+                        {joinDate ? (
+                          <Text style={st.coverJoined}>Joined {joinDate}</Text>
                         ) : null}
                       </View>
                     </View>
@@ -398,6 +513,83 @@ export default function PassportScreen() {
                           <View style={[st.progressFill, { width: `${(visitedCount / 63) * 100}%` as `${number}%` }]} />
                         </View>
                       </View>
+                    </View>
+
+                    {/* While loading, hold the chips' + records' space with
+                        fixed-height skeletons — otherwise the cover grows when
+                        data lands, and the guilloche background re-measures and
+                        visibly reshuffles mid-look. */}
+                    {loading && (
+                      <>
+                        <View style={st.stampChipRow}>
+                          {[0, 1].map(i => <View key={i} style={[st.stampChip, st.chipSkeleton]} />)}
+                        </View>
+                        <View style={[st.statsPlate, { marginTop: 10, height: 78 }]} />
+                      </>
+                    )}
+
+                    {/* First/latest earned stamps — the real stamp art, straight
+                        on the green cover */}
+                    {!loading && firstStamp && (
+                      <View style={st.stampChipRow}>
+                        {([
+                          { label: 'FIRST STAMP',  item: firstStamp },
+                          ...(latestStamp ? [{ label: 'LATEST STAMP', item: latestStamp }] : []),
+                        ]).map(({ label, item: s }) => (
+                          <TouchableOpacity
+                            key={label}
+                            style={st.stampChip}
+                            activeOpacity={0.8}
+                            onPress={() => router.push(`/parks/${s.park_code}` as never)}
+                          >
+                            <Text style={st.stampChipLabel}>{label}</Text>
+                            {/* idSuffix: the same park also renders in the stamp
+                                grid below — TextPath def ids must stay unique */}
+                            <ParkStamp
+                              parkCode={s.park_code}
+                              name={s.name}
+                              states={s.states}
+                              colorIdx={s.colorIdx}
+                              size={92}
+                              idSuffix="-chip"
+                              inkColor={GOLD}
+                            />
+                            {s.visited_date ? (
+                              <Text style={st.stampChipDate}>{stampDateStr(s.visited_date)}</Text>
+                            ) : null}
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Records — personal superlatives pulled from the visit log */}
+                    {!loading && (records.mostVisited || records.topRated) && (
+                      <View style={[st.statsPlate, { marginTop: 10 }]}>
+                        {([
+                          { label: 'MOST VISITED', rec: records.mostVisited },
+                          { label: 'TOP RATED',    rec: records.topRated },
+                        ] as const).filter(r => r.rec).map((r, i) => (
+                          <View key={r.label} style={[st.recordRow, i > 0 && st.recordRowBorder]}>
+                            <Text style={st.recordLabel}>{r.label}</Text>
+                            <Text style={st.recordValue} numberOfLines={1}>
+                              {r.rec!.name}
+                              <Text style={st.recordDetail}>  ·  {r.rec!.detail}</Text>
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Passport number — in normal flow (not absolute) so it's
+                        guaranteed to render below the stats block rather than
+                        relying on bottom-offset math to avoid overlapping it */}
+                    <Text style={st.coverCorner} pointerEvents="none">NO · {pNo}</Text>
+
+                    {/* MRZ strip — same machine-readable-zone footer as the
+                        profile card; the "official document" closer */}
+                    <View style={st.mrzStrip}>
+                      <Text style={st.mrzText} numberOfLines={1}>{mrzLine1}</Text>
+                      <Text style={st.mrzText} numberOfLines={1}>{mrzLine2}</Text>
                     </View>
                   </View>
                 </View>
@@ -472,20 +664,19 @@ const st = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
-  // ── Cover strip (green, like a book's front cover — identity only) ──
+  // ── Cover (near-full-screen green passport, up under the status bar) ──
   cover: {
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
     overflow: 'hidden',
     borderBottomWidth: 3,
     borderBottomColor: GOLD + '44',
   },
   coverMeta: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginHorizontal: -20,   // bleed past the card's own padding, edge-to-edge
+    marginBottom: 14,
   },
   headerKicker: {
     fontSize: 11,
@@ -494,12 +685,100 @@ const st = StyleSheet.create({
     letterSpacing: 1.8,
     opacity: 0.8,
   },
-  headerPNo: {
-    fontSize: 12,
+  // Passport number + site, relocated to the cover's bottom-left corner —
+  // was sharing the top kicker row, but combined they were wide enough to
+  // overlap ("...PASSPORTNO...") rather than wrap or truncate cleanly.
+  // Passport number, below the stats block — was sharing the top kicker
+  // row, but combined they were wide enough to overlap ("...PASSPORTNO...")
+  // rather than wrap or truncate cleanly.
+  coverCorner: {
+    marginTop: 10,
+    fontSize: 10,
     fontWeight: '600',
     color: GOLD,
-    letterSpacing: 1.2,
+    letterSpacing: 1.1,
+    opacity: 0.65,
+  },
+  // First/latest stamp chips — stamps sit directly on the green cover
+  stampChipRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  stampChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    gap: 6,
+  },
+  stampChipLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: GOLD,
+    opacity: 0.75,
+    letterSpacing: 1.5,
+  },
+  stampChipDate: {
+    fontSize: 10,
+    color: GOLD,
+    opacity: 0.65,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  // Sized to match a loaded chip (label + 92px stamp + date + padding) so
+  // the cover doesn't change height when real data replaces the skeleton
+  chipSkeleton: {
+    height: 148,
+    borderRadius: 12,
+    backgroundColor: 'rgba(250,243,224,0.08)',
+  },
+  // Records rows — label/value superlatives inside a stats plate
+  recordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+    gap: 12,
+  },
+  recordRowBorder: {
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(201,169,74,0.18)',
+  },
+  recordLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: GOLD,
+    letterSpacing: 1.5,
+    opacity: 0.75,
+  },
+  recordValue: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: GOLD,
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  recordDetail: {
+    fontWeight: '600',
     opacity: 0.7,
+  },
+  // Machine-readable-zone footer — same treatment as the profile card's
+  mrzStrip: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(201,169,74,0.15)',
+  },
+  mrzText: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 9,
+    color: 'rgba(201,169,74,0.35)',
+    letterSpacing: 1.5,
+    lineHeight: 14,
   },
   coverIdentity: {
     flexDirection: 'row',
@@ -533,10 +812,18 @@ const st = StyleSheet.create({
     letterSpacing: 0.4,
     marginTop: 3,
   },
+  coverJoined: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: GOLD,
+    opacity: 0.6,
+    letterSpacing: 0.3,
+    marginTop: 3,
+  },
   // Repeating-text security-print band — same motif as the profile page's
   // passport card watermark, bled full-width past the cover's own padding.
   coverWatermark: {
-    marginHorizontal: -24,
+    marginHorizontal: -20,
     marginBottom: 14,
     fontSize: 10,
     fontWeight: '800',

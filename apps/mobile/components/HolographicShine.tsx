@@ -7,7 +7,7 @@ import Svg, {
   RadialGradient, Rect, Stop, Text as SvgText,
 } from 'react-native-svg';
 
-const TILT_RANGE = 0.5; // radians — full shimmer sweep well before edge-on
+const TILT_RANGE = 0.12; // radians — barely-perceptible tilts already sweep the full hue range
 const UPDATE_MS  = 40;  // ~25Hz — smooth enough for a sheen, light on the JS bridge
 
 const TILT_A = -14; // primary guilloche family — also carries the shimmer
@@ -20,6 +20,42 @@ function mapRange(v: number, inLo: number, inHi: number, outLo: number, outHi: n
   const t = clamp((v - inLo) / (inHi - inLo), 0, 1);
   return outLo + t * (outHi - outLo);
 }
+
+// Triangular crossfade weights across n stops for a continuous phase — 1 at
+// the nearest stop, falling linearly to 0 by the time phase is a full step
+// away. Weights always sum to ~1, so blending them as layered opacities
+// never dims or brightens the total, only shifts which hue dominates.
+function crossfadeWeights(phase: number, n: number): number[] {
+  return Array.from({ length: n }, (_, i) => clamp(1 - Math.abs(phase - i), 0, 1));
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  h = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if      (h < 60)  { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else              { r = c; g = 0; b = x; }
+  const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+// Four variants of the same 5-stop rainbow, each rotated a quarter-turn
+// around the hue wheel from the last — crossfading between them (by tilt)
+// shifts which hues land where along the line, without moving anything.
+const N_HUES = 4;
+// crossfadeWeights sums to ~1 across the N_HUES layers — that's "fully
+// opaque, solid-colored lines" since hueStops are plain opaque hex, not
+// rgba. Scale everything down against this so the lines stay as faint
+// background texture, not a solid rainbow drawn over the readable text.
+const LINE_INTENSITY = 0.32;
+const hueStops = (offsetDeg: number) =>
+  [0, 1, 2, 3, 4].map(i => hslToHex(offsetDeg + i * 72, 0.85, 0.62));
 
 // One proven wave-hump shape, 400 units wide — tiled horizontally across
 // whatever span is needed, so density scales with the card's real measured
@@ -45,6 +81,33 @@ function waveRows(w: number, h: number, yStart: number, rowGap: number, amp: num
   const rows: string[] = [];
   for (let y = yStart; y < 1.6 * h; y += rowGap) rows.push(tiledWaveD(y, xStart, xEnd, amp));
   return rows;
+}
+
+// A ring of overlapping circles around a shared center — the classic
+// spirograph/guilloche "rosette" seen on currency and certificates. Each
+// circle's own center sits on a small ring (radius offsetR) around (cx,cy);
+// with circR slightly less than offsetR, no single circle reaches the true
+// center, leaving the small clear hole that gives the flower its shape.
+function rosette(cx: number, cy: number, offsetR: number, circR: number, count: number, phase = 0) {
+  return Array.from({ length: count }, (_, i) => {
+    const a = phase + (i * 2 * Math.PI) / count;
+    return { cx: cx + Math.cos(a) * offsetR, cy: cy + Math.sin(a) * offsetR, r: circR };
+  });
+}
+
+// String-art web: chords from each of `count` points on the inner ring to
+// the point `skip` steps around on the outer ring. Rendered with both
+// +skip and -skip, the chords cross into the woven net/fan mesh that fills
+// the bands between circle rings on engraved certificates.
+function webBand(cx: number, cy: number, rIn: number, rOut: number, count: number, skip: number) {
+  return Array.from({ length: count }, (_, i) => {
+    const a1 = (i * 2 * Math.PI) / count;
+    const a2 = ((i + skip) * 2 * Math.PI) / count;
+    return {
+      x1: cx + Math.cos(a1) * rIn,  y1: cy + Math.sin(a1) * rIn,
+      x2: cx + Math.cos(a2) * rOut, y2: cy + Math.sin(a2) * rOut,
+    };
+  });
 }
 
 // Compass-ring + mountain + sun — a simplified line-art take on the app
@@ -82,23 +145,43 @@ function SealMark({ cx, cy, r, stroke, strokeWidth = 1 }: {
 // edge — all behind the cover's text siblings by plain document order (this
 // renders as their first sibling).
 //
-// The shimmer is a second, identical copy of the wave/seal/text art (in
+// The seal/rosette/text shimmer is a second, identical copy of that art (in
 // holo-gradient color) layered on top of the static gold base copy, inside
-// a plain Animated.View whose opacity/translateX/Y respond to device tilt.
-// Deliberately NOT using Reanimated's useAnimatedProps on the SVG gradient/
-// group/text here — animating those directly aborts the app (SIGABRT in
+// a plain Animated.View whose opacity responds to device tilt. The wave
+// lines get a different treatment (see N_HUES above): they're always fully
+// colorful, never faint gold — tilt crossfades between four hue-rotated
+// copies of the same static line geometry, so color shifts across the
+// rainbow without the lines themselves moving. Deliberately NOT using
+// Reanimated's useAnimatedProps on the SVG gradient/group/text here —
+// animating those directly aborts the app (SIGABRT in
 // reanimated::ReanimatedCommitHook::shadowTreeWillCommit; react-native-svg's
 // Defs/paint-server + group elements aren't safe targets for Reanimated's
 // Fabric prop-commit path on this RN/reanimated/svg version combo). Plain
-// RN Animated on a normal View only ever touches opacity/transform, which
-// is the standard, safe path.
-export function HolographicShine() {
+// RN Animated on a normal View only ever touches opacity, which is the
+// standard, safe path.
+export function HolographicShine({ edgeTextSize, edgeTextSpan }: {
+  /** Fixed px size for the vertical PARKQUEST edge text. Defaults to scaling
+      with container height — right for card-sized containers, oversized on
+      the passport page's near-full-screen cover. */
+  edgeTextSize?: number;
+  /** [startFrac, endFrac] of container height the edge text's letter run
+      spans. Defaults to nearly the full height; the passport page pins it
+      to the name-through-stats zone instead. */
+  edgeTextSpan?: [number, number];
+} = {}) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const shift = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const glow  = useRef(new Animated.Value(0.15)).current;
+  const glow = useRef(new Animated.Value(0.08)).current;
+  const REST_PHASE = (N_HUES - 1) / 2;
+  const hueGlows = useRef(
+    crossfadeWeights(REST_PHASE, N_HUES).map(wt => new Animated.Value(wt * LINE_INTENSITY))
+  ).current;
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
+    // Quantized to 16px steps — containers whose height settles a few px
+    // after first layout (e.g. skeleton → real content swaps) shouldn't
+    // rebuild the whole pattern geometry; a visible reshuffle for nothing.
+    const width  = Math.round(e.nativeEvent.layout.width / 16) * 16;
+    const height = Math.round(e.nativeEvent.layout.height / 16) * 16;
     setSize(prev => (prev && prev.w === width && prev.h === height) ? prev : { w: width, h: height });
   }, []);
 
@@ -115,34 +198,87 @@ export function HolographicShine() {
       const sub = DeviceMotion.addListener(({ rotation }) => {
         if (!rotation) return;
         const { beta, gamma } = rotation;
-        const tx = mapRange(gamma, -TILT_RANGE, TILT_RANGE, -w * 0.05, w * 0.05);
-        const ty = mapRange(beta,  -TILT_RANGE, TILT_RANGE, -h * 0.14, h * 0.14);
         const tiltMag = clamp((Math.abs(gamma) + Math.abs(beta)) / (TILT_RANGE * 1.2), 0, 1);
-        Animated.timing(shift, {
-          toValue: { x: tx, y: ty }, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
-        }).start();
         Animated.timing(glow, {
-          toValue: 0.15 + tiltMag * 0.4, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
+          toValue: 0.08 + tiltMag * 0.22, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
         }).start();
+
+        // Whichever axis you're actually tilting more drives the hue phase —
+        // was gamma-only (left-right roll), so tilting forward/back (beta),
+        // the more natural "look at the hologram" gesture, never moved it.
+        const dominant = Math.abs(gamma) >= Math.abs(beta) ? gamma : beta;
+        const phase = mapRange(dominant, -TILT_RANGE, TILT_RANGE, 0, N_HUES - 1);
+        crossfadeWeights(phase, N_HUES).forEach((wt, i) => {
+          Animated.timing(hueGlows[i], {
+            toValue: wt * LINE_INTENSITY, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
+          }).start();
+        });
       });
       return () => sub.remove();
-    }, [size, w, h, shift, glow])
+    }, [size, glow, hueGlows])
   );
 
   const layers = useMemo(() => {
     if (!size) return null;
     const rowsA = waveRows(w, h, -0.6 * h,           h / 9,   h * 0.11); // primary — shimmers
     const rowsB = waveRows(w, h, -0.6 * h + h / 17,   h / 7.6, h * 0.08); // secondary — static crosshatch
-    return {
-      rowsA, rowsB,
-      sealCx: w * 0.82, sealCy: h * 0.5, sealR: h * 0.42,
-    };
+    // Kept deliberately small — the seal + mandala is background texture on
+    // a card full of real text; at h*0.42 with three bands it dominated.
+    const sealCx = w * 0.82, sealCy = h * 0.5, sealR = h * 0.21;
+    // Two interleaved rosette rings — different radius, size, and a
+    // half-step phase shift, so the circles weave through each other into a
+    // moiré lattice instead of one string of evenly-spaced rings. circR is
+    // several times the center-to-center spacing so consecutive circles
+    // overlap neighbors deep (spirograph weave, not barely-touching rings).
+    // Bands hug the seal — inner rosette ring's near edge basically touches
+    // the seal's outline, no dead gap between logo and decoration.
+    const rosetteCircles = [
+      ...rosette(sealCx, sealCy, sealR * 1.17, sealR * 0.235, 72),
+      ...rosette(sealCx, sealCy, sealR * 1.26, sealR * 0.2,   72, Math.PI / 72),
+    ];
+    // One crossing string-art web band, framed by two solid rings — the
+    // outermost circle-ring band from the reference dropped; with the
+    // smaller seal it pushed the mandala's footprint back to "distracting".
+    const webLines = [
+      ...webBand(sealCx, sealCy, sealR * 1.44, sealR * 1.74, 72, 6),
+      ...webBand(sealCx, sealCy, sealR * 1.44, sealR * 1.74, 72, -6),
+    ];
+    const frameRings = [1.42, 1.76].map(k => sealR * k);
+    return { rowsA, rowsB, sealCx, sealCy, sealR, rosetteCircles, webLines, frameRings };
   }, [size, w, h]);
 
   return (
     <View style={StyleSheet.absoluteFillObject} onLayout={onLayout} pointerEvents="none">
       {size && layers && (
         <>
+          {/* Wave lines — always fully colorful (not faint-gold-then-shimmer
+              like the rest of the pattern). Four copies of the identical
+              static geometry, each a different quarter-turn of the same
+              5-stop rainbow; tilt crossfades their opacity via hueGlows, so
+              color shifts across the wheel without any line moving. */}
+          {Array.from({ length: N_HUES }).map((_, vi) => (
+            <Animated.View
+              key={vi}
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFillObject, { opacity: hueGlows[vi] }]}
+            >
+              <Svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
+                <Defs>
+                  <LinearGradient id={`hue${vi}`} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={w} y2={0}>
+                    {hueStops(vi * (360 / N_HUES)).map((color, si) => (
+                      <Stop key={si} offset={si / 4} stopColor={color} />
+                    ))}
+                  </LinearGradient>
+                </Defs>
+                <G rotation={TILT_A} origin={[w / 2, h / 2]}>
+                  {layers.rowsA.map((d, i) => (
+                    <Path key={i} d={d} stroke={`url(#hue${vi})`} strokeWidth={1} fill="none" />
+                  ))}
+                </G>
+              </Svg>
+            </Animated.View>
+          ))}
+
           <Svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
             <Defs>
               <RadialGradient id="spotlight" cx="18%" cy="8%" r="70%">
@@ -165,27 +301,35 @@ export function HolographicShine() {
                 it in contrast, not compete with it. */}
             <G rotation={TILT_B} origin={[w / 2, h / 2]}>
               {layers.rowsB.map((d, i) => (
-                <Path key={i} d={d} stroke="rgba(201,169,74,0.025)" strokeWidth={0.6} fill="none" />
+                <Path key={i} d={d} stroke="rgba(201,169,74,0.007)" strokeWidth={0.6} fill="none" />
               ))}
             </G>
 
-            {/* Primary family + seal — static gold base, always visible */}
+            {/* Seal + mandala — static base, always visible, drawn on top of
+                the rainbow lines like a stamp impression over paper. Seal
+                stays gold (it's the official mark); the surrounding bands go
+                muted sage/teal like the engraved-certificate reference, which
+                sits naturally against the dark green cover next to the gold. */}
             <G rotation={TILT_A} origin={[w / 2, h / 2]}>
-              {layers.rowsA.map((d, i) => (
-                <Path key={i} d={d} stroke="rgba(201,169,74,0.045)" strokeWidth={1} fill="none" />
+              <SealMark cx={layers.sealCx} cy={layers.sealCy} r={layers.sealR} stroke="rgba(201,169,74,0.007)" />
+              {layers.rosetteCircles.map((c, i) => (
+                <Circle key={i} cx={c.cx} cy={c.cy} r={c.r} stroke="rgba(142,196,166,0.009)" strokeWidth={0.5} fill="none" />
               ))}
-              <SealMark cx={layers.sealCx} cy={layers.sealCy} r={layers.sealR} stroke="rgba(201,169,74,0.07)" />
+              {layers.webLines.map((l, i) => (
+                <Line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="rgba(120,182,170,0.007)" strokeWidth={0.4} />
+              ))}
+              {layers.frameRings.map((r, i) => (
+                <Circle key={i} cx={layers.sealCx} cy={layers.sealCy} r={r} stroke="rgba(120,182,170,0.01)" strokeWidth={i === 0 ? 0.8 : 0.5} fill="none" />
+              ))}
             </G>
           </Svg>
 
-          {/* Holo shimmer copy — plain Animated.View, opacity + a small
-              tilt-driven translate; never touches SVG native props directly */}
+          {/* Holo shimmer copy of the seal/rosette/text — plain Animated.View,
+              opacity only. Never touches SVG native props directly (see the
+              note above on why). */}
           <Animated.View
             pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFillObject,
-              { opacity: glow, transform: shift.getTranslateTransform() },
-            ]}
+            style={[StyleSheet.absoluteFillObject, { opacity: glow }]}
           >
             <Svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
               <Defs>
@@ -198,26 +342,46 @@ export function HolographicShine() {
                 </LinearGradient>
               </Defs>
 
-              <G rotation={TILT_A} origin={[w / 2, h / 2]}>
-                {layers.rowsA.map((d, i) => (
-                  <Path key={i} d={d} stroke="url(#holo)" strokeWidth={1.2} fill="none" />
-                ))}
+              {/* opacity on the group halves the mandala's share of the tilt
+                  shimmer without dimming the PARKQUEST edge text below it */}
+              <G rotation={TILT_A} origin={[w / 2, h / 2]} opacity={0.45}>
                 <SealMark cx={layers.sealCx} cy={layers.sealCy} r={layers.sealR} stroke="url(#holo)" />
+                {layers.rosetteCircles.map((c, i) => (
+                  <Circle key={i} cx={c.cx} cy={c.cy} r={c.r} stroke="url(#holo)" strokeWidth={0.5} fill="none" />
+                ))}
+                {layers.webLines.map((l, i) => (
+                  <Line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="url(#holo)" strokeWidth={0.4} />
+                ))}
+                {layers.frameRings.map((r, i) => (
+                  <Circle key={i} cx={layers.sealCx} cy={layers.sealCy} r={r} stroke="url(#holo)" strokeWidth={i === 0 ? 0.8 : 0.5} fill="none" />
+                ))}
               </G>
 
-              {/* Micro-print security strip, upright along the right edge */}
-              <SvgText
-                x={w - 10}
-                y={h / 2}
-                fontSize={Math.max(8, h * 0.08)}
-                fontWeight="700"
-                letterSpacing={2}
-                textAnchor="middle"
-                fill="url(#holo)"
-                transform={`rotate(-90, ${w - 10}, ${h / 2})`}
-              >
-                PARKQUEST
-              </SvgText>
+              {/* Micro-print security strip, upright along the right edge.
+                  textLength + lengthAdjust="spacing" stretches the letter run
+                  across the configured span by widening gaps only — glyphs
+                  themselves keep their size (spacingAndGlyphs would scale them). */}
+              {(() => {
+                const [startFrac, endFrac] = edgeTextSpan ?? [0.02, 0.98];
+                const cy = ((startFrac + endFrac) / 2) * h;
+                const runLen = (endFrac - startFrac) * h;
+                return (
+                  <SvgText
+                    x={w - 10}
+                    y={cy}
+                    fontSize={edgeTextSize ?? Math.max(8, h * 0.08)}
+                    fontWeight="700"
+                    letterSpacing={2}
+                    textAnchor="middle"
+                    fill="url(#holo)"
+                    transform={`rotate(-90, ${w - 10}, ${cy})`}
+                    textLength={runLen}
+                    lengthAdjust="spacing"
+                  >
+                    PARKQUEST
+                  </SvgText>
+                );
+              })()}
             </Svg>
           </Animated.View>
         </>

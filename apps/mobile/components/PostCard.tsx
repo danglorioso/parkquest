@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   Modal, Dimensions, Alert, ActivityIndicator, Share,
-  StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder,
+  StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder, useColorScheme,
 } from 'react-native';
 import { MenuView } from '@react-native-menu/menu';
 import { ImageLightbox } from '@/components/ImageLightbox';
@@ -56,7 +56,11 @@ export interface FeedPost {
   visit_companion_count: number | null;
   visit_companion_names: Array<{ username: string; display_name: string | null; avatar_url: string | null }> | null;
   visit_highlight: string | null;
+  visit_title: string | null;
   visit_ordinal: number | null;
+  // Only present on the single-post detail fetch (/api/posts/[id]), not feed lists
+  visit_notes?: string | null;
+  visit_would_return?: string | null;
 }
 
 interface CommentRow {
@@ -87,6 +91,12 @@ const WEATHER_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name'
   clear: 'sunny-outline', partly: 'partly-sunny-outline', cloudy: 'cloud-outline',
   rain: 'rainy-outline', storm: 'thunderstorm-outline', snow: 'snow-outline',
   fog: 'water-outline', wind: 'speedometer-outline',
+};
+const WOULD_RETURN_LABELS: Record<string, string> = {
+  yes: 'Definitely', maybe: 'Maybe', no: 'Probably not',
+};
+const WOULD_RETURN_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+  yes: 'heart-outline', maybe: 'repeat-outline', no: 'cloud-outline',
 };
 const ACTIVITY_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
   hiking: 'walk-outline', camping: 'bonfire-outline', backpacking: 'walk-outline',
@@ -623,7 +633,8 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
     (post.visit_weather?.length ?? 0) > 0 ||
     post.visit_crowd || post.visit_difficulty ||
     (post.visit_companion_count ?? 0) > 0 ||
-    post.visit_highlight;
+    post.visit_highlight || post.visit_title ||
+    post.visit_notes || post.visit_would_return;
 
   if (!hasAny) return null;
 
@@ -635,6 +646,9 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
 
   return (
     <View style={styles.visitMeta}>
+      {post.visit_title && (
+        <Text style={styles.visitTitle}>{post.visit_title}</Text>
+      )}
       {post.visit_highlight && (
         <Text style={styles.visitHighlight}>"{post.visit_highlight}"</Text>
       )}
@@ -662,6 +676,11 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
         ) : null}
         {post.visit_difficulty ? (
           <MetaChip icon="trail-sign-outline"><Text style={styles.chipText}>{DIFF_LABELS[post.visit_difficulty - 1]}</Text></MetaChip>
+        ) : null}
+        {post.visit_would_return ? (
+          <MetaChip icon={WOULD_RETURN_ICONS[post.visit_would_return] ?? 'repeat-outline'}>
+            <Text style={styles.chipText}>{WOULD_RETURN_LABELS[post.visit_would_return] ?? post.visit_would_return}</Text>
+          </MetaChip>
         ) : null}
         {post.visit_activities?.map(a => (
           <MetaChip key={a} icon={ACTIVITY_ICONS[a.toLowerCase()] ?? 'star-outline'}>
@@ -704,6 +723,12 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
           );
         })()}
       </View>
+      {post.visit_notes && (
+        <View style={styles.notesBlock}>
+          <Text style={styles.notesLabel}>Notes</Text>
+          <Text style={styles.notesText}>{post.visit_notes}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -1068,6 +1093,10 @@ export function PostCard({
 }) {
   const router = useRouter();
   const C = useColors();
+  // Literal resolved hex, not a DynamicColorIOS token — the menu lib's
+  // native bridge can't render SF Symbols tinted with one (same class of
+  // issue as LinearGradient; see the park page header menu's note).
+  const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
   const freshToken = useFreshToken();
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likeCount, setLikeCount] = useState(post.like_count);
@@ -1293,12 +1322,12 @@ export function PostCard({
               }
             }}
             actions={isOwnPost ? [
-              ...(post.visit_id != null ? [{ id: 'edit-visit', title: 'Edit visit' }] : []),
-              { id: 'edit-caption', title: 'Edit caption' },
-              { id: 'delete', title: 'Delete post', attributes: { destructive: true } },
+              ...(post.visit_id != null ? [{ id: 'edit-visit', title: 'Edit visit', image: 'pencil', imageColor: menuInk }] : []),
+              { id: 'edit-caption', title: 'Edit caption', image: 'text.bubble', imageColor: menuInk },
+              { id: 'delete', title: 'Delete post', image: 'trash', imageColor: menuInk, attributes: { destructive: true } },
             ] : [
-              { id: 'report', title: reported ? 'Reported' : 'Report post', attributes: { destructive: true, disabled: reported } },
-              { id: 'block', title: 'Block user', attributes: { destructive: true } },
+              { id: 'report', title: reported ? 'Reported' : 'Report post', image: 'flag', imageColor: menuInk, attributes: { destructive: true, disabled: reported } },
+              { id: 'block', title: 'Block user', image: 'person.crop.circle.badge.xmark', imageColor: menuInk, attributes: { destructive: true } },
             ]}
           >
             <TouchableOpacity
@@ -1662,8 +1691,18 @@ const styles = StyleSheet.create({
 
   // Visit meta
   visitMeta: { paddingHorizontal: 18, paddingBottom: 14, gap: 10 },
+  visitTitle: {
+    fontSize: 15, fontWeight: '700', color: C.ink,
+  },
   visitHighlight: {
     fontSize: 13, color: C.inkSoft, fontStyle: 'italic', lineHeight: 19,
+  },
+  notesBlock: { gap: 3 },
+  notesLabel: {
+    fontSize: 11, fontWeight: '700', color: C.inkMute, textTransform: 'uppercase', letterSpacing: 0.4,
+  },
+  notesText: {
+    fontSize: 13, color: C.inkSoft, lineHeight: 19,
   },
 
   // Comments

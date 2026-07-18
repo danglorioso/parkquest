@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Animated, Dimensions, Image, Linking, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Animated, Image, Linking, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View, Alert,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -16,9 +16,10 @@ import { ParkStamp } from '@/components/ParkStamp';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { EmptyState } from '@/components/EmptyState';
+import { HolographicShine } from '@/components/HolographicShine';
 import { STATIC as C, dyn, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
-import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
 // Passport gold foil — fixed across palettes, matches the passport screen
@@ -99,7 +100,7 @@ function NameSkeleton() {
 function PreviewSkeleton() {
   const pulse = usePulse();
   return (
-    <Animated.View style={{ flexDirection: 'row', gap: 10, paddingBottom: 4, opacity: pulse }}>
+    <Animated.View style={{ flexDirection: 'row', gap: 6, paddingBottom: 4, opacity: pulse }}>
       {[0, 1, 2, 3].map(i => (
         <View key={i} style={styles.badgePreviewItem}>
           <View style={styles.skeletonCircle} />
@@ -318,8 +319,6 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const CARD_W = Dimensions.get('window').width - 32; // card = screen - 2×16 margin
-
   // MRZ-style bottom strip — encodes real user data in passport MRZ format
   const mrzLine1 = (() => {
     const parts = displayName.toUpperCase().replace(/[^A-Z ]/g, '').split(' ');
@@ -406,26 +405,10 @@ export default function ProfileScreen() {
           onPress={() => router.push('/profile/passport' as never)}
           activeOpacity={0.88}
         >
-          {/* Wavy background texture */}
-          <Svg
-            width={CARD_W}
-            height={400}
-            viewBox={`0 0 ${CARD_W} 400`}
-            style={{ position: 'absolute', top: 0, left: 0 }}
-          >
-            {[0, 22, 44, 66, 88, 110, 132, 154, 176, 198, 220, 242, 264, 286, 308, 330, 352, 374, 396].map((y, i) => {
-              const W = CARD_W;
-              return (
-                <Path
-                  key={i}
-                  d={`M0 ${y} C ${W * 0.18} ${y - 13}, ${W * 0.38} ${y + 13}, ${W * 0.5} ${y} S ${W * 0.82} ${y - 13}, ${W} ${y}`}
-                  stroke="rgba(201,169,74,0.07)"
-                  strokeWidth={1.5}
-                  fill="none"
-                />
-              );
-            })}
-          </Svg>
+          {/* Guilloche background — same shared component as the full
+              passport page's cover (dense wave lattice, seal, rosette,
+              tilt-reactive rainbow shimmer) instead of a plain wavy Svg */}
+          <HolographicShine />
 
           {/* Watermark strip */}
           <Text style={styles.passportWatermark} numberOfLines={1} ellipsizeMode="clip" pointerEvents="none">
@@ -515,7 +498,7 @@ export default function ProfileScreen() {
               <Text style={styles.sectionKicker}>RECENT STAMPS</Text>
             </View>
             {!visitsLoaded ? <PreviewSkeleton /> : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
               {recentStamps.map(s => (
                 <TouchableOpacity
                   key={s.park_code}
@@ -583,7 +566,7 @@ export default function ProfileScreen() {
               <Text style={styles.sectionKicker}>EARNED</Text>
             </View>
             {!badgesLoaded ? <PreviewSkeleton /> : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
               {earnedBadges.map(b => (
                 <TouchableOpacity
                   key={b.id}
@@ -854,7 +837,7 @@ const styles = StyleSheet.create({
   shareBtn: {
     // 44pt — matches the app-wide round icon button size (topBar's search/
     // settings buttons, park page header buttons).
-    position: 'absolute', top: 16, right: 16, zIndex: 2,
+    position: 'absolute', top: 34, right: 16, zIndex: 2,
     width: 44, height: 44, borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 1, borderColor: 'rgba(201,169,74,0.35)',

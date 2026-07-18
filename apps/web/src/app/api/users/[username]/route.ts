@@ -110,6 +110,7 @@ export async function GET(
         visit_companion_count: sql<number>`COALESCE(jsonb_array_length(${visits.companions}), 0)`,
         visit_companion_names: sql<Array<{username: string; display_name: string | null; avatar_url: string | null}> | null>`(SELECT json_agg(json_build_object('username', up.username, 'display_name', up.display_name, 'avatar_url', up.avatar_url)) FROM user_profiles up WHERE up.clerk_user_id = ANY(SELECT jsonb_array_elements_text(${visits.companions})))`,
         visit_highlight:      visits.highlight,
+        visit_title:          visits.title,
       })
         .from(posts)
         .leftJoin(parks, eq(posts.park_code, parks.park_code))
@@ -270,6 +271,7 @@ export async function GET(
         visit_companion_count: p.visit_companion_count,
         visit_companion_names: p.visit_companion_names,
         visit_highlight:      p.visit_highlight,
+        visit_title:          p.visit_title,
       }));
 
     return NextResponse.json({

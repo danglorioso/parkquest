@@ -78,7 +78,7 @@ export function stateCode(states: string): string {
 // ── Stamp ─────────────────────────────────────────────────────────────────────
 
 export function ParkStamp({
-  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = '',
+  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = '', inkColor,
 }: {
   parkCode: string;
   name: string;
@@ -88,8 +88,11 @@ export function ParkStamp({
   rotated?: boolean;
   /** Keeps TextPath def ids unique when the same park renders on two mounted screens. */
   idSuffix?: string;
+  /** Override the seeded park ink — e.g. gold foil on the dark passport cover,
+      where the default dark inks don't have enough contrast. */
+  inkColor?: string;
 }) {
-  const c         = stampColor(colorIdx);
+  const c         = inkColor ?? stampColor(colorIdx);
   const sc        = stateCode(states);
   // "National Park" is implied by the stamp itself (ring text/compass motif) —
   // drop it so e.g. "Wrangell-St. Elias National Park & Preserve" leaves room

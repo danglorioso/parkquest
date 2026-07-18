@@ -6,8 +6,10 @@ const { width: W, height: H } = Dimensions.get('window');
 // parallax-shifts this background against scroll — see PARALLAX_FACTOR
 // there. Not full-content-height tileable (that needs a seamlessly
 // wrapping pattern keyed off scrollY % tileHeight); this buffer just
-// covers a few screens' worth of normal scrolling.
-const PARALLAX_BUFFER = 2.4;
+// covers a few screens' worth of normal scrolling. Sized against
+// PARALLAX_FACTOR=0.6 — bump this if that factor goes up further, or the
+// pattern will visibly hit bottom and stop moving partway down a long list.
+const PARALLAX_BUFFER = 4;
 const CONTENT_H = H * PARALLAX_BUFFER;
 
 // Same wave formula/unit scale as the cover art (360 units wide).

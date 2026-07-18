@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated, DeviceEventEmitter, Dimensions, Keyboard, Linking, PanResponder, Platform,
+  Animated, DeviceEventEmitter, Dimensions, Keyboard, LayoutAnimation, Linking, PanResponder, Platform,
   Pressable, ScrollView, Share, StyleSheet,
   Text, TextInput, TouchableOpacity, View, useColorScheme,
   type ColorValue,
@@ -45,9 +45,9 @@ const SHEET_FULL = SCREEN_H;
 // already-placed label.
 
 // The default whole-US view (latitudeDelta 35) shows no labels regardless —
-// that resting state should read as dots-only. A small zoom in past this hands
-// off to the declutter pass above.
-const LABEL_ZOOM_GATE = 25;
+// that resting state should read as dots-only. Just a touch of zoom past this
+// hands off to the declutter pass above.
+const LABEL_ZOOM_GATE = 34.5;
 // Horizontal gap (px) between a dot's coordinate and where its label pill starts.
 // Clears the unselected halo (max radius 13); a selected dot's larger halo (17)
 // tucks slightly under the pill's rounded corner, which reads fine since only
@@ -410,6 +410,11 @@ const FILTERS: Array<{ key: FilterStatus; dot: ColorValue; label: string }> = [
   { key: 'notVisited', dot: UNVISITED, label: 'TO GO'  },
 ];
 
+// Collapsed by default (a single chip showing the active filter) so it doesn't
+// permanently occupy the whole top row — tapping it grows the chip rightward
+// into the full four-way segmented row; picking an option (even the already-
+// active one, so tapping it is also how you close without changing anything)
+// collapses it straight back.
 function FilterPill({
   active, counts, onSelect,
 }: {
@@ -417,12 +422,34 @@ function FilterPill({
   counts: Record<FilterStatus, number>;
   onSelect: (f: FilterStatus) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const animate = () =>
+    LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
+
+  if (!expanded) {
+    const activeFilter = FILTERS.find(f => f.key === active)!;
+    return (
+      <TouchableOpacity
+        onPress={() => { animate(); setExpanded(true); }}
+        activeOpacity={0.75}
+        style={styles.pillCollapsed}
+      >
+        <View style={[styles.pillDot, { backgroundColor: activeFilter.dot }]} />
+        <Text style={styles.pillCollapsedText} numberOfLines={1}>
+          {counts[active]} {activeFilter.label}
+        </Text>
+        <Ionicons name="chevron-down" size={12} color={C.inkMute} />
+      </TouchableOpacity>
+    );
+  }
+
   return (
-    <View style={styles.pill}>
+    <View style={[styles.pill, { alignSelf: 'stretch' }]}>
       {FILTERS.map((f, i) => (
         <View key={f.key} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
           <TouchableOpacity
-            onPress={() => onSelect(f.key)}
+            onPress={() => { onSelect(f.key); animate(); setExpanded(false); }}
             activeOpacity={0.7}
             style={[styles.pillBtn, styles.pillBtnFlex, active === f.key && styles.pillBtnActive]}
           >
@@ -1634,6 +1661,10 @@ export default function MapScreen() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [selectedPark, setSelectedPark] = useState<ParkForMap | null>(null);
   const [loading, setLoading]           = useState(true);
+  // Kept mounted a beat past `loading` going false so the compass spinner can
+  // fade out instead of popping off instantly.
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(true);
+  const loadingOpacity = useRef(new Animated.Value(1)).current;
   const [mapPressKey, setMapPressKey]   = useState(0);
   const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
   const isOnline = useIsOnline();
@@ -1812,6 +1843,19 @@ export default function MapScreen() {
   // Parks are static — load once on mount. Visits change — reload on every focus.
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Fades the compass spinner out on completion instead of popping it off —
+  // stays mounted through the animation, then unmounts once fully transparent.
+  useEffect(() => {
+    if (loading) {
+      setShowLoadingOverlay(true);
+      loadingOpacity.setValue(1);
+    } else {
+      Animated.timing(loadingOpacity, {
+        toValue: 0, duration: 300, useNativeDriver: true,
+      }).start(({ finished }) => { if (finished) setShowLoadingOverlay(false); });
+    }
+  }, [loading, loadingOpacity]);
+
   const loadVisitsRef = useRef(loadVisits);
   loadVisitsRef.current = loadVisits;
   useFocusEffect(useCallback(() => { loadVisitsRef.current(); }, []));
@@ -1959,7 +2003,10 @@ export default function MapScreen() {
         </View>
       )}
 
-      <View style={[styles.filterPillWrap, { top: insets.top + (offlineFetchedAt ? 96 : 60) }]}>
+      <View
+        style={[styles.filterPillWrap, { top: insets.top + (offlineFetchedAt ? 96 : 60) }]}
+        pointerEvents="box-none"
+      >
         <FilterPill
           active={filterStatus}
           counts={counts}
@@ -1967,10 +2014,24 @@ export default function MapScreen() {
         />
       </View>
 
-      {loading && (
-        <View style={styles.mapLoadingOverlay} pointerEvents="none">
-          <CompassSpinner size={36} dark />
+      {/* Labels toggle — sits top-right, below the filter row */}
+      <TouchableOpacity
+        style={[styles.mapControlBtn, styles.labelToggleTopRight, { top: insets.top + (offlineFetchedAt ? 140 : 104) }]}
+        onPress={() => setLabelsEnabled(v => !v)}
+        activeOpacity={0.75}
+      >
+        <View style={styles.mapLabelToggleIcon}>
+          <Ionicons name="text" size={16} color={dyn('#4A4535', '#F0EAD9')} />
+          {!labelsEnabled && (
+            <View style={[styles.mapLabelToggleSlash, { backgroundColor: dyn('#4A4535', '#F0EAD9') }]} />
+          )}
         </View>
+      </TouchableOpacity>
+
+      {showLoadingOverlay && (
+        <Animated.View style={[styles.mapLoadingOverlay, { opacity: loadingOpacity }]} pointerEvents="none">
+          <CompassSpinner size={36} dark />
+        </Animated.View>
       )}
 
       {liveSelectedPark && token && (
@@ -2000,18 +2061,6 @@ export default function MapScreen() {
         </TouchableOpacity>
         <TouchableOpacity style={styles.mapControlBtn} onPress={goHome} activeOpacity={0.75}>
           <Ionicons name="home-outline" size={14} color={dyn('#4A4535', '#F0EAD9')} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.mapControlBtn}
-          onPress={() => setLabelsEnabled(v => !v)}
-          activeOpacity={0.75}
-        >
-          <View style={styles.mapLabelToggleIcon}>
-            <Ionicons name="text" size={16} color={dyn('#4A4535', '#F0EAD9')} />
-            {!labelsEnabled && (
-              <View style={[styles.mapLabelToggleSlash, { backgroundColor: dyn('#4A4535', '#F0EAD9') }]} />
-            )}
-          </View>
         </TouchableOpacity>
       </Animated.View>
 
@@ -2158,13 +2207,36 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-45deg' }],
   },
 
-  // Filter pill
+  // Filter pill — flex-start so the collapsed chip hugs the left edge instead of
+  // stretching full-width; the expanded row opts back into full width itself via
+  // alignSelf: 'stretch' (see FilterPill).
   filterPillWrap: {
     position: 'absolute',
     left: 10,
     right: 10,
-    alignItems: 'stretch',
+    alignItems: 'flex-start',
     zIndex: 20,
+  },
+  pillCollapsed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: dyn('rgba(255,251,241,0.92)', 'rgba(32,29,23,0.92)'),
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 100,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  pillCollapsedText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.ink,
   },
   mapControls: {
     position: 'absolute',
@@ -2182,6 +2254,11 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  labelToggleTopRight: {
+    position: 'absolute',
+    right: 14,
+    zIndex: 20,
   },
   loadingWrap: {
     position: 'absolute',

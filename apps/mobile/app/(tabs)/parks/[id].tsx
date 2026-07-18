@@ -473,6 +473,7 @@ export default function ParkDetailScreen() {
               visit_companion_count: v?.companions?.length ?? null,
               visit_companion_names: null,
               visit_highlight: v?.highlight ?? null,
+              visit_title: v?.title ?? null,
             } as FeedPost;
           });
         setMyParkPosts(merged);
