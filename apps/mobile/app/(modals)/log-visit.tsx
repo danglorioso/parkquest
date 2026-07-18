@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, dyn, useColors, useReassertThemeOnUnmount } from '@/lib/palette';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { showToast } from '@/lib/toast';
 import { loadRawDrafts, upsertRawDraft, deleteRawDraft, type SavedDraft as SharedSavedDraft } from '@/lib/drafts';
@@ -2563,7 +2564,8 @@ export default function LogVisitModal() {
           <Text style={styles.modalTitle}>{isEditing ? 'Edit visit' : 'Log a visit'}</Text>
         </View>
         <TouchableOpacity onPress={handleCancel} style={styles.modalClose} hitSlop={8}>
-          <Ionicons name="close" size={16} color={C.inkSoft} />
+          <GlassIconBg />
+          <Ionicons name="close" size={22} color={C.inkSoft} />
         </TouchableOpacity>
       </View>
 
@@ -2797,10 +2799,12 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.5, lineHeight: 30,
   },
+  // Matches SearchOverlay's closeBtn (44pt Liquid Glass circle) — GlassIconBg
+  // needs overflow hidden and no backgroundColor of its own.
   modalClose: {
     flexShrink: 0,
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: C.surfaceAlt,
+    width: 44, height: 44, borderRadius: 22,
+    overflow: 'hidden',
     borderWidth: 0.5, borderColor: C.hairline,
     alignItems: 'center', justifyContent: 'center',
   },

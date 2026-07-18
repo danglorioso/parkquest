@@ -39,14 +39,49 @@ import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
 
-// Average luminance of an image, decoded from a 1x1 blurhash's DC component —
-// the four base83 chars after the header ARE the mean sRGB color, so this
-// needs no pixel access and no new dependencies.
+// Local luminance of an image at a normalized (x, y) point, decoded from a
+// spatial blurhash by evaluating the full DCT — no pixel access and no new
+// dependencies. Lets each header button pick its ink from the region of the
+// cover actually behind it instead of the whole-image average (a bright sky
+// on the right shouldn't force dark ink on a button over dark trees on the
+// left). Positions are approximate — the hash is in source-image space and
+// the hero is cover-cropped — but blurhash is so low-pass it doesn't matter.
 const B83 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#$%*+,-.:;=?@[]^_{|}~';
-function blurhashLuma(hash: string): number {
-  let v = 0;
-  for (const c of hash.slice(2, 6)) v = v * 83 + B83.indexOf(c);
-  return (0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255)) / 255;
+function srgbToLinear(c: number): number {
+  const v = c / 255;
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+}
+function linearToSrgb(v: number): number {
+  const c = Math.max(0, Math.min(1, v));
+  return c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055;
+}
+function blurhashLumaAt(hash: string, x: number, y: number): number {
+  const b83 = (s: string) => { let v = 0; for (const ch of s) v = v * 83 + B83.indexOf(ch); return v; };
+  const sizeFlag = B83.indexOf(hash[0]);
+  const numX = (sizeFlag % 9) + 1;
+  const numY = Math.floor(sizeFlag / 9) + 1;
+  const maxAc = (B83.indexOf(hash[1]) + 1) / 166;
+  // AC values are quantized to 19 levels per channel with a signed-square curve
+  const ac = (q: number) => { const t = (q - 9) / 9; return Math.sign(t) * t * t * maxAc; };
+  let r = 0, g = 0, b = 0;
+  for (let j = 0; j < numY; j++) {
+    for (let i = 0; i < numX; i++) {
+      const basis = Math.cos(Math.PI * i * x) * Math.cos(Math.PI * j * y);
+      const idx = i + j * numX;
+      if (idx === 0) {
+        const v = b83(hash.slice(2, 6));
+        r += srgbToLinear((v >> 16) & 255) * basis;
+        g += srgbToLinear((v >> 8) & 255) * basis;
+        b += srgbToLinear(v & 255) * basis;
+      } else {
+        const v = b83(hash.slice(4 + idx * 2, 6 + idx * 2));
+        r += ac(Math.floor(v / 361)) * basis;
+        g += ac(Math.floor(v / 19) % 19) * basis;
+        b += ac(v % 19) * basis;
+      }
+    }
+  }
+  return 0.299 * linearToSrgb(r) + 0.587 * linearToSrgb(g) + 0.114 * linearToSrgb(b);
 }
 
 // Hero collapses from this height down to this as the page scrolls, and
@@ -579,22 +614,37 @@ export default function ParkDetailScreen() {
   }, [heroImage]);
 
   // Header icons flip to dark ink over bright covers (sky-heavy photos) —
-  // the glass itself is untouched. Luminance comes from a 1x1 blurhash of
-  // the current hero image (see blurhashLuma above). Only meaningful where
-  // real Liquid Glass renders; the fallback circle is a fixed dark fill, so
-  // light ink stays correct there.
-  const [heroIsLight, setHeroIsLight] = useState(false);
+  // the glass itself is untouched. Each button samples the cover region
+  // behind its own center from a 4x3 spatial blurhash (see blurhashLumaAt
+  // above), so a button over bright sky can go dark while one over dark
+  // cliffs stays light. Slots: back (left), then the right-side trio's
+  // three 44pt-plus-8-gap positions. Only meaningful where real Liquid
+  // Glass renders; the fallback circle is a fixed dark fill, so light ink
+  // stays correct there.
+  const [headerLight, setHeaderLight] = useState({ back: false, slot1: false, slot2: false, slot3: false });
   useEffect(() => {
     let cancelled = false;
-    if (!heroImage) { setHeroIsLight(false); return; }
-    ExpoImage.generateBlurhashAsync(heroImage, [1, 1])
+    if (!heroImage) { setHeaderLight({ back: false, slot1: false, slot2: false, slot3: false }); return; }
+    ExpoImage.generateBlurhashAsync(heroImage, [4, 3])
       .then(hash => {
-        if (!cancelled && hash) setHeroIsLight(blurhashLuma(hash) > 0.6);
+        if (cancelled || !hash) return;
+        const y = Math.min((insets.top + 30) / HERO_MAX, 1); // button centers
+        const lightAt = (px: number) => blurhashLumaAt(hash, px / SW, y) > 0.6;
+        setHeaderLight({
+          back:  lightAt(38),
+          slot1: lightAt(SW - 142),
+          slot2: lightAt(SW - 90),
+          slot3: lightAt(SW - 38),
+        });
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [heroImage]);
-  const heroInk = heroIsLight && liquidGlassAvailable ? '#26231C' : '#FFFBF1';
+  }, [heroImage, insets.top]);
+  const inkFor = (light: boolean) => light && liquidGlassAvailable ? '#26231C' : '#FFFBF1';
+  const backInk = inkFor(headerLight.back);
+  const slot1Ink = inkFor(headerLight.slot1);
+  const slot2Ink = inkFor(headerLight.slot2);
+  const slot3Ink = inkFor(headerLight.slot3);
   // "..." context-menu icon tint — menu surface follows the system scheme.
   const menuInk = isDark ? '#FFFBF1' : '#26231C';
 
@@ -958,7 +1008,7 @@ export default function ParkDetailScreen() {
         hitSlop={8}
       >
         <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-        <Ionicons name="chevron-back" size={22} color={heroInk} />
+        <Ionicons name="chevron-back" size={22} color={backInk} />
       </GrowTouchable>
 
       {/* Expanded actions — full-size buttons shown over the cover photo.
@@ -983,14 +1033,16 @@ export default function ParkDetailScreen() {
             opacity: actionsAnim.interpolate({ inputRange: [0, 0.7], outputRange: [1, 0], extrapolate: 'clamp' as const }),
             transform: [{ translateX: actionsAnim.interpolate({ inputRange: [0, 1], outputRange: [0, dist] }) }],
           });
-          const logVisitBtn = (
+          // logVisitBtn lands in slot1 when visited, slot2 otherwise, so it
+          // takes its slot's ink as a param.
+          const logVisitBtn = (ink: string) => (
             <GrowTouchable
               style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
               onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
               hitSlop={8}
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="checkmark-outline" size={22} color={heroInk} />
+              <Ionicons name="checkmark-outline" size={25} color={ink} />
             </GrowTouchable>
           );
           const secondBtn = parkStatus === 'visited' ? (
@@ -1000,10 +1052,10 @@ export default function ParkDetailScreen() {
               hitSlop={8}
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="pencil-outline" size={19} color={heroInk} />
+              <Ionicons name="pencil-outline" size={19} color={slot2Ink} />
             </GrowTouchable>
-          ) : logVisitBtn;
-          const firstBtn = parkStatus === 'visited' ? logVisitBtn : (
+          ) : logVisitBtn(slot2Ink);
+          const firstBtn = parkStatus === 'visited' ? logVisitBtn(slot1Ink) : (
             <GrowTouchable
               style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
               onPress={toggleBucketList}
@@ -1012,9 +1064,9 @@ export default function ParkDetailScreen() {
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
               {bucketBusy ? (
-                <ActivityIndicator size="small" color={heroInk} />
+                <ActivityIndicator size="small" color={slot1Ink} />
               ) : (
-                <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={22} color={onBucket ? C.bucket : heroInk} />
+                <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={22} color={onBucket ? C.bucket : slot1Ink} />
               )}
             </GrowTouchable>
           );
@@ -1029,7 +1081,7 @@ export default function ParkDetailScreen() {
                   hitSlop={8}
                 >
                   <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-                  <Ionicons name="share-outline" size={22} color={heroInk} />
+                  <Ionicons name="share-outline" size={22} color={slot3Ink} />
                 </GrowTouchable>
               </Animated.View>
             </>
@@ -1099,9 +1151,9 @@ export default function ParkDetailScreen() {
                 alpha < 1 on a GlassView ancestor disables the material. */}
             <TouchableOpacity hitSlop={8} disabled={bucketBusy} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', opacity: showHeaderMenu ? 0.6 : 1 }}>
               {bucketBusy ? (
-                <ActivityIndicator size="small" color={heroInk} />
+                <ActivityIndicator size="small" color={slot3Ink} />
               ) : (
-                <Ionicons name="ellipsis-horizontal" size={22} color={heroInk} />
+                <Ionicons name="ellipsis-horizontal" size={22} color={slot3Ink} />
               )}
             </TouchableOpacity>
           </MenuView>
@@ -1554,7 +1606,7 @@ export default function ParkDetailScreen() {
                 activeOpacity={0.8}
               >
                 <GlassIconBg borderRadius={999} tintColor={C.primary} fallbackColor={C.primary} />
-                <Ionicons name="checkmark" size={18} color="#FFFBF1" />
+                <Ionicons name="checkmark" size={21} color="#FFFBF1" />
                 <Text style={styles.actionBtnText}>Log another visit</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1576,7 +1628,7 @@ export default function ParkDetailScreen() {
                 activeOpacity={0.8}
               >
                 <GlassIconBg borderRadius={999} tintColor={C.primary} fallbackColor={C.primary} />
-                <Ionicons name="checkmark" size={18} color="#FFFBF1" />
+                <Ionicons name="checkmark" size={21} color="#FFFBF1" />
                 <Text style={styles.actionBtnText}>Log a visit</Text>
               </TouchableOpacity>
               {/* Bucket toggle — icon-only glass circle, the AllTrails
@@ -1734,6 +1786,8 @@ const styles = StyleSheet.create({
     width: 110,
     height: 72,
     borderRadius: 10,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
     overflow: 'hidden',
   },
 

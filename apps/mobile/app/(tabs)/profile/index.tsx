@@ -422,7 +422,6 @@ export default function ProfileScreen() {
             onPress={handleShare}
             hitSlop={8}
           >
-            <GlassIconBg onMedia tintColor="rgba(201,169,74,0.16)" />
             <Ionicons name="share-outline" size={20} color="#C9A94A" />
           </TouchableOpacity>
 
