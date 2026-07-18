@@ -27,13 +27,14 @@ export interface LightboxImage {
 // its neighbors, and un-zooms itself the moment it's swiped off-screen ───────
 
 function LightboxPage({
-  image, active, onRequestClose, onZoomChange, onTouch,
+  image, active, onRequestClose, onZoomChange, onTouch, onToggleChrome,
 }: {
   image: LightboxImage;
   active: boolean;
   onRequestClose: () => void;
   onZoomChange: (zoomed: boolean) => void;
   onTouch: () => void;
+  onToggleChrome: () => void;
 }) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -71,11 +72,13 @@ function LightboxPage({
   }, []);
 
   const handleTapAt = useCallback((x: number, y: number) => {
-    if (zoomed) return; // must un-zoom first — a stray tap shouldn't dismiss a zoomed-in view
     const r = imageRect();
     const inside = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-    if (!inside) onRequestClose();
-  }, [zoomed, imageRect, onRequestClose]);
+    // On the image: toggle the chrome (arrows/close/dots) instead of closing.
+    if (inside) { onToggleChrome(); return; }
+    if (zoomed) return; // must un-zoom first — a stray tap shouldn't dismiss a zoomed-in view
+    onRequestClose();
+  }, [zoomed, imageRect, onRequestClose, onToggleChrome]);
 
   const pinch = Gesture.Pinch()
     .runOnJS(true)
@@ -118,7 +121,6 @@ function LightboxPage({
     .maxDuration(250)
     .onEnd((e, success) => {
       if (!success) return;
-      onTouch();
       handleTapAt(e.x, e.y);
     });
 
@@ -203,6 +205,21 @@ export function ImageLightbox({
     }, ARROW_FADE_DELAY);
   }, [chromeOpacity]);
 
+  // Tap-to-hide: chromeVisible flips immediately (the close button unmounts
+  // and taps fall through right away) while the rest fades out fast.
+  const hideChrome = useCallback(() => {
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    setChromeVisible(false);
+    Animated.timing(chromeOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+  }, [chromeOpacity]);
+
+  const chromeVisibleRef = useRef(chromeVisible);
+  chromeVisibleRef.current = chromeVisible;
+  const toggleChrome = useCallback(() => {
+    if (chromeVisibleRef.current) hideChrome();
+    else showChromeBriefly();
+  }, [hideChrome, showChromeBriefly]);
+
   useEffect(() => {
     showChromeBriefly();
     return () => { if (fadeTimer.current) clearTimeout(fadeTimer.current); };
@@ -211,9 +228,12 @@ export function ImageLightbox({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={handleClose}>
-      <View style={styles.bg} onTouchStart={showChromeBriefly}>
+      <View style={styles.bg}>
         {/* Fullscreen pager — swipe anywhere to change image, wraps at the ends.
-            Disabled while zoomed in so a pan-to-inspect never also flips pages. */}
+            Disabled while zoomed in so a pan-to-inspect never also flips pages.
+            Chrome wakes on swipes/pinches/pans, but NOT on every touch — a tap
+            on the image toggles it, so a blanket onTouchStart would fight the
+            hide half of that toggle. */}
         <FlatList
           ref={listRef}
           data={loopData}
@@ -222,6 +242,7 @@ export function ImageLightbox({
           pagingEnabled
           scrollEnabled={!zoomed}
           showsHorizontalScrollIndicator={false}
+          onScrollBeginDrag={showChromeBriefly}
           style={StyleSheet.absoluteFill}
           initialScrollIndex={initialListIndex}
           getItemLayout={(_, index) => ({ length: W, offset: W * index, index })}
@@ -245,6 +266,7 @@ export function ImageLightbox({
               onRequestClose={handleClose}
               onZoomChange={setZoomed}
               onTouch={showChromeBriefly}
+              onToggleChrome={toggleChrome}
             />
           )}
         />
@@ -259,15 +281,18 @@ export function ImageLightbox({
           </Animated.View>
         )}
 
-        {/* Close */}
-        <TouchableOpacity
-          style={[styles.close, { top: insets.top + 12 }]}
-          onPress={handleClose}
-          hitSlop={16}
-        >
-          <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-          <Ionicons name="close" size={22} color="#FFFBF1" />
-        </TouchableOpacity>
+        {/* Close — mounted/unmounted rather than opacity-faded: a GlassView
+            living inside an alpha < 1 ancestor renders no glass material. */}
+        {chromeVisible && (
+          <TouchableOpacity
+            style={[styles.close, { top: insets.top + 12 }]}
+            onPress={handleClose}
+            hitSlop={16}
+          >
+            <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+            <Ionicons name="close" size={22} color="#FFFBF1" />
+          </TouchableOpacity>
+        )}
 
         {/* Prev / next arrows — fade after a few seconds of inactivity */}
         {n > 1 && (
@@ -293,20 +318,26 @@ export function ImageLightbox({
 
         {/* Caption */}
         {images[idx]?.title ? (
-          <View style={[styles.caption, { bottom: insets.bottom + 64 }]} pointerEvents="none">
+          <Animated.View
+            style={[styles.caption, { bottom: insets.bottom + 64, opacity: chromeOpacity }]}
+            pointerEvents="none"
+          >
             <Text style={styles.captionText} numberOfLines={2}>{images[idx].title}</Text>
-          </View>
+          </Animated.View>
         ) : null}
 
         {/* Dot strip */}
         {n > 1 && (
-          <View style={[styles.dots, { bottom: insets.bottom + 28 }]}>
+          <Animated.View
+            pointerEvents={chromeVisible ? 'auto' : 'none'}
+            style={[styles.dots, { bottom: insets.bottom + 28, opacity: chromeOpacity }]}
+          >
             {images.map((_, k) => (
               <TouchableOpacity key={k} onPress={() => goTo(k)}>
                 <View style={[styles.dot, k === idx ? styles.dotActive : styles.dotInactive]} />
               </TouchableOpacity>
             ))}
-          </View>
+          </Animated.View>
         )}
       </View>
     </Modal>
