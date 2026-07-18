@@ -411,27 +411,24 @@ const FILTERS: Array<{ key: FilterStatus; dot: ColorValue; label: string }> = [
 ];
 
 // Collapsed by default (a single chip showing the active filter) so it doesn't
-// permanently occupy the whole top row — tapping it grows the chip rightward
-// into the full four-way segmented row; picking an option (even the already-
-// active one, so tapping it is also how you close without changing anything)
-// collapses it straight back.
+// permanently occupy the map — tapping it drops a menu of the four options
+// below the chip; picking one (even the already-active one, so tapping it is
+// also how you close without changing anything) closes the menu.
 function FilterPill({
-  active, counts, onSelect,
+  active, counts, expanded, onToggle, onSelect,
 }: {
   active: FilterStatus;
   counts: Record<FilterStatus, number>;
+  expanded: boolean;
+  onToggle: () => void;
   onSelect: (f: FilterStatus) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const activeFilter = FILTERS.find(f => f.key === active)!;
 
-  const animate = () =>
-    LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
-
-  if (!expanded) {
-    const activeFilter = FILTERS.find(f => f.key === active)!;
-    return (
+  return (
+    <View>
       <TouchableOpacity
-        onPress={() => { animate(); setExpanded(true); }}
+        onPress={onToggle}
         activeOpacity={0.75}
         style={styles.pillCollapsed}
       >
@@ -439,34 +436,36 @@ function FilterPill({
         <Text style={styles.pillCollapsedText} numberOfLines={1}>
           {counts[active]} {activeFilter.label}
         </Text>
-        <Ionicons name="chevron-down" size={12} color={C.inkMute} />
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={12} color={C.inkMute} />
       </TouchableOpacity>
-    );
-  }
 
-  return (
-    <View style={[styles.pill, { alignSelf: 'stretch' }]}>
-      {FILTERS.map((f, i) => (
-        <View key={f.key} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-          <TouchableOpacity
-            onPress={() => { onSelect(f.key); animate(); setExpanded(false); }}
-            activeOpacity={0.7}
-            style={[styles.pillBtn, styles.pillBtnFlex, active === f.key && styles.pillBtnActive]}
-          >
-            <View style={[styles.pillDot, { backgroundColor: f.dot }]} />
-            <Text style={[styles.pillCount, active === f.key && styles.pillCountActive]}>
-              {counts[f.key]}
-            </Text>
-            <Text
-              numberOfLines={1}
-              style={[styles.pillLabel, active === f.key && styles.pillLabelActive]}
+      {expanded && (
+        <View style={styles.pillDropdown}>
+          {FILTERS.map((f, i) => (
+            <TouchableOpacity
+              key={f.key}
+              onPress={() => onSelect(f.key)}
+              activeOpacity={0.7}
+              style={[
+                styles.pillDropdownRow,
+                i < FILTERS.length - 1 && styles.pillDropdownRowBorder,
+                active === f.key && styles.pillBtnActive,
+              ]}
             >
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-          {i < FILTERS.length - 1 && <View style={styles.pillDivider} />}
+              <View style={[styles.pillDot, { backgroundColor: f.dot }]} />
+              <Text style={[styles.pillCount, active === f.key && styles.pillCountActive]}>
+                {counts[f.key]}
+              </Text>
+              <Text style={[styles.pillLabel, active === f.key && styles.pillLabelActive]}>
+                {f.label}
+              </Text>
+              {active === f.key && (
+                <Ionicons name="checkmark" size={14} color={C.ink} style={styles.pillDropdownCheck} />
+              )}
+            </TouchableOpacity>
+          ))}
         </View>
-      ))}
+      )}
     </View>
   );
 }
@@ -1685,6 +1684,7 @@ export default function MapScreen() {
   // on a re-render) since this one exists purely to trigger the useMemo.
   const [labelRegion, setLabelRegion] = useState(currentRegionRef.current);
   const [labelsEnabled, setLabelsEnabled] = useState(true);
+  const [filterExpanded, setFilterExpanded] = useState(false);
 
   const counts: Record<FilterStatus, number> = {
     all:        parks.length,
@@ -2003,6 +2003,10 @@ export default function MapScreen() {
         </View>
       )}
 
+      {filterExpanded && (
+        <Pressable style={styles.filterBackdrop} onPress={() => setFilterExpanded(false)} />
+      )}
+
       <View
         style={[styles.filterPillWrap, { top: insets.top + (offlineFetchedAt ? 96 : 60) }]}
         pointerEvents="box-none"
@@ -2010,23 +2014,33 @@ export default function MapScreen() {
         <FilterPill
           active={filterStatus}
           counts={counts}
-          onSelect={f => { setFilterStatus(f); setSelectedPark(null); }}
+          expanded={filterExpanded}
+          onToggle={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
+            setFilterExpanded(v => !v);
+          }}
+          onSelect={f => {
+            LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
+            setFilterStatus(f);
+            setSelectedPark(null);
+            setFilterExpanded(false);
+          }}
         />
-      </View>
 
-      {/* Labels toggle — sits top-right, below the filter row */}
-      <TouchableOpacity
-        style={[styles.mapControlBtn, styles.labelToggleTopRight, { top: insets.top + (offlineFetchedAt ? 140 : 104) }]}
-        onPress={() => setLabelsEnabled(v => !v)}
-        activeOpacity={0.75}
-      >
-        <View style={styles.mapLabelToggleIcon}>
-          <Ionicons name="text" size={16} color={dyn('#4A4535', '#F0EAD9')} />
-          {!labelsEnabled && (
-            <View style={[styles.mapLabelToggleSlash, { backgroundColor: dyn('#4A4535', '#F0EAD9') }]} />
-          )}
-        </View>
-      </TouchableOpacity>
+        {/* Labels toggle — sits next to the filter dropdown trigger */}
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          onPress={() => setLabelsEnabled(v => !v)}
+          activeOpacity={0.75}
+        >
+          <View style={styles.mapLabelToggleIcon}>
+            <Ionicons name="text" size={16} color={dyn('#4A4535', '#F0EAD9')} />
+            {!labelsEnabled && (
+              <View style={[styles.mapLabelToggleSlash, { backgroundColor: dyn('#4A4535', '#F0EAD9') }]} />
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
 
       {showLoadingOverlay && (
         <Animated.View style={[styles.mapLoadingOverlay, { opacity: loadingOpacity }]} pointerEvents="none">
@@ -2207,15 +2221,24 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-45deg' }],
   },
 
-  // Filter pill — flex-start so the collapsed chip hugs the left edge instead of
-  // stretching full-width; the expanded row opts back into full width itself via
-  // alignSelf: 'stretch' (see FilterPill).
+  // Filter pill row — left-aligned trigger chip + label toggle button side by
+  // side; the dropdown menu opens below the trigger chip (see pillDropdown).
   filterPillWrap: {
     position: 'absolute',
     left: 10,
     right: 10,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     zIndex: 20,
+  },
+  filterBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 19,
   },
   pillCollapsed: {
     flexDirection: 'row',
@@ -2238,6 +2261,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: C.ink,
   },
+  pillDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    marginTop: 6,
+    minWidth: 170,
+    backgroundColor: dyn('rgba(255,251,241,0.97)', 'rgba(32,29,23,0.97)'),
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 16,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  pillDropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  pillDropdownRowBorder: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: C.hairline,
+  },
+  pillDropdownCheck: {
+    marginLeft: 'auto',
+  },
   mapControls: {
     position: 'absolute',
     right: 14,
@@ -2254,11 +2309,6 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  labelToggleTopRight: {
-    position: 'absolute',
-    right: 14,
-    zIndex: 20,
   },
   loadingWrap: {
     position: 'absolute',
@@ -2283,36 +2333,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.10,
     shadowRadius: 12,
     elevation: 6,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    maxWidth: '100%',
-    backgroundColor: dyn('rgba(255,251,241,0.92)', 'rgba(32,29,23,0.92)'),
-    borderWidth: 0.5,
-    borderColor: C.hairline,
-    borderRadius: 100,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  pillBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 1,
-    minWidth: 0,
-    borderRadius: 100,
-    paddingHorizontal: 5,
-    paddingVertical: 5,
-    gap: 4,
-  },
-  pillBtnFlex: {
-    flex: 1,
-    justifyContent: 'center',
   },
   pillBtnActive: {
     backgroundColor: dyn('rgba(31,61,46,0.10)', 'rgba(240,234,217,0.16)'),
@@ -2341,12 +2361,6 @@ const styles = StyleSheet.create({
   },
   pillLabelActive: {
     color: C.ink,
-  },
-  pillDivider: {
-    width: 1,
-    height: 14,
-    backgroundColor: C.hairline,
-    marginHorizontal: 6,
   },
 
   // Bottom sheet
