@@ -467,7 +467,9 @@ export default function ProfileScreen() {
             ] as { label: string; value: string }[]).map(s => (
               <View key={s.label} style={styles.passportStatItem}>
                 <Text style={styles.passportStatLabel}>{s.label}</Text>
-                <Text style={styles.passportStatVal}>{s.value}</Text>
+                <Text style={styles.passportStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                  {s.value}
+                </Text>
               </View>
             ))}
           </View>
@@ -866,7 +868,7 @@ const styles = StyleSheet.create({
     fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.8)', letterSpacing: 1.2,
   },
   passportStatVal: {
-    fontSize: 13, fontWeight: '700', color: GOLD, marginTop: 2, letterSpacing: 0.2,
+    fontSize: 26, fontWeight: '800', color: GOLD, marginTop: 2, letterSpacing: -0.3,
     textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
   passportProgress: {

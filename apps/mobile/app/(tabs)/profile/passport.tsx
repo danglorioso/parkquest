@@ -499,7 +499,9 @@ export default function PassportScreen() {
                               {...(s.onPress ? { onPress: s.onPress, activeOpacity: 0.6 } : {})}
                             >
                               <Text style={st.infoStatLabel}>{s.label}</Text>
-                              <Text style={st.infoStatVal}>{s.value}</Text>
+                              <Text style={st.infoStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                                {s.value}
+                              </Text>
                             </Wrap>
                           );
                         })}
@@ -878,10 +880,10 @@ const st = StyleSheet.create({
     opacity: 0.85,
   },
   infoStatVal: {
-    fontSize: 18,
+    fontSize: 30,
     fontWeight: '800',
     color: GOLD,
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
     marginTop: 2,
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
