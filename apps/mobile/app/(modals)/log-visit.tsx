@@ -1323,6 +1323,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   onClose: () => void;
 }) {
   const C = useColors();
+  const insets = useSafeAreaInsets();
   // Slide only the sheet; the modal itself fades so the backdrop doesn't ride up
   const slide = useRef(new Animated.Value(400)).current;
 
@@ -1339,7 +1340,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <Pressable style={styles.dateBackdrop} onPress={onClose} />
-      <Animated.View style={[styles.dateSheet, { transform: [{ translateY: slide }] }]}>
+      <Animated.View style={[styles.dateSheet, { paddingBottom: Math.max(insets.bottom, 16) + 16, transform: [{ translateY: slide }] }]}>
         <View style={styles.dateSheetHeader}>
           <View style={{ width: 48 }} />
           <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>{title}</Text>
@@ -3015,7 +3016,6 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: C.surface, borderTopLeftRadius: 18, borderTopRightRadius: 18,
     borderWidth: 0.5, borderColor: C.hairline,
-    paddingBottom: 40,
   },
   dateSheetHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
