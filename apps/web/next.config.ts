@@ -12,6 +12,21 @@ const nextConfig: NextConfig = {
       '../../node_modules/@img/sharp-libvips-linux-x64/**/*',
     ],
   },
+  async redirects() {
+    return [
+      // Short marketing links to the App Store listing
+      {
+        source: '/install',
+        destination: 'https://apps.apple.com/us/app/parkquest-national-park-log/id6778208311',
+        permanent: false,
+      },
+      {
+        source: '/download',
+        destination: 'https://apps.apple.com/us/app/parkquest-national-park-log/id6778208311',
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       // Next ignores dot-folders in app/, so the Apple Universal Links file

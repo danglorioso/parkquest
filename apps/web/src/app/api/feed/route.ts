@@ -19,6 +19,8 @@ export async function GET(request: Request) {
     // Optional: restrict to a single author (profile pages). Same visibility
     // rules apply, so strangers only ever see the author's public posts.
     const author = searchParams.get('author');
+    // Optional: restrict to a single park (park page's Community tab).
+    const park = searchParams.get('park');
 
     // Fetch accepted friend IDs
     const friendRows = await db
@@ -80,6 +82,7 @@ export async function GET(request: Request) {
       .where(
         and(
           author ? eq(posts.clerk_user_id, author) : undefined,
+          park ? eq(posts.park_code, park) : undefined,
           blockedIds.length > 0 ? notInArray(posts.clerk_user_id, blockedIds) : undefined,
           reportedPostIds.length > 0 ? notInArray(posts.id, reportedPostIds) : undefined,
           or(

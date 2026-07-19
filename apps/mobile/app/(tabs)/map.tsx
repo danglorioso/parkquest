@@ -112,13 +112,22 @@ type MapRegion = { latitude: number; longitude: number; latitudeDelta: number; l
 // collision test — that view is the map's resting state and should read as
 // dots-only. A small zoom in past LABEL_ZOOM_GATE lifts the gate and lets the
 // declutter pass take over.
-function computeVisibleLabelCodes(parks: ParkForMap[], region: MapRegion, fontScale: number): Set<string> {
+function computeVisibleLabelCodes(
+  parks: ParkForMap[], region: MapRegion, fontScale: number,
+  // Labels visible in the previous pass get first claim on space — so a text
+  // resize (or pan/zoom nudge) never hides a label that still fits just
+  // because a different park happened to come earlier in array order.
+  sticky?: Set<string>,
+): Set<string> {
   if (region.latitudeDelta <= 0 || region.longitudeDelta <= 0) return new Set();
   if (region.latitudeDelta >= LABEL_ZOOM_GATE) return new Set();
   const pxPerDegLat = SCREEN_H / region.latitudeDelta;
   const pxPerDegLon = SCREEN_W / region.longitudeDelta;
 
-  const points = parks.map(p => ({
+  const ordered = sticky?.size
+    ? [...parks.filter(p => sticky.has(p.park_code)), ...parks.filter(p => !sticky.has(p.park_code))]
+    : parks;
+  const points = ordered.map(p => ({
     park: p,
     x: (p.longitude - region.longitude) * pxPerDegLon,
     y: (region.latitude - p.latitude) * pxPerDegLat,
@@ -1706,6 +1715,9 @@ export default function MapScreen() {
   const [labelFontSize, setLabelFontSize] = useState(LABEL_FONT_DEFAULT);
   const [labelMenuOpen, setLabelMenuOpen] = useState(false);
   const [filterExpanded, setFilterExpanded] = useState(false);
+  // Last declutter result — fed back in as the sticky set so still-fitting
+  // labels survive font-size changes and region nudges.
+  const prevVisibleLabelsRef = useRef<Set<string>>(new Set());
 
   const counts: Record<FilterStatus, number> = {
     all:        parks.length,
@@ -1720,7 +1732,14 @@ export default function MapScreen() {
     parks.filter(p => p.status === filterStatus);
 
   const visibleLabelCodes = useMemo(
-    () => computeVisibleLabelCodes(filteredParks, labelRegion, labelFontSize / LABEL_FONT_DEFAULT),
+    () => {
+      const v = computeVisibleLabelCodes(
+        filteredParks, labelRegion, labelFontSize / LABEL_FONT_DEFAULT, prevVisibleLabelsRef.current
+      );
+      prevVisibleLabelsRef.current = v;
+      return v;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [filteredParks, labelRegion, labelFontSize]
   );
 
@@ -2052,7 +2071,7 @@ export default function MapScreen() {
           </TouchableOpacity>
 
           {labelMenuOpen && (
-            <View style={[styles.pillDropdown, { minWidth: 208 }]}>
+            <View style={[styles.pillDropdown, { minWidth: 208, marginTop: 2 }]}>
               <View style={[styles.pillDropdownRow, { paddingVertical: 6 }]}>
                 <Text style={[styles.pillLabel, styles.pillLabelActive]}>Show labels</Text>
                 <Switch

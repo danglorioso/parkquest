@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Alert, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, PanResponder, Platform,
+  ActivityIndicator, Alert, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, KeyboardAvoidingView, LayoutAnimation, Modal, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View, useColorScheme, useWindowDimensions,
 } from 'react-native';
@@ -1308,7 +1308,7 @@ function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
   );
 }
 
-// ── Date sheet (native inline picker in a bottom sheet) ───────────────────────
+// ── Date sheet (custom inline calendar in a bottom sheet) ─────────────────────
 
 function stripTime(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -1326,28 +1326,46 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   const C = useColors();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
-  // Natural height of the inline picker, measured on first layout — used to
-  // crop a constant gray slack strip off its bottom (see below). Locking the
-  // picker to this height matters: shrinking its frame instead makes the
-  // native view resize its background while the grid keeps drawing past it.
-  const [pickerH, setPickerH] = useState<number | null>(null);
-  // Slide only the sheet; the modal itself fades so the backdrop doesn't ride up
+  // Slide only the sheet; the backdrop fades separately.
   const slide = useRef(new Animated.Value(400)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
       slide.setValue(400);
-      Animated.spring(slide, {
-        toValue: 0, useNativeDriver: true,
-        damping: 26, mass: 0.8, stiffness: 220,
-      }).start();
+      backdropOpacity.setValue(0);
+      Animated.parallel([
+        Animated.spring(slide, {
+          toValue: 0, useNativeDriver: true,
+          damping: 26, mass: 0.8, stiffness: 220,
+        }),
+        Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
     }
-  }, [visible, slide]);
+  }, [visible, slide, backdropOpacity]);
+
+  // Plain in-screen overlay, deliberately NOT an RN <Modal>: modal windows
+  // render the sheet's bottom strip semi-transparent (some compositor quirk
+  // verified in the Xcode view debugger — the layer itself, not any child),
+  // which read as a permanent gray band. In-window rendering is clean.
+  if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <Pressable style={styles.dateBackdrop} onPress={onClose} />
-      <Animated.View style={[styles.dateSheet, { paddingBottom: Math.max(insets.bottom, 16) + 16, transform: [{ translateY: slide }] }]}>
+    <View style={[StyleSheet.absoluteFillObject, { zIndex: 300 }]}>
+      <Animated.View style={[styles.dateBackdrop, { opacity: backdropOpacity }]} pointerEvents="none" />
+      <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
+      <Animated.View
+        style={[styles.dateSheet, {
+          backgroundColor: isDark ? '#201D17' : '#FFFBF1',
+          // Corner radius WITHOUT borderWidth — that combination (border +
+          // top-only radii) is what made RN render the sheet's bottom region
+          // semi-transparent, i.e. the infamous gray band. Radius alone is a
+          // plain CALayer cornerRadius and draws clean.
+          borderTopLeftRadius: 18, borderTopRightRadius: 18,
+          paddingBottom: Math.max(insets.bottom, 16) + 16,
+          transform: [{ translateY: slide }],
+        }]}
+      >
         <View style={styles.dateSheetHeader}>
           <View style={{ width: 48 }} />
           <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>{title}</Text>
@@ -1356,40 +1374,28 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
           </TouchableOpacity>
         </View>
         <View style={{ paddingHorizontal: 12, paddingTop: 4, alignItems: 'center' }}>
-          {/* Crop window: 16pt less than the picker's measured natural
-              height, overflow hidden. The picker itself is locked to its
-              full natural height inside, so the native view never resizes —
-              the window just crops the gray slack strip iOS paints under the
-              grid (a private subview that can't be recolored). Only 16 of
-              its ~20pt: some months push the last row's selection circle a
-              few points into the strip, and a deeper crop clipped it. The
-              wrapper hugs the picker's natural width so the parent's
-              alignItems keeps the calendar centered. */}
-          <View style={Platform.OS === 'ios' && pickerH ? { height: pickerH - 16, overflow: 'hidden' } : null}>
-            <DateTimePicker
-              value={value}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              minimumDate={minimumDate}
-              maximumDate={maximumDate}
-              accentColor={C.primary}
-              themeVariant={isDark ? 'dark' : 'light'}
-              style={Platform.OS === 'ios' && pickerH ? { height: pickerH } : undefined}
-              onLayout={e => {
-                const h = e.nativeEvent.layout.height;
-                if (Platform.OS === 'ios' && pickerH == null && h > 100) setPickerH(h);
-              }}
-              onChange={(_, d) => {
-                if (Platform.OS !== 'ios') onClose();
-                if (!d) return;
-                Haptics.selectionAsync();
-                onPick(d);
-              }}
-            />
-          </View>
+          <DateTimePicker
+            value={value}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+            minimumDate={minimumDate}
+            maximumDate={maximumDate}
+            accentColor={C.primary}
+            themeVariant={isDark ? 'dark' : 'light'}
+            onChange={(_, d) => {
+              // Picking a day is the job — close on selection (both
+              // platforms). The wheels don't fire onChange until an actual
+              // date is chosen, so paging months/years keeps the sheet open;
+              // Done remains as the no-change dismiss.
+              onClose();
+              if (!d) return;
+              Haptics.selectionAsync();
+              onPick(d);
+            }}
+          />
         </View>
       </Animated.View>
-    </Modal>
+    </View>
   );
 }
 
@@ -1508,15 +1514,15 @@ function PressableScale({ onPress, disabled, style, containerStyle, children }: 
   );
 }
 
-function StepWhere({ draft, set, parks, onPickPark }: {
+function StepWhere({ draft, set, parks, onPickPark, onOpenPicker }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   parks: ParkInfo[]; onPickPark: () => void;
+  // Opens the date sheet — owned by the screen root, not this step, so the
+  // overlay escapes the step ScrollView (see the DateSheet render up there).
+  onOpenPicker: (which: 'start' | 'end') => void;
 }) {
   const C = useColors();
   const park = parks.find(p => p.park_code === draft.parkCode);
-  // Which date the bottom-sheet picker is editing (null = closed)
-  const [openPicker, setOpenPicker] = useState<'start' | 'end' | null>(null);
-  const today = new Date();
 
   const days = dayCount(draft.startDate, draft.endDate);
 
@@ -1534,26 +1540,6 @@ function StepWhere({ draft, set, parks, onPickPark }: {
 
   return (
     <View>
-      <DateSheet
-        visible={openPicker !== null}
-        title={openPicker === 'end' ? 'End date' : 'Start date'}
-        value={openPicker === 'end'
-          ? (draft.endDate ?? draft.startDate ?? today)
-          : (draft.startDate ?? today)}
-        minimumDate={openPicker === 'end' ? (draft.startDate ?? undefined) : undefined}
-        maximumDate={today}
-        onPick={d => {
-          if (openPicker === 'end') {
-            set('endDate', d);
-          } else {
-            set('startDate', d);
-            // Keep the range valid — an end date before the new start is stale
-            if (draft.endDate && stripTime(draft.endDate) < stripTime(d)) set('endDate', null);
-          }
-        }}
-        onClose={() => setOpenPicker(null)}
-      />
-
       <Reanimated.View entering={FadeInDown.duration(360)} style={{ marginBottom: 24 }}>
         <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Where & when</Text>
       </Reanimated.View>
@@ -1641,7 +1627,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
         <Section title="Dates" tag="required" mb={0}>
           <View style={[styles.card, { paddingVertical: 4 }]}>
             <PressableScale
-              onPress={() => setOpenPicker('start')}
+              onPress={() => onOpenPicker('start')}
               style={[styles.dateRow, { borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft }]}
             >
               <View style={styles.dateIcon}>
@@ -1657,7 +1643,7 @@ function StepWhere({ draft, set, parks, onPickPark }: {
             </PressableScale>
 
             <PressableScale
-              onPress={() => setOpenPicker('end')}
+              onPress={() => onOpenPicker('end')}
               disabled={!draft.startDate}
               style={[styles.dateRow, { opacity: draft.startDate ? 1 : 0.4 }]}
             >
@@ -2134,6 +2120,10 @@ export default function LogVisitModal() {
     return [{ park_code: parkCodeParam, name: parkNameParam, states: parkStatesParam, image_url: parkImageUrlParam ?? null }];
   });
   const [showPicker, setShowPicker] = useState(false);
+  // Which date the bottom-sheet picker is editing (null = closed) — lives at
+  // the screen root so the DateSheet overlay can render outside the step
+  // ScrollView (see the render at the bottom of this component).
+  const [openPicker, setOpenPicker] = useState<'start' | 'end' | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [editLoading, setEditLoading] = useState(isEdit);
   const scrollRef = useRef<ScrollView>(null);
@@ -2312,25 +2302,61 @@ export default function LogVisitModal() {
   }, [navigation, promptExit, blockSwipe, draft, parks]);
 
   const resumeDraft = (sd: SavedDraft) => {
-    setDraftState(sd.draft);
-    draftId.current = sd.id;
-    // The banner list filters out the active id, so the restored row
-    // disappears on its own while any remaining drafts stay reachable.
-    if (sd.editVisitId != null) {
-      const visitId = sd.editVisitId;
-      setResumedEdit({ visitId, postId: sd.editPostId ?? null });
-      // Re-fetch the original photo set so the cleanup/cover-photo logic in
-      // handleSubmit has the same baseline it would from a route-driven edit.
-      getFreshToken().then(tok => {
-        if (!tok) return;
-        apiFetch<VisitDetail>(`/api/visits/${visitId}`, tok)
-          .then(v => { originalPhotos.current = new Set(v.photos ?? []); })
-          .catch(() => {});
-      });
-    } else {
-      setResumedEdit(null);
-      originalPhotos.current = new Set();
+    const doSwitch = () => {
+      setDraftState(sd.draft);
+      draftId.current = sd.id;
+      // The banner list filters out the active id, so the restored row
+      // disappears on its own while any remaining drafts stay reachable.
+      if (sd.editVisitId != null) {
+        const visitId = sd.editVisitId;
+        setResumedEdit({ visitId, postId: sd.editPostId ?? null });
+        // Re-fetch the original photo set so the cleanup/cover-photo logic in
+        // handleSubmit has the same baseline it would from a route-driven edit.
+        getFreshToken().then(tok => {
+          if (!tok) return;
+          apiFetch<VisitDetail>(`/api/visits/${visitId}`, tok)
+            .then(v => { originalPhotos.current = new Set(v.photos ?? []); })
+            .catch(() => {});
+        });
+      } else {
+        setResumedEdit(null);
+        originalPhotos.current = new Set();
+      }
+    };
+
+    // Restoring over in-progress work: ask what happens to the current visit
+    // first, instead of silently swapping it out from under the user. (The
+    // autosave means "Save as draft" mostly just flushes the pending write —
+    // the current session then shows up as its own row in the banner list.)
+    if (!draftHasContent(draft)) {
+      doSwitch();
+      return;
     }
+    Alert.alert('Switch to this draft?', 'You have a visit in progress.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Discard current', style: 'destructive',
+        onPress: () => {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          const discardedId = draftId.current;
+          deleteDraft(discardedId);
+          setSavedDrafts(list => list.filter(s => s.id !== discardedId));
+          getFreshToken().then(tok => deletePhotos(draft.photos.filter(p => !originalPhotos.current.has(p)), tok));
+          doSwitch();
+        },
+      },
+      {
+        text: 'Save as draft',
+        onPress: () => {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          const parkName = parks.find(p => p.park_code === draft.parkCode)?.name;
+          upsertDraft(draft, parkName, draftId.current, activeEditVisitId ?? undefined, activeEditPostId)
+            .then(loadDrafts)
+            .then(setSavedDrafts);
+          doSwitch();
+        },
+      },
+    ]);
   };
 
   const discardSavedDraft = (sd: SavedDraft) => {
@@ -2651,7 +2677,7 @@ export default function LogVisitModal() {
           </View>
         )}
         {!editLoading && step === 0 && (
-          <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} />
+          <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} onOpenPicker={setOpenPicker} />
         )}
         {step === 1 && <StepRating draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
         {step === 2 && <StepCrowd draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
@@ -2779,6 +2805,28 @@ export default function LogVisitModal() {
       <ParkPickerSheet
         visible={showPicker} parks={parks} selected={draft.parkCode}
         onClose={() => setShowPicker(false)} onPick={code => set('parkCode', code)}
+      />
+
+      {/* Date sheet — rendered at the screen root (not inside StepWhere's
+          ScrollView, and deliberately not an RN Modal — see DateSheet). */}
+      <DateSheet
+        visible={openPicker !== null}
+        title={openPicker === 'end' ? 'End date' : 'Start date'}
+        value={openPicker === 'end'
+          ? (draft.endDate ?? draft.startDate ?? new Date())
+          : (draft.startDate ?? new Date())}
+        minimumDate={openPicker === 'end' ? (draft.startDate ?? undefined) : undefined}
+        maximumDate={new Date()}
+        onPick={d => {
+          if (openPicker === 'end') {
+            set('endDate', d);
+          } else {
+            set('startDate', d);
+            // Keep the range valid — an end date before the new start is stale
+            if (draft.endDate && stripTime(draft.endDate) < stripTime(d)) set('endDate', null);
+          }
+        }}
+        onClose={() => setOpenPicker(null)}
       />
     </KeyboardAvoidingView>
   );
@@ -3054,10 +3102,13 @@ const styles = StyleSheet.create({
   dateBackdrop: {
     ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)',
   },
+  // Layout only — background/border/radius are applied inline with LITERAL
+  // per-scheme colors. With the usual DynamicColorIOS tokens here, the
+  // sheet's bottom region rendered semi-transparent (a gray band over the
+  // backdrop) on iOS 17 and 26 alike, in and out of RN Modal — isolated by
+  // stripping properties one at a time. Literals render clean.
   dateSheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: C.surface, borderTopLeftRadius: 18, borderTopRightRadius: 18,
-    borderWidth: 0.5, borderColor: C.hairline,
   },
   dateSheetHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

@@ -80,6 +80,18 @@ function LightboxPage({
     onRequestClose();
   }, [zoomed, imageRect, onRequestClose, onToggleChrome]);
 
+  const resetZoom = useCallback(() => {
+    scale.value = withTiming(1);
+    translateX.value = withTiming(0);
+    translateY.value = withTiming(0);
+    savedScale.value = 1;
+    savedTranslateX.value = 0;
+    savedTranslateY.value = 0;
+    setZoomed(false);
+    onZoomChange(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onZoomChange]);
+
   const pinch = Gesture.Pinch()
     .runOnJS(true)
     .onUpdate(e => {
@@ -88,14 +100,7 @@ function LightboxPage({
     })
     .onEnd(() => {
       if (scale.value <= 1.02) {
-        scale.value = withTiming(1);
-        translateX.value = withTiming(0);
-        translateY.value = withTiming(0);
-        savedScale.value = 1;
-        savedTranslateX.value = 0;
-        savedTranslateY.value = 0;
-        setZoomed(false);
-        onZoomChange(false);
+        resetZoom();
       } else {
         savedScale.value = scale.value;
         setZoomed(true);

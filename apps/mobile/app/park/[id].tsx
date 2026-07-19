@@ -837,7 +837,11 @@ export default function ParkDetailScreen() {
       )}
 
       {showFriendsSheet && visitors && (
-        <FriendsVisitedSheet friends={visitors.friends} onClose={() => setShowFriendsSheet(false)} />
+        <FriendsVisitedSheet
+          friends={visitors.friends}
+          others={visitors.others ?? []}
+          onClose={() => setShowFriendsSheet(false)}
+        />
       )}
 
       {showVisitPicker && (
@@ -1287,9 +1291,10 @@ export default function ParkDetailScreen() {
             it's a nice-to-have, not core content) and while offline, since this
             depends on the current user's live friends list rather than anything
             cached for offline viewing. */}
-        {isOnline && visitors && visitors.total > 0 && (
+        {isOnline && visitors && (visitors.total > 0 || (visitors.others_total ?? 0) > 0) && (
           <FriendsVisitedRow
             friends={visitors.friends} total={visitors.total}
+            others={visitors.others ?? []} othersTotal={visitors.others_total ?? 0}
             onPress={() => setShowFriendsSheet(true)}
           />
         )}
@@ -1685,10 +1690,19 @@ function StatCell({ label, value, valueColor, onPress }: {
 
 // ── Friends who've visited (mutuals) ─────────────────────────────────────────
 
-function FriendsVisitedRow({ friends, total, onPress }: {
-  friends: ParkVisitorsSummary['friends']; total: number; onPress: () => void;
+function FriendsVisitedRow({ friends, total, others, othersTotal, onPress }: {
+  friends: ParkVisitorsSummary['friends']; total: number;
+  others: ParkVisitorsSummary['friends']; othersTotal: number;
+  onPress: () => void;
 }) {
-  const shown = friends.slice(0, 3);
+  // Friends always lead the avatar stack; community members fill leftover slots.
+  const shown = [...friends, ...others].slice(0, 3);
+  const label =
+    total > 0 && othersTotal > 0
+      ? `${total} ${total === 1 ? 'friend' : 'friends'} and ${othersTotal} ${othersTotal === 1 ? 'other user' : 'other users'} have visited`
+      : total > 0
+        ? `${total} ${total === 1 ? 'friend has' : 'friends have'} visited`
+        : `${othersTotal} ${othersTotal === 1 ? 'user has' : 'users have'} visited`;
   return (
     <TouchableOpacity style={styles.mutualsRow} activeOpacity={0.7} onPress={onPress}>
       <View style={styles.mutualsAvatars}>
@@ -1706,9 +1720,7 @@ function FriendsVisitedRow({ friends, total, onPress }: {
           />
         ))}
       </View>
-      <Text style={styles.mutualsText}>
-        {total} {total === 1 ? 'friend has' : 'friends have'} visited
-      </Text>
+      <Text style={styles.mutualsText}>{label}</Text>
     </TouchableOpacity>
   );
 }

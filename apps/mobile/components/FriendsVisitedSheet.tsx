@@ -9,11 +9,16 @@ import { Avatar } from '@/components/Avatar';
 import { STATIC as C, useColors } from '@/lib/palette';
 import type { ParkVisitorsSummary } from '@/lib/api';
 
-// Tap-through list for the "N friends have visited" mutuals row — same slide-up
-// sheet pattern as PostCard's LikersSheet ("Liked by").
+// Tap-through list for the "N friends and M others have visited" row — same
+// slide-up sheet pattern as PostCard's LikersSheet ("Liked by"). Friends
+// (mutuals) section first, then everyone else with a public post from the park.
 export function FriendsVisitedSheet({
-  friends, onClose,
-}: { friends: ParkVisitorsSummary['friends']; onClose: () => void }) {
+  friends, others = [], onClose,
+}: {
+  friends: ParkVisitorsSummary['friends'];
+  others?: ParkVisitorsSummary['friends'];
+  onClose: () => void;
+}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const T = useColors();
@@ -40,6 +45,25 @@ export function FriendsVisitedSheet({
     router.push(`/user/${userId}` as never);
   };
 
+  const renderRow = (f: ParkVisitorsSummary['friends'][number]) => {
+    const name = f.display_name ?? f.username ?? 'Explorer';
+    return (
+      <TouchableOpacity
+        key={f.clerk_user_id}
+        style={styles.row}
+        activeOpacity={0.7}
+        onPress={() => openProfile(f.clerk_user_id)}
+      >
+        <Avatar url={f.avatar_url} name={name} size={36} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>{name}</Text>
+          {f.username ? <Text style={styles.sub}>@{f.username}</Text> : null}
+        </View>
+        <Ionicons name="chevron-forward" size={14} color={T.inkMute} />
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <Modal visible transparent animationType="none" onRequestClose={dismiss} statusBarTranslucent>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
@@ -52,29 +76,23 @@ export function FriendsVisitedSheet({
           style={[styles.sheet, { paddingBottom: insets.bottom + 8, transform: [{ translateY: slide }] }]}
         >
           <View style={styles.handle} />
-          <Text style={styles.title}>FRIENDS WHO VISITED</Text>
-          {friends.length === 0 ? (
-            <Text style={styles.empty}>No friends have visited yet</Text>
+          <Text style={styles.title}>WHO'S VISITED</Text>
+          {friends.length === 0 && others.length === 0 ? (
+            <Text style={styles.empty}>No one has visited yet</Text>
           ) : (
             <ScrollView style={{ maxHeight: 380 }} bounces={false}>
-              {friends.map(f => {
-                const name = f.display_name ?? f.username ?? 'Explorer';
-                return (
-                  <TouchableOpacity
-                    key={f.clerk_user_id}
-                    style={styles.row}
-                    activeOpacity={0.7}
-                    onPress={() => openProfile(f.clerk_user_id)}
-                  >
-                    <Avatar url={f.avatar_url} name={name} size={36} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.name}>{name}</Text>
-                      {f.username ? <Text style={styles.sub}>@{f.username}</Text> : null}
-                    </View>
-                    <Ionicons name="chevron-forward" size={14} color={T.inkMute} />
-                  </TouchableOpacity>
-                );
-              })}
+              {friends.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>Friends</Text>
+                  {friends.map(renderRow)}
+                </>
+              )}
+              {others.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>From the community</Text>
+                  {others.map(renderRow)}
+                </>
+              )}
             </ScrollView>
           )}
         </Animated.View>
@@ -100,6 +118,11 @@ const styles = StyleSheet.create({
     paddingBottom: 10, borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft,
   },
   empty: { textAlign: 'center', fontSize: 13, color: C.inkMute, padding: 24 },
+  sectionLabel: {
+    fontSize: 12, fontWeight: '700', color: C.inkMute,
+    letterSpacing: 0.8, textTransform: 'uppercase',
+    paddingHorizontal: 18, paddingTop: 14, paddingBottom: 4,
+  },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 18, paddingVertical: 10,

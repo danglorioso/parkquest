@@ -496,13 +496,13 @@ export default function ProfileScreen() {
           <View style={styles.badgesPreview}>
             <View style={styles.sectionHeader}>
               <Ionicons name="book-outline" size={13} color={C.inkMute} />
-              <Text style={styles.sectionKicker}>RECENT STAMPS</Text>
               <TouchableOpacity
                 onPress={() => router.push('/profile/passport' as never)}
                 hitSlop={10}
-                style={{ marginLeft: -3 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
                 activeOpacity={0.6}
               >
+                <Text style={styles.sectionKicker}>RECENT STAMPS</Text>
                 <Ionicons name="chevron-forward" size={16} color={C.primary} />
               </TouchableOpacity>
             </View>
@@ -572,13 +572,13 @@ export default function ProfileScreen() {
           <View style={styles.badgesPreview}>
             <View style={styles.sectionHeader}>
               <Ionicons name="ribbon-outline" size={13} color={C.inkMute} />
-              <Text style={styles.sectionKicker}>EARNED</Text>
               <TouchableOpacity
                 onPress={() => router.push('/profile/badges' as never)}
                 hitSlop={10}
-                style={{ marginLeft: -3 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
                 activeOpacity={0.6}
               >
+                <Text style={styles.sectionKicker}>EARNED</Text>
                 <Ionicons name="chevron-forward" size={16} color={C.primary} />
               </TouchableOpacity>
             </View>
