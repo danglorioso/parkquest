@@ -612,9 +612,10 @@ export default function EditProfileScreen() {
                     activeOpacity={0.7}
                     style={[
                       styles.paletteChip,
-                      selected
-                        ? { borderColor: colors.primary, backgroundColor: C.surface }
-                        : { borderColor: 'transparent' },
+                      // C.primary (runtime theme color), not the palette row's
+                      // light-variant hex — keeps the selected border the exact
+                      // same color as the Light/Dark/System chips in both schemes
+                      selected && { borderColor: C.primary, backgroundColor: C.surface },
                     ]}
                   >
                     <View style={[styles.paletteSwatch, { backgroundColor: colors.primary }]} />
@@ -667,9 +668,9 @@ export default function EditProfileScreen() {
             </View>
           ) : null}
 
-          {/* Sign out — quiet text button */}
+          {/* Sign out — outlined so it reads as a bounded control */}
           <TouchableOpacity
-            style={styles.signOutBtn}
+            style={[styles.signOutBtn, { borderWidth: 1, borderColor: `${C.accent}55`, borderRadius: 12, paddingVertical: 12 }]}
             onPress={handleSignOut}
             activeOpacity={0.5}
           >
@@ -744,7 +745,7 @@ export default function EditProfileScreen() {
               <Text style={{ fontSize: 17, fontWeight: '700', color: BASE_C.ink }}>Change email</Text>
               <Text style={{ fontSize: 13.5, color: BASE_C.inkMute, lineHeight: 20 }}>
                 {emailStep === 'enter'
-                  ? "We'll send a code to your new address to verify it."
+                  ? "We'll send a code to your new address to verify."
                   : `Enter the code we sent to ${newEmail.trim()}.`}
               </Text>
             </View>
@@ -1013,7 +1014,7 @@ function makeStyles(C: Colors) {
     paddingVertical: 9,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: C.hairline,
     backgroundColor: C.surfaceAlt,
   },
   modeLabel: {

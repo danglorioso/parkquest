@@ -1,9 +1,8 @@
 import '../global.css';
 
 import { useEffect, useRef, useState } from 'react';
-import { Platform, TouchableOpacity } from 'react-native';
+import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { GlassIconBg } from '../components/GlassIconBg';
 import * as SecureStore from 'expo-secure-store';
 import { useFonts } from 'expo-font';
 import { PaletteProvider, STATIC, colorStr, useColors } from '../lib/palette';
@@ -133,25 +132,6 @@ function SplashController({ onReady }: { onReady: () => void }) {
   return null;
 }
 
-// Plain chevron back button for native headers. Deliberately NO GlassIconBg
-// here: the native navigation bar supplies its own capsule/material around
-// bar button items (visibly so on iOS 26), and stacking our glass circle
-// inside it rendered as multiple overlapped button outlines. Used where the
-// default back button would show a wrong/ugly route-name label (e.g.
-// "(tabs)" on Settings, which is reachable from several tabs).
-function GlassBackButton() {
-  const router = useRouter();
-  return (
-    <TouchableOpacity
-      onPress={() => router.back()}
-      hitSlop={8}
-      style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
-    >
-      <Ionicons name="chevron-back" size={24} color={colorStr(STATIC.ink)} />
-    </TouchableOpacity>
-  );
-}
-
 function RootStack() {
   const T = useColors();
   const HEADER = {
@@ -174,10 +154,11 @@ function RootStack() {
       />
       <Stack.Screen
         name="profile/edit"
-        // Custom headerLeft — the default back button falls back to the
-        // previous route's name ("(tabs)") since Settings is reachable from
-        // several places and headerBackTitle: '' doesn't suppress it.
-        options={{ ...HEADER, title: 'Settings', headerLeft: () => <GlassBackButton /> }}
+        // Native back item with the label hidden ('minimal') — suppresses the
+        // ugly "(tabs)" fallback label without a custom headerLeft. A custom
+        // view here fought iOS 26's automatic bar-button capsule (oval shape,
+        // off-center chevron); the system item renders it correctly.
+        options={{ ...HEADER, title: 'Settings', headerBackButtonDisplayMode: 'minimal' }}
       />
       <Stack.Screen
         name="profile/security"

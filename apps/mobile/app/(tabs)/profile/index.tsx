@@ -745,12 +745,16 @@ export default function ProfileScreen() {
               onPress={() => router.push('/profile/edit' as never)}
             />
             <View style={styles.rowDivider} />
-            <NavRow
-              icon="log-out-outline"
-              label="Sign Out"
-              danger
-              onPress={handleSignOut}
-            />
+            {/* Outlined in the accent tint so the destructive action reads as
+                its own bounded control, not just another list row */}
+            <View style={{ margin: 10, borderWidth: 1, borderColor: `${C.accent}55`, borderRadius: 12, overflow: 'hidden' }}>
+              <NavRow
+                icon="log-out-outline"
+                label="Sign Out"
+                danger
+                onPress={handleSignOut}
+              />
+            </View>
           </View>
         </View>
 

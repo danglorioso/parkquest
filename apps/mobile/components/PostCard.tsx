@@ -1162,7 +1162,8 @@ export function PostCard({
 
   const handleLike = async () => {
     const prev = liked;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Liking lands a firmer tap than unliking
+    Haptics.impactAsync(prev ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium);
     setLiked(!prev);
     setLikeCount(c => c + (prev ? -1 : 1));
     try {
