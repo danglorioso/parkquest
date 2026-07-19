@@ -213,9 +213,12 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   // property, which always animates regardless of architecture.
   const [contentHeight, setContentHeight] = useState(0);
   const anim = useRef(new Animated.Value(1)).current;
+  const animating = useRef(false);
   const toggle = () => {
     const next = !open;
-    Animated.timing(anim, { toValue: next ? 1 : 0, duration: 300, useNativeDriver: false }).start();
+    animating.current = true;
+    Animated.timing(anim, { toValue: next ? 1 : 0, duration: 300, useNativeDriver: false })
+      .start(() => { animating.current = false; });
     setOpen(next);
   };
   return (
@@ -277,12 +280,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         }}
       >
         <View
-          // Only trusted while `open` is actually settled true — during the
-          // close animation `open` is already false for the full 300ms, so
-          // this can't re-capture the same corrupting transient height the
-          // probe above was built to avoid.
+          // Only trusted while `open` is settled true AND no animation is
+          // running. `!open` alone covered the close animation, but during
+          // the *re-open* animation `open` is already true from frame one —
+          // the growing container's constraint propagates down (Fabric), so
+          // this was capturing a transient near-zero height, corrupting
+          // contentHeight and making a reopened section come back empty.
           onLayout={(e) => {
-            if (!open) return;
+            if (!open || animating.current) return;
             const h = e.nativeEvent.layout.height;
             if (h > 0 && h !== contentHeight) setContentHeight(h);
           }}

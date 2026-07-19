@@ -1,8 +1,12 @@
 import {
-  Animated, Dimensions, Easing, FlatList, Image, Keyboard, LayoutAnimation, Linking, Platform, Pressable,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, UIManager, View, useColorScheme,
+  Animated, Dimensions, Easing, FlatList, Keyboard, Linking, Platform, Pressable,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useColorScheme,
   type ColorValue,
 } from 'react-native';
+// expo-image, not RN Image: the offline download prefetches park photos into
+// expo-image's disk cache — RN's core Image uses a separate URL cache and
+// would re-download every cover from the network on each cold open.
+import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScrollToTop } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -158,7 +162,9 @@ function ParkCard({
           <Image
             source={{ uri: park.image_url }}
             style={StyleSheet.absoluteFill as any}
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={0}
             onError={() => setImgFailed(true)}
           />
         )}
@@ -258,7 +264,9 @@ function ParkListRow({
           <Image
             source={{ uri: park.image_url }}
             style={StyleSheet.absoluteFill as any}
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={0}
             onError={() => setImgFailed(true)}
           />
         )}
@@ -314,13 +322,46 @@ function ActiveChip({ label, onRemove }: { label: string; onRemove: () => void }
   );
 }
 
-// LayoutAnimation needs an explicit opt-in on Android's old architecture
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+// Accordion body for the filter sections. LayoutAnimation can't animate child
+// mounts under Fabric, so `{open && children}` snapped — instead children stay
+// permanently mounted inside a clipped view whose height animates between 0
+// and the content's measured natural height (the park page Section pattern).
+// Layout captures are ignored mid-animation: a shrinking/growing clip ancestor
+// propagates transient constraints down and would corrupt the measured height.
+function Collapsible({ open, children }: { open: boolean; children: React.ReactNode }) {
+  const [contentH, setContentH] = useState(0);
+  const anim = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const animating = useRef(false);
+  const prevOpen = useRef(open);
 
-const animatePanel = () =>
-  LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+  useEffect(() => {
+    if (prevOpen.current === open) return;
+    prevOpen.current = open;
+    animating.current = true;
+    Animated.timing(anim, { toValue: open ? 1 : 0, duration: 220, easing: Easing.inOut(Easing.cubic), useNativeDriver: false })
+      .start(() => { animating.current = false; });
+  }, [open, anim]);
+
+  return (
+    <Animated.View
+      pointerEvents={open ? 'auto' : 'none'}
+      style={{
+        overflow: 'hidden',
+        opacity: anim,
+        height: contentH ? anim.interpolate({ inputRange: [0, 1], outputRange: [0, contentH] }) : open ? undefined : 0,
+      }}
+    >
+      <View
+        onLayout={e => {
+          const h = e.nativeEvent.layout.height;
+          if (!animating.current && h > 0 && h !== contentH) setContentH(h);
+        }}
+      >
+        {children}
+      </View>
+    </Animated.View>
+  );
+}
 
 const SORT_OPTIONS: Array<{ key: SortBy; label: string; icon: string }> = [
   { key: 'closest', label: 'Closest',  icon: 'location.fill' },
@@ -385,7 +426,6 @@ function FilterPanel({
   };
 
   const toggleSection = (s: FilterSection) => {
-    animatePanel();
     setSection(prev => (prev === s ? null : s));
   };
 
@@ -430,6 +470,16 @@ function FilterPanel({
           />
         </TouchableOpacity>
 
+        {hasFilter && (
+          <TouchableOpacity onPress={onReset} activeOpacity={0.7} style={styles.pillReset}>
+            <Ionicons name="close-circle" size={14} color={accent} />
+            <Text style={[styles.pillResetText, { color: accent }]}>Reset</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Spacer pushes the sort control to the right edge */}
+        <View style={{ flex: 1 }} />
+
         <MenuView
           onPressAction={({ nativeEvent }) => onSortChange(nativeEvent.event as SortBy)}
           actions={SORT_OPTIONS.map(o => ({
@@ -445,13 +495,6 @@ function FilterPanel({
             </Text>
           </View>
         </MenuView>
-
-        {hasFilter && (
-          <TouchableOpacity onPress={onReset} activeOpacity={0.7} style={styles.pillReset}>
-            <Ionicons name="close-circle" size={14} color={accent} />
-            <Text style={[styles.pillResetText, { color: accent }]}>Reset</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Active filter chips — horizontally scrollable */}
@@ -517,7 +560,7 @@ function FilterPanel({
                 </View>
               </TouchableOpacity>
 
-              {section === s.key && (
+              <Collapsible open={section === s.key}>
                 <View style={styles.filterChipsWrap}>
                   {s.key === 'status' && STATUS_FILTERS.map(f => (
                     <Chip
@@ -564,7 +607,7 @@ function FilterPanel({
                     )
                   )}
                 </View>
-              )}
+              </Collapsible>
             </View>
           ))}
         </View>

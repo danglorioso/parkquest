@@ -133,18 +133,20 @@ function SplashController({ onReady }: { onReady: () => void }) {
   return null;
 }
 
-// Circular glass back button — same treatment as the park detail header.
-// Used where the default back button would show a wrong/ugly route-name
-// label (e.g. "(tabs)" on Settings, which is reachable from several tabs).
+// Plain chevron back button for native headers. Deliberately NO GlassIconBg
+// here: the native navigation bar supplies its own capsule/material around
+// bar button items (visibly so on iOS 26), and stacking our glass circle
+// inside it rendered as multiple overlapped button outlines. Used where the
+// default back button would show a wrong/ugly route-name label (e.g.
+// "(tabs)" on Settings, which is reachable from several tabs).
 function GlassBackButton() {
   const router = useRouter();
   return (
     <TouchableOpacity
       onPress={() => router.back()}
       hitSlop={8}
-      style={{ width: 44, height: 44, borderRadius: 22, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}
+      style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
     >
-      <GlassIconBg />
       <Ionicons name="chevron-back" size={24} color={colorStr(STATIC.ink)} />
     </TouchableOpacity>
   );

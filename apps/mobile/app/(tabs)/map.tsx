@@ -3,7 +3,7 @@ import {
   Animated, DeviceEventEmitter, Dimensions, Keyboard, LayoutAnimation, Linking, PanResponder, Platform,
   Pressable, ScrollView, Share, StyleSheet, Switch,
   Text, TextInput, TouchableOpacity, View, useColorScheme,
-  type ColorValue,
+  type ColorValue, type StyleProp, type ViewStyle,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import Slider from '@react-native-community/slider';
@@ -394,12 +394,6 @@ function ParkLabelMarker({
     return () => clearTimeout(t);
   }, [pillW]);
 
-  // A size change alters the measured width — retrack until remeasured so the
-  // stale marker snapshot isn't left on screen at the old size.
-  useEffect(() => {
-    setPillW(null);
-    setTracking(true);
-  }, [fontSize]);
 
   const totalW = LABEL_GAP + (pillW ?? 0);
 
@@ -427,6 +421,51 @@ function ParkLabelMarker({
         </View>
       </View>
     </Marker>
+  );
+}
+
+// ── Menu dropdown ─────────────────────────────────────────────────────────────
+// System-menu-style presentation for the custom map dropdowns (filter pill +
+// labels menu). LayoutAnimation can't animate child mounts under Fabric, so
+// these snapped open; this mimics UIMenu instead — springs open scaling up
+// from the anchor corner, and shrinks/fades out quickly on close. Content
+// stays mounted until the close animation finishes.
+function MenuDropdown({
+  visible, style, origin = 'top left', children,
+}: {
+  visible: boolean;
+  style?: StyleProp<ViewStyle>;
+  origin?: 'top left' | 'top right';
+  children: React.ReactNode;
+}) {
+  const [render, setRender] = useState(visible);
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setRender(true);
+      Animated.spring(progress, {
+        toValue: 1, useNativeDriver: true,
+        damping: 24, stiffness: 350, mass: 0.8,
+      }).start();
+    } else {
+      Animated.timing(progress, {
+        toValue: 0, duration: 160, useNativeDriver: true,
+      }).start(({ finished }) => { if (finished) setRender(false); });
+    }
+  }, [visible, progress]);
+
+  if (!render) return null;
+  return (
+    <Animated.View
+      style={[style, {
+        transformOrigin: origin,
+        opacity: progress,
+        transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+      }]}
+    >
+      {children}
+    </Animated.View>
   );
 }
 
@@ -468,8 +507,7 @@ function FilterPill({
         <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={12} color={C.inkMute} />
       </TouchableOpacity>
 
-      {expanded && (
-        <View style={styles.pillDropdown}>
+      <MenuDropdown visible={expanded} style={styles.pillDropdown}>
           {FILTERS.map((f, i) => (
             <TouchableOpacity
               key={f.key}
@@ -493,8 +531,7 @@ function FilterPill({
               )}
             </TouchableOpacity>
           ))}
-        </View>
-      )}
+      </MenuDropdown>
     </View>
   );
 }
@@ -577,7 +614,7 @@ function MapSearchBar({
           value={query}
           onChangeText={handleChange}
           onFocus={() => { if (userResults.length > 0 || parkResults.length > 0) setOpen(true); }}
-          placeholder="Search parks or users…"
+          placeholder="Parks, states, or users…"
           placeholderTextColor={C.inkMute}
           autoCorrect={false}
           autoCapitalize="none"
@@ -2013,7 +2050,11 @@ export default function MapScreen() {
           />
         ))}
         {labelsEnabled && filteredParks.filter(park => visibleLabelCodes.has(park.park_code)).map(park => (
-          <ParkLabelMarker key={`label-${park.park_code}`} park={park} onSelect={handleSelectPark} fontSize={labelFontSize} />
+          // fontSize in the key: a size change fully remounts the marker so it
+          // re-measures through the reliable initial-mount path — resetting
+          // measurement state in place left pills invisible, because a mounted
+          // marker view on Apple Maps never re-fires onLayout.
+          <ParkLabelMarker key={`label-${park.park_code}-${labelFontSize}`} park={park} onSelect={handleSelectPark} fontSize={labelFontSize} />
         ))}
       </MapView>
 
@@ -2039,7 +2080,6 @@ export default function MapScreen() {
           counts={counts}
           expanded={filterExpanded}
           onToggle={() => {
-            LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
             setFilterExpanded(v => !v);
             setLabelMenuOpen(false);
           }}
@@ -2056,7 +2096,6 @@ export default function MapScreen() {
           <TouchableOpacity
             style={styles.mapControlBtn}
             onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
               setLabelMenuOpen(v => !v);
               setFilterExpanded(false);
             }}
@@ -2070,8 +2109,7 @@ export default function MapScreen() {
             </View>
           </TouchableOpacity>
 
-          {labelMenuOpen && (
-            <View style={[styles.pillDropdown, { minWidth: 208, marginTop: 2 }]}>
+          <MenuDropdown visible={labelMenuOpen} style={[styles.pillDropdown, { minWidth: 208, marginTop: 2 }]}>
               <View style={[styles.pillDropdownRow, { paddingVertical: 6 }]}>
                 <Text style={[styles.pillLabel, styles.pillLabelActive]}>Show labels</Text>
                 <Switch
@@ -2097,8 +2135,7 @@ export default function MapScreen() {
                 />
                 <Text style={[styles.pillLabel, { fontSize: 16 }]}>A</Text>
               </View>
-            </View>
-          )}
+          </MenuDropdown>
         </View>
       </View>
 
@@ -2173,17 +2210,20 @@ const styles = StyleSheet.create({
     zIndex: 40,
     elevation: 10,
   },
+  // Same input bar shape as the header's SearchOverlay (12pt radius, 10pt
+  // vertical padding, 15pt text) — but filled with the warm translucent white
+  // all the other floating map chrome (control buttons, filter pill) uses,
+  // plus a soft shadow the overlay doesn't need.
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: dyn('rgba(255,251,241,0.95)', 'rgba(32,29,23,0.95)'),
+    backgroundColor: dyn('rgba(255,251,241,0.93)', 'rgba(32,29,23,0.93)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
     borderRadius: 12,
     paddingHorizontal: 12,
-    // Fixed 36pt — matches the map control buttons' height exactly
-    height: 36,
+    paddingVertical: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -2192,7 +2232,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     color: C.ink,
     padding: 0,
   },
@@ -2330,15 +2370,16 @@ const styles = StyleSheet.create({
     marginTop: 6,
     minWidth: 170,
     backgroundColor: dyn('rgba(255,251,241,0.97)', 'rgba(32,29,23,0.97)'),
-    borderWidth: 0.5,
-    borderColor: C.hairline,
-    borderRadius: 14,
+    // No borderWidth — border + radius rendered as a broken bright edge in
+    // dark mode (same RN border-drawing artifact as the date sheet's band).
+    // 13pt radius + deep soft shadow — the UIMenu look
+    borderRadius: 13,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
   },
   pillDropdownRow: {
     flexDirection: 'row',

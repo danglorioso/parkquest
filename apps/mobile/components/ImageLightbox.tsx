@@ -141,17 +141,32 @@ function LightboxPage({
       }
     });
 
-  // Double-tap while zoomed in restores the default 1x view. Single tap is
-  // wrapped in Exclusive so it waits for the double-tap to fail first — but
-  // only while zoomed (the gesture is disabled otherwise), so the normal
-  // tap-to-toggle-chrome stays instant when un-zoomed.
+  // Double-tap toggles zoom: zoomed in → restore the default 1x view;
+  // un-zoomed → zoom to 2.5x keeping the tapped spot under the finger.
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
-    .enabled(zoomed)
     .runOnJS(true)
-    .onEnd((_e, success) => {
+    .onEnd((e, success) => {
       if (!success) return;
-      resetZoom();
+      if (zoomed) {
+        resetZoom();
+      } else {
+        const r = imageRect();
+        if (e.x < r.left || e.x > r.right || e.y < r.top || e.y > r.bottom) return;
+        const s = 2.5;
+        // Scale is center-origin: a point at offset d from center lands at
+        // d*s, so translating by -d*(s-1) keeps the tapped point stationary.
+        const dx = e.x - W / 2;
+        const dy = e.y - (FRAME_TOP + FRAME_H / 2);
+        scale.value = withTiming(s);
+        translateX.value = withTiming(-dx * (s - 1));
+        translateY.value = withTiming(-dy * (s - 1));
+        savedScale.value = s;
+        savedTranslateX.value = -dx * (s - 1);
+        savedTranslateY.value = -dy * (s - 1);
+        setZoomed(true);
+        onZoomChange(true);
+      }
       onTouch();
     });
 

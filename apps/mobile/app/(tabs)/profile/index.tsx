@@ -495,14 +495,14 @@ export default function ProfileScreen() {
         {(!visitsLoaded || recentStamps.length > 0) && (
           <View style={styles.badgesPreview}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="book-outline" size={13} color={C.inkMute} />
+              <Ionicons name="book-outline" size={13} color={C.primary} />
               <TouchableOpacity
                 onPress={() => router.push('/profile/passport' as never)}
                 hitSlop={10}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
                 activeOpacity={0.6}
               >
-                <Text style={styles.sectionKicker}>RECENT STAMPS</Text>
+                <Text style={[styles.sectionKicker, { color: C.primary }]}>RECENT STAMPS</Text>
                 <Ionicons name="chevron-forward" size={16} color={C.primary} />
               </TouchableOpacity>
             </View>
@@ -571,14 +571,14 @@ export default function ProfileScreen() {
         {(!badgesLoaded || earnedBadges.length > 0) && (
           <View style={styles.badgesPreview}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="ribbon-outline" size={13} color={C.inkMute} />
+              <Ionicons name="ribbon-outline" size={13} color={C.primary} />
               <TouchableOpacity
                 onPress={() => router.push('/profile/badges' as never)}
                 hitSlop={10}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
                 activeOpacity={0.6}
               >
-                <Text style={styles.sectionKicker}>EARNED</Text>
+                <Text style={[styles.sectionKicker, { color: C.primary }]}>EARNED</Text>
                 <Ionicons name="chevron-forward" size={16} color={C.primary} />
               </TouchableOpacity>
             </View>

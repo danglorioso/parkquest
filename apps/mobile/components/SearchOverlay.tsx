@@ -240,9 +240,9 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
           recent: parksWithStatus
             .filter(p => p.status === 'visited')
             .sort((a, b) => latestVisitDate(b.park_code).localeCompare(latestVisitDate(a.park_code)))
-            .slice(0, 5),
-          bucket: parksWithStatus.filter(p => p.status === 'bucketList').slice(0, 5),
-          discover: parksWithStatus.filter(p => p.status === 'notVisited').slice(0, 5),
+            .slice(0, 3),
+          bucket: parksWithStatus.filter(p => p.status === 'bucketList').slice(0, 3),
+          discover: parksWithStatus.filter(p => p.status === 'notVisited').slice(0, 3),
         }
       : null;
 

@@ -4,7 +4,7 @@ import {
   TouchableOpacity, View, useColorScheme, useWindowDimensions,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { fitUnderUploadCap } from '@/lib/uploadImage';
@@ -25,6 +25,7 @@ import { GlassIconBg } from '@/components/GlassIconBg';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { showToast } from '@/lib/toast';
 import { loadRawDrafts, upsertRawDraft, deleteRawDraft, type SavedDraft as SharedSavedDraft } from '@/lib/drafts';
+import { PostCard, type FeedPost } from '@/components/PostCard';
 import { parkColor } from '@/lib/parkColors';
 import { relTime } from '@/lib/dates';
 import { getDefaultVisibility } from '@/lib/settings';
@@ -1329,9 +1330,11 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   // Slide only the sheet; the backdrop fades separately.
   const slide = useRef(new Animated.Value(400)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const closing = useRef(false);
 
   useEffect(() => {
     if (visible) {
+      closing.current = false;
       slide.setValue(400);
       backdropOpacity.setValue(0);
       Animated.parallel([
@@ -1344,6 +1347,17 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
     }
   }, [visible, slide, backdropOpacity]);
 
+  // Mirror of the entrance: slide the sheet down + fade the backdrop, THEN
+  // tell the parent to unmount — a bare onClose() would pop it off mid-frame.
+  const dismiss = useCallback(() => {
+    if (closing.current) return;
+    closing.current = true;
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 400, duration: 220, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => onClose());
+  }, [slide, backdropOpacity, onClose]);
+
   // Plain in-screen overlay, deliberately NOT an RN <Modal>: modal windows
   // render the sheet's bottom strip semi-transparent (some compositor quirk
   // verified in the Xcode view debugger — the layer itself, not any child),
@@ -1353,7 +1367,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   return (
     <View style={[StyleSheet.absoluteFillObject, { zIndex: 300 }]}>
       <Animated.View style={[styles.dateBackdrop, { opacity: backdropOpacity }]} pointerEvents="none" />
-      <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
+      <Pressable style={StyleSheet.absoluteFillObject} onPress={dismiss} />
       <Animated.View
         style={[styles.dateSheet, {
           backgroundColor: isDark ? '#201D17' : '#FFFBF1',
@@ -1369,11 +1383,15 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
         <View style={styles.dateSheetHeader}>
           <View style={{ width: 48 }} />
           <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>{title}</Text>
-          <TouchableOpacity onPress={onClose} style={{ width: 48, alignItems: 'flex-end' }}>
+          <TouchableOpacity onPress={dismiss} style={{ width: 48, alignItems: 'flex-end' }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: C.primary }}>Done</Text>
           </TouchableOpacity>
         </View>
-        <View style={{ paddingHorizontal: 12, paddingTop: 4, alignItems: 'center' }}>
+        <View style={{ paddingHorizontal: 12, paddingTop: 4 }}>
+          {/* alignSelf stretch (container un-centered): shrink-to-fit sizing
+              laid the picker out under UIDatePicker's 280pt minimum width,
+              which UIKit warns about on every layout pass. Full sheet width
+              minus padding clears the minimum on every device. */}
           <DateTimePicker
             value={value}
             mode="date"
@@ -1382,15 +1400,18 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
             maximumDate={maximumDate}
             accentColor={C.primary}
             themeVariant={isDark ? 'dark' : 'light'}
+            style={{ alignSelf: 'stretch' }}
             onChange={(_, d) => {
-              // Picking a day is the job — close on selection (both
-              // platforms). The wheels don't fire onChange until an actual
-              // date is chosen, so paging months/years keeps the sheet open;
-              // Done remains as the no-change dismiss.
-              onClose();
-              if (!d) return;
+              // Picking a day is the job — apply the selection immediately
+              // (so the circle lands on the tapped date), let it sit for a
+              // beat, then slide the sheet away. The wheels don't fire
+              // onChange until an actual date is chosen, so paging months/
+              // years keeps the sheet open; Done remains the no-change
+              // dismiss.
+              if (!d) { dismiss(); return; }
               Haptics.selectionAsync();
               onPick(d);
+              setTimeout(dismiss, 180);
             }}
           />
         </View>
@@ -1850,184 +1871,54 @@ function StepJournal({ draft, set, token, npsActivityNames }: {
   );
 }
 
-// Mirrors the (unexported) label/icon maps PostCard.tsx uses to render a real
-// feed post, so this preview matches what the post will actually look like.
-const PREVIEW_WEATHER_LABELS: Record<string, string> = {
-  clear: 'Clear', partly: 'Partly cloudy', cloudy: 'Cloudy',
-  rain: 'Rain', storm: 'Storms', snow: 'Snow', fog: 'Fog', wind: 'Windy',
-};
-const PREVIEW_WEATHER_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  clear: 'sunny-outline', partly: 'partly-sunny-outline', cloudy: 'cloud-outline',
-  rain: 'rainy-outline', storm: 'thunderstorm-outline', snow: 'snow-outline',
-  fog: 'water-outline', wind: 'speedometer-outline',
-};
-const PREVIEW_ACTIVITY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  hiking: 'walk-outline', camping: 'bonfire-outline', backpacking: 'walk-outline',
-  climbing: 'trending-up-outline', kayaking: 'boat-outline', rafting: 'boat-outline',
-  fishing: 'fish-outline', diving: 'water-outline', wildlife: 'paw-outline',
-  photography: 'camera-outline', stargazing: 'moon-outline', tours: 'map-outline',
-  cycling: 'bicycle-outline', mountaineering: 'trending-up-outline',
-};
-const PREVIEW_VIS_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  public: 'globe-outline', friends: 'people-outline', private: 'lock-closed-outline',
-};
-
-function PreviewChip({ icon, children }: { icon?: keyof typeof Ionicons.glyphMap; children: React.ReactNode }) {
-  return (
-    <View style={styles.previewChip}>
-      {icon && <Ionicons name={icon} size={11} color={C.inkSoft} />}
-      {typeof children === 'string' ? <Text style={styles.previewChipText}>{children}</Text> : children}
-    </View>
-  );
-}
-
+// The share-step preview IS the real feed card: a synthetic FeedPost built
+// from the draft, rendered by the actual PostCard inside an inert wrapper.
+// No hand-mirrored layout to drift out of date — whatever PostCard renders in
+// the feed is exactly what this shows.
 function VisitPreview({ draft, park, userName, username, avatarUrl }: {
   draft: Draft; park: ParkInfo | undefined; userName: string; username?: string | null; avatarUrl?: string | null;
 }) {
-  const C = useColors();
-  const visIcon = PREVIEW_VIS_ICONS[draft.visibility.toLowerCase()] ?? PREVIEW_VIS_ICONS.friends;
-  const selectedWeather = WEATHER_OPTS.filter(w => draft.weather.includes(w.id));
-  const hasPhotos = draft.photos.length > 0;
-  const coverUrl = draft.photos[0] ?? null;
-  const dateLabel = draft.startDate ? fmtDate(draft.startDate) : null;
-
-  const hasMeta = draft.rating > 0 || (hasPhotos && !!dateLabel) || selectedWeather.length > 0 ||
-    draft.crowd > 0 || draft.difficulty > 0 || draft.activities.length > 0 ||
-    draft.companionObjs.length > 0 || !!draft.highlight;
+  const previewPost: FeedPost = useMemo(() => ({
+    id: -1,
+    caption: draft.caption || null,
+    photos: draft.photos.length > 0 ? draft.photos : null,
+    park_code: draft.parkCode || null,
+    badge_id: null,
+    visit_id: -1,
+    created_at: new Date().toISOString(),
+    clerk_user_id: 'preview',
+    park_name: park?.name ?? null,
+    park_image_url: park?.image_url ?? null,
+    username: username ?? null,
+    display_name: userName,
+    avatar_url: avatarUrl ?? null,
+    like_count: 0,
+    comment_count: 0,
+    liked_by_me: false,
+    is_friend_post: false,
+    visibility: draft.visibility.toLowerCase(),
+    visit_date: draft.startDate ? draft.startDate.toISOString() : null,
+    visit_rating: draft.rating > 0 ? draft.rating : null,
+    visit_activities: draft.activities.length > 0 ? draft.activities : null,
+    visit_weather: draft.weather.length > 0 ? draft.weather : null,
+    visit_crowd: draft.crowd > 0 ? draft.crowd : null,
+    visit_difficulty: draft.difficulty > 0 ? draft.difficulty : null,
+    visit_companion_count: draft.companionObjs.length > 0 ? draft.companionObjs.length : null,
+    visit_companion_names: draft.companionObjs.length > 0
+      ? draft.companionObjs.map(c => ({ username: c.username, display_name: c.display_name, avatar_url: c.avatar_url }))
+      : null,
+    visit_highlight: draft.highlight || null,
+    visit_title: draft.title || null,
+    visit_ordinal: null,
+  }), [draft, park, userName, username, avatarUrl]);
 
   return (
-    <View style={styles.previewCard}>
-      {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, paddingTop: 13, paddingBottom: 9 }}>
-        {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={{ width: 38, height: 38, borderRadius: 19 }} />
-        ) : (
-          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: C.onPrimary, fontWeight: '800', fontSize: 14 }}>{userName[0]?.toUpperCase()}</Text>
-          </View>
-        )}
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }} numberOfLines={1}>{userName}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
-            <Text style={{ fontSize: 13, color: C.inkMute }} numberOfLines={1}>
-              {username ? `@${username} · ` : ''}now
-            </Text>
-            <Ionicons name={visIcon} size={10.5} color={C.inkMute} style={{ opacity: 0.75 }} />
-          </View>
-        </View>
-      </View>
-
-      {/* Park chip — only shown alongside photos, like the real card (no-photo posts show the park in the hero banner instead) */}
-      {park && hasPhotos && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 13, paddingBottom: 9 }}>
-          <Ionicons name="location-sharp" size={11} color={C.primary} />
-          <Text style={{ fontSize: 12.5, fontWeight: '700', letterSpacing: 0.4, color: C.primary }}>{park.name.toUpperCase()}</Text>
-        </View>
-      )}
-
-      {/* Caption */}
-      {draft.caption ? (
-        <Text style={{ paddingHorizontal: 13, paddingBottom: 10, fontSize: 14.5, color: C.ink, lineHeight: 20 }}>
-          {draft.caption.length > 200 ? `${draft.caption.slice(0, 200)}…` : draft.caption}
-        </Text>
-      ) : null}
-
-      {/* Visit metadata */}
-      {hasMeta && (
-        <View style={{ paddingHorizontal: 13, paddingBottom: 11, gap: 8 }}>
-          {draft.highlight ? (
-            <Text style={{ fontSize: 13, color: C.inkSoft, fontStyle: 'italic', lineHeight: 18 }}>"{draft.highlight}"</Text>
-          ) : null}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {draft.rating > 0 && (
-              <PreviewChip>
-                <Text style={styles.previewChipText}>
-                  <Text style={{ color: '#C49A28' }}>★ </Text>
-                  {draft.rating % 1 === 0 ? draft.rating.toFixed(0) : draft.rating.toFixed(1)}
-                </Text>
-              </PreviewChip>
-            )}
-            {hasPhotos && dateLabel ? <PreviewChip icon="calendar-outline">{dateLabel}</PreviewChip> : null}
-            {selectedWeather.map(w => (
-              <PreviewChip key={w.id} icon={PREVIEW_WEATHER_ICONS[w.id] ?? 'cloudy-outline'}>
-                {PREVIEW_WEATHER_LABELS[w.id] ?? w.label}
-              </PreviewChip>
-            ))}
-            {draft.crowd > 0 && <PreviewChip icon="people-outline">{CROWD_LABELS[draft.crowd - 1]}</PreviewChip>}
-            {draft.difficulty > 0 && <PreviewChip icon="trail-sign-outline">{DIFF_LABELS[draft.difficulty - 1]}</PreviewChip>}
-            {draft.activities.map(a => (
-              <PreviewChip key={a} icon={PREVIEW_ACTIVITY_ICONS[a] ?? 'star-outline'}>
-                {a.charAt(0).toUpperCase() + a.slice(1)}
-              </PreviewChip>
-            ))}
-            {draft.companionObjs.length > 0 && (() => {
-              const MAX = 2;
-              const shown = draft.companionObjs.slice(0, MAX);
-              const extra = draft.companionObjs.length - MAX;
-              return (
-                <PreviewChip icon="people-outline">
-                  {`With ${shown.map(c => c.display_name ?? `@${c.username}`).join(', ')}${extra > 0 ? `, +${extra} more` : ''}`}
-                </PreviewChip>
-              );
-            })()}
-          </View>
-        </View>
-      )}
-
-      {/* Photo carousel — or a park hero banner when there are no photos yet */}
-      {hasPhotos ? (
-        <View>
-          <Image source={{ uri: coverUrl! }} style={{ width: '100%', height: 210 }} resizeMode="cover" />
-          {draft.photos.length > 1 && (
-            <View style={{ position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(20,17,12,0.6)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 }}>
-              <Text style={{ color: '#FFFBF1', fontSize: 12, fontWeight: '500' }}>1 / {draft.photos.length}</Text>
-            </View>
-          )}
-          {draft.photos.length > 1 && (
-            <View style={{ position: 'absolute', bottom: 10, width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 5 }}>
-              {draft.photos.map((_, i) => (
-                <View key={i} style={{
-                  height: 6, borderRadius: 3, width: i === 0 ? 22 : 6,
-                  backgroundColor: i === 0 ? '#FFFBF1' : 'rgba(255,251,241,0.5)',
-                }} />
-              ))}
-            </View>
-          )}
-        </View>
-      ) : (
-        <View style={{ paddingHorizontal: 13, paddingBottom: 13 }}>
-          <View style={{ borderRadius: 14, overflow: 'hidden', height: 150, justifyContent: 'flex-end' }}>
-            {park?.image_url ? (
-              <Image source={{ uri: park.image_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-            ) : (
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: parkColor(draft.parkCode || 'ZZZZ') }]} />
-            )}
-            <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)']}
-              locations={[0.25, 0.6, 1]}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={{ padding: 14 }}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.3 }} numberOfLines={2}>
-                {park?.name ?? 'National Park'}
-              </Text>
-              {dateLabel && (
-                <Text style={{ fontSize: 12.5, color: 'rgba(255,251,241,0.70)', marginTop: 3, fontWeight: '500' }}>{dateLabel}</Text>
-              )}
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Action row */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 13, paddingVertical: 10, borderTopWidth: 0.5, borderTopColor: C.hairlineSoft }}>
-        <Ionicons name="heart-outline" size={19} color={C.inkSoft} />
-        <Ionicons name="chatbubble-outline" size={17} color={C.inkSoft} />
-        <Ionicons name="share-outline" size={17} color={C.inkSoft} />
-      </View>
+    <View pointerEvents="none">
+      <PostCard post={previewPost} myUserId="preview" openOnPress={false} />
     </View>
   );
 }
+
 
 function StepShare({ draft, set, park, userName, username, avatarUrl }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
@@ -2600,13 +2491,15 @@ export default function LogVisitModal() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
-      {/* Header: grabber + title on left, close centered on right */}
+      {/* Header: title on left, close on right; the grabber floats centered
+          over the FULL sheet width — inside the left column it sat centered
+          in that column only, i.e. visibly left of the sheet's midline. */}
       <View style={styles.modalTopRow}>
+        <View pointerEvents="none" style={{ position: 'absolute', top: 10, left: 0, right: 0, alignItems: 'center' }}>
+          <View style={styles.grabber} />
+        </View>
         <View style={{ flex: 1 }}>
-          <View style={{ alignItems: 'center', marginBottom: 8 }}>
-            <View style={styles.grabber} />
-          </View>
-          <Text style={styles.modalTitle}>{isEditing ? 'Edit visit' : 'Log a visit'}</Text>
+          <Text style={[styles.modalTitle, { marginTop: 12 }]}>{isEditing ? 'Edit visit' : 'Log a visit'}</Text>
         </View>
         {/* +4 centers the circle in the full sheet-top → step-divider span
             (row padding is 10/10 but the divider sits 8 further down) */}
@@ -3134,24 +3027,6 @@ const styles = StyleSheet.create({
   charCountOutside: {
     alignSelf: 'flex-end', marginTop: 5,
     fontSize: 13, color: C.inkMute, fontWeight: '600', letterSpacing: 0.5,
-  },
-
-  // Post preview
-  previewCard: {
-    backgroundColor: C.surface,
-    borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 18,
-    overflow: 'hidden',
-  },
-  previewChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: C.surfaceAlt,
-    borderRadius: 100, borderWidth: 0.5, borderColor: C.hairline,
-    paddingHorizontal: 9, paddingVertical: 4,
-  },
-  previewChipText: {
-    fontWeight: '600', fontSize: 13, color: C.inkSoft,
-    textTransform: 'capitalize',
   },
 
   // Activity autocomplete
