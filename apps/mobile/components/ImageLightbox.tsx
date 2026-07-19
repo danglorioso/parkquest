@@ -121,6 +121,40 @@ function LightboxPage({
       savedTranslateY.value = translateY.value;
     });
 
+  // Swipe down (only while un-zoomed) closes the lightbox. The image follows
+  // the finger so the dismissal reads as a drag, then snaps back if the pull
+  // wasn't decisive. activeOffsetY/failOffsetX keep horizontal swipes flowing
+  // to the pager FlatList untouched.
+  const dismissPan = Gesture.Pan()
+    .enabled(!zoomed)
+    .activeOffsetY(20)
+    .failOffsetX([-15, 15])
+    .runOnJS(true)
+    .onUpdate(e => {
+      translateY.value = Math.max(e.translationY, 0);
+    })
+    .onEnd(e => {
+      if (e.translationY > 120 || e.velocityY > 800) {
+        onRequestClose();
+      } else {
+        translateY.value = withTiming(0);
+      }
+    });
+
+  // Double-tap while zoomed in restores the default 1x view. Single tap is
+  // wrapped in Exclusive so it waits for the double-tap to fail first — but
+  // only while zoomed (the gesture is disabled otherwise), so the normal
+  // tap-to-toggle-chrome stays instant when un-zoomed.
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .enabled(zoomed)
+    .runOnJS(true)
+    .onEnd((_e, success) => {
+      if (!success) return;
+      resetZoom();
+      onTouch();
+    });
+
   const tap = Gesture.Tap()
     .runOnJS(true)
     .maxDuration(250)
@@ -129,7 +163,7 @@ function LightboxPage({
       handleTapAt(e.x, e.y);
     });
 
-  const composed = Gesture.Simultaneous(pinch, pan, tap);
+  const composed = Gesture.Simultaneous(pinch, pan, dismissPan, Gesture.Exclusive(doubleTap, tap));
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
