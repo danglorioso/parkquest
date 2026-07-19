@@ -223,7 +223,9 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   const bubble = (
     <Animated.View style={[styles.bubble, bubbleStyle]} pointerEvents="none">
       {glass && GlassView ? (
-        <GlassView style={styles.bubbleFill} glassEffectStyle="regular" isInteractive />
+        /* "clear" = the fully transparent water-droplet material, same as a
+           native UISlider knob — "regular" frosts it into a milky pill. */
+        <GlassView style={styles.bubbleFill} glassEffectStyle="clear" isInteractive />
       ) : (
         <View
           style={[
