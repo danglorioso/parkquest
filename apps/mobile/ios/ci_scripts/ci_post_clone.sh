@@ -53,6 +53,24 @@ EXPO_PUBLIC_PROJECT_ID=${EXPO_PUBLIC_PROJECT_ID:-2689b440-3af8-4807-9f93-e606c68
 EXPO_PUBLIC_SENTRY_DSN=${EXPO_PUBLIC_SENTRY_DSN:-}
 EOF
 
+CMAKE_VERSION=3.31.5
+if command -v cmake >/dev/null 2>&1; then
+  echo "==> cmake already present: $(cmake --version | head -1)"
+else
+  # hermes-engine.podspec builds Hermes from source on this RN version and
+  # shells out to Pod::Executable::which!('cmake') — fails pod install
+  # outright if missing. Direct download (not brew): a fresh CI image's
+  # first `brew install` pulls the full formula index plus 20+ unrelated
+  # bottles from ghcr.io and has reset connections mid-fetch before (see
+  # the node install above); Kitware ships a universal binary tarball.
+  echo "==> installing cmake v${CMAKE_VERSION} from github.com/Kitware/CMake"
+  curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
+    "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-macos-universal.tar.gz" \
+    -o "$HOME/cmake.tar.gz"
+  tar -xzf "$HOME/cmake.tar.gz" -C "$HOME"
+  export PATH="$HOME/cmake-${CMAKE_VERSION}-macos-universal/CMake.app/Contents/bin:$PATH"
+fi
+
 echo "==> pod install"
 cd "$CI_PRIMARY_REPOSITORY_PATH/apps/mobile/ios"
 # sentry-react-native 8.18+ vendors a prebuilt Sentry.xcframework fetched from
@@ -61,4 +79,15 @@ cd "$CI_PRIMARY_REPOSITORY_PATH/apps/mobile/ios"
 # every launch, survived a full reinstall. Falling back to the source-built
 # Sentry pod (pre-8.18 behavior) as the documented escape hatch.
 export SENTRY_USE_XCFRAMEWORK=0
-pod install
+# CocoaPods has been observed running translated under Rosetta2 on Xcode
+# Cloud's arm64 runners (it warns and names this exact workaround) — under
+# translation, cmake and other native gem extensions can end up arch-
+# mismatched and fail in stranger ways than a clean missing-binary error.
+# uname -m reports x86_64 while translated even on real arm64 hardware, so
+# check the underlying hardware separately before forcing the native slice.
+if [ "$(uname -m)" = "x86_64" ] && [ "$(sysctl -in hw.optional.arm64)" = "1" ]; then
+  echo "==> pod running under Rosetta2 on arm64 hardware, forcing native arch"
+  arch -arm64 pod install
+else
+  pod install
+fi
