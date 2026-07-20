@@ -768,7 +768,7 @@ export default function ProfileScreen() {
               <NavRow
                 icon="analytics-outline"
                 label="Admin Dashboard"
-                subtitle="Reports queue and app stats"
+                subtitle=""
                 onPress={() => router.push('/admin' as never)}
               />
             </View>
