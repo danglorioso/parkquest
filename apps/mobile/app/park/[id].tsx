@@ -1673,9 +1673,13 @@ export function ParkProfileScreen({
             <TouchableOpacity
               style={[styles.viewOnMapBtn, actionBtnHeight != null && { height: actionBtnHeight, paddingVertical: 0 }]}
               // In the sheet the full map is already right underneath —
-              // dismiss (animated, via dismissSheet — the sheet's full
-              // close, unlike the top-left chevron which only steps down
-              // to half) instead of pushing a second map on top of it.
+              // collapse to half (snapSheetTo, same as the top-left chevron
+              // once full — this button only scrolls into view once
+              // scrolling is enabled, i.e. only ever reachable at full, so
+              // there's no half-screen case to worry about here) instead of
+              // dismissing outright or pushing a second map on top of it —
+              // matches the end state the pushed-page branch below produces
+              // (its own deep-link reopens the sheet at half, never full).
               // Either way, "View ON the map" should actually show it
               // close up, not just whatever pan/zoom the map already
               // happens to be at — inSheet, map.tsx is already mounted
@@ -1689,7 +1693,7 @@ export function ParkProfileScreen({
                     latitude: parseFloat(park.latitude!),
                     longitude: parseFloat(park.longitude!),
                   });
-                  dismissSheet();
+                  snapSheetTo(SHEET_PEEK);
                 } else {
                   router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code, zoomClose: '1' } } as never);
                 }

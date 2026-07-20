@@ -917,9 +917,25 @@ export default function MapScreen() {
   // deliberately only pan, never zoom, for a plain dot tap). 0.08/0.08
   // reads as "this park and its immediate surroundings," similar to
   // tapping a single point of interest in most map apps.
+  //
+  // This flow always ends with the half-sheet open too (see
+  // focusParkCode's effect below, which calls handleSelectPark right
+  // alongside this) — centering directly on the park's own coordinates
+  // would land the dot at screen-center, exactly where that half-sheet
+  // covers it. Shifting the center latitude down by 0.25 * delta puts the
+  // dot at the 25%-from-top mark instead — same target fraction
+  // revealAboveSheet uses above, just computed against THIS call's own
+  // (much smaller) delta rather than whatever the general map's current
+  // delta happens to be, and applied unconditionally rather than only
+  // when the dot would otherwise land in the covered half — unlike
+  // revealAboveSheet (also used for a plain dot tap, where the dot is
+  // often already comfortably visible and shouldn't be shifted for no
+  // reason), this function is ONLY ever called right before the sheet
+  // opens, so the shift is always warranted here.
   const zoomToPark = useCallback((latitude: number, longitude: number) => {
+    const delta = 0.08;
     mapRef.current?.animateToRegion(
-      { latitude, longitude, latitudeDelta: 0.08, longitudeDelta: 0.08 },
+      { latitude: latitude - 0.25 * delta, longitude, latitudeDelta: delta, longitudeDelta: delta },
       500
     );
   }, []);
