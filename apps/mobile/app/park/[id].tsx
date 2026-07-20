@@ -889,9 +889,22 @@ export function ParkProfileScreen({
   const dismissedRef = useRef(false);
 
   const snapSheetTo = useCallback((target: number) => {
+    const wasFull = sheetFullRef.current;
     sheetFullRef.current = target === 0;
     setSheetFull(target === 0);
     Animated.spring(sheetY, { toValue: target, useNativeDriver: true, bounciness: 4 }).start();
+    // Collapsing from full to half leaves scrollEnabled false (see the
+    // ScrollView below) at whatever position it was left at — half only
+    // ever shows the hero + a peek of content, so a stale scrolled-down
+    // position (reachable at full — e.g. "View on full map" lives well
+    // down the page, in the Location section) needs resetting, or half
+    // opens showing the middle of the page instead of the cover image
+    // it's supposed to peek. Instant, not animated — this happens behind
+    // the sheet's own collapse animation, and scrolling is about to be
+    // disabled anyway, so there's nothing to visually reconcile.
+    if (wasFull && target !== 0) {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
   }, [sheetY]);
 
   // Every log-visit/edit-visit/journal-entry navigation away from the sheet
