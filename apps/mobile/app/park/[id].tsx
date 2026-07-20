@@ -1424,13 +1424,22 @@ export function ParkProfileScreen({
         {nps === null && cachedStripCount !== 0 && (
           <View style={[styles.photoStrip, { height: PHOTO_STRIP_HEIGHT }]}>
             {Array.from({ length: cachedStripCount ?? 4 }).map((_, i) => (
-              <LinearGradient
-                key={i}
-                colors={parkGradient(park.park_code)}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.photoStripItem}
-              />
+              // Outer plain View (not the gradient itself) owns
+              // photoStripItem's borderRadius/overflow, same structure as
+              // the real strip's TouchableOpacity-wraps-absoluteFill-
+              // LinearGradient below — a LinearGradient clipping its OWN
+              // corners (radius applied directly to it, as this used to
+              // do) doesn't reliably self-round on device the way a plain
+              // View clipping a child does, which read as the corners
+              // changing shape while the skeleton was up.
+              <View key={i} style={styles.photoStripItem}>
+                <LinearGradient
+                  colors={parkGradient(park.park_code)}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </View>
             ))}
           </View>
         )}
