@@ -541,6 +541,13 @@ export function ParkProfileScreen({
   // "Visits" stat cell can jump straight to it.
   const journalY = useRef(0);
   const scrollY = useRef(new Animated.Value(0)).current;
+  // Plain-number mirror of scrollY's current position, for contentPan's
+  // synchronous reads (PanResponder callbacks can't read an Animated.Value
+  // directly) — kept in sync from the ScrollView's own onScroll listener
+  // below, same ref-mirror convention as sheetFullRef/dismissedRef. Used to
+  // detect "scrolled to (or overscrolled past) the top" so a downward drag
+  // starting there can hand off to a sheet-drag instead of just bouncing.
+  const scrollYRef = useRef(0);
   const [titleCollapsed, setTitleCollapsed] = useState(false);
   const titleCollapsedRef = useRef(false);
   // Discrete 0/1 value driven by a timing animation on the `titleCollapsed`
@@ -998,18 +1005,34 @@ export function ParkProfileScreen({
   ).current;
 
   // Below the full detent, the ScrollView is disabled (see scrollEnabled
-  // below) and this wrapper claims vertical drags instead, so the whole
-  // visible content area — not just the hero — can drag the sheet. Once
-  // full, onMoveShouldSetPanResponder always declines, ceding all touches
-  // to the ScrollView's own native scrolling, uncontested — there's no
-  // reverse hand-off from "scrolled to top, keep pulling" back into a sheet
-  // drag, which is what a real bottom-sheet library would add but isn't
-  // needed here: collapsing back down is always available from the hero.
+  // below) and this wrapper claims vertical drags instead (via the regular,
+  // non-capture should-set below), so the whole visible content area — not
+  // just the hero — can drag the sheet.
+  //
+  // At full, scrolling IS enabled, and a plain (non-capture)
+  // onMoveShouldSetPanResponder can't reliably win against the
+  // ScrollView's own active native scroll gesture for a vertical drag — so
+  // reaching full used to mean every section except the hero lost the
+  // ability to drag the sheet at all, full stop. This is the reverse
+  // hand-off a real bottom-sheet library adds: onMoveShouldSetPanResponder
+  // CAPTURE runs before the ScrollView's own gesture ever gets a look, so
+  // it can intercept specifically the "already scrolled to (or
+  // overscrolled past) the top, and still pulling down" case and hand it
+  // to the sheet-drag instead — every other drag (scrolling up, or down
+  // from anywhere but the top) is left alone, capture declines, and the
+  // ScrollView scrolls normally, uncontested, exactly as before.
   const contentPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: (_, { dx, dy }) =>
         inSheet && !sheetFullRef.current && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx) * 1.5,
+      onMoveShouldSetPanResponderCapture: (_, { dx, dy }) =>
+        // <= 2, not strictly <= 0 — a resting top scroll position can land
+        // a fraction of a pixel off exact zero; negative values (iOS
+        // overscroll/rubber-band past the top) are always included too.
+        inSheet && sheetFullRef.current && scrollYRef.current <= 2 &&
+        dy > 8 && dy > Math.abs(dx) * 1.5,
       onPanResponderGrant: () => {
         sheetY.stopAnimation(v => { sheetYBase.current = v; });
       },
@@ -1353,6 +1376,19 @@ export function ParkProfileScreen({
         // sheet needs regardless, so a downward drag never has to guess
         // between the two.
         scrollEnabled={!inSheet || sheetFull}
+        // inSheet, the native rubber-band bounce at the top competes with
+        // contentPan's own reverse hand-off (see its own comment above) —
+        // PanResponder's onMoveShouldSetPanResponderCapture returning true
+        // doesn't cleanly preempt a native scroll gesture already stretching
+        // the content, so a drag from the body (not the hero, which is
+        // outside this ScrollView and never had a native gesture to fight)
+        // read as the cover image stretching hugely before the sheet-drag
+        // took over, instead of the hero's own clean immediate drag. No
+        // native bounce at all removes the thing being fought, rather than
+        // trying to out-race it with a smaller threshold. Pushed page keeps
+        // the normal iOS bounce — there's no sheet-drag to hand off to there.
+        bounces={!inSheet}
+        overScrollMode={inSheet ? 'never' : 'auto'}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: heroMax, paddingBottom: bottomOverlayHeight + 12 }}
         contentInsetAdjustmentBehavior="never"
@@ -1367,6 +1403,7 @@ export function ParkProfileScreen({
             useNativeDriver: true,
             listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
               const y = e.nativeEvent.contentOffset.y;
+              scrollYRef.current = y;
               // Blur over the shrinking cover ramps with scroll progress,
               // hitting max exactly at the lock point (cover fully off
               // screen). JS-driven on purpose: `intensity` isn't a style
@@ -1639,9 +1676,24 @@ export function ParkProfileScreen({
               // dismiss (animated, via dismissSheet — the sheet's full
               // close, unlike the top-left chevron which only steps down
               // to half) instead of pushing a second map on top of it.
-              onPress={() => inSheet
-                ? dismissSheet()
-                : router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code } } as never)}
+              // Either way, "View ON the map" should actually show it
+              // close up, not just whatever pan/zoom the map already
+              // happens to be at — inSheet, map.tsx is already mounted
+              // right there, so a direct event is reliable; pushed, it
+              // may not even be mounted yet, so this rides the existing
+              // parkCode deep-link params instead (zoomClose, read by
+              // map.tsx's focusParkCode effect).
+              onPress={() => {
+                if (inSheet) {
+                  DeviceEventEmitter.emit('zoomToParkOnMap', {
+                    latitude: parseFloat(park.latitude!),
+                    longitude: parseFloat(park.longitude!),
+                  });
+                  dismissSheet();
+                } else {
+                  router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code, zoomClose: '1' } } as never);
+                }
+              }}
               activeOpacity={0.8}
             >
               <Ionicons name="map-outline" size={14} color={C.primary} />

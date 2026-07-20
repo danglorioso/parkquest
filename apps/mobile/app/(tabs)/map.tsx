@@ -646,7 +646,7 @@ export default function MapScreen() {
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { parkCode: focusParkCode, filter: focusFilter } = useLocalSearchParams<{ parkCode?: string; filter?: FilterStatus }>();
+  const { parkCode: focusParkCode, filter: focusFilter, zoomClose: focusZoomClose } = useLocalSearchParams<{ parkCode?: string; filter?: FilterStatus; zoomClose?: string }>();
 
   const [token, setToken]               = useState<string | null>(null);
   const [parks, setParks]               = useState<ParkForMap[]>([]);
@@ -911,6 +911,19 @@ export default function MapScreen() {
     revealAboveSheet(park);
   }, [revealAboveSheet]);
 
+  // "View on full map" (park profile's mini-map button) wants a close,
+  // single-park view, not just whatever pan/zoom the map already happens
+  // to be at — unlike handleSelectPark/revealAboveSheet above (which
+  // deliberately only pan, never zoom, for a plain dot tap). 0.08/0.08
+  // reads as "this park and its immediate surroundings," similar to
+  // tapping a single point of interest in most map apps.
+  const zoomToPark = useCallback((latitude: number, longitude: number) => {
+    mapRef.current?.animateToRegion(
+      { latitude, longitude, latitudeDelta: 0.08, longitudeDelta: 0.08 },
+      500
+    );
+  }, []);
+
   // Deep links (park profile's "View on full map", passport stats) land here
   // with ?parkCode=X. Present that park's sheet exactly once per arrival:
   // consume the param immediately, with the ref bridging the frames until
@@ -922,9 +935,13 @@ export default function MapScreen() {
     const park = parks.find(p => p.park_code === focusParkCode);
     if (!park) return;
     focusHandledRef.current = focusParkCode;
-    router.setParams({ parkCode: undefined });
+    router.setParams({ parkCode: undefined, zoomClose: undefined });
     handleSelectPark(park);
-  }, [focusParkCode, parks, handleSelectPark, router]);
+    // Opt-in only (park profile's "View on full map" sets it) — the
+    // passport stats deep-link hits this same param and should keep its
+    // existing pan-only behavior, not suddenly start zooming in close too.
+    if (focusZoomClose) zoomToPark(park.latitude, park.longitude);
+  }, [focusParkCode, focusZoomClose, parks, handleSelectPark, router, zoomToPark]);
 
   // Lets other screens (e.g. the passport's Bucket stat) deep-link straight into
   // a pre-filtered map instead of dumping the user on "All" and making them tap it.
@@ -973,6 +990,21 @@ export default function MapScreen() {
     });
     return () => sub.remove();
   }, [goHome, selectedPark]);
+
+  // "View on full map" from the INLINE sheet (park/[id].tsx, inSheet) —
+  // map.tsx is already mounted/focused in that case (the sheet is a child
+  // of this very screen), so a direct event is reliable, unlike the pushed-
+  // page case below which uses the existing parkCode/zoomClose deep-link
+  // params instead (map.tsx may not even be mounted yet when that fires).
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      'zoomToParkOnMap',
+      ({ latitude, longitude }: { latitude: number; longitude: number }) => {
+        zoomToPark(latitude, longitude);
+      }
+    );
+    return () => sub.remove();
+  }, [zoomToPark]);
 
   return (
     <View style={styles.screen}>
