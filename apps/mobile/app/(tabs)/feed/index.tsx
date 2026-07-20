@@ -366,7 +366,7 @@ export default function FeedScreen() {
       <View style={[styles.topBar, { height: TOP_BAR_H }]}>
         {barGlass && GlassView && GlassContainer ? (
           <GlassContainer style={StyleSheet.absoluteFill}>
-            <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" />
+            <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={isDark ? '#171511' : '#F2EBDB'} />
             <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
               <Wordmark onPress={triggerRefresh} />
               <View style={styles.topBarActions}>
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
   },
   topBarInner: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     // 6 + 44 + 6 keeps the row at 56, inside the bar's fixed 56.5 height,
