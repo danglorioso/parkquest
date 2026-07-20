@@ -315,12 +315,13 @@ function ReportsStatusBar({ status }: { status: AdminStats['reports_by_status'] 
 function UsageGauge({ label, used, limit, note }: { label: string; used: number; limit: number; note?: string }) {
   const pct = Math.min(100, (used / limit) * 100);
   const color = pct > 85 ? BAD : pct > 60 ? '#C56B3D' : C.visited;
+  const pctStr = pct.toFixed(pct < 1 ? 2 : 1);
   return (
     <View style={{ marginBottom: 12 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
         <Text style={st.metricLabel}>{label}</Text>
         <Text style={{ fontSize: 12, color: C.inkSoft }}>
-          <Text style={{ fontWeight: '700', color: C.ink }}>{fmtBytes(used)}</Text> / {fmtBytes(limit)}{note ? ` · ${note}` : ''}
+          <Text style={{ fontWeight: '700', color: C.ink }}>{fmtBytes(used)}</Text> / {fmtBytes(limit)} · {pctStr}%{note ? ` · ${note}` : ''}
         </Text>
       </View>
       <View style={{ height: 7, borderRadius: 4, backgroundColor: C.hairlineSoft, overflow: 'hidden' }}>

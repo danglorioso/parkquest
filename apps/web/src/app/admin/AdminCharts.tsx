@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Clock, CheckCircle2, XCircle } from 'lucide-react';
 
 // ── Shared tooltip ──────────────────────────────────────────────────────────────
@@ -106,6 +106,10 @@ export function AppStoreDownloadsChart({ data }: { data: { day: string; units: n
             )}
           </div>
         ))}
+      </div>
+      <div className="mt-1.5 flex justify-between text-[10px] text-ink-mute">
+        <span>{parseDay(data[0].day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+        <span>Today</span>
       </div>
       <ChartTooltip tip={tip} />
     </div>
@@ -524,40 +528,72 @@ export function HourlyActivityChart({ data }: { data: HourlyPoint[] }) {
 // `value: null` means this day hasn't been published by Apple yet — an
 // empty gap, not a fake zero-height bar. Only a day Apple actually reported
 // a real 0 for renders as a (minimum-height) zero bar.
+// App Store Connect draws these as a line + soft area fill under the curve,
+// not bars — mirrored here (in our own brand green, not Apple's blue, to
+// stay consistent with every other chart on this dashboard) rather than
+// reusing the bar sparkline the rest of the admin panel uses elsewhere.
 export function AppStoreMetricChart({ data, unit }: {
   data: { day: string; value: number | null }[];
   unit?: string;
 }) {
   const [tip, setTip] = useState<TooltipState | null>(null);
+  const gradientId = useId();
   const known = data.map(d => d.value).filter((v): v is number => v != null);
   const max = Math.max(...known, 1);
+  const n = data.length;
+
+  // Gaps (report not published yet) simply break the line rather than
+  // drawing a misleading drop to zero — x position still comes from the
+  // point's real index in the full range, so a gap at the tail (the normal
+  // case, Apple's ~48h lag) leaves the chart trailing off before the edge
+  // instead of compressing the timeline.
+  const points = data
+    .map((d, i) => (d.value == null ? null : { x: n > 1 ? (i / (n - 1)) * 100 : 50, y: 32 - (d.value / max) * 28 }))
+    .filter((p): p is { x: number; y: number } => p != null);
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const areaPath = points.length
+    ? `M ${points[0].x} 36 ${points.map(p => `L ${p.x} ${p.y}`).join(' ')} L ${points[points.length - 1].x} 36 Z`
+    : '';
 
   return (
-    <div className="relative">
-      <div className="flex h-16 items-end gap-[2px]">
+    <div className="relative h-16">
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-full w-full overflow-visible">
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {areaPath && <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />}
+        {linePath && (
+          <path
+            d={linePath}
+            fill="none"
+            stroke="var(--primary)"
+            strokeWidth={1.5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+      </svg>
+      <div className="absolute inset-0 flex">
         {data.map(d => (
           <div
             key={d.day}
-            className="group flex h-full flex-1 items-end"
+            className="h-full flex-1"
             onMouseEnter={e => {
               const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
               const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
               setTip({
                 x: r.left - parent.left + r.width / 2,
-                y: r.top - parent.top,
+                y: 0,
                 title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
                 value: d.value == null ? 'No data yet' : `${d.value.toLocaleString()}${unit ?? ''}`,
               });
             }}
             onMouseLeave={() => setTip(null)}
-          >
-            {d.value != null && (
-              <div
-                className="w-full rounded-t-[3px] bg-primary transition-opacity group-hover:opacity-70"
-                style={{ height: `${Math.max((d.value / max) * 100, d.value > 0 ? 6 : 2)}%`, minHeight: 2 }}
-              />
-            )}
-          </div>
+          />
         ))}
       </div>
       <ChartTooltip tip={tip} />

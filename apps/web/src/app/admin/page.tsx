@@ -170,6 +170,7 @@ function AcquisitionCard({ stats }: { stats: Stats }) {
     {
       label: 'Conversion rate',
       total: stats.app_store_conversion_30d != null ? `${stats.app_store_conversion_30d}%` : '—',
+      caption: 'Daily Average',
       data: days.map(d => ({ day: d.day, value: d.conversion })),
       unit: '%',
     },
@@ -193,14 +194,27 @@ function AcquisitionCard({ stats }: { stats: Stats }) {
       </p>
       {hasData ? (
         <div className="flex flex-col gap-5">
-          <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {metrics.map(m => (
-              <div key={m.label}>
+              <div key={m.label} className="rounded-2xl border border-hairline bg-surface-alt p-4">
                 <div className="text-[10px] font-semibold uppercase leading-snug tracking-wide text-ink-mute">{m.label}</div>
-                <div className="mb-2 text-xl font-extrabold leading-tight tracking-tight text-ink">{m.total}</div>
-                <AppStoreMetricChart data={m.data} unit={m.unit} />
+                <div className="mt-1 text-2xl font-extrabold leading-tight tracking-tight text-ink">{m.total}</div>
+                {m.caption && <div className="text-[11px] text-ink-mute">{m.caption}</div>}
+                <div className="mt-2">
+                  <AppStoreMetricChart data={m.data} unit={m.unit} />
+                </div>
               </div>
             ))}
+            {/* Apple's own Acquisition module ships a 6th "Updates" card
+                alongside these five — no data pipeline for it here (a
+                separate Analytics event type we don't ingest), so it stays
+                a static placeholder rather than a chart with fabricated
+                numbers. Matches what Apple's dashboard itself shows for a
+                low-volume app anyway. */}
+            <div className="rounded-2xl border border-hairline bg-surface-alt p-4">
+              <div className="text-[10px] font-semibold uppercase leading-snug tracking-wide text-ink-mute">Updates</div>
+              <div className="mt-1 text-sm font-semibold text-ink-mute">Not Enough Data</div>
+            </div>
           </div>
           {stats.app_store_devices_30d.length > 0 && (
             <div className="border-t border-hairline pt-4">
