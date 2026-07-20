@@ -1,12 +1,12 @@
 import {
-  ActivityIndicator, Animated, Dimensions, FlatList, Image, Linking, Modal,
+  ActivityIndicator, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, Linking, Modal,
   PanResponder, Pressable, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View,
   useColorScheme,
   type ColorValue, type NativeScrollEvent, type NativeSyntheticEvent,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 import { BlurView } from 'expo-blur';
 
@@ -38,6 +38,10 @@ import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
+const SH = Dimensions.get('window').height;
+// The sheet's resting "peek" position — its top edge sits halfway down the
+// screen. Full is 0 (true top); dismissed is SH (fully below the screen).
+const SHEET_PEEK = SH * 0.5;
 
 // Local luminance of an image at a normalized (x, y) point, decoded from a
 // spatial blurhash by evaluating the full DCT — no pixel access and no new
@@ -84,13 +88,10 @@ function blurhashLumaAt(hash: string, x: number, y: number): number {
   return 0.299 * linearToSrgb(r) + 0.587 * linearToSrgb(g) + 0.114 * linearToSrgb(b);
 }
 
-// Hero collapses from this height down to this as the page scrolls, and
-// stretches taller than this on overscroll (see the hero interpolations).
-// HERO_MIN was 56 (the map sheet's COLLAPSED_H) but that left only 4pt of
-// image below the 44pt header buttons (which end at insets.top + 52) —
-// 68 gives the locked strip 16pt of breathing room under them.
+// Hero collapses down to `barHeight` (derived from headerTop below, near
+// the other hero interpolations) as the page scrolls, and stretches taller
+// than HERO_MAX on overscroll (see the hero interpolations).
 const HERO_MAX = 320;
-const HERO_MIN = 60;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -369,23 +370,77 @@ function VisitCard({ visit }: { visit: Visit }) {
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function ParkDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const {
+    id, name: seedName, states: seedStates, description: seedDescription,
+    latitude: seedLatitude, longitude: seedLongitude, imageUrl: seedImageUrl,
+    status: seedStatus,
+  } = useLocalSearchParams<{
+    id: string; name?: string; states?: string; description?: string;
+    latitude?: string; longitude?: string; imageUrl?: string;
+    status?: 'visited' | 'bucketList' | 'notVisited';
+  }>();
   const router = useRouter();
+  // This same component serves two presentations: /park/[id] (full page
+  // pushed from the parks tab) and /park-sheet/[id] (a FULLY CUSTOM sheet
+  // over the map — Animated + PanResponder, no native formSheet at all; see
+  // app/_layout.tsx for the full history of why two native-formSheet
+  // designs were tried and abandoned first). Most of what hangs off
+  // `inSheet` lives further down near `sheetY` — the back chevron
+  // points down/up and drives the custom sheet instead of router.back(),
+  // the hero gets an extra parallax shift at the half peek, and the
+  // ScrollView only scrolls once the sheet is at its full detent.
+  const inSheet = usePathname().startsWith('/park-sheet');
+  // The map already has every park loaded (it draws all the dots) — a dot
+  // tap carries that data along as seed params (see parkSheetParams in
+  // map.tsx) so this screen paints the hero instantly instead of opening on
+  // a blank spinner, same trick the old in-map sheet used. /park/[id] pushed
+  // from the parks tab or passport has no seed params and behaves exactly as
+  // before: blank spinner until the fetch lands.
+  const hasSeed = !!seedName;
   const { getToken } = useAuth();
   const { user } = useUser();
   const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
   const C = useColors();
+  // sheetFull: whether the custom sheet (see the gesture/animation block
+  // below) is currently at its full, true-top-of-screen position. Declared
+  // here (ahead of its sibling sheet-state hooks) specifically because
+  // headerTop needs it immediately below — the sheet is a TRANSPARENT
+  // MODAL now (see app/_layout.tsx), which covers the real device bounds,
+  // so insets.top genuinely reports the notch/status-bar inset at ALL
+  // times (unlike the old native formSheet, whose own smaller frame kept
+  // insets.top near 0 throughout). That inset only matters once the sheet
+  // has actually reached the true top — at the half peek there's no notch
+  // anywhere near the visible content, and adding insets.top there would
+  // push the header buttons much too far down. Pops between the two
+  // values when sheetFull flips (on snap, not continuously during the
+  // drag) rather than interpolating smoothly — simpler, and the header
+  // buttons only need to be roughly right until the sheet actually settles.
+  const [sheetFull, setSheetFull] = useState(false);
+  const headerTop = inSheet ? (sheetFull ? insets.top + 8 : 32) : insets.top + 8;
 
-  const [park,         setPark]         = useState<Park | null>(null);
+  const [park,         setPark]         = useState<Park | null>(() => hasSeed ? {
+    park_code: id, name: seedName!, states: seedStates ?? '',
+    description: seedDescription || null, latitude: seedLatitude || null,
+    longitude: seedLongitude || null, image_url: seedImageUrl || null,
+  } : null);
   const [nps,          setNps]          = useState<NpsData | null>(null);
   const [weather,      setWeather]      = useState<WeatherForecast | null>(null);
   const [visits,       setVisits]       = useState<Visit[]>([]);
+  // Whether the real /api/visits fetch has settled (success OR failure) at
+  // least once — NOT the same as `loading`, which flips false immediately
+  // for a seeded navigation to paint the rest of the page. This exists so
+  // `parkStatus` below knows when to stop trusting `seedStatus` and defer
+  // to the authoritative (possibly different) `visits` array instead.
+  const [visitsLoaded, setVisitsLoaded] = useState(false);
   const [myParkPosts,  setMyParkPosts]  = useState<FeedPost[]>([]);
   const [token,        setToken]        = useState<string | null>(null);
-  const [loading,      setLoading]      = useState(true);
+  const [loading,      setLoading]      = useState(!hasSeed);
   const [lightbox,     setLightbox]     = useState<{ images: NpsImage[]; idx: number } | null>(null);
-  const [onBucket,     setOnBucket]     = useState(false);
+  // Seeded from the map's own last-known status (see parkSheetParams in
+  // map.tsx) so the bucket icon doesn't pop on mount for a seeded nav —
+  // reconciled by the real fetch below exactly like `visits`/`parkStatus`.
+  const [onBucket,     setOnBucket]     = useState(() => hasSeed && seedStatus === 'bucketList');
   const [bucketBusy,   setBucketBusy]   = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [heroIdx,      setHeroIdx]      = useState(0);
@@ -393,6 +448,17 @@ export default function ParkDetailScreen() {
   const [prevHeroImage, setPrevHeroImage] = useState<string | null>(null);
   const [actionBtnHeight, setActionBtnHeight] = useState<number | null>(null);
   const [bottomOverlayHeight, setBottomOverlayHeight] = useState(0);
+  // Measured width of the pinned action row (visited-park pair: "Log
+  // another visit" / "Edit last visit") — flex:1/flexBasis:0/minWidth:0 on
+  // both buttons is the textbook-correct way to force an even split
+  // regardless of content, and IS present below, but it wasn't producing
+  // one on device (real Liquid Glass fills on iOS 26 apparently have their
+  // own intrinsic-size opinion that fights Yoga's flex-basis distribution —
+  // see the "wide pill button" note on GlassIconBg for a related quirk with
+  // this exact button). Measuring the row and setting an explicit pixel
+  // width on each button sidesteps that entirely: whatever native sizing
+  // preference the glass view has, an explicit width wins outright.
+  const [actionRowWidth, setActionRowWidth] = useState<number | null>(null);
   const [showVisitPicker, setShowVisitPicker] = useState(false);
   // Flips true if the frozen title's one line can't fit the full park name —
   // it then re-renders with "National" abbreviated instead of an ellipsis.
@@ -526,6 +592,7 @@ export default function ParkDetailScreen() {
       console.error('Park detail load failed:', e);
     } finally {
       setLoading(false);
+      setVisitsLoaded(true);
     }
   }, [getToken, id, user?.id, isOnline]);
 
@@ -633,7 +700,7 @@ export default function ParkDetailScreen() {
     ExpoImage.generateBlurhashAsync(heroImage, [4, 3])
       .then(hash => {
         if (cancelled || !hash) return;
-        const y = Math.min((insets.top + 30) / HERO_MAX, 1); // button centers
+        const y = Math.min((headerTop + 22) / HERO_MAX, 1); // button centers
         const lightAt = (px: number) => blurhashLumaAt(hash, px / SW, y) > 0.6;
         setHeaderLight({
           back:  lightAt(38),
@@ -674,24 +741,245 @@ export default function ParkDetailScreen() {
     setHeroSwipeEpoch(e => e + 1);
   }, []);
 
+  // ── Custom sheet (inSheet only) ────────────────────────────────────────
+  // Not a native formSheet — see the long comment on the park-sheet/[id]
+  // route in app/_layout.tsx for why. This screen fully owns its own
+  // presentation: a fixed, screen-height Animated.View translated between
+  // 0 (full, true top of screen) and SH (fully dismissed), with SHEET_PEEK
+  // as the resting "half" stop in between. translateY, not height, so
+  // dragging stays on the native-driver/UI thread (see the hero's own
+  // "Geometry" comment below for why this file already avoids animating
+  // layout for anything touch-driven).
+  const sheetY = useRef(new Animated.Value(inSheet ? SH : 0)).current;
+  // JS-driven mirror of sheetY, kept in sync via addListener. Needed
+  // because sheetY's own snap/dismiss/entrance animations run
+  // useNativeDriver: true (the sheet's primary translateY has to stay
+  // smooth on the UI thread — this file already avoids animating layout
+  // for anything touch-driven, see the hero's "Geometry" comment below for
+  // why). borderRadius (the sheet's corner-radius interpolation, below)
+  // isn't a native-driver-eligible prop, and a native-driven animation
+  // doesn't push per-frame updates back to a JS-driven consumer of the SAME
+  // value while it's running — only a direct .setValue() (live finger-
+  // dragging) does that correctly. On a flick (release, then the automatic
+  // spring finishes the rest), that meant a JS interpolation reading sheetY
+  // directly would sit frozen for the whole spring and jump to its final
+  // value only once it completed. addListener DOES receive per-frame
+  // updates regardless of the source value's own driver mode, so mirroring
+  // into a plain value here and interpolating THAT is the standard fix.
+  //
+  // The header row's half↔full offset (headerExtraTranslateY, near
+  // heroParallaxY below) used to read this too, but `top` turned out not to
+  // be fixable by JS-mirroring alone: RN's native-driver eligibility check
+  // is per rendered component, not per Animated.Value, so an animated `top`
+  // throws "Style property 'top' is not supported by native animated
+  // module" the instant it shares a style object with ANY native-driven
+  // transform/opacity, regardless of which value feeds `top` itself. The
+  // real fix was switching those four consumers to a static `top` plus an
+  // animated `transform: translateY` (transform IS native-driver-eligible),
+  // which let them go back to reading sheetY directly — no JS mirror
+  // needed. borderRadius has no transform equivalent at all, so it's the
+  // one remaining consumer sheetYJS exists for.
+  const sheetYJS = useRef(new Animated.Value(inSheet ? SH : 0)).current;
+  useEffect(() => {
+    if (!inSheet) return;
+    const id = sheetY.addListener(({ value }) => sheetYJS.setValue(value));
+    return () => sheetY.removeListener(id);
+  }, [inSheet, sheetY, sheetYJS]);
+  const sheetYBase = useRef(SHEET_PEEK);
+  // sheetFull itself is declared up near headerTop (see the comment there)
+  // — it's needed before this point in the component, and React only
+  // requires hook call ORDER to stay consistent across renders, not that
+  // related hooks stay textually adjacent.
+  const sheetFullRef = useRef(false);
+  const dismissedRef = useRef(false);
+
+  const snapSheetTo = useCallback((target: number) => {
+    sheetFullRef.current = target === 0;
+    setSheetFull(target === 0);
+    Animated.spring(sheetY, { toValue: target, useNativeDriver: true, bounciness: 4 }).start();
+  }, [sheetY]);
+
+  // The only way this screen's own back-navigation should ever fire — drag,
+  // chevron, and the gap-tap backdrop all funnel through this, so dismissal
+  // always plays the same close animation regardless of trigger.
+  // dismissedRef guards against firing twice (e.g. a fast drag-release
+  // landing right as a double-tap on the backdrop lands too).
+  const dismissSheet = useCallback(() => {
+    if (dismissedRef.current) return;
+    dismissedRef.current = true;
+    Animated.timing(sheetY, { toValue: SH, duration: 220, useNativeDriver: true })
+      .start(() => router.back());
+  }, [sheetY, router]);
+
+  useEffect(() => {
+    if (!inSheet) return;
+    Animated.spring(sheetY, { toValue: SHEET_PEEK, useNativeDriver: true, bounciness: 4 }).start();
+  // Entrance animation — mount only, deliberately not re-run on any dep change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The map underneath is genuinely interactive through the gap (see
+  // pointerEvents box-none on the root View below), so its own onPress
+  // (map.tsx) is what actually receives an empty-map tap — it emits this
+  // event rather than touching navigation directly, since only THIS screen
+  // knows how to close itself with the right animation (dismissSheet).
+  useEffect(() => {
+    if (!inSheet) return;
+    const sub = DeviceEventEmitter.addListener('dismissParkSheet', dismissSheet);
+    return () => sub.remove();
+  }, [inSheet, dismissSheet]);
+
+  // Which gesture a touch on the hero turned out to be, decided once at the
+  // moment it's claimed (onMoveShouldSetPanResponder) and held for the rest
+  // of that touch — re-deciding on every move would let a wavering finger
+  // flip-flop between changing photos and dragging the sheet mid-gesture.
+  const heroDragModeRef = useRef<'horizontal' | 'vertical' | null>(null);
+
+  const onSheetDragMove = useCallback((dy: number) => {
+    const raw = sheetYBase.current + dy;
+    sheetY.setValue(Math.max(0, Math.min(SH, raw)));
+  }, [sheetY]);
+
+  const onSheetDragRelease = useCallback((dy: number, vy: number) => {
+    const raw = sheetYBase.current + dy;
+    if (vy > 1.2) { dismissSheet(); return; }
+    if (vy < -1.2) { snapSheetTo(0); return; }
+    const midFullHalf = SHEET_PEEK / 2;
+    const midHalfDismiss = (SHEET_PEEK + SH) / 2;
+    if (raw < midFullHalf) snapSheetTo(0);
+    else if (raw < midHalfDismiss) snapSheetTo(SHEET_PEEK);
+    else dismissSheet();
+  }, [dismissSheet, snapSheetTo]);
+
   // Horizontal swipe over the hero switches covers manually (the tap-to-open
   // lightbox stays: a swipe claims the responder, which cancels the tap).
-  // Claim only clearly horizontal moves so the page's vertical scroll wins
-  // everywhere else.
+  // In the sheet, a vertical swipe here instead drags the WHOLE sheet — the
+  // hero is a fixed overlay outside the ScrollView, so it's always
+  // available for this regardless of scroll/detent state, standing in for
+  // the "grab region" without a visible pill. Claim only clearly
+  // horizontal-or-vertical moves so the page's own vertical scroll (once
+  // enabled — see contentPan below) still wins for ambiguous drags.
   const heroPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
-        Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5,
-      onPanResponderRelease: (_, { dx, vx }) => {
-        if (dx <= -40 || vx <= -0.5) goHero(1);
-        else if (dx >= 40 || vx >= 0.5) goHero(-1);
+      onMoveShouldSetPanResponder: (_, { dx, dy }) => {
+        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          heroDragModeRef.current = 'horizontal';
+          return true;
+        }
+        if (inSheet && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+          heroDragModeRef.current = 'vertical';
+          return true;
+        }
+        return false;
+      },
+      onPanResponderGrant: () => {
+        if (heroDragModeRef.current === 'vertical') {
+          sheetY.stopAnimation(v => { sheetYBase.current = v; });
+        }
+      },
+      onPanResponderMove: (_, { dy }) => {
+        if (heroDragModeRef.current === 'vertical') onSheetDragMove(dy);
+      },
+      onPanResponderRelease: (_, { dx, dy, vx, vy }) => {
+        if (heroDragModeRef.current === 'vertical') {
+          onSheetDragRelease(dy, vy);
+        } else if (heroDragModeRef.current === 'horizontal') {
+          if (dx <= -40 || vx <= -0.5) goHero(1);
+          else if (dx >= 40 || vx >= 0.5) goHero(-1);
+        }
+        heroDragModeRef.current = null;
       },
     })
   ).current;
 
+  // Below the full detent, the ScrollView is disabled (see scrollEnabled
+  // below) and this wrapper claims vertical drags instead, so the whole
+  // visible content area — not just the hero — can drag the sheet. Once
+  // full, onMoveShouldSetPanResponder always declines, ceding all touches
+  // to the ScrollView's own native scrolling, uncontested — there's no
+  // reverse hand-off from "scrolled to top, keep pulling" back into a sheet
+  // drag, which is what a real bottom-sheet library would add but isn't
+  // needed here: collapsing back down is always available from the hero.
+  const contentPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
+        inSheet && !sheetFullRef.current && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx) * 1.5,
+      onPanResponderGrant: () => {
+        sheetY.stopAnimation(v => { sheetYBase.current = v; });
+      },
+      onPanResponderMove: (_, { dy }) => onSheetDragMove(dy),
+      onPanResponderRelease: (_, { dy, vy }) => onSheetDragRelease(dy, vy),
+    })
+  ).current;
+
+  // Smooth (parallax-like), not state-popped, version of headerTop for the
+  // four header elements actually POSITIONED on screen (back button,
+  // frozen title, expanded actions, actions menu) — tracks the drag
+  // continuously via sheetY instead of jumping the instant sheetFull flips
+  // on snap. The plain numeric `headerTop` above stays as the settled,
+  // two-value version for math that needs a concrete number (barHeight,
+  // collapseThreshold, the luma sample) rather than an Animated node —
+  // those only ever matter once actually settled at full anyway, so the
+  // simpler value is correct for them regardless.
+  //
+  // This is a STATIC base + an animated `transform: translateY` offset, not
+  // an animated `top` — `top` isn't native-driver-eligible, and RN's
+  // native-driver check is per rendered component, not per Animated.Value:
+  // an Animated node feeding `top` throws "Style property 'top' is not
+  // supported by native animated module" the instant it shares a style
+  // object with ANY native-driven transform/opacity, even from a totally
+  // different value (barAnim on the frozen title, GrowTouchable's own
+  // internal press-scale on the back button). transform has no such
+  // conflict, so this reads straight off the native-driven sheetY — no
+  // JS-mirrored value needed for this piece.
+  const headerBaseTop = insets.top + 8;
+  const headerExtraTranslateY = inSheet
+    ? sheetY.interpolate({ inputRange: [0, SHEET_PEEK], outputRange: [0, 32 - headerBaseTop], extrapolate: 'clamp' })
+    : 0;
+
+  // Fades out (not a hard show/hide) as the sheet nears the true top — by
+  // the time it's gone, headerExtraTranslateY has also finished sliding the
+  // header row up into notch-clearing position, so there's nothing left to
+  // grab a pill for. Position stays flat; insets.top is always comfortably
+  // bigger than this fade's own [0,40] window, so the pill is already
+  // invisible well before it would need repositioning to clear the notch.
+  const grabPillOpacity = sheetY.interpolate({
+    inputRange: [0, 40], outputRange: [0, 1], extrapolate: 'clamp',
+  });
+
+  // At the half peek, the hero (unchanged, full HERO_MAX height per an
+  // earlier explicit "restore the height" request) fills almost the whole
+  // visible window, leaving no room to see anything below it — the whole
+  // point of a peek. Rather than shrinking the hero itself (tried before,
+  // reverted), shift the hero AND the content below it up together, by the
+  // SAME amount, as one rigid unit — the sheet's own overflow:hidden clips
+  // whatever goes above y=0, so this reads as "the top of the photo is
+  // cropped off, and you can see further down the page than heroMax would
+  // normally allow." At sheetY=0 (full) this returns to 0 — normal spacing,
+  // identical to the pushed page — so this is only ever visible while
+  // still short of full. A SEPARATE transform from heroTranslateY/
+  // heroStretchScale (below) rather than folded into them: those exist for
+  // scroll-driven collapse, this is drag-driven and needs to keep working
+  // identically regardless of whatever that system is doing (and vice
+  // versa) — composing as two independent translateY entries in the same
+  // transform array is additive and doesn't require touching that math.
+  const heroParallaxY = inSheet
+    ? sheetY.interpolate({ inputRange: [0, SHEET_PEEK], outputRange: [0, -180], extrapolate: 'clamp' })
+    : 0;
+
+  // Prefers the map's seeded status (see parkSheetParams) until the real
+  // /api/visits fetch settles — without this, a visited park always opens
+  // showing the "Log a visit" / bucket-toggle button set for one render,
+  // then pops to "Log another visit" / "Edit last visit" once the fetch
+  // lands, even though the map already knew the answer (it's what colors
+  // the dot green). Once visitsLoaded flips true, this defers entirely to
+  // the authoritative `visits` array — a stale/wrong seed self-corrects
+  // the instant real data arrives, same as the rest of the seed system.
   const parkStatus = (() => {
     if (visits.some(v => !v.is_bucket_list && v.visited_date)) return 'visited';
+    if (!visitsLoaded && hasSeed && seedStatus === 'visited') return 'visited';
     return 'notVisited';
   })();
 
@@ -763,10 +1051,20 @@ export default function ParkDetailScreen() {
   // scrolling away. The frozen title itself fades/slides in separately once
   // locked (see `barAnim` below), not tied 1:1 to the image's shrink.
   const heroMax = HERO_MAX + insets.top;
-  const barHeight = HERO_MIN + insets.top;
-  // Guarded: HERO_MIN >= HERO_MAX (e.g. a bad constant edit caught by Fast
-  // Refresh) would flip this negative and crash every scroll interpolation
-  // with "inputRange must be monotonically non-decreasing".
+  // 44 (button height) + 8 (original breathing-room margin, back when this
+  // was flatly `HERO_MIN + insets.top` with HERO_MIN=60=8+44+8) — derived
+  // from headerTop instead of that flat constant so the collapsed banner
+  // grows along with it whenever headerTop carries extra clearance.
+  // Buttons poking out past the banner's blur (see the AnimatedBlurView
+  // below) once scrolled was exactly what happened when only headerTop was
+  // widened and this wasn't. This DOES matter for inSheet now — scroll (and
+  // so the collapse this feeds) is only enabled once sheetFull, at which
+  // point headerTop already equals the same insets.top+8 as the pushed
+  // page, so this comes out identical to that case too.
+  const barHeight = headerTop + 44 + 8;
+  // Guarded: barHeight >= heroMax (e.g. a bad constant edit caught by Fast
+  // Refresh) would flip shrinkDistance negative and crash every scroll
+  // interpolation with "inputRange must be monotonically non-decreasing".
   const shrinkDistance = Math.max(1, heroMax - barHeight);
   // Everything below is transforms only — no animated `height`. Animating
   // layout off scrollY forces the JS driver (every scroll frame does a JS
@@ -803,8 +1101,11 @@ export default function ParkDetailScreen() {
   // heroTranslateY is 0 for any overscroll (negative scrollY, clamped) and
   // heroTitleOverscrollY is 0 for any normal scroll (positive scrollY,
   // clamped) — exactly one of the two is ever nonzero, so adding them just
-  // picks whichever applies to the current scroll direction.
-  const heroTitleTranslateY = Animated.add(heroTranslateY, heroTitleOverscrollY);
+  // picks whichever applies to the current scroll direction. heroParallaxY
+  // (the sheet-drag shift, see its own comment above) is added in too —
+  // without it, the big title would stay put while the hero image slides
+  // up out from under it at the half peek, visually detaching the two.
+  const heroTitleTranslateY = Animated.add(Animated.add(heroTranslateY, heroTitleOverscrollY), heroParallaxY);
   const heroImageCounterY = scrollY.interpolate({
     inputRange: [0, shrinkDistance],
     outputRange: [0, shrinkDistance],
@@ -820,359 +1121,126 @@ export default function ParkDetailScreen() {
   });
   // The big title is bottom-anchored in the hero (heroContent's 22px bottom
   // padding + the 32px title line height), while the back/action buttons sit
-  // fixed at insets.top+8 through insets.top+52 (44px circles). Once the
+  // fixed at headerTop through headerTop+44 (44px circles). Once the
   // shrinking hero's height puts the title's top edge at or below the
   // buttons' bottom edge, the title is unreadable behind them — that's the
   // actual moment to swap to the frozen title + "..." menu, not an
   // arbitrary point in the shrink.
-  const collapseThreshold = heroMax - (insets.top + 8 + 44) - (22 + 32);
+  const collapseThreshold = heroMax - (headerTop + 44) - (22 + 32);
   // The two titles swap on this threshold as a hard switch (see
   // `titleCollapsed` renders below), not a scroll-scrubbed cross-fade — the
   // big one unmounts the instant the frozen one starts animating in, so
   // there is never a frame where both are visible at once.
 
+  // See actionRowWidth's own comment (near actionBtnHeight above) — explicit
+  // half-width override for the pinned bar's visited-park button pair.
+  // 10 must match styles.actionRow's own `gap`.
+  const halfActionBtnWidth = actionRowWidth != null ? (actionRowWidth - 10) / 2 : undefined;
+
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      {lightbox && (
-        <ImageLightbox
-          images={lightbox.images}
-          initialIndex={lightbox.idx}
-          onClose={() => setLightbox(null)}
-        />
-      )}
-
-      {showFriendsSheet && visitors && (
-        <FriendsVisitedSheet
-          friends={visitors.friends}
-          others={visitors.others ?? []}
-          onClose={() => setShowFriendsSheet(false)}
-        />
-      )}
-
-      {showVisitPicker && (
-        <VisitPickerSheet
-          visits={sortedVisits.map(v => ({ id: v.id, visited_date: v.visited_date!, title: v.title }))}
-          onSelect={(visitId) => router.push(`/(modals)/log-visit?visitId=${visitId}` as never)}
-          onClose={() => setShowVisitPicker(false)}
-        />
-      )}
-
-      {/* ── Hero — absolute overlay (not a scrolling child), pinned at the
-          top. Fixed heroMax height; all motion is transforms (see the
-          heroTranslateY/heroStretchScale/heroImageCounterY interpolations
-          above for the geometry and why layout must never animate here).
-          The big title is bottom-anchored inside, so it rides the
-          translating bottom edge exactly like it rode the old height
-          shrink. */}
-      <Animated.View
-        style={[styles.hero, {
-          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
-          height: heroMax, overflow: 'hidden', justifyContent: 'flex-start',
-          backgroundColor: parkColor(park.park_code),
-          transformOrigin: 'top',
-          transform: [{ translateY: heroTranslateY }, { scale: heroStretchScale }],
-        }]}
-        {...heroPan.panHandlers}
-      >
+    <View
+      style={{ flex: 1, backgroundColor: inSheet ? 'transparent' : C.bg }}
+      // box-none: this View itself doesn't capture touches, only its
+      // children do — so a tap/pan in the gap above the sheet (where the
+      // real map screen is visible through this transparentModal) falls
+      // through to that map underneath instead of being swallowed here.
+      // The sheet's own content below remains fully interactive regardless
+      // (box-none only affects whether THIS view intercepts on behalf of
+      // otherwise-empty area, not its children's own touch handling).
+      pointerEvents={inSheet ? 'box-none' : undefined}
+    >
+      {/* Backdrop — purely visual dim as the sheet approaches full, no
+          touch handling of its own (pointerEvents none) — the map beneath
+          is meant to be genuinely interactive through the gap (pan/zoom/
+          tap another dot), so nothing here should intercept taps. Dismiss-
+          on-tap-the-map is instead the REAL map's own onPress handler (see
+          map.tsx), which emits 'dismissParkSheet' for the listener below —
+          it has to be the actual map handling its own tap for pan/pinch/
+          tap-other-dots to work at all, so dismiss rides along on that
+          same real interaction rather than a separate capturing layer
+          here. Sits BEHIND the sheet's own Animated.View below via plain
+          JSX order (both default zIndex 0, so insertion order decides
+          paint order). */}
+      {inSheet && (
         <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, {
+            backgroundColor: '#000',
+            opacity: sheetY.interpolate({
+              inputRange: [0, SHEET_PEEK], outputRange: [0.4, 0], extrapolate: 'clamp',
+            }),
+          }]}
+        />
+      )}
+      <Animated.View
+        style={inSheet ? {
+          position: 'absolute', left: 0, right: 0, top: 0, height: SH,
+          // translateY stays on sheetY (native-driver, not sheetYJS) — this
+          // is the sheet's primary, most performance-sensitive motion. Kept
+          // on its OWN node with nothing but transform in its style object —
+          // background/radius live one level in (below) since borderRadius
+          // isn't native-driver-eligible, and mixing an ineligible prop into
+          // THIS node's style would throw the same "not supported by native
+          // animated module" error transform itself is otherwise immune to.
+          transform: [{ translateY: sheetY }],
+        } : { flex: 1 }}
+      >
+      <Animated.View
+        style={inSheet ? {
+          flex: 1,
+          backgroundColor: C.bg,
+          // Flattens to square corners as the sheet nears the true top —
+          // matches how a native iOS sheet's own corners flatten as it
+          // approaches full, and reads correctly against the screen's own
+          // edge instead of a rounded strip sitting oddly under the notch.
+          // sheetYJS, not sheetY — borderRadius isn't native-driver-
+          // eligible, same reasoning as headerBaseTop/headerExtraTranslateY
+          // above, which is also exactly why this lives on its own node
+          // instead of alongside the translateY above.
+          borderTopLeftRadius: sheetYJS.interpolate({ inputRange: [0, 40], outputRange: [0, 20], extrapolate: 'clamp' }),
+          borderTopRightRadius: sheetYJS.interpolate({ inputRange: [0, 40], outputRange: [0, 20], extrapolate: 'clamp' }),
+          overflow: 'hidden',
+        } : { flex: 1 }}
+      >
+      {/* Grab pill — purely decorative (pointerEvents none): dragging is
+          already handled by heroPan/contentPan over a much broader area
+          than this, it's just a visual cue that the sheet is draggable.
+          Fades out (not a hard hide) as the sheet nears full — see
+          grabPillOpacity above — rather than tracking headerExtraTranslateY's
+          position: by the time it's gone, there's nothing left to fade
+          it FROM, so it can stay at a flat offset the whole time. */}
+      {inSheet && (
+        <Animated.View
+          pointerEvents="none"
           style={{
-            height: heroMax, transformOrigin: 'top',
-            transform: [{ translateY: heroImageCounterY }, { scale: heroImageScale }],
+            position: 'absolute', left: 0, right: 0, top: 10,
+            alignItems: 'center', zIndex: 12,
+            opacity: grabPillOpacity,
           }}
         >
-          {/* Previous image stays visible as background during cross-dissolve */}
-          {prevHeroImage && (
-            <ExpoImage
-              source={{ uri: prevHeroImage }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              contentPosition="top"
-              cachePolicy="memory-disk"
-              allowDownscaling={false}
-            />
-          )}
-          {heroImage && (
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={0.95}
-              disabled={!nps?.images?.length}
-              onPress={() => nps?.images?.length && setLightbox({ images: nps.images, idx: heroIdx })}
-            >
-              <ExpoImage
-                key={heroImage}
-                source={{ uri: heroImage }}
-                style={StyleSheet.absoluteFill}
-                contentFit="cover"
-                contentPosition="top"
-                cachePolicy="memory-disk"
-                // Default downscaling decodes the bitmap at container size,
-                // so the pull-down stretch (up to 2x via heroStretchScale)
-                // magnifies a screen-sized decode and reads as blur. Full-res
-                // decode keeps the overscroll zoom sharp.
-                allowDownscaling={false}
-                onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
-              />
-            </TouchableOpacity>
-          )}
-          <LinearGradient
-            colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.42)', 'transparent']}
-            locations={[0, 0.35, 0.65]}
-            start={{ x: 0, y: 1 }}
-            end={{ x: 0, y: 0 }}
-            style={StyleSheet.absoluteFillObject}
-            pointerEvents="none"
-          />
+          <View style={{ width: 36, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.55)' }} />
         </Animated.View>
-
-        {/* Readability blur for the frozen-title strip. Lives INSIDE the
-            clipped hero box so it always covers exactly the visible cover —
-            a screen-fixed band only matched the hero once locked, and
-            mid-shrink showed a hard blurred/sharp seam across the image.
-            Intensity ramps with scroll (blurAnim, set in the scroll
-            listener): zero under the big title, max at the lock point.
-            Animating `intensity` is safe where animating opacity is not —
-            it drives the effect's own fraction rather than alpha-ing a
-            UIVisualEffectView ancestor (which kills the effect, same
-            failure as the "..." glass circle). */}
-        <AnimatedBlurView
-          // Late onset: nothing until ~60% of the collapse (attention is
-          // still on the cover/big title), then ramps to max at the lock.
-          intensity={blurAnim.interpolate({ inputRange: [0.6, 1], outputRange: [0, 10], extrapolate: 'clamp' })}
-          tint="default"
-          pointerEvents="none"
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-
-      {/* Title — a SEPARATE box from the hero above, not a child of it. RN
-          transforms apply to the whole subtree, so when this lived inside
-          the hero it inherited heroStretchScale along with the image,
-          ballooning the title up to 2x on pull-down overscroll. This box
-          only ever translates (heroTitleTranslateY — shrink tracking while
-          scrolling, or matching the image's overscroll growth from the
-          bottom, never both at once), so the title stays the same distance
-          from the image's bottom edge in both directions without ever
-          scaling itself. */}
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 6,
-          height: heroMax, transform: [{ translateY: heroTitleTranslateY }],
-        }}
-      >
-        {/* Fades out (1 - barAnim) as the frozen title fades in — always
-            mounted so the fade actually animates (same native-driver
-            mid-flight-mount caveat as the frozen title). */}
-        <Animated.View
-          style={[styles.heroContent, {
-            position: 'absolute', left: 0, right: 0, bottom: 0,
-            opacity: barAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
-          }]}
-        >
-          <Text style={styles.heroDesignation}>{stateName.toUpperCase()}</Text>
-          <Text style={styles.heroName}>{park.name}</Text>
-        </Animated.View>
-      </Animated.View>
-
-      {/* Frozen title — text ONLY, nothing else animates in with it: no
-          scrim, no second copy of the cover image (an earlier gradient
-          scrim here read as a snippet of the photo sliding in over the big
-          title). Readability over bright images comes from the text shadow
-          on `frozenTitle` instead. ALWAYS mounted, fully driven by barAnim
-          (opacity 0 at rest) — a view mounted mid-flight of a
-          useNativeDriver animation doesn't attach to it and just pops in at
-          the end value ("no entrance animation" bug). */}
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute', top: insets.top + 8, left: 72, right: 72, height: 44, zIndex: 8, justifyContent: 'center',
-          opacity: barAnim,
-          // Plain slide-down + fade. Deliberately NOT the 3D flip
-          // (perspective + rotateX) — a 3D-rotated layer's projected plane
-          // sweeps far outside its own bounds mid-animation and iOS stops
-          // honoring sibling zIndex on such layers, which made the back
-          // button vanish for a beat every time this came in.
-          transform: [
-            { translateY: barAnim.interpolate({ inputRange: [0, 1], outputRange: [-14, 0] }) },
-          ],
-        }}
-      >
-        {/* Abbreviation is decided up front from a character-width estimate,
-            not measured: both onTextLayout probes tried here (visible
-            one-liner, then a hidden unclamped copy) failed to report
-            truncation reliably on device. Heavy 19pt glyphs average ~9.5pt,
-            and the bar has SW - 144 to work with; erring slightly early
-            just shows "Nat'l" a touch sooner, which is harmless. */}
-        <Text style={styles.frozenTitle} numberOfLines={1}>
-          {park.name.length > Math.floor((SW - 144) / 9.5)
-            ? park.name.replace(/National/g, "Nat'l")
-            : park.name}
-        </Text>
-      </Animated.View>
-
-      {/* Back button — fixed overlay, always visible */}
-      <GrowTouchable
-        style={[styles.backBtn, { top: insets.top + 8, zIndex: 10 }]}
-        onPress={() => router.back()}
-        hitSlop={8}
-      >
-        <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-        <Ionicons name="chevron-back" size={22} color={backInk} />
-      </GrowTouchable>
-
-      {/* Expanded actions — full-size buttons shown over the cover photo.
-          At the breakpoint they slide right into the "..." button's spot
-          while fading, instead of blinking out. Always mounted (barAnim-
-          driven) for the same native-driver mid-flight-mount reason as the
-          titles; pointerEvents flips so the hidden set never eats taps. */}
-      <View
-        pointerEvents={titleCollapsed ? 'none' : 'auto'}
-        style={{
-          position: 'absolute', top: insets.top + 8, right: 16, zIndex: 10,
-          flexDirection: 'row', gap: 8,
-        }}
-      >
-        {(() => {
-          // Row is [first, second, share], 44px buttons + 8px gaps (52px per
-          // slot). On collapse the two left buttons travel right into the
-          // share button's slot (+104 / +52), fading out as they arrive; the
-          // share button stays put and crossfades into the "..." rendered on
-          // top of the same spot. Reads as all three merging into one.
-          const travel = (dist: number) => ({
-            opacity: actionsAnim.interpolate({ inputRange: [0, 0.7], outputRange: [1, 0], extrapolate: 'clamp' as const }),
-            transform: [{ translateX: actionsAnim.interpolate({ inputRange: [0, 1], outputRange: [0, dist] }) }],
-          });
-          // logVisitBtn lands in slot1 when visited, slot2 otherwise, so it
-          // takes its slot's ink as a param.
-          const logVisitBtn = (ink: string) => (
-            <GrowTouchable
-              style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
-              onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
-              hitSlop={8}
-            >
-              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="checkmark-outline" size={25} color={ink} />
-            </GrowTouchable>
-          );
-          const secondBtn = parkStatus === 'visited' ? (
-            <GrowTouchable
-              style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
-              onPress={handleEditVisitPress}
-              hitSlop={8}
-            >
-              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              <Ionicons name="pencil-outline" size={19} color={slot2Ink} />
-            </GrowTouchable>
-          ) : logVisitBtn(slot2Ink);
-          const firstBtn = parkStatus === 'visited' ? logVisitBtn(slot1Ink) : (
-            <GrowTouchable
-              style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
-              onPress={toggleBucketList}
-              disabled={bucketBusy}
-              hitSlop={8}
-            >
-              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-              {bucketBusy ? (
-                <ActivityIndicator size="small" color={slot1Ink} />
-              ) : (
-                <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={22} color={onBucket ? C.bucket : slot1Ink} />
-              )}
-            </GrowTouchable>
-          );
-          return (
-            <>
-              <Animated.View style={travel(104)}>{firstBtn}</Animated.View>
-              <Animated.View style={travel(52)}>{secondBtn}</Animated.View>
-              <Animated.View style={{ opacity: actionsAnim.interpolate({ inputRange: [0.55, 0.9], outputRange: [1, 0], extrapolate: 'clamp' }) }}>
-                <GrowTouchable
-                  style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
-                  onPress={handleShare}
-                  hitSlop={8}
-                >
-                  <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-                  <Ionicons name="share-outline" size={22} color={slot3Ink} />
-                </GrowTouchable>
-              </Animated.View>
-            </>
-          );
-        })()}
-      </View>
-
-      {/* Actions menu — the "..." the row above merges into. Sits UNDER the
-          share button (zIndex 9 vs the row's 10) at the same spot, mounted
-          only while collapsed: the share button's own late fade-out reveals
-          it, which reads as the same crossfade as before. Deliberately NOT
-          opacity-animated itself — a Liquid Glass view that mounts (or
-          lives) inside an alpha-0 ancestor renders no glass material at all
-          on device (UIKit disables the effect under alpha < 1), which is
-          why this button had no circle while the back button did. */}
-      {titleCollapsed && (
-      <View
-        style={{
-          position: 'absolute', top: insets.top + 8, right: 16, zIndex: 9,
-        }}
-      >
-        {/* Glass circle lives on this plain wrapper, not inside MenuView's
-            child — MenuView wraps its trigger in its own native container
-            for the context-menu interaction, which doesn't reliably respect
-            the child's own overflow:hidden/borderRadius clipping, so the
-            glass fill wasn't rendering as a circle. A sibling wrapper with
-            the clipping is guaranteed to clip regardless of what MenuView
-            does internally. */}
-        <View style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}>
-          <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-          <MenuView
-            onOpenMenu={() => setShowHeaderMenu(true)}
-            onCloseMenu={() => setShowHeaderMenu(false)}
-            onPressAction={({ nativeEvent }) => {
-              switch (nativeEvent.event) {
-                case 'log-visit':
-                  router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never);
-                  break;
-                case 'edit-visit':
-                  handleEditVisitPress();
-                  break;
-                case 'bucket':
-                  toggleBucketList();
-                  break;
-                case 'share':
-                  handleShare();
-                  break;
-              }
-            }}
-            actions={[
-              // Explicit imageColor on every action: the menu lib's new-arch
-              // bridge always forwards imageColor (0 when unset) and the
-              // native side tints with it — color 0 is transparent, which
-              // made these SF Symbols render invisible.
-              { id: 'log-visit', title: parkStatus === 'visited' ? 'Log another visit' : 'Log a visit', image: 'checkmark.circle', imageColor: menuInk },
-              ...(parkStatus === 'visited' ? [{ id: 'edit-visit', title: 'Edit visit', image: 'pencil', imageColor: menuInk }] : []),
-              ...(parkStatus !== 'visited' ? [{
-                id: 'bucket',
-                title: onBucket ? 'Remove from bucket list' : 'Add to bucket list',
-                image: onBucket ? 'bookmark.fill' : 'bookmark',
-                imageColor: menuInk,
-              }] : []),
-              { id: 'share', title: 'Share', image: 'square.and.arrow.up', imageColor: menuInk },
-            ]}
-          >
-            {/* Open-menu dim lives on the trigger, not the glass wrapper —
-                alpha < 1 on a GlassView ancestor disables the material. */}
-            <TouchableOpacity hitSlop={8} disabled={bucketBusy} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', opacity: showHeaderMenu ? 0.6 : 1 }}>
-              {bucketBusy ? (
-                <ActivityIndicator size="small" color={slot3Ink} />
-              ) : (
-                <Ionicons name="ellipsis-horizontal" size={22} color={slot3Ink} />
-              )}
-            </TouchableOpacity>
-          </MenuView>
-        </View>
-      </View>
       )}
-
+      {/* Same heroParallaxY shift as the hero above — moving together,
+          by the same amount, is what keeps the stats row directly below
+          the hero's own bottom edge (normal layout, untouched) while the
+          pair of them slides up as one unit. */}
+      <Animated.View
+        {...(inSheet ? contentPan.panHandlers : {})}
+        style={{ flex: 1, transform: [{ translateY: heroParallaxY }] }}
+      >
       <Animated.ScrollView
         ref={scrollRef}
         style={styles.screen}
+        // Enabled only once the sheet is fully expanded — below that,
+        // dragging (anywhere in this wrapper, or on the hero above it)
+        // moves the sheet instead (see contentPan/heroPan). This isn't the
+        // formSheet won't-fix-bug workaround anymore (there's no native
+        // formSheet here at all) — it's the same "not full = drag moves
+        // the sheet, full = content scrolls" split a hand-built bottom
+        // sheet needs regardless, so a downward drag never has to guess
+        // between the two.
+        scrollEnabled={!inSheet || sheetFull}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: heroMax, paddingBottom: bottomOverlayHeight + 12 }}
         contentInsetAdjustmentBehavior="never"
@@ -1388,7 +1456,13 @@ export default function ParkDetailScreen() {
             </View>
             <TouchableOpacity
               style={[styles.viewOnMapBtn, actionBtnHeight != null && { height: actionBtnHeight, paddingVertical: 0 }]}
-              onPress={() => router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code } } as never)}
+              // In the sheet the full map is already right underneath —
+              // dismiss (animated, via dismissSheet — the sheet's full
+              // close, unlike the top-left chevron which only steps down
+              // to half) instead of pushing a second map on top of it.
+              onPress={() => inSheet
+                ? dismissSheet()
+                : router.push({ pathname: '/(tabs)/map', params: { parkCode: park.park_code } } as never)}
               activeOpacity={0.8}
             >
               <Ionicons name="map-outline" size={14} color={C.primary} />
@@ -1584,6 +1658,396 @@ export default function ParkDetailScreen() {
           </Text>
         </View>
       </Animated.ScrollView>
+      </Animated.View>
+
+      {lightbox && (
+        <ImageLightbox
+          images={lightbox.images}
+          initialIndex={lightbox.idx}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+
+      {showFriendsSheet && visitors && (
+        <FriendsVisitedSheet
+          friends={visitors.friends}
+          others={visitors.others ?? []}
+          onClose={() => setShowFriendsSheet(false)}
+        />
+      )}
+
+      {showVisitPicker && (
+        <VisitPickerSheet
+          visits={sortedVisits.map(v => ({ id: v.id, visited_date: v.visited_date!, title: v.title }))}
+          onSelect={(visitId) => router.push(`/(modals)/log-visit?visitId=${visitId}` as never)}
+          onClose={() => setShowVisitPicker(false)}
+        />
+      )}
+
+      {/* ── Hero — absolute overlay (not a scrolling child), pinned at the
+          top. Fixed heroMax height; all motion is transforms (see the
+          heroTranslateY/heroStretchScale/heroImageCounterY interpolations
+          above for the geometry and why layout must never animate here).
+          The big title is bottom-anchored inside, so it rides the
+          translating bottom edge exactly like it rode the old height
+          shrink. */}
+      <Animated.View
+        style={[styles.hero, {
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
+          height: heroMax, overflow: 'hidden', justifyContent: 'flex-start',
+          backgroundColor: parkColor(park.park_code),
+          transformOrigin: 'top',
+          // heroParallaxY: a second, independent translateY (see its own
+          // comment above) that shifts the hero up at the half peek and
+          // eases back to 0 by full — composes additively with
+          // heroTranslateY since both are plain translateY entries applied
+          // before the scale.
+          transform: [{ translateY: heroTranslateY }, { translateY: heroParallaxY }, { scale: heroStretchScale }],
+        }]}
+        {...heroPan.panHandlers}
+      >
+        <Animated.View
+          style={{
+            height: heroMax, transformOrigin: 'top',
+            transform: [{ translateY: heroImageCounterY }, { scale: heroImageScale }],
+          }}
+        >
+          {/* Previous image stays visible as background during cross-dissolve */}
+          {prevHeroImage && (
+            <ExpoImage
+              source={{ uri: prevHeroImage }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              contentPosition="top"
+              cachePolicy="memory-disk"
+              allowDownscaling={false}
+            />
+          )}
+          {heroImage && (
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={0.95}
+              disabled={!nps?.images?.length}
+              onPress={() => nps?.images?.length && setLightbox({ images: nps.images, idx: heroIdx })}
+            >
+              <ExpoImage
+                key={heroImage}
+                source={{ uri: heroImage }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                contentPosition="top"
+                cachePolicy="memory-disk"
+                // Default downscaling decodes the bitmap at container size,
+                // so the pull-down stretch (up to 2x via heroStretchScale)
+                // magnifies a screen-sized decode and reads as blur. Full-res
+                // decode keeps the overscroll zoom sharp.
+                allowDownscaling={false}
+                onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
+              />
+            </TouchableOpacity>
+          )}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.42)', 'transparent']}
+            locations={[0, 0.35, 0.65]}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 0, y: 0 }}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+        </Animated.View>
+
+        {/* Readability blur for the frozen-title strip. Lives INSIDE the
+            clipped hero box so it always covers exactly the visible cover —
+            a screen-fixed band only matched the hero once locked, and
+            mid-shrink showed a hard blurred/sharp seam across the image.
+            Intensity ramps with scroll (blurAnim, set in the scroll
+            listener): zero under the big title, max at the lock point.
+            Animating `intensity` is safe where animating opacity is not —
+            it drives the effect's own fraction rather than alpha-ing a
+            UIVisualEffectView ancestor (which kills the effect, same
+            failure as the "..." glass circle). */}
+        <AnimatedBlurView
+          // Late onset: nothing until ~60% of the collapse (attention is
+          // still on the cover/big title), then ramps to max at the lock.
+          intensity={blurAnim.interpolate({ inputRange: [0.6, 1], outputRange: [0, 10], extrapolate: 'clamp' })}
+          tint="default"
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+
+      {/* Title — a SEPARATE box from the hero above, not a child of it. RN
+          transforms apply to the whole subtree, so when this lived inside
+          the hero it inherited heroStretchScale along with the image,
+          ballooning the title up to 2x on pull-down overscroll. This box
+          only ever translates (heroTitleTranslateY — shrink tracking while
+          scrolling, or matching the image's overscroll growth from the
+          bottom, never both at once), so the title stays the same distance
+          from the image's bottom edge in both directions without ever
+          scaling itself. */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 6,
+          height: heroMax, transform: [{ translateY: heroTitleTranslateY }],
+        }}
+      >
+        {/* Fades out (1 - barAnim) as the frozen title fades in — always
+            mounted so the fade actually animates (same native-driver
+            mid-flight-mount caveat as the frozen title). */}
+        <Animated.View
+          style={[styles.heroContent, {
+            position: 'absolute', left: 0, right: 0, bottom: 0,
+            opacity: barAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+          }]}
+        >
+          <Text style={styles.heroDesignation}>{stateName.toUpperCase()}</Text>
+          <Text style={styles.heroName}>{park.name}</Text>
+        </Animated.View>
+      </Animated.View>
+
+      {/* Frozen title — text ONLY, nothing else animates in with it: no
+          scrim, no second copy of the cover image (an earlier gradient
+          scrim here read as a snippet of the photo sliding in over the big
+          title). Readability over bright images comes from the text shadow
+          on `frozenTitle` instead. ALWAYS mounted, fully driven by barAnim
+          (opacity 0 at rest) — a view mounted mid-flight of a
+          useNativeDriver animation doesn't attach to it and just pops in at
+          the end value ("no entrance animation" bug). */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', top: headerBaseTop, left: 72, right: 72, height: 44, zIndex: 8, justifyContent: 'center',
+          opacity: barAnim,
+          // Plain slide-down + fade. Deliberately NOT the 3D flip
+          // (perspective + rotateX) — a 3D-rotated layer's projected plane
+          // sweeps far outside its own bounds mid-animation and iOS stops
+          // honoring sibling zIndex on such layers, which made the back
+          // button vanish for a beat every time this came in.
+          // Second translateY entry composes additively with the first —
+          // this is the half↔full header shift (see headerExtraTranslateY),
+          // riding along on the same transform array since `top` can't
+          // safely carry it here (barAnim above is native-driven).
+          transform: [
+            { translateY: barAnim.interpolate({ inputRange: [0, 1], outputRange: [-14, 0] }) },
+            { translateY: headerExtraTranslateY },
+          ],
+        }}
+      >
+        {/* Abbreviation is decided up front from a character-width estimate,
+            not measured: both onTextLayout probes tried here (visible
+            one-liner, then a hidden unclamped copy) failed to report
+            truncation reliably on device. Heavy 19pt glyphs average ~9.5pt,
+            and the bar has SW - 144 to work with; erring slightly early
+            just shows "Nat'l" a touch sooner, which is harmless. */}
+        <Text style={styles.frozenTitle} numberOfLines={1}>
+          {park.name.length > Math.floor((SW - 144) / 9.5)
+            ? park.name.replace(/National/g, "Nat'l")
+            : park.name}
+        </Text>
+      </Animated.View>
+
+      {/* Top-left button — fixed overlay, always visible, three roles: in
+          the sheet, not yet full, it's an explicit tap-to-expand shortcut
+          (chevron, rotated up), since dragging to full isn't the only way
+          in now that we own the gesture code — cheap to offer once it's
+          just a local snapSheetTo(0) rather than a navigation. Once full,
+          it swaps to a genuinely different glyph (X, not a rotated
+          chevron) and dismisses outright via dismissSheet — full screen
+          has no visible map gap left to tap, so this is its only
+          non-drag close affordance. On the plain pushed page it's the
+          normal back-arrow, unrotated. */}
+      {/* Outer node owns the absolute position + the half↔full transform
+          offset; GrowTouchable moves to `relative` (matching the same
+          override used everywhere else this style is reused below) since
+          it can't safely take `top` itself — see headerExtraTranslateY. */}
+      <Animated.View
+        style={{
+          position: 'absolute', left: 16, top: headerBaseTop, zIndex: 10,
+          transform: [{ translateY: headerExtraTranslateY }],
+        }}
+      >
+        <GrowTouchable
+          style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+          onPress={() => inSheet
+            ? (sheetFull ? snapSheetTo(SHEET_PEEK) : snapSheetTo(0))
+            : router.back()}
+          hitSlop={8}
+        >
+          <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+          {/* SAME glyph for all three roles (chevron-back, rotated to taste)
+              — not the separate 'chevron-down'/'chevron-up' icons, whose
+              stroke weight/metrics don't quite match 'chevron-back' in
+              Ionicons and read as visibly off-center inside the round
+              button. */}
+          <Ionicons
+            name="chevron-back"
+            size={22}
+            color={backInk}
+            style={!inSheet ? undefined : sheetFull
+              // Rotating a font glyph 90deg pivots around its bounding box's
+              // geometric center, but chevron-back's own ink isn't symmetric
+              // within that box — rotated, the down (-90deg) case read as
+              // sitting visibly above the button's true center. marginTop
+              // nudges it back down; confirmed visually, not derived, and
+              // not assumed to apply the same to the up (90deg) case below.
+              ? { transform: [{ rotate: '-90deg' }], marginTop: 2 }
+              : { transform: [{ rotate: '90deg' }] }}
+          />
+        </GrowTouchable>
+      </Animated.View>
+
+      {/* Expanded actions — full-size buttons shown over the cover photo.
+          At the breakpoint they slide right into the "..." button's spot
+          while fading, instead of blinking out. Always mounted (barAnim-
+          driven) for the same native-driver mid-flight-mount reason as the
+          titles; pointerEvents flips so the hidden set never eats taps. */}
+      <Animated.View
+        pointerEvents={titleCollapsed ? 'none' : 'auto'}
+        style={{
+          position: 'absolute', top: headerBaseTop, right: 16, zIndex: 10,
+          flexDirection: 'row', gap: 8,
+          transform: [{ translateY: headerExtraTranslateY }],
+        }}
+      >
+        {(() => {
+          // Row is [first, second, share], 44px buttons + 8px gaps (52px per
+          // slot). On collapse the two left buttons travel right into the
+          // share button's slot (+104 / +52), fading out as they arrive; the
+          // share button stays put and crossfades into the "..." rendered on
+          // top of the same spot. Reads as all three merging into one.
+          const travel = (dist: number) => ({
+            opacity: actionsAnim.interpolate({ inputRange: [0, 0.7], outputRange: [1, 0], extrapolate: 'clamp' as const }),
+            transform: [{ translateX: actionsAnim.interpolate({ inputRange: [0, 1], outputRange: [0, dist] }) }],
+          });
+          // logVisitBtn lands in slot1 when visited, slot2 otherwise, so it
+          // takes its slot's ink as a param.
+          const logVisitBtn = (ink: string) => (
+            <GrowTouchable
+              style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+              onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+              hitSlop={8}
+            >
+              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+              <Ionicons name="checkmark-outline" size={25} color={ink} />
+            </GrowTouchable>
+          );
+          const secondBtn = parkStatus === 'visited' ? (
+            <GrowTouchable
+              style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+              onPress={handleEditVisitPress}
+              hitSlop={8}
+            >
+              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+              <Ionicons name="pencil-outline" size={19} color={slot2Ink} />
+            </GrowTouchable>
+          ) : logVisitBtn(slot2Ink);
+          const firstBtn = parkStatus === 'visited' ? logVisitBtn(slot1Ink) : (
+            <GrowTouchable
+              style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+              onPress={toggleBucketList}
+              disabled={bucketBusy}
+              hitSlop={8}
+            >
+              <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+              {bucketBusy ? (
+                <ActivityIndicator size="small" color={slot1Ink} />
+              ) : (
+                <Ionicons name={onBucket ? 'bookmark' : 'bookmark-outline'} size={22} color={onBucket ? C.bucket : slot1Ink} />
+              )}
+            </GrowTouchable>
+          );
+          return (
+            <>
+              <Animated.View style={travel(104)}>{firstBtn}</Animated.View>
+              <Animated.View style={travel(52)}>{secondBtn}</Animated.View>
+              <Animated.View style={{ opacity: actionsAnim.interpolate({ inputRange: [0.55, 0.9], outputRange: [1, 0], extrapolate: 'clamp' }) }}>
+                <GrowTouchable
+                  style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+                  onPress={handleShare}
+                  hitSlop={8}
+                >
+                  <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+                  <Ionicons name="share-outline" size={22} color={slot3Ink} />
+                </GrowTouchable>
+              </Animated.View>
+            </>
+          );
+        })()}
+      </Animated.View>
+
+      {/* Actions menu — the "..." the row above merges into. Sits UNDER the
+          share button (zIndex 9 vs the row's 10) at the same spot, mounted
+          only while collapsed: the share button's own late fade-out reveals
+          it, which reads as the same crossfade as before. Deliberately NOT
+          opacity-animated itself — a Liquid Glass view that mounts (or
+          lives) inside an alpha-0 ancestor renders no glass material at all
+          on device (UIKit disables the effect under alpha < 1), which is
+          why this button had no circle while the back button did. */}
+      {titleCollapsed && (
+      <Animated.View
+        style={{
+          position: 'absolute', top: headerBaseTop, right: 16, zIndex: 9,
+          transform: [{ translateY: headerExtraTranslateY }],
+        }}
+      >
+        {/* Glass circle lives on this plain wrapper, not inside MenuView's
+            child — MenuView wraps its trigger in its own native container
+            for the context-menu interaction, which doesn't reliably respect
+            the child's own overflow:hidden/borderRadius clipping, so the
+            glass fill wasn't rendering as a circle. A sibling wrapper with
+            the clipping is guaranteed to clip regardless of what MenuView
+            does internally. */}
+        <View style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}>
+          <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+          <MenuView
+            onOpenMenu={() => setShowHeaderMenu(true)}
+            onCloseMenu={() => setShowHeaderMenu(false)}
+            onPressAction={({ nativeEvent }) => {
+              switch (nativeEvent.event) {
+                case 'log-visit':
+                  router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never);
+                  break;
+                case 'edit-visit':
+                  handleEditVisitPress();
+                  break;
+                case 'bucket':
+                  toggleBucketList();
+                  break;
+                case 'share':
+                  handleShare();
+                  break;
+              }
+            }}
+            actions={[
+              // Explicit imageColor on every action: the menu lib's new-arch
+              // bridge always forwards imageColor (0 when unset) and the
+              // native side tints with it — color 0 is transparent, which
+              // made these SF Symbols render invisible.
+              { id: 'log-visit', title: parkStatus === 'visited' ? 'Log another visit' : 'Log a visit', image: 'checkmark.circle', imageColor: menuInk },
+              ...(parkStatus === 'visited' ? [{ id: 'edit-visit', title: 'Edit visit', image: 'pencil', imageColor: menuInk }] : []),
+              ...(parkStatus !== 'visited' ? [{
+                id: 'bucket',
+                title: onBucket ? 'Remove from bucket list' : 'Add to bucket list',
+                image: onBucket ? 'bookmark.fill' : 'bookmark',
+                imageColor: menuInk,
+              }] : []),
+              { id: 'share', title: 'Share', image: 'square.and.arrow.up', imageColor: menuInk },
+            ]}
+          >
+            {/* Open-menu dim lives on the trigger, not the glass wrapper —
+                alpha < 1 on a GlassView ancestor disables the material. */}
+            <TouchableOpacity hitSlop={8} disabled={bucketBusy} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', opacity: showHeaderMenu ? 0.6 : 1 }}>
+              {bucketBusy ? (
+                <ActivityIndicator size="small" color={slot3Ink} />
+              ) : (
+                <Ionicons name="ellipsis-horizontal" size={22} color={slot3Ink} />
+              )}
+            </TouchableOpacity>
+          </MenuView>
+        </View>
+      </Animated.View>
+      )}
 
       {/* Pinned action bar — AllTrails-style: the tab bar hides on this
           nested detail page (see FloatingTabBar) and these Liquid Glass
@@ -1606,11 +2070,11 @@ export default function ParkDetailScreen() {
           style={[StyleSheet.absoluteFill, { top: -70 }]}
           pointerEvents="none"
         />
-        <View style={styles.actionRow}>
+        <View style={styles.actionRow} onLayout={(e) => setActionRowWidth(e.nativeEvent.layout.width)}>
           {parkStatus === 'visited' ? (
             <>
               <TouchableOpacity
-                style={styles.actionBtn}
+                style={[styles.actionBtn, halfActionBtnWidth != null && { width: halfActionBtnWidth }]}
                 onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
                 onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
                 activeOpacity={0.8}
@@ -1620,7 +2084,7 @@ export default function ParkDetailScreen() {
                 <Text style={styles.actionBtnText}>Log another visit</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.actionBtnSecondary}
+                style={[styles.actionBtnSecondary, halfActionBtnWidth != null && { width: halfActionBtnWidth }]}
                 onPress={() => { if (lastVisit) router.push(`/profile/journal/${lastVisit.id}` as never); }}
                 activeOpacity={0.8}
               >
@@ -1665,6 +2129,8 @@ export default function ParkDetailScreen() {
           )}
         </View>
       </View>
+      </Animated.View>
+      </Animated.View>
     </View>
   );
 }
@@ -1817,7 +2283,12 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
     overflow: 'hidden',
-    marginTop: 0,
+    // 12, not 0 — the photo strip above (see stripImages.length > 0) brings
+    // its own vertical padding, so this sat flush against the hero with
+    // zero gap until nps loaded and the strip mounted, then visibly popped
+    // to a gap. A baseline gap here means there's always SOME breathing
+    // room, strip or not — no layout jump when it arrives.
+    marginTop: 12,
     marginBottom: 12,
   },
   statCell: {
@@ -1825,6 +2296,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexShrink: 1,
     alignItems: 'center',
+    // statsRow doesn't set alignItems, so its default 'stretch' makes every
+    // cell match the row's tallest — usually State, which wraps to 2-3
+    // lines for multi-state parks. Without this, the shorter cells (Status,
+    // Visits) pack to the top of that shared height instead of sitting in
+    // the middle of it, reading as misaligned.
+    justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: 8,
   },
@@ -1895,7 +2372,18 @@ const styles = StyleSheet.create({
   // Pill buttons — full stadium radius, 52pt tall, real Liquid Glass fills
   // (GlassIconBg with borderRadius 999).
   actionBtn: {
+    // flexBasis: 0 + minWidth: 0, not just flex: 1 — RN's flex:1 alone
+    // grows from each child's own CONTENT size rather than a shared zero
+    // baseline, so two flex:1 siblings with different label lengths ("Log
+    // another visit" vs "Edit last visit") settle at visibly different
+    // widths instead of splitting the row evenly. flexBasis: 0 makes both
+    // start from nothing and grow purely proportionally; minWidth: 0 backs
+    // that up — a flex child's default minimum size is its content's own
+    // intrinsic width, which can silently win over flexBasis for text this
+    // long and reintroduce the same unevenness.
     flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1911,6 +2399,8 @@ const styles = StyleSheet.create({
   },
   actionBtnSecondary: {
     flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

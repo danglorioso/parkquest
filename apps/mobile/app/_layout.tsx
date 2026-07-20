@@ -153,6 +153,49 @@ function RootStack() {
         }}
       />
       <Stack.Screen
+        name="park-sheet/[id]"
+        // Map-dot presentation of the park profile — a fully CUSTOM sheet,
+        // not a native formSheet at all. park/[id].tsx (gated on `inSheet`)
+        // owns 100% of the presentation: an Animated.View translated
+        // between full (true top of screen — a real UISheetPresentation-
+        // Controller's largest detent structurally CANNOT reach this, it's
+        // an Apple API ceiling, not a config option) and a half-height
+        // "peek", dragged via PanResponder, dismissed by animating off-
+        // screen then calling router.back(). transparentModal + animation:
+        // 'none' here just gets this screen ON screen with the map visible
+        // behind it (background is transparent, see park/[id].tsx's root
+        // View) and hands ALL actual motion to that in-component code —
+        // any native transition here would fight the one this screen plays
+        // itself.
+        //
+        // This went through two native-formSheet designs first — a mode-
+        // switched pair (formSheet half / fullScreenModal full) worked
+        // around react-native-screens' formSheet+ScrollView bug
+        // (maintainer-acknowledged, won't-fix:
+        // github.com/software-mansion/react-native-screens/issues/2992,
+        // #2687) but cost 5+ rounds fighting the seam between two native
+        // screens and never felt like one continuous sheet; a single
+        // formSheet (scrolling disabled throughout, sidestepping that bug
+        // structurally) felt right but then hit the edge-to-edge ceiling
+        // above. A custom sheet has neither limitation — real scrolling,
+        // genuinely reaches the top — at the cost of owning the gesture/
+        // animation code ourselves instead of getting it from UIKit.
+        options={{
+          presentation: 'transparentModal',
+          animation: 'none',
+          headerShown: false,
+          // The outer <Stack screenOptions> above sets a GLOBAL opaque
+          // contentStyle for every screen — without overriding it here,
+          // react-native-screens paints that solid color as this screen's
+          // own native background, underneath our React content, regardless
+          // of what park/[id].tsx's own root View sets. That's what made
+          // the "transparent" modal show a blank opaque area instead of the
+          // map — the transparency never made it past this screen's own
+          // native backing.
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      />
+      <Stack.Screen
         name="profile/edit"
         // Native back item with the label hidden ('minimal') — suppresses the
         // ugly "(tabs)" fallback label without a custom headerLeft. A custom

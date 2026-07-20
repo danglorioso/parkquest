@@ -142,9 +142,19 @@ function StatusBadge({ status }: { status: ParkStatus }) {
 
 // ── Park card ─────────────────────────────────────────────────────────────────
 
+// Cards above the fold should win the image-fetch queue over ones the user
+// hasn't scrolled to yet — expo-image's underlying downloader (SDWebImage/
+// Glide) serves 'high' priority requests before 'low' ones regardless of
+// render order, so without this the last row of the initial batch can finish
+// before the first.
+const PRIORITY_CUTOFF = 10;
+function imagePriority(index: number): 'high' | 'low' {
+  return index < PRIORITY_CUTOFF ? 'high' : 'low';
+}
+
 function ParkCard({
-  park, status, descLines = 2, onTitleLayout, distance,
-}: { park: Park; status: ParkStatus; descLines?: number; onTitleLayout?: (lines: number) => void; distance?: number | null }) {
+  park, status, descLines = 2, onTitleLayout, distance, priority = 'high',
+}: { park: Park; status: ParkStatus; descLines?: number; onTitleLayout?: (lines: number) => void; distance?: number | null; priority?: 'high' | 'low' }) {
   const router = useRouter();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
@@ -165,6 +175,7 @@ function ParkCard({
             contentFit="cover"
             cachePolicy="memory-disk"
             transition={0}
+            priority={priority}
             onError={() => setImgFailed(true)}
           />
         )}
@@ -203,8 +214,8 @@ function ParkCard({
 // to 2 lines on one side leaves spare height on the other — give that side's
 // description the extra line instead of truncating it needlessly.
 function ParkCardRow({
-  left, right, visits, userLocation,
-}: { left: Park; right: Park | null; visits: Visit[]; userLocation: { lat: number; lng: number } | null }) {
+  left, right, visits, userLocation, startIndex,
+}: { left: Park; right: Park | null; visits: Visit[]; userLocation: { lat: number; lng: number } | null; startIndex: number }) {
   const [leftTitleLines, setLeftTitleLines] = useState(1);
   const [rightTitleLines, setRightTitleLines] = useState(1);
   const maxTitleLines = Math.max(leftTitleLines, rightTitleLines);
@@ -217,6 +228,7 @@ function ParkCardRow({
         descLines={2 + (maxTitleLines - leftTitleLines)}
         onTitleLayout={setLeftTitleLines}
         distance={parkDistance(left, userLocation)}
+        priority={imagePriority(startIndex)}
       />
       {right
         ? (
@@ -226,6 +238,7 @@ function ParkCardRow({
             descLines={2 + (maxTitleLines - rightTitleLines)}
             onTitleLayout={setRightTitleLines}
             distance={parkDistance(right, userLocation)}
+            priority={imagePriority(startIndex + 1)}
           />
         )
         : <View style={{ width: CARD_W }} />
@@ -235,8 +248,8 @@ function ParkCardRow({
 }
 
 function ParkListRow({
-  park, status, visitCount, distance,
-}: { park: Park; status: ParkStatus; visitCount: number; distance?: number | null }) {
+  park, status, visitCount, distance, priority = 'high',
+}: { park: Park; status: ParkStatus; visitCount: number; distance?: number | null; priority?: 'high' | 'low' }) {
   const router = useRouter();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
@@ -267,6 +280,7 @@ function ParkListRow({
             contentFit="cover"
             cachePolicy="memory-disk"
             transition={0}
+            priority={priority}
             onError={() => setImgFailed(true)}
           />
         )}
@@ -1008,7 +1022,7 @@ export default function ParksScreen() {
         ref={flatListRef}
         data={rows}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           if (item.type === 'skeleton') {
             return (
               <View style={styles.rowWrap}>
@@ -1021,9 +1035,9 @@ export default function ParksScreen() {
           if (item.type === 'single') {
             const s = parkStatus(item.park.park_code, visits);
             const vc = visits.filter(v => v.park_code === item.park.park_code && !v.is_bucket_list && v.visited_date).length;
-            return <ParkListRow park={item.park} status={s} visitCount={vc} distance={parkDistance(item.park, distLoc)} />;
+            return <ParkListRow park={item.park} status={s} visitCount={vc} distance={parkDistance(item.park, distLoc)} priority={imagePriority(index)} />;
           }
-          return <ParkCardRow left={item.left} right={item.right} visits={visits} userLocation={distLoc} />;
+          return <ParkCardRow left={item.left} right={item.right} visits={visits} userLocation={distLoc} startIndex={index * 2} />;
         }}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={ListEmpty}
