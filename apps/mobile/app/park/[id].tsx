@@ -130,24 +130,6 @@ interface Visit {
   created_at: string;
 }
 
-interface PostLite {
-  id: number;
-  caption: string | null;
-  photos: string[] | null;
-  park_code: string | null;
-  visit_id: number | null;
-  badge_id: string | null;
-  created_at: string;
-  clerk_user_id: string;
-  park_name: string | null;
-  username: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
-  like_count: number;
-  comment_count: number;
-  liked_by_me: boolean;
-}
-
 interface ForecastPeriod {
   name: string;
   startTime: string;
@@ -210,7 +192,7 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, remeasureKey }: { title: string; children: React.ReactNode; remeasureKey?: string | number }) {
   const C = useColors();
   const [open, setOpen] = useState(true);
   // LayoutAnimation.configureNext (tried first) only reliably animates the
@@ -225,11 +207,36 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   const [contentHeight, setContentHeight] = useState(0);
   const anim = useRef(new Animated.Value(1)).current;
   const animating = useRef(false);
+  // Mirrors animating.current into real state — needed because the clip
+  // container's height style (below) has to CHOOSE, per render, between
+  // the measured/interpolated height (only while actively transitioning)
+  // and no clip at all (settled open — see that style's own comment for
+  // why); a ref alone can't drive that choice since changing it doesn't
+  // trigger a re-render.
+  const [transitioning, setTransitioning] = useState(false);
+  // Optional, for a caller whose children can swap to an entirely
+  // different subtree while genuinely open (Journal section's You/
+  // Community tabs). NOT what fixes content-clipping-while-open anymore —
+  // that turned out to have nothing to do with how fresh contentHeight
+  // is (see the clip container's own height style below: it doesn't clip
+  // AT ALL while settled open, regardless of contentHeight's accuracy).
+  // What this still does: keeps contentHeight reasonably close to
+  // whichever tab is actually showing, so that IF the user later
+  // collapses the section (taps the header), that close animation
+  // starts from close to the right height instead of a stale one from
+  // a tab that isn't even showing anymore — a smaller, cosmetic-only
+  // concern, not the source of the original bug.
+  const isFirstRemeasure = useRef(true);
+  useEffect(() => {
+    if (isFirstRemeasure.current) { isFirstRemeasure.current = false; return; }
+    setContentHeight(0);
+  }, [remeasureKey]);
   const toggle = () => {
     const next = !open;
     animating.current = true;
+    setTransitioning(true);
     Animated.timing(anim, { toValue: next ? 1 : 0, duration: 300, useNativeDriver: false })
-      .start(() => { animating.current = false; });
+      .start(() => { animating.current = false; setTransitioning(false); });
     setOpen(next);
   };
   return (
@@ -287,7 +294,25 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         style={{
           overflow: 'hidden',
           opacity: anim,
-          height: contentHeight ? anim.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }) : undefined,
+          // Measured/interpolated height ONLY while actively transitioning
+          // (the open/close animation itself needs a concrete number to
+          // interpolate between 0 and) — settled open, no clip at all
+          // (undefined = natural sizing), settled closed, a flat 0. This
+          // is the real fix for content that resizes itself well after
+          // Section's own contentHeight was captured, for reasons that
+          // have nothing to do with Section or any prop it's given —
+          // e.g. PostCard's own comment-preview fetch resolving ~1s after
+          // mount and growing the card taller. No remeasureKey, no probe
+          // reset, no forced re-render can pre-empt an arbitrary FUTURE
+          // resize from a grandchild's own async state; not clipping at
+          // all while settled open sidesteps needing to. Only the brief
+          // collapse/expand transition genuinely needs a precise height,
+          // and contentHeight only needs to be roughly right at the
+          // MOMENT a transition starts, not for the section's entire
+          // open lifetime.
+          height: transitioning
+            ? (contentHeight ? anim.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }) : undefined)
+            : (open ? undefined : 0),
         }}
       >
         <View
@@ -500,6 +525,16 @@ export function ParkProfileScreen({
   // to the authoritative (possibly different) `visits` array instead.
   const [visitsLoaded, setVisitsLoaded] = useState(false);
   const [myParkPosts,  setMyParkPosts]  = useState<FeedPost[]>([]);
+  // Friends' AND public strangers' posts about this park (everyone in the
+  // /api/feed?park=X result except the current user) — the Journal
+  // section's "Community" tab. See journalTab below for the you/community
+  // switch and its default.
+  const [communityParkPosts, setCommunityParkPosts] = useState<FeedPost[]>([]);
+  // null = no explicit tap yet, use the smart default (see journalTab
+  // below); once the user taps a tab, their choice sticks even if the
+  // underlying data changes (e.g. a background refresh shouldn't yank
+  // them back to a different tab).
+  const [journalTabOverride, setJournalTabOverride] = useState<'you' | 'community' | null>(null);
   const [token,        setToken]        = useState<string | null>(null);
   const [loading,      setLoading]      = useState(!hasSeed);
   const [lightbox,     setLightbox]     = useState<{ images: NpsImage[]; idx: number } | null>(null);
@@ -597,7 +632,7 @@ export function ParkProfileScreen({
         apiFetch<Park>(`/api/parks/${id}`, tok),
         apiFetch<NpsData>(`/api/parks/${id}/nps`, tok),
         apiFetch<Visit[]>('/api/visits', tok),
-        apiFetch<PostLite[]>(`/api/posts?parkCode=${id}`, tok),
+        apiFetch<FeedPost[]>(`/api/feed?park=${id}`, tok),
         apiFetch<ParkVisitorsSummary>(`/api/parks/${id}/visitors`, tok),
       ]);
 
@@ -634,28 +669,14 @@ export function ParkProfileScreen({
       setOnBucket(allVisits.some((v: Visit) => v.park_code === id && v.is_bucket_list));
 
       if (postsData.status === 'fulfilled') {
-        const merged: FeedPost[] = postsData.value
-          .filter(p => p.clerk_user_id === user?.id)
-          .map(p => {
-            const v = parkVisits.find(pv => pv.id === p.visit_id);
-            return {
-              ...p,
-              park_image_url: null,
-              is_friend_post: false,
-              visibility: v?.visibility ?? null,
-              visit_date: v?.visited_date ?? null,
-              visit_rating: v?.rating ?? null,
-              visit_activities: v?.activities ?? null,
-              visit_weather: v?.weather_conditions ?? null,
-              visit_crowd: v?.crowd ?? null,
-              visit_difficulty: v?.difficulty ?? null,
-              visit_companion_count: v?.companions?.length ?? null,
-              visit_companion_names: null,
-              visit_highlight: v?.highlight ?? null,
-              visit_title: v?.title ?? null,
-            } as FeedPost;
-          });
-        setMyParkPosts(merged);
+        // /api/feed (not /api/posts) — same visibility rules, but already
+        // joins visit_*/park_image_url/is_friend_post server-side, so no
+        // more manual cross-referencing against parkVisits here. Own posts
+        // vs. everyone else's (friends AND public posts from strangers —
+        // is_friend_post distinguishes those two within the second bucket,
+        // not used to exclude strangers) is a simple split of the one list.
+        setMyParkPosts(postsData.value.filter(p => p.clerk_user_id === user?.id));
+        setCommunityParkPosts(postsData.value.filter(p => p.clerk_user_id !== user?.id));
       }
 
       // No offline fallback here by design (see the !isOnline branch above) —
@@ -1128,6 +1149,16 @@ export function ParkProfileScreen({
     .sort((a, b) => new Date(b.visited_date!).getTime() - new Date(a.visited_date!).getTime());
   const lastVisit = sortedVisits[0] ?? null;
 
+  // Journal section's you/community tabs — community only shown at all
+  // when there's actually something in it (no point offering a toggle to
+  // an empty tab). Defaults to community specifically when the user has
+  // no visits of their own yet, per an explicit request — otherwise
+  // defaults to you, same as this section always worked before tabs
+  // existed. journalTabOverride (set the instant either tab is tapped)
+  // always wins once present.
+  const hasCommunityPosts = communityParkPosts.length > 0;
+  const journalTab = journalTabOverride ?? (visits.length === 0 && hasCommunityPosts ? 'community' : 'you');
+
   const handleEditVisitPress = () => {
     if (sortedVisits.length > 1) {
       setShowVisitPicker(true);
@@ -1174,6 +1205,82 @@ export function ParkProfileScreen({
       </View>
     );
   }
+
+  // Extracted for readability — the Journal section (below) just calls
+  // whichever of these matches the active tab. Plain functions, not
+  // components (called directly as renderJournalYou(), never as
+  // <RenderJournalYou/>) — no reason to give React a new component
+  // identity to track here. Defined here, after the !park guard above,
+  // specifically because these reference `park` directly and TypeScript
+  // only knows it's non-null once past that guard.
+  const renderJournalYou = () => visits.length === 0 ? (
+    <View style={styles.journalEmpty}>
+      <Text style={{ fontSize: 36, marginBottom: 14 }}>🌲</Text>
+      <Text style={{ fontWeight: '800', color: C.ink, fontSize: 16, marginBottom: 6 }}>
+        No visits yet
+      </Text>
+      <Text style={{ color: C.inkMute, fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: 22 }}>
+        Log your first adventure at {park.name}.
+      </Text>
+      <TouchableOpacity
+        style={[styles.journalEmptyBtn, { backgroundColor: C.primary }]}
+        onPress={() => pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="pencil" size={14} color="#FFFBF1" />
+        <Text style={styles.actionBtnText}>Log a visit</Text>
+      </TouchableOpacity>
+    </View>
+  ) : (
+    <>
+      {token && myParkPosts.length > 0
+        ? myParkPosts.map(post => (
+            <PostCard
+              key={post.id}
+              post={post}
+              myUserId={user?.id ?? ''}
+              myAvatarUrl={user?.imageUrl}
+              myName={user?.fullName ?? user?.username}
+              onDelete={deletedId => setMyParkPosts(prev => prev.filter(p => p.id !== deletedId))}
+            />
+          ))
+        : visits.map(v => (
+            <View key={v.id} style={[styles.visitCard, { marginBottom: 12 }]}>
+              <Text style={styles.visitDate}>
+                {v.visited_date
+                  ? new Date(v.visited_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                  : 'No date'}
+              </Text>
+              {v.title ? <Text style={styles.visitTitle}>{v.title}</Text> : null}
+              {v.notes ? <Text style={styles.visitNotes} numberOfLines={4}>{v.notes}</Text> : null}
+            </View>
+          ))
+      }
+      <TouchableOpacity
+        style={[styles.actionBtnOutline, { borderColor: C.primary, marginTop: 4 }]}
+        onPress={() => pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="add" size={16} color={C.primary} />
+        <Text style={[styles.actionBtnOutlineText, { color: C.primary }]}>Log another visit</Text>
+      </TouchableOpacity>
+    </>
+  );
+
+  const renderJournalCommunity = () => (
+    <>
+      {communityParkPosts.map(post => (
+        <PostCard
+          key={post.id}
+          post={post}
+          myUserId={user?.id ?? ''}
+          myAvatarUrl={user?.imageUrl}
+          myName={user?.fullName ?? user?.username}
+          onDelete={deletedId => setCommunityParkPosts(prev => prev.filter(p => p.id !== deletedId))}
+        />
+      ))}
+    </>
+  );
 
   const stateName = fullStateName(park.states);
 
@@ -1835,60 +1942,60 @@ export function ParkProfileScreen({
         />
 
         {/* ── Journal ───────────────────────────────────────────────────────── */}
-        <Section title={`Your Journal (${visits.length})`}>
-          {visits.length === 0 ? (
-            <View style={styles.journalEmpty}>
-              <Text style={{ fontSize: 36, marginBottom: 14 }}>🌲</Text>
-              <Text style={{ fontWeight: '800', color: C.ink, fontSize: 16, marginBottom: 6 }}>
-                No visits yet
-              </Text>
-              <Text style={{ color: C.inkMute, fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: 22 }}>
-                Log your first adventure at {park.name}.
-              </Text>
-              <TouchableOpacity
-                style={[styles.journalEmptyBtn, { backgroundColor: C.primary }]}
-                onPress={() => pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="pencil" size={14} color="#FFFBF1" />
-                <Text style={styles.actionBtnText}>Log a visit</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={{ gap: 0 }}>
-              {token && myParkPosts.length > 0
-                ? myParkPosts.map(post => (
-                    <PostCard
-                      key={post.id}
-                      post={post}
-                      myUserId={user?.id ?? ''}
-                      myAvatarUrl={user?.imageUrl}
-                      myName={user?.fullName ?? user?.username}
-                      onDelete={deletedId => setMyParkPosts(prev => prev.filter(p => p.id !== deletedId))}
-                    />
-                  ))
-                : visits.map(v => (
-                    <View key={v.id} style={[styles.visitCard, { marginBottom: 12 }]}>
-                      <Text style={styles.visitDate}>
-                        {v.visited_date
-                          ? new Date(v.visited_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                          : 'No date'}
-                      </Text>
-                      {v.title ? <Text style={styles.visitTitle}>{v.title}</Text> : null}
-                      {v.notes ? <Text style={styles.visitNotes} numberOfLines={4}>{v.notes}</Text> : null}
-                    </View>
-                  ))
-              }
-              <TouchableOpacity
-                style={[styles.actionBtnOutline, { borderColor: C.primary, marginTop: 4 }]}
-                onPress={() => pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="add" size={16} color={C.primary} />
-                <Text style={[styles.actionBtnOutlineText, { color: C.primary }]}>Log another visit</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+        <Section
+          title={journalTab === 'you' ? `Journal (${visits.length})` : `Community (${communityParkPosts.length})`}
+          remeasureKey={journalTab}
+        >
+          <View style={{ gap: 0 }}>
+            {/* Only offered when there's actually something to switch to —
+                friends' AND public strangers' posts about this park (see
+                communityParkPosts/is_friend_post in the fetch above).
+                Defaults to Community when you have no visits of your own
+                (see journalTab above); always switchable either way. */}
+            {hasCommunityPosts && (
+              <View style={styles.journalTabRow}>
+                <TouchableOpacity
+                  style={[styles.journalTabBtn, journalTab === 'you' && styles.journalTabBtnActive]}
+                  onPress={() => setJournalTabOverride('you')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.journalTabText, journalTab === 'you' && styles.journalTabTextActive]}>You</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.journalTabBtn, journalTab === 'community' && styles.journalTabBtnActive]}
+                  onPress={() => setJournalTabOverride('community')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.journalTabText, journalTab === 'community' && styles.journalTabTextActive]}>Community</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {/* Plain instant swap, deliberately not animated. Five
+                different animated approaches here (opacity fade, slide,
+                delaying the fade's start a frame, a full dual-panel
+                crossfade with the incoming panel unfaded and in normal
+                flow, plus an earlier round of this exact remeasureKey
+                fix but tested only ALONGSIDE one of those animations,
+                never in isolation) all showed some version of the same
+                bug — Section's content briefly measuring wrong and
+                clipping the taller tab's content, eventually affecting
+                BOTH switch directions, for close to a full second, far
+                longer than any of those animations' own duration — and
+                it turned out to reproduce even with NO animation at all,
+                meaning animation timing was never actually the cause.
+                Section's remeasureKey (see its own comment) is the real
+                fix: a full subtree swap between two different sets of
+                PostCard instances is a fundamentally different React
+                reconciliation shape than the incremental children-count
+                change (chip grid's "show more") Section's default
+                onLayout-based remeasure already handles reliably.
+                LayoutAnimation isn't a fallback either, see Section's own
+                comment about it not reliably animating child-swap layout
+                shifts under Fabric. If a transition animation gets
+                revisited, layer it on top of THIS fix, not instead of
+                it. */}
+            {journalTab === 'you' ? renderJournalYou() : renderJournalCommunity()}
+          </View>
         </Section>
 
         {/* ── Attribution ───────────────────────────────────────────────────── */}
@@ -2889,6 +2996,36 @@ const styles = StyleSheet.create({
     gap: 6,
     borderRadius: 12,
     paddingVertical: 13,
+  },
+  // You / Community segmented control — standard iOS look, light track +
+  // a bordered "surface" pill for whichever side is active.
+  journalTabRow: {
+    flexDirection: 'row',
+    backgroundColor: C.surfaceAlt,
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+    marginBottom: 14,
+  },
+  journalTabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  journalTabBtnActive: {
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+  },
+  journalTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.inkMute,
+  },
+  journalTabTextActive: {
+    color: C.ink,
+    fontWeight: '700',
   },
   visitCard: {
     backgroundColor: C.surface,
