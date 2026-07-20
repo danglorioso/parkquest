@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 import { BlurView } from 'expo-blur';
 
@@ -369,32 +369,73 @@ function VisitCard({ visit }: { visit: Visit }) {
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-export default function ParkDetailScreen() {
+type ParkProfileScreenProps = {
+  id: string;
+  seedName?: string; seedStates?: string; seedDescription?: string;
+  seedLatitude?: string; seedLongitude?: string; seedImageUrl?: string;
+  seedStatus?: 'visited' | 'bucketList' | 'notVisited';
+  // false for the plain pushed page (/park/[id]); true when rendered inline
+  // by map.tsx as the custom sheet. Used to be derived from usePathname()
+  // when this WAS two separate routes — see the file-level comment above
+  // ParkProfileScreen for why it's a prop now.
+  inSheet: boolean;
+  // Called once the screen wants to go away: the pushed page's back-arrow,
+  // or the sheet's own dismissSheet() once its close animation finishes.
+  // The route wrapper below supplies router.back(); map.tsx supplies
+  // whatever clears its `selectedPark` state.
+  onDismiss?: () => void;
+};
+
+// Route entry point for the plain pushed page (/park/[id], from the parks
+// tab or passport) — translates route params into ParkProfileScreenProps.
+// map.tsx's custom sheet renders ParkProfileScreen directly instead (see
+// handleSelectPark there), with no route/screen of its own at all: park-
+// sheet/[id] used to be a second route presenting this same component as a
+// transparentModal, but react-native-screens demotes a backgrounded
+// screen's `activityState` the instant another screen presents over it,
+// and a demoted screen is genuinely non-interactive at the native level —
+// no pointerEvents configuration on either screen's React content can
+// override that (confirmed: neither pointerEvents='box-none' up the
+// presented screen's own ancestor chain, nor react-native-screens'/
+// native-stack's exposed options, expose a way to keep a backgrounded
+// screen interactive). That's what made the map underneath the half-sheet
+// impossible to pan/tap through, no matter how the sheet's own tree was
+// configured. Rendering the sheet as a plain overlay inside map.tsx's own
+// screen — same screen the whole time, never backgrounded — sidesteps the
+// mechanism entirely instead of fighting it.
+export default function ParkDetailRoute() {
   const {
-    id, name: seedName, states: seedStates, description: seedDescription,
-    latitude: seedLatitude, longitude: seedLongitude, imageUrl: seedImageUrl,
-    status: seedStatus,
+    id, name, states, description, latitude, longitude, imageUrl, status,
   } = useLocalSearchParams<{
     id: string; name?: string; states?: string; description?: string;
     latitude?: string; longitude?: string; imageUrl?: string;
     status?: 'visited' | 'bucketList' | 'notVisited';
   }>();
   const router = useRouter();
-  // This same component serves two presentations: /park/[id] (full page
-  // pushed from the parks tab) and /park-sheet/[id] (a FULLY CUSTOM sheet
-  // over the map — Animated + PanResponder, no native formSheet at all; see
-  // app/_layout.tsx for the full history of why two native-formSheet
-  // designs were tried and abandoned first). Most of what hangs off
-  // `inSheet` lives further down near `sheetY` — the back chevron
-  // points down/up and drives the custom sheet instead of router.back(),
-  // the hero gets an extra parallax shift at the half peek, and the
-  // ScrollView only scrolls once the sheet is at its full detent.
-  const inSheet = usePathname().startsWith('/park-sheet');
+  return (
+    <ParkProfileScreen
+      id={id}
+      seedName={name} seedStates={states} seedDescription={description}
+      seedLatitude={latitude} seedLongitude={longitude} seedImageUrl={imageUrl}
+      seedStatus={status}
+      inSheet={false}
+      onDismiss={() => router.back()}
+    />
+  );
+}
+
+// The actual park profile UI, shared verbatim by both presentations.
+export function ParkProfileScreen({
+  id, seedName, seedStates, seedDescription,
+  seedLatitude, seedLongitude, seedImageUrl, seedStatus,
+  inSheet, onDismiss,
+}: ParkProfileScreenProps) {
+  const router = useRouter();
   // The map already has every park loaded (it draws all the dots) — a dot
-  // tap carries that data along as seed params (see parkSheetParams in
+  // tap carries that data along as seed props (see parkSheetProps in
   // map.tsx) so this screen paints the hero instantly instead of opening on
   // a blank spinner, same trick the old in-map sheet used. /park/[id] pushed
-  // from the parks tab or passport has no seed params and behaves exactly as
+  // from the parks tab or passport has no seed props and behaves exactly as
   // before: blank spinner until the fetch lands.
   const hasSeed = !!seedName;
   const { getToken } = useAuth();
@@ -405,9 +446,9 @@ export default function ParkDetailScreen() {
   // sheetFull: whether the custom sheet (see the gesture/animation block
   // below) is currently at its full, true-top-of-screen position. Declared
   // here (ahead of its sibling sheet-state hooks) specifically because
-  // headerTop needs it immediately below — the sheet is a TRANSPARENT
-  // MODAL now (see app/_layout.tsx), which covers the real device bounds,
-  // so insets.top genuinely reports the notch/status-bar inset at ALL
+  // headerTop needs it immediately below — the sheet is rendered inline
+  // over the REAL device bounds (map.tsx's own screen, full size), so
+  // insets.top genuinely reports the notch/status-bar inset at ALL
   // times (unlike the old native formSheet, whose own smaller frame kept
   // insets.top near 0 throughout). That inset only matters once the sheet
   // has actually reached the true top — at the half peek there's no notch
@@ -437,7 +478,7 @@ export default function ParkDetailScreen() {
   const [token,        setToken]        = useState<string | null>(null);
   const [loading,      setLoading]      = useState(!hasSeed);
   const [lightbox,     setLightbox]     = useState<{ images: NpsImage[]; idx: number } | null>(null);
-  // Seeded from the map's own last-known status (see parkSheetParams in
+  // Seeded from the map's own last-known status (see parkSheetProps in
   // map.tsx) so the bucket icon doesn't pop on mount for a seeded nav —
   // reconciled by the real fetch below exactly like `visits`/`parkStatus`.
   const [onBucket,     setOnBucket]     = useState(() => hasSeed && seedStatus === 'bucketList');
@@ -742,9 +783,12 @@ export default function ParkDetailScreen() {
   }, []);
 
   // ── Custom sheet (inSheet only) ────────────────────────────────────────
-  // Not a native formSheet — see the long comment on the park-sheet/[id]
-  // route in app/_layout.tsx for why. This screen fully owns its own
-  // presentation: a fixed, screen-height Animated.View translated between
+  // Not a native formSheet, and not a separate presented screen at all —
+  // see the long comment above ParkDetailRoute for the full history (two
+  // native-formSheet designs, then a transparentModal-route design, all
+  // abandoned for confirmed platform/library limitations). This component
+  // fully owns its own presentation: a fixed, screen-height Animated.View
+  // translated between
   // 0 (full, true top of screen) and SH (fully dismissed), with SHEET_PEEK
   // as the resting "half" stop in between. translateY, not height, so
   // dragging stays on the native-driver/UI thread (see the hero's own
@@ -808,8 +852,8 @@ export default function ParkDetailScreen() {
     if (dismissedRef.current) return;
     dismissedRef.current = true;
     Animated.timing(sheetY, { toValue: SH, duration: 220, useNativeDriver: true })
-      .start(() => router.back());
-  }, [sheetY, router]);
+      .start(() => onDismiss?.());
+  }, [sheetY, onDismiss]);
 
   useEffect(() => {
     if (!inSheet) return;
@@ -969,7 +1013,7 @@ export default function ParkDetailScreen() {
     ? sheetY.interpolate({ inputRange: [0, SHEET_PEEK], outputRange: [0, -180], extrapolate: 'clamp' })
     : 0;
 
-  // Prefers the map's seeded status (see parkSheetParams) until the real
+  // Prefers the map's seeded status (see parkSheetProps) until the real
   // /api/visits fetch settles — without this, a visited park always opens
   // showing the "Log a visit" / bucket-toggle button set for one render,
   // then pops to "Log another visit" / "Edit last visit" once the fetch
@@ -1139,11 +1183,19 @@ export default function ParkDetailScreen() {
 
   return (
     <View
-      style={{ flex: 1, backgroundColor: inSheet ? 'transparent' : C.bg }}
+      // Absolute + inset-0 (not just flex:1) when inSheet: this is now
+      // rendered as a sibling inside map.tsx's own screen (see
+      // ParkDetailRoute's comment above for why), not as the sole content
+      // of a dedicated route, so it needs to explicitly claim the full
+      // screen rather than relying on flex layout among map.tsx's other
+      // (all absolutely-positioned) overlays.
+      style={inSheet
+        ? { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent' }
+        : { flex: 1, backgroundColor: C.bg }}
       // box-none: this View itself doesn't capture touches, only its
       // children do — so a tap/pan in the gap above the sheet (where the
-      // real map screen is visible through this transparentModal) falls
-      // through to that map underneath instead of being swallowed here.
+      // real map, a sibling earlier in map.tsx's own tree, is directly
+      // beneath) falls through to it instead of being swallowed here.
       // The sheet's own content below remains fully interactive regardless
       // (box-none only affects whether THIS view intercepts on behalf of
       // otherwise-empty area, not its children's own touch handling).
@@ -1870,30 +1922,28 @@ export default function ParkDetailScreen() {
         <GrowTouchable
           style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
           onPress={() => inSheet
-            ? (sheetFull ? snapSheetTo(SHEET_PEEK) : snapSheetTo(0))
-            : router.back()}
+            ? (sheetFull ? dismissSheet() : snapSheetTo(0))
+            : onDismiss?.()}
           hitSlop={8}
         >
           <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-          {/* SAME glyph for all three roles (chevron-back, rotated to taste)
-              — not the separate 'chevron-down'/'chevron-up' icons, whose
-              stroke weight/metrics don't quite match 'chevron-back' in
-              Ionicons and read as visibly off-center inside the round
-              button. */}
-          <Ionicons
-            name="chevron-back"
-            size={22}
-            color={backInk}
-            style={!inSheet ? undefined : sheetFull
-              // Rotating a font glyph 90deg pivots around its bounding box's
-              // geometric center, but chevron-back's own ink isn't symmetric
-              // within that box — rotated, the down (-90deg) case read as
-              // sitting visibly above the button's true center. marginTop
-              // nudges it back down; confirmed visually, not derived, and
-              // not assumed to apply the same to the up (90deg) case below.
-              ? { transform: [{ rotate: '-90deg' }], marginTop: 2 }
-              : { transform: [{ rotate: '90deg' }] }}
-          />
+          {/* chevron-back (rotated up) for pushed-page-back and half-expand;
+              a genuinely different glyph (close/X) once full — a rotated
+              chevron reads as "collapse," not "dismiss," and full has no
+              other role to disambiguate it from. Not
+              'chevron-down'/'chevron-up': their stroke weight/metrics don't
+              quite match 'chevron-back' in Ionicons and read as visibly
+              off-center inside the round button. */}
+          {inSheet && sheetFull ? (
+            <Ionicons name="close" size={22} color={backInk} />
+          ) : (
+            <Ionicons
+              name="chevron-back"
+              size={22}
+              color={backInk}
+              style={!inSheet ? undefined : { transform: [{ rotate: '90deg' }] }}
+            />
+          )}
         </GrowTouchable>
       </Animated.View>
 

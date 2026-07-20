@@ -19,6 +19,7 @@ import { CompassSpinner } from '@/components/LoadingScreen';
 import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useIsOnline } from '@/lib/network';
+import { ParkProfileScreen } from '../park/[id]';
 
 // Not-yet-visited marker gray — map-only, not part of the shared palette
 const UNVISITED = '#A8A29A';
@@ -188,22 +189,25 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   return res.json();
 }
 
-// The map already has every park loaded — carries it along as seed params so
-// /park-sheet/[id] (the shared park profile — see that file) paints the hero
-// instantly instead of opening on a blank spinner while it fetches nps/
-// weather/visits itself. Mirrors logVisitParams' pattern elsewhere in the app.
-function parkSheetParams(park: ParkForMap) {
+// The map already has every park loaded — passes it straight through as
+// ParkProfileScreen's seed props so the sheet paints the hero instantly
+// instead of opening on a blank spinner while it fetches nps/weather/visits
+// itself. Mirrors logVisitParams' pattern elsewhere in the app. Props, not
+// route params, now that the sheet is rendered inline rather than
+// presented as its own screen — see the comment above ParkDetailRoute in
+// park/[id].tsx for why that changed.
+function parkSheetProps(park: ParkForMap) {
   return {
-    id: park.park_code, name: park.name, states: park.states,
-    description: park.description ?? '',
-    latitude: String(park.latitude), longitude: String(park.longitude),
-    imageUrl: park.image_url ?? '',
+    id: park.park_code, seedName: park.name, seedStates: park.states,
+    seedDescription: park.description ?? '',
+    seedLatitude: String(park.latitude), seedLongitude: String(park.longitude),
+    seedImageUrl: park.image_url ?? '',
     // The map already knows visited/bucket-list status (it's what colors
     // the dot) — seeding it lets the header buttons paint their final
     // "Log another visit" / "Edit last visit" set immediately instead of
     // opening as "Log a visit" and popping once the sheet's own /api/visits
     // fetch lands.
-    status: park.status,
+    seedStatus: park.status,
   };
 }
 
@@ -660,8 +664,6 @@ export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
-  // True while the park-profile form sheet is presented over the map.
-  const sheetOpenRef = useRef(false);
   // Last ?parkCode= deep-link value already presented (see the effect below).
   const focusHandledRef = useRef<string | null>(null);
   const rawParksRef = useRef<Array<{
@@ -863,10 +865,11 @@ export default function MapScreen() {
   loadVisitsRef.current = loadVisits;
   useFocusEffect(useCallback(() => {
     loadVisitsRef.current();
-    // Focus returning means the park sheet (if any) was dismissed — while
-    // it's up, this screen sits blurred beneath it even though the half
-    // detent leaves the map visible and interactive.
-    sheetOpenRef.current = false;
+    // The sheet is rendered inline now (see handleSelectPark below), not a
+    // separate screen, so it no longer causes a focus change of its own —
+    // this only fires for a genuine tab switch away and back, and clears
+    // whatever sheet was left open the same way returning to a fresh map
+    // tab always has.
     setSelectedPark(null);
   }, []));
 
@@ -888,23 +891,20 @@ export default function MapScreen() {
   }, []);
 
   // Marks the dot selected (bigger halo, visible beneath the sheet's half
-  // detent) and presents the shared park profile page — /park-sheet/[id]
-  // renders the SAME component as /park/[id] — as a native form sheet over
-  // the map. Never zooms — only pans, and only if the sheet would otherwise
-  // hide the dot (see revealAboveSheet). While a sheet is up the undimmed
-  // map stays interactive, so tapping another dot swaps the sheet in place
-  // instead of stacking one sheet per tap.
+  // detent) and presents the shared park profile page — ParkProfileScreen,
+  // rendered inline near the bottom of this component's JSX (see
+  // parkSheetProps below and its render site), keyed on park_code so
+  // switching to a different park while one's already open remounts fresh
+  // rather than reusing stale internal state. Never zooms — only pans, and
+  // only if the sheet would otherwise hide the dot (see revealAboveSheet).
+  // The map stays interactive underneath regardless (this is genuinely the
+  // SAME screen, not a presented one — see park/[id].tsx's ParkDetailRoute
+  // comment for why that matters), so tapping another dot just swaps
+  // `selectedPark` in place instead of stacking anything.
   const handleSelectPark = useCallback((park: ParkForMap) => {
     setSelectedPark(park);
     revealAboveSheet(park);
-    const href = { pathname: '/park-sheet/[id]', params: parkSheetParams(park) } as never;
-    if (sheetOpenRef.current) {
-      router.replace(href);
-    } else {
-      sheetOpenRef.current = true;
-      router.push(href);
-    }
-  }, [router, revealAboveSheet]);
+  }, [revealAboveSheet]);
 
   // Deep links (park profile's "View on full map", passport stats) land here
   // with ?parkCode=X. Present that park's sheet exactly once per arrival:
@@ -981,19 +981,20 @@ export default function MapScreen() {
           setLabelRegion(region);
         }}
         onPress={() => {
-          // The park sheet (park-sheet/[id].tsx) is a transparentModal —
-          // its own root View sets pointerEvents:box-none over the "gap"
-          // area above a half-height peek, so THIS handler is what
-          // actually receives a tap there (the sheet's own content stays
-          // interactive regardless — box-none only affects otherwise-empty
-          // area). Emitting rather than calling router.back() directly:
-          // only the sheet screen itself knows how to close with its own
-          // animation (dismissSheet), so it listens for this and drives
-          // its own dismissal — this just signals "user tapped away."
-          if (sheetOpenRef.current) {
+          // ParkProfileScreen's own root View sets pointerEvents:box-none
+          // over the "gap" area above a half-height peek, so THIS handler
+          // is what actually receives a tap there (the sheet's own content
+          // stays interactive regardless — box-none only affects
+          // otherwise-empty area). Emitting rather than clearing
+          // selectedPark directly: only the sheet itself knows how to
+          // close with its own animation (dismissSheet), so it listens for
+          // this and drives its own dismissal, which THEN calls onDismiss
+          // (below) to clear selectedPark once the animation finishes —
+          // clearing it here instead would yank the sheet away instantly,
+          // mid-animation.
+          if (selectedPark != null) {
             DeviceEventEmitter.emit('dismissParkSheet');
           }
-          setSelectedPark(null);
           setMapPressKey(k => k + 1);
         }}
       >
@@ -1101,8 +1102,9 @@ export default function MapScreen() {
         </Animated.View>
       )}
 
-      {/* Map controls — the park sheet presents over these in its own native
-          layer, so they need no sheet-aware repositioning or z-juggling. */}
+      {/* Map controls — no sheet-aware repositioning needed; the sheet
+          (rendered last, below) always paints over these by plain JSX
+          order, same as it did back when it was a separate screen. */}
       <View style={[styles.mapControls, { bottom: insets.bottom + 68 }]}>
         <TouchableOpacity style={styles.mapControlBtn} onPress={zoomIn} activeOpacity={0.75}>
           <Ionicons name="add" size={18} color={dyn('#4A4535', '#F0EAD9')} />
@@ -1115,7 +1117,8 @@ export default function MapScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Search — rendered last so results overlay the map chrome */}
+      {/* Search — rendered before the sheet so results overlay the map
+          chrome but not the other way around. */}
       <View style={[styles.searchBarWrap, { top: insets.top + 12 }]}>
         <MapSearchBar
           token={token}
@@ -1125,6 +1128,34 @@ export default function MapScreen() {
           onSelectUser={id => router.push(`/user/${id}` as never)}
         />
       </View>
+
+      {/* The park sheet itself. Rendered last so it paints over everything
+          above BY DEFAULT, but several map overlays (searchBarWrap: 40,
+          mapControls: 31, filterPillWrap/mapLoadingOverlay: 20) set an
+          explicit zIndex — once ANY sibling does that, plain JSX order no
+          longer decides stacking against it, so the sheet needs its own
+          zIndex higher than all of them too, not just to come last. Kept
+          on this wrapper rather than baked into ParkProfileScreen's own
+          root style since it's specifically about outranking map.tsx's
+          OTHER overlays — a concern that belongs where those zIndex values
+          are visible together, not hardcoded into the shared component
+          that also renders as the plain pushed page. box-none so the
+          wrapper itself doesn't shadow the map interactivity fix (see this
+          file's own memory note on activityState/pointerEvents ancestors —
+          same class of bug: any plain wrapper here needs box-none too, or
+          it silently re-blocks the gap). Keyed on park_code so switching
+          to a different park while one's open remounts fresh (see
+          handleSelectPark) rather than reusing stale internal state. */}
+      {selectedPark && (
+        <View style={styles.sheetWrap} pointerEvents="box-none">
+          <ParkProfileScreen
+            key={selectedPark.park_code}
+            {...parkSheetProps(selectedPark)}
+            inSheet
+            onDismiss={() => setSelectedPark(null)}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -1135,6 +1166,14 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#CECDBC',
+  },
+  // Highest of every other zIndex in this file (searchBarWrap's 40 is the
+  // current max) — see the render site's comment for why this needs to
+  // beat them explicitly rather than relying on JSX order.
+  sheetWrap: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 50,
   },
 
   // Search bar
