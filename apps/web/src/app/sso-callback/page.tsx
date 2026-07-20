@@ -13,7 +13,7 @@ export default function SSOCallback() {
     sessionStorage.removeItem("pq_auth_redirect");
     const signInDest = storedRedirect.startsWith("/") && !storedRedirect.startsWith("//")
       ? storedRedirect
-      : "/dashboard";
+      : "/feed";
 
     handleRedirectCallback({
       signUpForceRedirectUrl: "/onboarding/username",

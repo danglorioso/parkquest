@@ -125,7 +125,7 @@ function UsernameStep({ showNameFields }: { showNameFields: boolean }) {
           await signUpSetActive!({ session: result.createdSessionId });
           await ensureProfileCreated();
           localStorage.setItem("pq_returning", "1");
-          router.push("/dashboard");
+          router.push("/feed");
         } else {
           setError("Sign-up could not be completed. Please try again.");
         }
@@ -137,7 +137,7 @@ function UsernameStep({ showNameFields }: { showNameFields: boolean }) {
         await user.update(updates);
         await ensureProfileCreated();
         localStorage.setItem("pq_returning", "1");
-        router.push("/dashboard");
+        router.push("/feed");
       } else {
         router.replace("/");
       }
@@ -310,7 +310,7 @@ function ForgotPasswordForm({ initialEmail = "", onBack, redirectTo = "" }: {
       });
       if (result.status === "complete") {
         await setActive!({ session: result.createdSessionId });
-        router.push(redirectTo && redirectTo.startsWith("/") ? redirectTo : "/dashboard");
+        router.push(redirectTo && redirectTo.startsWith("/") ? redirectTo : "/feed");
       }
     } catch (err: unknown) {
       const clerkErr = err as { errors?: Array<{ longMessage?: string; message?: string }> };
@@ -573,7 +573,7 @@ function AuthForm({
         await signIn!.authenticateWithRedirect({
           strategy,
           redirectUrl: "/sso-callback",
-          redirectUrlComplete: "/dashboard",
+          redirectUrlComplete: "/feed",
         });
       } else {
         await signUp!.authenticateWithRedirect({
@@ -599,7 +599,7 @@ function AuthForm({
       if (result.status === "complete") {
         await setSIActive!({ session: result.createdSessionId });
         localStorage.setItem("pq_returning", "1");
-        router.push(redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/dashboard");
+        router.push(redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/feed");
       } else if ((result.status as string) === "needs_client_trust") {
         const emailFactor = result.supportedFirstFactors?.find(
           (f) => f.strategy === "email_code"
@@ -633,7 +633,7 @@ function AuthForm({
       if (result.status === "complete") {
         await setSIActive!({ session: result.createdSessionId });
         localStorage.setItem("pq_returning", "1");
-        router.push(redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/dashboard");
+        router.push(redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/feed");
       }
     } catch (err: unknown) {
       const clerkErr = err as { errors?: Array<{ longMessage?: string; message?: string }> };

@@ -43,7 +43,7 @@ export default function SignInModal({ open, onOpenChange, switchToSignUp }: Sign
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
         onOpenChange(false);
-        router.push("/dashboard");
+        router.push("/feed");
         router.refresh();
       } else if (result.status === "needs_second_factor") {
         const supported = result.supportedSecondFactors ?? [];
@@ -82,7 +82,7 @@ export default function SignInModal({ open, onOpenChange, switchToSignUp }: Sign
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
         onOpenChange(false);
-        router.push("/dashboard");
+        router.push("/feed");
         router.refresh();
       } else {
         setError("Verification incomplete. Please try again.");
@@ -105,7 +105,7 @@ export default function SignInModal({ open, onOpenChange, switchToSignUp }: Sign
       await signIn.authenticateWithRedirect({
         strategy: provider,
         redirectUrl: "/",
-        redirectUrlComplete: "/dashboard",
+        redirectUrlComplete: "/feed",
       });
     } catch (err: unknown) {
       const error = err as { errors?: Array<{ message?: string }> };

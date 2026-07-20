@@ -5,7 +5,7 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import { useEffect, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import {
-  Home, Sparkles, Map, User, Award, Compass,
+  Sparkles, Map, User, Award, Compass,
   Check, Bookmark, PenLine, Users, Globe, TreePine,
   Plus, ChevronDown, LogOut, UserCircle, Pencil, Sun, Search,
   Menu, X, ShieldCheck,
@@ -24,7 +24,6 @@ const NAV = [
   {
     group: "PRIMARY",
     items: [
-      { id: "dashboard", href: "/dashboard", icon: Home,    label: "Home" },
       { id: "feed",      href: "/feed",      icon: Sparkles, label: "Feed" },
       { id: "map",       href: "/map",       icon: Map,     label: "Map" },
       { id: "parks",     href: "/parks",     icon: TreePine, label: "Parks" },
@@ -290,7 +289,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
     >
       {/* Wordmark */}
       <div style={{ padding: "6px 18px 10px" }}>
-        <Link href="/dashboard" style={{ textDecoration: "none" }}>
+        <Link href="/feed" style={{ textDecoration: "none" }}>
           <Wordmark />
         </Link>
       </div>
@@ -530,7 +529,7 @@ function MobileHeader({
         <Menu style={{ width: 22, height: 22 }} strokeWidth={2} />
       </button>
 
-      <Link href="/dashboard" style={{ textDecoration: "none", display: "flex", alignItems: "center" }}>
+      <Link href="/feed" style={{ textDecoration: "none", display: "flex", alignItems: "center" }}>
         <Wordmark size="large" />
       </Link>
 
@@ -626,7 +625,7 @@ function MobileDrawer({
       >
         {/* Header: wordmark + close */}
         <div style={{ padding: "6px 14px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Link href="/dashboard" style={{ textDecoration: "none" }} onClick={onClose}>
+          <Link href="/feed" style={{ textDecoration: "none" }} onClick={onClose}>
             <Wordmark />
           </Link>
           <button

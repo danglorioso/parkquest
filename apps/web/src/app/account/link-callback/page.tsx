@@ -10,9 +10,9 @@ export default function LinkCallback() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    const dest = sessionStorage.getItem("pq_link_return") ?? "/dashboard";
+    const dest = sessionStorage.getItem("pq_link_return") ?? "/feed";
     sessionStorage.removeItem("pq_link_return");
-    const returnPath = dest.startsWith("/") && !dest.startsWith("//") ? dest : "/dashboard";
+    const returnPath = dest.startsWith("/") && !dest.startsWith("//") ? dest : "/feed";
 
     (user?.reload() ?? Promise.resolve())
       .catch(() => {})

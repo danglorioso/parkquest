@@ -15,8 +15,8 @@ export default function OnboardingUsernamePage() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    // Already authenticated and has username — send to dashboard
-    if (user?.username) { router.replace("/dashboard"); return; }
+    // Already authenticated and has username — send to feed
+    if (user?.username) { router.replace("/feed"); return; }
     // No auth state at all and no ongoing sign-up — send home
     if (!user && !isMissingRequirements) { router.replace("/"); }
   }, [isLoaded, user, isMissingRequirements, router]);
