@@ -863,14 +863,19 @@ export default function MapScreen() {
 
   const loadVisitsRef = useRef(loadVisits);
   loadVisitsRef.current = loadVisits;
+  // Refreshes parks/dot status on every focus-regain — which fires far more
+  // often than just "switched tabs and back": pushing ANY screen on top of
+  // the tabs navigator (log-visit, a journal entry, profile/edit, ...) also
+  // blurs then re-focuses this screen when it's dismissed, since the sheet
+  // is inline here now rather than a screen of its own insulating it from
+  // that. This used to also clear `selectedPark` on every focus-regain —
+  // reasonable-sounding, but wrong: it meant tapping "Log a visit" from the
+  // sheet, then closing the log-visit modal, silently lost the sheet
+  // instead of returning to it. Left out on purpose now; nothing here
+  // clears `selectedPark` except an explicit close (drag/tap-the-map/the
+  // close button/mapTabPress) — see dismissSheet and its callers.
   useFocusEffect(useCallback(() => {
     loadVisitsRef.current();
-    // The sheet is rendered inline now (see handleSelectPark below), not a
-    // separate screen, so it no longer causes a focus change of its own —
-    // this only fires for a genuine tab switch away and back, and clears
-    // whatever sheet was left open the same way returning to a fresh map
-    // tab always has.
-    setSelectedPark(null);
   }, []));
 
   // The half sheet covers the bottom half of the screen — a dot tapped down
@@ -953,12 +958,21 @@ export default function MapScreen() {
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('mapTabPress', () => {
-      setSelectedPark(null);
+      // Same animate-then-clear path as tapping the map itself (see
+      // MapView onPress below) — an open sheet needs to slide away, not
+      // instantly vanish, when the tab bar's own map button resets the
+      // view. selectedPark is cleared by the sheet's own onDismiss once
+      // that animation finishes, not here. Filter/home reset stay
+      // immediate either way — hidden behind the closing sheet at full,
+      // and harmless to have already settled by the time it clears at half.
+      if (selectedPark != null) {
+        DeviceEventEmitter.emit('dismissParkSheet');
+      }
       setFilterStatus('all');
       goHome();
     });
     return () => sub.remove();
-  }, [goHome]);
+  }, [goHome, selectedPark]);
 
   return (
     <View style={styles.screen}>

@@ -32,6 +32,7 @@ import { FriendsVisitedSheet } from '@/components/FriendsVisitedSheet';
 import { VisitPickerSheet } from '@/components/VisitPickerSheet';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { Avatar } from '@/components/Avatar';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { useIsOnline } from '@/lib/network';
 import type { ParkDetail, NpsData, NpsImage, ParkVisitorsSummary } from '@/lib/api';
 import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
@@ -42,6 +43,15 @@ const SH = Dimensions.get('window').height;
 // The sheet's resting "peek" position — its top edge sits halfway down the
 // screen. Full is 0 (true top); dismissed is SH (fully below the screen).
 const SHEET_PEEK = SH * 0.5;
+// photoStripItem's height (72) + photoStrip's paddingVertical (12) * 2 —
+// given explicitly to BOTH the skeleton and the real strip's ScrollView
+// (see the photo strip below) so they share one exact, numeric height
+// instead of each auto-sizing from content and possibly landing a pixel or
+// two apart — a horizontal ScrollView with only contentContainerStyle set
+// (no explicit style/height) doesn't reliably auto-size to precisely match
+// a plain View using the same padding, which is what caused a small pop
+// even once the skeleton's padding/item-height matched the real strip's.
+const PHOTO_STRIP_HEIGHT = 96;
 
 // Local luminance of an image at a normalized (x, y) point, decoded from a
 // spatial blurhash by evaluating the full DCT — no pixel access and no new
@@ -441,6 +451,13 @@ export function ParkProfileScreen({
   const { getToken } = useAuth();
   const { user } = useUser();
   const insets = useSafeAreaInsets();
+  // Only relevant inSheet: the pushed page is a root-stack screen the tab
+  // navigator doesn't render chrome around at all, so FloatingTabBar
+  // genuinely isn't there to clear (see the pinned action bar below).
+  // inSheet, by contrast, renders inline inside (tabs)/map.tsx — still
+  // structurally ON the tab navigator the whole time — so the floating
+  // pill is always mounted underneath it, real height and all.
+  const tabBarSpace = useTabBarSpace();
   const isDark = useColorScheme() === 'dark';
   const C = useColors();
   // sheetFull: whether the custom sheet (see the gesture/animation block
@@ -467,6 +484,14 @@ export function ParkProfileScreen({
   } : null);
   const [nps,          setNps]          = useState<NpsData | null>(null);
   const [weather,      setWeather]      = useState<WeatherForecast | null>(null);
+  // Best-effort real photo-strip box count for the skeleton below, read
+  // from the on-device offline nps cache (lib/offlineParks.ts) — which
+  // only has data for parks the user explicitly downloaded for offline
+  // use, NOT a general visit-history cache, so this is narrow coverage,
+  // not "have I looked at this park before." null = no cache entry (the
+  // skeleton falls back to a fixed guess); 0 = cache confirms fewer than 2
+  // total images, so no strip will render at all once nps loads either.
+  const [cachedStripCount, setCachedStripCount] = useState<number | null>(null);
   const [visits,       setVisits]       = useState<Visit[]>([]);
   // Whether the real /api/visits fetch has settled (success OR failure) at
   // least once — NOT the same as `loading`, which flips false immediately
@@ -697,6 +722,25 @@ export function ParkProfileScreen({
     });
   }, []);
 
+  // See cachedStripCount's own comment above — a best-effort, exact-when-
+  // available box count for the photo-strip skeleton, sourced from the
+  // offline nps cache rather than the (still in-flight) real nps fetch.
+  useEffect(() => {
+    let cancelled = false;
+    loadOfflineParksNps().then(cache => {
+      if (cancelled) return;
+      const cachedNps = cache?.npsByCode[id];
+      if (!cachedNps) return;
+      const total = cachedNps.images.length;
+      // Mirrors stripCount's own formula exactly (see stripImages below) —
+      // a cache hit should produce the SAME count (and, via the shared
+      // width formula, the same box widths) the real strip renders once
+      // nps itself loads.
+      setCachedStripCount(total >= 2 ? Math.min(total - 1, 4) : 0);
+    });
+    return () => { cancelled = true; };
+  }, [id]);
+
   // Connectivity just returned — quietly refetch so live data (and weather,
   // which isn't cached at all) replaces whatever offline fallback is showing.
   const wasOnlineRef = useRef(isOnline);
@@ -842,6 +886,22 @@ export function ParkProfileScreen({
     setSheetFull(target === 0);
     Animated.spring(sheetY, { toValue: target, useNativeDriver: true, bounciness: 4 }).start();
   }, [sheetY]);
+
+  // Every log-visit/edit-visit/journal-entry navigation away from the sheet
+  // routes through this instead of calling router.push directly. Two
+  // reasons: (1) the sheet is inline now, not its own screen — map.tsx no
+  // longer clears `selectedPark` on focus-regain (see its useFocusEffect),
+  // so the sheet is still there, still mounted, whenever these flows close
+  // and hand focus back; snapping to full here means it's there at a useful
+  // size, not wherever it happened to be (often half, for the header
+  // buttons). (2) harmless no-op when already full (in-content Journal
+  // section buttons only render reachable once scrolling is enabled, which
+  // is already full-only) and a no-op entirely when !inSheet (pushed page
+  // has no half/full concept).
+  const pushFromSheet = useCallback((href: Parameters<typeof router.push>[0]) => {
+    if (inSheet) snapSheetTo(0);
+    router.push(href);
+  }, [inSheet, snapSheetTo, router]);
 
   // The only way this screen's own back-navigation should ever fire — drag,
   // chevron, and the gap-tap backdrop all funnel through this, so dismissal
@@ -1037,7 +1097,7 @@ export function ParkProfileScreen({
       setShowVisitPicker(true);
       return;
     }
-    if (sortedVisits[0]) router.push(`/(modals)/log-visit?visitId=${sortedVisits[0].id}` as never);
+    if (sortedVisits[0]) pushFromSheet(`/(modals)/log-visit?visitId=${sortedVisits[0].id}` as never);
   };
 
   // Daytime forecast periods only
@@ -1345,25 +1405,49 @@ export function ParkProfileScreen({
         )}
       >
         {/* ── Photo strip ──────────────────────────────────────────────────── */}
+        {/* Skeleton — reserves the strip's exact footprint (PHOTO_STRIP_HEIGHT,
+            shared with the real ScrollView below) while nps is still in
+            flight, so the stats row below doesn't pop downward the instant
+            it arrives. nps isn't seeded (only name/states/description/lat/
+            long/imageUrl/status are, see hasSeed above), so this shows for
+            every park view, seeded or not — not just a cold, unseeded load.
+            Box count is cachedStripCount when known (exact — see its own
+            comment above) or a fixed guess of 4 (the cap — see stripCount
+            in stripImages below) otherwise; skipped
+            entirely when the cache confirms 0 (this park has fewer than 2
+            total images, so no strip will render once nps loads either).
+            Every box is styles.photoStripItem UNCHANGED (its own base
+            width: 110, no override) — the real strip below is the same
+            fixed width regardless of count now, so there's no stretch
+            formula left to keep in sync; any guessed count matches real
+            box widths exactly, only the count itself can be off. */}
+        {nps === null && cachedStripCount !== 0 && (
+          <View style={[styles.photoStrip, { height: PHOTO_STRIP_HEIGHT }]}>
+            {Array.from({ length: cachedStripCount ?? 4 }).map((_, i) => (
+              <LinearGradient
+                key={i}
+                colors={parkGradient(park.park_code)}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.photoStripItem}
+              />
+            ))}
+          </View>
+        )}
         {stripImages.length > 0 && (
           <ScrollView
             horizontal showsHorizontalScrollIndicator={false}
+            style={{ height: PHOTO_STRIP_HEIGHT }}
             contentContainerStyle={styles.photoStrip}
           >
             {stripImages.map(({ img, actualIdx }, slotIdx) => {
               const gc = parkGradient(park.park_code);
-              // With few images, stretch them to span the same width as the
-              // stat card below (screen minus the strip's 16px side padding)
-              // instead of leaving a ragged right edge. 4+ keeps the fixed
-              // size and scrolls.
-              const n = stripImages.length;
-              const thumbWidth = n <= 3 ? (SW - 32 - (n - 1) * 8) / n : 110;
               return (
                 <TouchableOpacity
                   key={slotIdx}
                   onPress={() => setLightbox({ images: nps!.images, idx: actualIdx })}
                   activeOpacity={0.85}
-                  style={[styles.photoStripItem, { width: thumbWidth }]}
+                  style={styles.photoStripItem}
                 >
                   <LinearGradient
                     colors={gc}
@@ -1371,11 +1455,25 @@ export function ParkProfileScreen({
                     end={{ x: 1, y: 1 }}
                     style={StyleSheet.absoluteFill}
                   />
+                  {/* NPS.gov's own image URLs (see the /nps API route) are
+                      stable, permanent CDN links — the same park always
+                      returns the same url — and cachePolicy="memory-disk"
+                      is already set, so a park viewed again in the same
+                      session should be a genuine cache hit. 800ms was long
+                      enough that even a cache hit still read as "loading
+                      it again" — this screen fully remounts (key={park_
+                      code} in map.tsx) every time you switch parks, so
+                      EVERY ExpoImage here is a brand-new native view each
+                      time regardless of whether its bytes are cached, and
+                      transition plays out on that view's own mount
+                      lifecycle. 200ms keeps a genuine first-time load from
+                      popping in harshly without being long enough to read
+                      as a real reload on a cache hit. */}
                   <ExpoImage
                     source={{ uri: img.url }}
                     style={StyleSheet.absoluteFill}
                     contentFit="cover"
-                    transition={800}
+                    transition={200}
                     cachePolicy="memory-disk"
                   />
                 </TouchableOpacity>
@@ -1387,7 +1485,22 @@ export function ParkProfileScreen({
         {offlineFetchedAt && <OfflineBanner fetchedAt={offlineFetchedAt} noun="park details" />}
 
         {/* ── Quick stats ───────────────────────────────────────────────────── */}
-        <View style={styles.statsRow}>
+        <View
+          style={[
+            styles.statsRow,
+            // The strip OR its skeleton (both above, both styles.photoStrip)
+            // already end in their own 12px bottom padding — matching that
+            // same 12px is the hero-to-strip gap too, so no extra marginTop
+            // is needed here whenever either is present, or the two gaps
+            // would read as unequal (12 above, 24 below). nps === null
+            // covers the skeleton case — stripImages is still [] then (it's
+            // derived from nps), so checking its length alone would miss
+            // it and cause a second, smaller pop (24→12) once nps arrives
+            // on top of the strip's own content pop. Falls back to 12 only
+            // once nps has genuinely resolved with zero images to show.
+            { marginTop: (nps === null || stripImages.length > 0) ? 0 : 12 },
+          ]}
+        >
           {/* Multi-state parks stack one state per line so a long list
               ("California, Nevada") doesn't squeeze the other cells. */}
           <StatCell label="State" value={fullStateName(park.states).split(', ').join('\n')} />
@@ -1424,7 +1537,12 @@ export function ParkProfileScreen({
           />
         )}
 
-        <View style={styles.divider} />
+        {/* marginTop 0, not styles.divider's own 12 — whatever's directly
+            above (mutualsRow, or statsRow when mutuals is hidden) already
+            ends in its own marginBottom: 12, so the default would stack to
+            24 here, same double-margin issue statsRow's own top gap had
+            against the photo strip above it. */}
+        <View style={[styles.divider, { marginTop: 0 }]} />
 
         {/* ── About ─────────────────────────────────────────────────────────── */}
         {park.description ? (
@@ -1651,7 +1769,7 @@ export function ParkProfileScreen({
               </Text>
               <TouchableOpacity
                 style={[styles.journalEmptyBtn, { backgroundColor: C.primary }]}
-                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+                onPress={() => pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
                 activeOpacity={0.8}
               >
                 <Ionicons name="pencil" size={14} color="#FFFBF1" />
@@ -1685,7 +1803,7 @@ export function ParkProfileScreen({
               }
               <TouchableOpacity
                 style={[styles.actionBtnOutline, { borderColor: C.primary, marginTop: 4 }]}
-                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+                onPress={() => pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
                 activeOpacity={0.8}
               >
                 <Ionicons name="add" size={16} color={C.primary} />
@@ -1731,7 +1849,7 @@ export function ParkProfileScreen({
       {showVisitPicker && (
         <VisitPickerSheet
           visits={sortedVisits.map(v => ({ id: v.id, visited_date: v.visited_date!, title: v.title }))}
-          onSelect={(visitId) => router.push(`/(modals)/log-visit?visitId=${visitId}` as never)}
+          onSelect={(visitId) => pushFromSheet(`/(modals)/log-visit?visitId=${visitId}` as never)}
           onClose={() => setShowVisitPicker(false)}
         />
       )}
@@ -1975,7 +2093,7 @@ export function ParkProfileScreen({
           const logVisitBtn = (ink: string) => (
             <GrowTouchable
               style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
-              onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+              onPress={() => pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
               hitSlop={8}
             >
               <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
@@ -2056,7 +2174,7 @@ export function ParkProfileScreen({
             onPressAction={({ nativeEvent }) => {
               switch (nativeEvent.event) {
                 case 'log-visit':
-                  router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never);
+                  pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never);
                   break;
                 case 'edit-visit':
                   handleEditVisitPress();
@@ -2099,11 +2217,15 @@ export function ParkProfileScreen({
       </Animated.View>
       )}
 
-      {/* Pinned action bar — AllTrails-style: the tab bar hides on this
-          nested detail page (see FloatingTabBar) and these Liquid Glass
-          pills own the bottom edge, floating over the scrolling content. */}
+      {/* Pinned action bar — AllTrails-style: on the pushed page the tab bar
+          hides (root-stack screen, see FloatingTabBar) and these Liquid
+          Glass pills own the bottom edge, floating over the scrolling
+          content. inSheet, the floating tab bar is still there underneath
+          (this renders inline inside the map tab, not on a separate
+          screen) — tabBarSpace clears it instead of just the safe-area
+          inset, or these buttons would sit low enough to fight it. */}
       <View
-        style={[styles.actionOverlay, { paddingBottom: insets.bottom + 8 }]}
+        style={[styles.actionOverlay, { paddingBottom: inSheet ? tabBarSpace : insets.bottom + 8 }]}
         onLayout={(e) => setBottomOverlayHeight(e.nativeEvent.layout.height)}
       >
         {/* Readability fade behind the glass pills — bg-toned alpha ramp
@@ -2125,7 +2247,7 @@ export function ParkProfileScreen({
             <>
               <TouchableOpacity
                 style={[styles.actionBtn, halfActionBtnWidth != null && { width: halfActionBtnWidth }]}
-                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+                onPress={() => pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
                 onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
                 activeOpacity={0.8}
               >
@@ -2135,7 +2257,7 @@ export function ParkProfileScreen({
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.actionBtnSecondary, halfActionBtnWidth != null && { width: halfActionBtnWidth }]}
-                onPress={() => { if (lastVisit) router.push(`/profile/journal/${lastVisit.id}` as never); }}
+                onPress={() => { if (lastVisit) pushFromSheet(`/profile/journal/${lastVisit.id}` as never); }}
                 activeOpacity={0.8}
               >
                 <GlassIconBg borderRadius={999} />
@@ -2147,7 +2269,7 @@ export function ParkProfileScreen({
             <>
               <TouchableOpacity
                 style={styles.actionBtn}
-                onPress={() => router.push({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
+                onPress={() => pushFromSheet({ pathname: '/(modals)/log-visit', params: logVisitParams(park) } as never)}
                 onLayout={(e) => setActionBtnHeight(e.nativeEvent.layout.height)}
                 activeOpacity={0.8}
               >
@@ -2333,12 +2455,9 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
     overflow: 'hidden',
-    // 12, not 0 — the photo strip above (see stripImages.length > 0) brings
-    // its own vertical padding, so this sat flush against the hero with
-    // zero gap until nps loaded and the strip mounted, then visibly popped
-    // to a gap. A baseline gap here means there's always SOME breathing
-    // room, strip or not — no layout jump when it arrives.
-    marginTop: 12,
+    // marginTop is NOT set here — it's conditional (0 or 12) at the render
+    // site, based on whether the photo strip is present. See the comment
+    // there for why.
     marginBottom: 12,
   },
   statCell: {
