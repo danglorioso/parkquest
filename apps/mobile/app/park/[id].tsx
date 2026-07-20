@@ -1816,7 +1816,7 @@ export function ParkProfileScreen({
                         {night && (
                           <Text style={styles.weatherLow}>{night.temperature}° low</Text>
                         )}
-                        <Text style={styles.weatherDesc} numberOfLines={2}>{p.shortForecast}</Text>
+                        <Text style={styles.weatherDesc}>{p.shortForecast}</Text>
                       </View>
                     );
                   })}
