@@ -31,6 +31,19 @@ const OCEAN_BG      = "#CECDBC";
 const WAVE_COLOR    = "#9E9880";
 const LAND_FILL     = "#FFFBF1";
 const BORDER_COLOR  = "#C4BB9E";
+const INK_COLOR     = "#3D3726";
+
+// Same zoom the old GL text-symbol layer used to gate labels at.
+const LABEL_ZOOM_GATE = 7;
+
+// Strips the "National Park" designation for map labels, where space is
+// tight — mirrors the mobile map's shortParkName.
+function shortParkName(name: string): string {
+  return name
+    .replace(/^National Park of /i, "")
+    .replace(/ National (?:and State )?Parks?(?: (?:&|and) Preserve)?$/i, "")
+    .trim();
+}
 
 function waveBg() {
   const color = WAVE_COLOR;
@@ -216,28 +229,38 @@ function buildStyle(): StyleSpecification {
         },
       },
 
-      // Park name labels at zoom 7+
-      {
-        id: "park-label",
-        type: "symbol",
-        source: "parks",
-        minzoom: 7,
-        layout: {
-          "text-field": ["get", "name"],
-          "text-size": 11,
-          "text-offset": [0, 1.4],
-          "text-anchor": "top",
-          "text-font": ["Noto Sans Regular"],
-          "text-max-width": 10,
-        },
-        paint: {
-          "text-color": "#3D3726",
-          "text-halo-color": LAND_FILL,
-          "text-halo-width": 1.5,
-        },
-      },
     ],
   };
+}
+
+// Floating name-pill DOM marker — mirrors the mobile map's ParkLabelMarker
+// pill styling (rounded cream pill, bold 11.5pt text, hairline border),
+// positioned to the right of the park's dot.
+function buildLabelPillEl(
+  park: MapPark,
+  onSelectRef: { current?: ((parkCode: string) => void) | undefined },
+): HTMLDivElement {
+  const el = document.createElement("div");
+  el.textContent = shortParkName(park.name);
+  Object.assign(el.style, {
+    display: "none", // gated by zoom — set by updateLabelVisibility
+    padding: "3px 7px",
+    borderRadius: "6px",
+    border: `0.5px solid ${BORDER_COLOR}`,
+    background: "rgba(255,251,241,0.9)",
+    fontSize: "11.5px",
+    fontWeight: "700",
+    color: INK_COLOR,
+    whiteSpace: "nowrap",
+    cursor: "pointer",
+    userSelect: "none",
+    lineHeight: "1.3",
+  });
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onSelectRef.current?.(park.park_code);
+  });
+  return el;
 }
 
 const BTN: React.CSSProperties = {
@@ -271,12 +294,48 @@ export default function USAMapGL({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<maplibregl.Map | null>(null);
   const loadedRef    = useRef(false);
+  const labelMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
 
   // Keep callbacks stable across re-renders
   const onSelectRef  = useRef(onSelectPark);
   const onDeselectRef = useRef(onDeselect);
   useEffect(() => { onSelectRef.current = onSelectPark; }, [onSelectPark]);
   useEffect(() => { onDeselectRef.current = onDeselect; }, [onDeselect]);
+
+  // Show name pills only once zoomed in enough to have room for them —
+  // matches the old GL text layer's minzoom gate.
+  const updateLabelVisibility = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const visible = map.getZoom() >= LABEL_ZOOM_GATE;
+    for (const marker of labelMarkersRef.current.values()) {
+      marker.getElement().style.display = visible ? "" : "none";
+    }
+  };
+
+  // Add/remove a pill marker per park, keyed by park_code.
+  const syncLabelMarkers = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const seen = new Set<string>();
+    for (const p of parks) {
+      seen.add(p.park_code);
+      if (!labelMarkersRef.current.has(p.park_code)) {
+        const el = buildLabelPillEl(p, onSelectRef);
+        const marker = new maplibregl.Marker({ element: el, anchor: "left", offset: [12, 0] })
+          .setLngLat([p.position[1], p.position[0]])
+          .addTo(map);
+        labelMarkersRef.current.set(p.park_code, marker);
+      }
+    }
+    for (const [code, marker] of labelMarkersRef.current) {
+      if (!seen.has(code)) {
+        marker.remove();
+        labelMarkersRef.current.delete(code);
+      }
+    }
+    updateLabelVisibility();
+  };
 
   // Initialize map once
   useEffect(() => {
@@ -313,26 +372,36 @@ export default function USAMapGL({
 
       map.on("mouseenter", "parks-dot", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "parks-dot", () => { map.getCanvas().style.cursor = ""; });
+
+      syncLabelMarkers();
+      map.on("zoom", updateLabelVisibility);
     });
 
     mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; loadedRef.current = false; };
+    return () => {
+      for (const marker of labelMarkersRef.current.values()) marker.remove();
+      labelMarkersRef.current.clear();
+      map.remove();
+      mapRef.current = null;
+      loadedRef.current = false;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update parks GeoJSON whenever data or selection changes
+  // Update parks GeoJSON (and their label pills) whenever data or selection changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const update = () => {
       const src = map.getSource("parks") as GeoJSONSource;
       src?.setData(parksGeoJSON(parks, selectedParkCode));
+      syncLabelMarkers();
     };
     if (loadedRef.current) {
       update();
     } else {
       map.once("load", update);
     }
-  }, [parks, selectedParkCode]);
+  }, [parks, selectedParkCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fly to a park when flyToTarget changes (e.g. selected from search)
   useEffect(() => {

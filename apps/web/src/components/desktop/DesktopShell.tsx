@@ -6,15 +6,14 @@ import { useEffect, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import {
   Sparkles, Map, User, Award, Compass,
-  Check, Bookmark, PenLine, Users, Globe, TreePine,
-  Plus, ChevronDown, LogOut, UserCircle, Pencil, Sun, Search,
-  Menu, X, ShieldCheck,
+  Check, Bookmark, PenLine, Users, TreePine,
+  Plus, ChevronDown, LogOut, UserCircle, Pencil, Search,
+  Menu, X, Settings,
 } from "lucide-react";
 import { Wordmark } from "@/components/Wordmark";
 import { GlobalSpotlight } from "@/components/desktop/GlobalSpotlight";
 import { NotificationCenter } from "@/components/desktop/NotificationCenter";
 import { PushPermissionPrompt } from "@/components/desktop/PushPermissionPrompt";
-import { useTheme, type Palette } from "@/components/ThemeProvider";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { LogVisitModal } from "@/components/LogVisitModal";
 
@@ -29,7 +28,7 @@ const NAV = [
       { id: "parks",     href: "/parks",     icon: TreePine, label: "Parks" },
       { id: "passport",  href: "/passport",  icon: User,    label: "Passport" },
       { id: "badges",    href: "/badges",    icon: Award,   label: "Badges" },
-      { id: "planner",   href: "/planner",   icon: Compass, label: "Trip Planner" },
+      // { id: "planner",   href: "/planner",   icon: Compass, label: "Trip Planner" },
     ],
   },
   {
@@ -44,7 +43,12 @@ const NAV = [
     group: "PEOPLE",
     items: [
       { id: "friends",  href: "/friends",  icon: Users, label: "Friends" },
-      { id: "discover", href: "/discover", icon: Globe,  label: "Discover" },
+    ],
+  },
+  {
+    group: "ACCOUNT",
+    items: [
+      { id: "settings", href: "/settings", icon: Settings, label: "Settings" },
     ],
   },
 ] as const;
@@ -55,22 +59,15 @@ export function AccountMenu({ onEditAccount, compact = false }: { onEditAccount:
   const { user } = useUser();
   const { signOut } = useClerk();
   const router = useRouter();
-  const { palette, setPalette } = useTheme();
   const [open, setOpen] = useState(false);
-  const [showAppearance, setShowAppearance] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setShowAppearance(false);
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setOpen(false); setShowAppearance(false); }
-    };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
     const t = setTimeout(() => document.addEventListener("mousedown", onDocClick), 0);
     document.addEventListener("keydown", onEsc);
     return () => { clearTimeout(t); document.removeEventListener("mousedown", onDocClick); document.removeEventListener("keydown", onEsc); };
@@ -80,20 +77,15 @@ export function AccountMenu({ onEditAccount, compact = false }: { onEditAccount:
   const handle = user?.username ? `@${user.username}` : "";
   const avatarUrl = user?.imageUrl ?? "";
 
-  const PALETTES: { id: Palette; label: string; color: string }[] = [
-    { id: "forest",  label: "Forest",  color: "#1F3D2E" },
-    { id: "canyon",  label: "Canyon",  color: "#7B3A1F" },
-    { id: "glacier", label: "Glacier", color: "#2D4F66" },
-    { id: "dusk",    label: "Dusk",    color: "#3A2E5C" },
-  ];
-
   const menuItems = [
-    { icon: UserCircle,  label: "View profile", sub: "Your passport", onClick: () => { setOpen(false); router.push("/passport"); } },
-    { icon: Pencil,      label: "Edit account",  onClick: () => { setOpen(false); onEditAccount(); } },
-    { icon: ShieldCheck, label: "Privacy & safety", onClick: () => { setOpen(false); router.push("/settings"); } },
-    { icon: Sun,         label: "Appearance",    onClick: () => setShowAppearance(s => !s) },
+    {
+      icon: UserCircle, label: "View profile", sub: "Your public profile",
+      onClick: () => { setOpen(false); if (user?.username) router.push(`/profile/${user.username}`); },
+    },
+    { icon: Pencil,   label: "Edit account", onClick: () => { setOpen(false); onEditAccount(); } },
+    { icon: Settings, label: "Settings",     onClick: () => { setOpen(false); router.push("/settings"); } },
     { divider: true },
-    { icon: LogOut,     label: "Sign out", danger: true, onClick: () => { setOpen(false); signOut(() => router.push("/")); } },
+    { icon: LogOut,   label: "Sign out", danger: true, onClick: () => { setOpen(false); signOut(() => router.push("/")); } },
   ];
 
   const avatar = avatarUrl ? (
@@ -110,7 +102,7 @@ export function AccountMenu({ onEditAccount, compact = false }: { onEditAccount:
         onClick={() => setOpen(o => !o)}
         style={{
           width: compact ? "auto" : "100%",
-          background: open ? "rgba(31,61,46,0.06)" : "transparent",
+          background: open ? "color-mix(in srgb, var(--primary) 8%, transparent)" : "transparent",
           border: `0.5px solid ${open ? "var(--hairline)" : compact ? "var(--hairline-soft)" : "transparent"}`,
           borderRadius: 12,
           padding: compact ? "5px 8px 5px 5px" : "8px 10px 8px 8px",
@@ -143,7 +135,7 @@ export function AccountMenu({ onEditAccount, compact = false }: { onEditAccount:
             ...(compact
               ? { top: "calc(100% + 8px)", right: 0, width: 220 }
               : { bottom: "calc(100% + 8px)", left: 0, right: 0 }),
-            background: "rgba(255,251,241,0.98)",
+            background: "color-mix(in srgb, var(--surface) 98%, transparent)",
             backdropFilter: "blur(24px) saturate(160%)",
             WebkitBackdropFilter: "blur(24px) saturate(160%)",
             border: "0.5px solid var(--hairline)",
@@ -157,7 +149,7 @@ export function AccountMenu({ onEditAccount, compact = false }: { onEditAccount:
           <style>{`
             @keyframes pqAccMenu { from { opacity: 0; transform: translateY(4px) scale(0.98) } to { opacity: 1; transform: translateY(0) scale(1) } }
             @keyframes pqAccMenuDown { from { opacity: 0; transform: translateY(-4px) scale(0.98) } to { opacity: 1; transform: translateY(0) scale(1) } }
-            .pq-menu-item:hover { background: rgba(31,61,46,0.06) !important; }
+            .pq-menu-item:hover { background: color-mix(in srgb, var(--primary) 8%, transparent) !important; }
           `}</style>
 
           {/* Profile snippet */}
@@ -200,31 +192,6 @@ export function AccountMenu({ onEditAccount, compact = false }: { onEditAccount:
               </button>
             );
           })}
-
-          {/* Inline Appearance panel */}
-          {showAppearance && (
-            <div style={{ margin: "4px 5px 2px", padding: "10px 8px", background: "var(--surface-alt)", borderRadius: 8 }}>
-              {/* Palette */}
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1.4px", color: "var(--ink-mute)", fontWeight: 600, marginBottom: 6 }}>PALETTE</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                {PALETTES.map(({ id, label, color }) => (
-                  <button
-                    key={id}
-                    onClick={() => setPalette(id)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      background: palette === id ? "var(--surface)" : "transparent",
-                      border: palette === id ? "1px solid var(--hairline)" : "1px solid transparent",
-                      borderRadius: 6, padding: "4px 6px", cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: color, flexShrink: 0 }} />
-                    <span style={{ fontWeight: 600, fontSize: 11, color: "var(--ink)" }}>{label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -280,7 +247,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
       className="hidden md:flex flex-col shrink-0 overflow-hidden"
       style={{
         width: 232,
-        background: "rgba(245,239,224,0.5)",
+        background: "color-mix(in srgb, var(--bg) 50%, transparent)",
         borderRight: "0.5px solid var(--hairline)",
         backdropFilter: "blur(30px) saturate(160%)",
         WebkitBackdropFilter: "blur(30px) saturate(160%)",
@@ -357,6 +324,35 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
             >
               {group.group}
             </div>
+            {/* My Profile — prepended to PEOPLE, above Friends */}
+            {group.group === "PEOPLE" && username && (() => {
+              const profileHref = `/profile/${username}`;
+              const isActive = pathname === profileHref;
+              return (
+                <Link
+                  href={profileHref}
+                  className="relative flex items-center gap-[10px] w-full transition-colors"
+                  style={{
+                    padding: "7px 18px",
+                    background: isActive ? "color-mix(in srgb, var(--primary) 10%, transparent)" : "transparent",
+                    color: isActive ? "var(--primary)" : "var(--ink-soft)",
+                    fontWeight: isActive ? 700 : 500,
+                    fontSize: 13,
+                    textDecoration: "none",
+                  }}
+                >
+                  {isActive && (
+                    <div className="absolute left-0 rounded-sm" style={{ top: 8, bottom: 8, width: 3, background: "var(--primary)" }} />
+                  )}
+                  <UserCircle
+                    className="w-4 h-4 shrink-0"
+                    strokeWidth={isActive ? 2.2 : 1.8}
+                    style={{ color: isActive ? "var(--primary)" : "var(--ink-soft)" }}
+                  />
+                  <span className="flex-1">My Profile</span>
+                </Link>
+              );
+            })()}
             {group.items.map((item) => {
               const isActive = navIsActive(item.id, item.href, pathname, searchParams, username);
               const Icon = item.icon;
@@ -374,7 +370,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
                   className="relative flex items-center gap-[10px] w-full transition-colors"
                   style={{
                     padding: "7px 18px",
-                    background: isActive ? "rgba(31,61,46,0.08)" : "transparent",
+                    background: isActive ? "color-mix(in srgb, var(--primary) 10%, transparent)" : "transparent",
                     color: isActive ? "var(--primary)" : "var(--ink-soft)",
                     fontWeight: isActive ? 700 : 500,
                     fontSize: 13,
@@ -404,35 +400,6 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
                 </Link>
               );
             })}
-            {/* My Profile — appended to COLLECTIONS */}
-            {group.group === "COLLECTIONS" && username && (() => {
-              const profileHref = `/profile/${username}`;
-              const isActive = pathname === profileHref;
-              return (
-                <Link
-                  href={profileHref}
-                  className="relative flex items-center gap-[10px] w-full transition-colors"
-                  style={{
-                    padding: "7px 18px",
-                    background: isActive ? "rgba(31,61,46,0.08)" : "transparent",
-                    color: isActive ? "var(--primary)" : "var(--ink-soft)",
-                    fontWeight: isActive ? 700 : 500,
-                    fontSize: 13,
-                    textDecoration: "none",
-                  }}
-                >
-                  {isActive && (
-                    <div className="absolute left-0 rounded-sm" style={{ top: 8, bottom: 8, width: 3, background: "var(--primary)" }} />
-                  )}
-                  <User
-                    className="w-4 h-4 shrink-0"
-                    strokeWidth={isActive ? 2.2 : 1.8}
-                    style={{ color: isActive ? "var(--primary)" : "var(--ink-soft)" }}
-                  />
-                  <span className="flex-1">My Profile</span>
-                </Link>
-              );
-            })()}
           </div>
         ))}
       </nav>
@@ -512,7 +479,7 @@ function MobileHeader({
       style={{
         height: 54,
         padding: "0 12px",
-        background: "rgba(245,239,224,0.96)",
+        background: "color-mix(in srgb, var(--bg) 96%, transparent)",
         backdropFilter: "blur(20px) saturate(160%)",
         WebkitBackdropFilter: "blur(20px) saturate(160%)",
         borderBottom: "0.5px solid var(--hairline)",
@@ -613,7 +580,7 @@ function MobileDrawer({
         className="md:hidden fixed top-0 left-0 bottom-0 z-50 flex flex-col overflow-y-auto"
         style={{
           width: 280,
-          background: "rgba(245,239,224,0.98)",
+          background: "color-mix(in srgb, var(--bg) 98%, transparent)",
           backdropFilter: "blur(30px) saturate(160%)",
           WebkitBackdropFilter: "blur(30px) saturate(160%)",
           borderRight: "0.5px solid var(--hairline)",
@@ -672,6 +639,35 @@ function MobileDrawer({
               >
                 {group.group}
               </div>
+              {group.group === "PEOPLE" && username && (() => {
+                const profileHref = `/profile/${username}`;
+                const isActive = pathname === profileHref;
+                return (
+                  <Link
+                    href={profileHref}
+                    onClick={onClose}
+                    className="relative flex items-center gap-[10px] w-full transition-colors"
+                    style={{
+                      padding: "9px 18px",
+                      background: isActive ? "color-mix(in srgb, var(--primary) 10%, transparent)" : "transparent",
+                      color: isActive ? "var(--primary)" : "var(--ink-soft)",
+                      fontWeight: isActive ? 700 : 500,
+                      fontSize: 14,
+                      textDecoration: "none",
+                    }}
+                  >
+                    {isActive && (
+                      <div className="absolute left-0 rounded-sm" style={{ top: 8, bottom: 8, width: 3, background: "var(--primary)" }} />
+                    )}
+                    <UserCircle
+                      className="w-[18px] h-[18px] shrink-0"
+                      strokeWidth={isActive ? 2.2 : 1.8}
+                      style={{ color: isActive ? "var(--primary)" : "var(--ink-soft)" }}
+                    />
+                    <span className="flex-1">My Profile</span>
+                  </Link>
+                );
+              })()}
               {group.items.map((item) => {
                 const isActive = navIsActive(item.id, item.href, pathname, searchParams, username);
                 const Icon = item.icon;
@@ -687,7 +683,7 @@ function MobileDrawer({
                     className="relative flex items-center gap-[10px] w-full transition-colors"
                     style={{
                       padding: "9px 18px",
-                      background: isActive ? "rgba(31,61,46,0.08)" : "transparent",
+                      background: isActive ? "color-mix(in srgb, var(--primary) 10%, transparent)" : "transparent",
                       color: isActive ? "var(--primary)" : "var(--ink-soft)",
                       fontWeight: isActive ? 700 : 500,
                       fontSize: 14,
@@ -711,35 +707,6 @@ function MobileDrawer({
                   </Link>
                 );
               })}
-              {group.group === "COLLECTIONS" && username && (() => {
-                const profileHref = `/profile/${username}`;
-                const isActive = pathname === profileHref;
-                return (
-                  <Link
-                    href={profileHref}
-                    onClick={onClose}
-                    className="relative flex items-center gap-[10px] w-full transition-colors"
-                    style={{
-                      padding: "9px 18px",
-                      background: isActive ? "rgba(31,61,46,0.08)" : "transparent",
-                      color: isActive ? "var(--primary)" : "var(--ink-soft)",
-                      fontWeight: isActive ? 700 : 500,
-                      fontSize: 14,
-                      textDecoration: "none",
-                    }}
-                  >
-                    {isActive && (
-                      <div className="absolute left-0 rounded-sm" style={{ top: 8, bottom: 8, width: 3, background: "var(--primary)" }} />
-                    )}
-                    <User
-                      className="w-[18px] h-[18px] shrink-0"
-                      strokeWidth={isActive ? 2.2 : 1.8}
-                      style={{ color: isActive ? "var(--primary)" : "var(--ink-soft)" }}
-                    />
-                    <span className="flex-1">My Profile</span>
-                  </Link>
-                );
-              })()}
             </div>
           ))}
         </nav>

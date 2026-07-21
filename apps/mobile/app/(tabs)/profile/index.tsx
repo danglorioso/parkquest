@@ -745,16 +745,12 @@ export default function ProfileScreen() {
               onPress={() => router.push('/profile/edit' as never)}
             />
             <View style={styles.rowDivider} />
-            {/* Outlined in the accent tint so the destructive action reads as
-                its own bounded control, not just another list row */}
-            <View style={{ margin: 10, borderWidth: 1, borderColor: `${C.accent}55`, borderRadius: 12, overflow: 'hidden' }}>
-              <NavRow
-                icon="log-out-outline"
-                label="Sign Out"
-                danger
-                onPress={handleSignOut}
-              />
-            </View>
+            <NavRow
+              icon="log-out-outline"
+              label="Sign Out"
+              danger
+              onPress={handleSignOut}
+            />
           </View>
         </View>
 
@@ -779,7 +775,7 @@ export default function ProfileScreen() {
         <Text style={styles.attribution}>
           © {new Date().getFullYear()}{' '}
           <Text
-            style={{ fontWeight: '600' }}
+            style={{ fontWeight: '600', textDecorationLine: 'underline' }}
             onPress={() => Linking.openURL('https://parkquest.me')}
             suppressHighlighting
           >
