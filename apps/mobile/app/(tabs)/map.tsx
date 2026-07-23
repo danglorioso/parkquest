@@ -1384,9 +1384,10 @@ const styles = StyleSheet.create({
     backgroundColor: dyn('rgba(255,251,241,0.92)', 'rgba(32,29,23,0.92)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
-    // Matches mapControlBtn (home/zoom buttons) exactly
+    // Matches mapControlBtn (home/zoom buttons) exactly, including height —
+    // paddingVertical alone left it a few px shorter than the label button.
     borderRadius: 9,
-    paddingVertical: 8,
+    height: 36,
     paddingHorizontal: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },

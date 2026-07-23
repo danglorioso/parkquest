@@ -460,17 +460,26 @@ export default function ProfileScreen() {
 
           <View style={styles.passportStats}>
             {([
-              { label: 'VISITED', value: visitsLoaded ? `${parksVisited}/63` : '–' },
-              { label: 'TRIPS',   value: visitsLoaded ? String(tripsCount) : '–' },
-              { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–' },
-              { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–' },
-            ] as { label: string; value: string }[]).map(s => (
-              <View key={s.label} style={styles.passportStatItem}>
+              { label: 'VISITED', value: visitsLoaded ? `${parksVisited}/63` : '–', href: '/profile/passport' },
+              { label: 'TRIPS',   value: visitsLoaded ? String(tripsCount) : '–', href: '/profile/journal' },
+              { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–', href: '/profile/badges' },
+              { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–', href: '/profile/friends' },
+            ] as { label: string; value: string; href: string }[]).map(s => (
+              // Nested TouchableOpacity — RN's responder system hands the touch
+              // to this inner one, not the passportCard TouchableOpacity behind
+              // it, so tapping a stat doesn't also fire the card's own onPress.
+              <TouchableOpacity
+                key={s.label}
+                style={styles.passportStatItem}
+                activeOpacity={0.6}
+                hitSlop={6}
+                onPress={() => router.push(s.href as never)}
+              >
                 <Text style={styles.passportStatLabel}>{s.label}</Text>
                 <Text style={styles.passportStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                   {s.value}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
 

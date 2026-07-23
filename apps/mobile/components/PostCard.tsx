@@ -759,7 +759,7 @@ function CommentsSheet({
   const [submitting, setSubmitting] = useState(false);
   // Preloaded from the feed scroll — already have the full list, no fetch needed.
   const [loading, setLoading] = useState(!initialRows);
-  const [activeCommentMenu, setActiveCommentMenu] = useState<number | null>(null);
+  const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
   const [reportingCommentId, setReportingCommentId] = useState<number | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: number; text: string } | null>(null);
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
@@ -825,14 +825,17 @@ function CommentsSheet({
         method: 'POST',
         body: JSON.stringify({ postId, content: text }),
       });
-      setRows(prev => [...prev, {
+      // Prepended, not appended — the list reads oldest-to-newest overall
+      // (see the API's orderBy), but a comment you just posted should be
+      // visible immediately without scrolling past everyone else's.
+      setRows(prev => [{
         ...newComment,
         username: myName ?? null,
         display_name: myName ?? null,
         avatar_url: myAvatarUrl ?? null,
-      }]);
+      }, ...prev]);
       onCountChange(1);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+      setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 80);
     } catch {
       setDraft(text);
     } finally {
@@ -841,7 +844,6 @@ function CommentsSheet({
   }, [draft, submitting, postId, freshToken, myName, myAvatarUrl, onCountChange]);
 
   const deleteComment = useCallback(async (commentId: number) => {
-    setActiveCommentMenu(null);
     setRows(prev => prev.filter(c => c.id !== commentId));
     onCountChange(-1);
     try {
@@ -881,8 +883,7 @@ function CommentsSheet({
           >
             <View>
               <View style={styles.sheetHandle} />
-              <View style={styles.commentsSheetHeader}>
-                <Text style={styles.commentsSheetTitle}>COMMENTS</Text>
+              <View style={[styles.commentsSheetHeader, { justifyContent: 'flex-end' }]}>
                 <TouchableOpacity onPress={dismiss} hitSlop={12}>
                   <Ionicons name="close" size={20} color={C.inkMute} />
                 </TouchableOpacity>
@@ -890,9 +891,6 @@ function CommentsSheet({
             </View>
             <View style={{ height: 0.5, backgroundColor: C.hairline }} />
 
-            {activeCommentMenu !== null && (
-              <Pressable style={StyleSheet.absoluteFill} onPress={() => setActiveCommentMenu(null)} />
-            )}
             <ScrollView
               ref={scrollRef}
               style={{ maxHeight: SCREEN_H * 0.52 }}
@@ -912,7 +910,6 @@ function CommentsSheet({
                   const isOwn = myUserId && c.user_id === myUserId;
                   const isExpanded = expandedComments.has(c.id);
                   const isEditing = editingComment?.id === c.id;
-                  const menuOpen = activeCommentMenu === c.id;
                   return (
                     <View key={c.id} style={styles.commentRow}>
                       <TouchableOpacity onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}>
@@ -970,43 +967,34 @@ function CommentsSheet({
                         )}
                         <Text style={[styles.commentTime, { marginTop: 3 }]}>{relTime(c.created_at)}</Text>
                       </View>
-                      <View style={{ position: 'relative' }}>
+                      <MenuView
+                        onPressAction={({ nativeEvent }) => {
+                          switch (nativeEvent.event) {
+                            case 'edit':
+                              setEditingComment({ id: c.id, text: c.content });
+                              break;
+                            case 'delete':
+                              deleteComment(c.id);
+                              break;
+                            case 'report':
+                              setReportingCommentId(c.id);
+                              break;
+                          }
+                        }}
+                        actions={isOwn ? [
+                          { id: 'edit', title: 'Edit', image: 'pencil', imageColor: menuInk },
+                          { id: 'delete', title: 'Delete', image: 'trash', imageColor: menuInk, attributes: { destructive: true } },
+                        ] : [
+                          { id: 'report', title: 'Report', image: 'flag', imageColor: menuInk, attributes: { destructive: true } },
+                        ]}
+                      >
                         <TouchableOpacity
-                          onPress={() => setActiveCommentMenu(menuOpen ? null : c.id)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           style={{ paddingLeft: 6, paddingTop: 2 }}
                         >
                           <Ionicons name="ellipsis-horizontal" size={15} color={C.inkMute} />
                         </TouchableOpacity>
-                        {menuOpen && (
-                          <View style={styles.commentMenu}>
-                            {isOwn ? (
-                              <>
-                                <TouchableOpacity
-                                  style={styles.menuItem}
-                                  onPress={() => {
-                                    setActiveCommentMenu(null);
-                                    setEditingComment({ id: c.id, text: c.content });
-                                  }}
-                                >
-                                  <Text style={styles.menuItemText}>Edit</Text>
-                                </TouchableOpacity>
-                                <View style={styles.menuDivider} />
-                                <TouchableOpacity style={styles.menuItem} onPress={() => deleteComment(c.id)}>
-                                  <Text style={[styles.menuItemText, { color: C.liked }]}>Delete</Text>
-                                </TouchableOpacity>
-                              </>
-                            ) : (
-                              <TouchableOpacity
-                                style={styles.menuItem}
-                                onPress={() => { setActiveCommentMenu(null); setReportingCommentId(c.id); }}
-                              >
-                                <Text style={[styles.menuItemText, { color: C.liked }]}>Report</Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                        )}
-                      </View>
+                      </MenuView>
                     </View>
                   );
                 })
@@ -1771,13 +1759,6 @@ const styles = StyleSheet.create({
   commentCharCount: {
     fontSize: 13, color: C.inkMute, paddingHorizontal: 4,
   },
-  commentMenu: {
-    position: 'absolute', top: 22, right: 0, zIndex: 200,
-    backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12, shadowRadius: 12, elevation: 8,
-    minWidth: 120, overflow: 'hidden',
-  },
   commentEditInput: {
     flex: 1, backgroundColor: C.surfaceAlt, borderRadius: 12,
     borderTopLeftRadius: 4, padding: 8, paddingHorizontal: 11,
@@ -1810,9 +1791,6 @@ const styles = StyleSheet.create({
   menuBtnActive: {
     borderRadius: 6,
   },
-  menuItem: { paddingHorizontal: 14, paddingVertical: 11 },
-  menuItemText: { fontSize: 14, color: C.ink },
-  menuDivider: { height: 0.5, backgroundColor: C.hairline },
   parkChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 18, paddingBottom: 10,

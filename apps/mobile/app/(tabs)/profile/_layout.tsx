@@ -28,18 +28,15 @@ export default function ProfileStackLayout() {
         name="friends"
         options={{
           title: 'Friends',
-          // Unconditional back button, not just the native auto-back: the
-          // onboarding walkthrough's "Find friends" deep-links straight here,
-          // and when that push doesn't leave a real screen underneath in the
-          // stack, the default header shows no back arrow at all — leaving
-          // the profile tab stuck on Friends with no way off it short of
-          // double-tapping the tab bar icon to pop-to-top.
+          // Always target profile directly rather than router.back(): the feed
+          // page's friend filter and the onboarding walkthrough both deep-link
+          // straight here, and router.back() in that case pops to whatever
+          // sent us here (feed) instead of profile — tapping "Manage friends"
+          // again from feed re-pushes Friends, so back/push loops between
+          // Feed and Friends and profile is never reachable from here.
           headerLeft: () => (
             <TouchableOpacity
-              onPress={() => {
-                if (router.canGoBack()) router.back();
-                else router.replace('/(tabs)/profile');
-              }}
+              onPress={() => router.replace('/(tabs)/profile')}
               hitSlop={8}
               style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -6 }}
             >
@@ -48,6 +45,21 @@ export default function ProfileStackLayout() {
             </TouchableOpacity>
           ),
         }}
+        // The native edge-swipe and Android hardware back both call
+        // navigation.goBack() directly, bypassing headerLeft — intercept the
+        // pop itself so every exit path (button/swipe/hardware back) lands
+        // on profile instead of wherever the stack would otherwise pop to.
+        // Only redirect GO_BACK/POP — router.replace() above also removes
+        // this screen and re-fires beforeRemove, and preventDefault()-ing
+        // THAT too made the replace call itself forever, which is what blew
+        // the "Maximum update depth exceeded" error.
+        listeners={() => ({
+          beforeRemove: e => {
+            if (e.data.action.type === 'REPLACE') return;
+            e.preventDefault();
+            router.replace('/(tabs)/profile');
+          },
+        })}
       />
     </Stack>
   );

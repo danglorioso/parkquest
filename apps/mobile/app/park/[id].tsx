@@ -987,8 +987,21 @@ export function ParkProfileScreen({
 
   const onSheetDragRelease = useCallback((dy: number, vy: number) => {
     const raw = sheetYBase.current + dy;
-    if (vy > 1.2) { dismissSheet(); return; }
     if (vy < -1.2) { snapSheetTo(0); return; }
+    // A drag that started at full used to dismiss the whole sheet on
+    // basically the same flick that would otherwise just drop it to half —
+    // full → gone read as one accidental gesture away. Starting full now
+    // needs a distinctly harder flick, or a drag that's traveled nearly to
+    // the bottom, to skip past half and dismiss outright; anything gentler
+    // settles at half instead of falling all the way through.
+    const startedFull = sheetYBase.current < SHEET_PEEK / 2;
+    if (startedFull) {
+      if (vy > 2.2 || raw > SH * 0.88) { dismissSheet(); return; }
+      if (raw < SHEET_PEEK / 2) snapSheetTo(0);
+      else snapSheetTo(SHEET_PEEK);
+      return;
+    }
+    if (vy > 1.2) { dismissSheet(); return; }
     const midFullHalf = SHEET_PEEK / 2;
     const midHalfDismiss = (SHEET_PEEK + SH) / 2;
     if (raw < midFullHalf) snapSheetTo(0);
