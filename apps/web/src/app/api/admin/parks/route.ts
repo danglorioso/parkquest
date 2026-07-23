@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
   const rows = await db.execute(sql`
     SELECT
-      p.park_code, p.name,
+      p.park_code, p.name, p.states, p.stamp_glyph,
       COUNT(v.id)::int AS visit_count,
       COUNT(DISTINCT po.id)::int AS post_count,
       ROUND(AVG(v.rating)::numeric, 2) AS avg_rating,
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     FROM parks p
     LEFT JOIN visits v ON v.park_code = p.park_code AND v.visited_date IS NOT NULL AND v.is_bucket_list = false
     LEFT JOIN posts po ON po.park_code = p.park_code
-    GROUP BY p.park_code, p.name
+    GROUP BY p.park_code, p.name, p.states, p.stamp_glyph
     ORDER BY ${orderColumn} ${dir} NULLS LAST
     LIMIT 100
   `);

@@ -45,3 +45,37 @@ export const PARK_GLYPHS: Record<string, StampGlyph> = {
 export function getParkGlyph(parkCode: string): StampGlyph | null {
   return PARK_GLYPHS[parkCode] ?? null;
 }
+
+/**
+ * An admin-uploaded stamp glyph — set via /admin/parks, stored per-park in
+ * `parks.stamp_glyph`. Unlike the hand-authored PARK_GLYPHS above (already
+ * hand-fit to the stamp's 100x100 canvas), an uploaded icon keeps its own
+ * source `viewBox` so `glyphTransform` below can scale/center it into the
+ * ring's inner gap without needing to rewrite any path `d` data.
+ */
+export interface CustomStampGlyph {
+  /** The uploaded SVG's own viewBox, e.g. "0 0 24 24". */
+  viewBox: string;
+  paths: StampGlyphShape[];
+}
+
+// Centered box for custom glyphs to land in — runs from just below the
+// curved park-name text down to just above the curved state-code text (both
+// arcs live outside this range), filling most of the ring's inner face.
+const GLYPH_BOX = { x: 30, y: 30, w: 40, h: 40 };
+
+/**
+ * Computes a `translate(...) scale(...)` transform that fits a glyph's
+ * source viewBox into GLYPH_BOX, uniformly scaled and centered — apply it
+ * to a <g>/<G> wrapping the glyph's raw <path> elements.
+ */
+export function glyphTransform(viewBox: string): string {
+  const parts = viewBox.trim().split(/\s+/).map(Number);
+  const valid = parts.length === 4 && parts.every((n) => Number.isFinite(n)) && parts[2] > 0 && parts[3] > 0;
+  const [minX, minY, w, h] = valid ? parts : [0, 0, 24, 24];
+
+  const scale = Math.min(GLYPH_BOX.w / w, GLYPH_BOX.h / h);
+  const tx = GLYPH_BOX.x + (GLYPH_BOX.w - w * scale) / 2 - minX * scale;
+  const ty = GLYPH_BOX.y + (GLYPH_BOX.h - h * scale) / 2 - minY * scale;
+  return `translate(${tx} ${ty}) scale(${scale})`;
+}

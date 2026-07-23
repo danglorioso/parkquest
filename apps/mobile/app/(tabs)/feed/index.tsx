@@ -72,7 +72,11 @@ export default function FeedScreen() {
   const palette = useColors();
   const insets = useSafeAreaInsets();
   const tabBarSpace = useTabBarSpace();
-  const TOP_BAR_H = insets.top + 56.5;
+  // Wraps the row's own content exactly (marginTop -8 + paddingTop 6 + the 44pt
+  // buttons + paddingBottom 8, see topBarInner) — no leftover slack below the
+  // buttons, so the hairline sits right after the bottom padding instead of
+  // floating further down like the old fixed 56.5 did.
+  const TOP_BAR_H = insets.top + 50;
   const barGlass = liquidGlassAvailable && GlassView != null && GlassContainer != null;
   const isDark = useColorScheme() === 'dark';
 
@@ -462,9 +466,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    // 6 + 44 + 6 keeps the row at 56, inside the bar's fixed 56.5 height,
-    // with the 44pt standard icon buttons.
-    paddingVertical: 6,
+    // Asymmetric on purpose: paddingTop pairs with the marginTop pull-up
+    // (insets.top - 8, set where this style is used) to land the buttons a
+    // fixed distance under the safe area — left untouched so that gap never
+    // moves. paddingBottom is the matching gap to the hairline below (see
+    // TOP_BAR_H, which now wraps this row with no extra slack).
+    paddingTop: 6,
+    paddingBottom: 8,
   },
   topBarHairline: {
     // Pinned to the bar's bottom edge — as an in-flow child it lands

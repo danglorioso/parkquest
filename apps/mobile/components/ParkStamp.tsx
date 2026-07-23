@@ -2,7 +2,7 @@ import { View } from 'react-native';
 import Svg, {
   Circle, Defs, G, Line, Path as SvgPath, RadialGradient, Stop, Text as SvgText, TextPath,
 } from 'react-native-svg';
-import { getParkGlyph } from '@parkquest/types';
+import { getParkGlyph, glyphTransform, type CustomStampGlyph } from '@parkquest/types';
 
 // ── Stamp palette + helpers ───────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ export function stateCode(states: string): string {
 // ── Stamp ─────────────────────────────────────────────────────────────────────
 
 export function ParkStamp({
-  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = '', inkColor,
+  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = '', inkColor, customGlyph,
 }: {
   parkCode: string;
   name: string;
@@ -91,6 +91,8 @@ export function ParkStamp({
   /** Override the seeded park ink — e.g. gold foil on the dark passport cover,
       where the default dark inks don't have enough contrast. */
   inkColor?: string;
+  /** Admin-uploaded center icon (parks.stamp_glyph) — takes priority over the hand-authored PARK_GLYPHS. */
+  customGlyph?: CustomStampGlyph | null;
 }) {
   const c         = inkColor ?? stampColor(colorIdx);
   const sc        = stateCode(states);
@@ -117,7 +119,7 @@ export function ParkStamp({
     <View style={{ transform: [{ rotate }] }}>
       <Svg width={size} height={size} viewBox="0 0 100 100">
         <Defs>
-          <SvgPath id={topId} d="M 17 50 A 33 33 0 0 1 83 50" />
+          <SvgPath id={topId} d="M 17 55 A 33 33 0 0 1 83 55" />
           <SvgPath id={botId} d="M 17 50 A 33 33 0 0 0 83 50" />
           <RadialGradient id={bleedId} cx="50%" cy="50%" r="50%">
             <Stop offset="70%" stopColor={c} stopOpacity="0" />
@@ -158,9 +160,16 @@ export function ParkStamp({
           <Line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c} strokeWidth="1.4" opacity={0.6 + seededRand(parkCode, 800 + i) * 0.35} />
         ))}
 
-        {/* Horizontal band dividers — create 3-section stamp layout */}
-        <Line x1="17"   y1="34"   x2="83"   y2="34"   stroke={c} strokeWidth="0.9" opacity="0.8" />
-        <Line x1="17"   y1="66"   x2="83"   y2="66"   stroke={c} strokeWidth="0.9" opacity="0.8" />
+        {/* Horizontal band dividers — create 3-section stamp layout. Skipped
+            when a custom glyph fills the center, since an uploaded icon
+            isn't drawn with a matching white gap and the lines would cut
+            across it */}
+        {!customGlyph && (
+          <>
+            <Line x1="17"   y1="34"   x2="83"   y2="34"   stroke={c} strokeWidth="0.9" opacity="0.8" />
+            <Line x1="17"   y1="66"   x2="83"   y2="66"   stroke={c} strokeWidth="0.9" opacity="0.8" />
+          </>
+        )}
 
         {/* Park name on top arc — textAnchor set on both the Text and
             TextPath since react-native-svg doesn't reliably honor it from
@@ -186,6 +195,20 @@ export function ParkStamp({
 
         {/* Center scene ─────────────────────────────────────────── */}
         {(() => {
+          if (customGlyph) {
+            return (
+              <G transform={glyphTransform(customGlyph.viewBox)}>
+                {customGlyph.paths.map((shape, i) => (
+                  <SvgPath
+                    key={i}
+                    d={shape.d}
+                    fill={shape.fill === 'white' ? 'white' : c}
+                    opacity={shape.opacity ?? 1}
+                  />
+                ))}
+              </G>
+            );
+          }
           const glyph = getParkGlyph(parkCode);
           if (glyph) {
             return glyph.map((shape, i) => (

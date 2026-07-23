@@ -13,6 +13,7 @@ import { BadgeDetailModal } from '@/components/BadgeDetailModal';
 import { Wordmark } from '@/components/Wordmark';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import { ParkStamp } from '@/components/ParkStamp';
+import type { CustomStampGlyph } from '@parkquest/types';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { EmptyState } from '@/components/EmptyState';
@@ -57,6 +58,7 @@ interface StampPreview {
   name: string;
   states: string;
   colorIdx: number;
+  stamp_glyph: CustomStampGlyph | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -286,6 +288,7 @@ export default function ProfileScreen() {
         name: v.park_name ?? v.park_code,
         states: v.states ?? '',
         colorIdx: idx,
+        stamp_glyph: v.stamp_glyph ?? null,
       }))
       .slice(-5)
       .reverse();
@@ -532,6 +535,7 @@ export default function ProfileScreen() {
                       colorIdx={s.colorIdx}
                       size={52}
                       idSuffix="-profile"
+                      customGlyph={s.stamp_glyph}
                     />
                   </View>
                   <Text style={styles.badgePreviewName} numberOfLines={2}>{s.name}</Text>

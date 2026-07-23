@@ -11,6 +11,10 @@ export const parks = pgTable('parks', {
   latitude: varchar('latitude', { length: 50 }),
   longitude: varchar('longitude', { length: 50 }),
   image_url: text('image_url'),
+  // Admin-uploaded override for the passport stamp's center icon (see
+  // /admin/parks). Null falls back to PARK_GLYPHS in @parkquest/types, then
+  // to the default mountain/trees scene — see ParkStamp.tsx in both clients.
+  stamp_glyph: jsonb('stamp_glyph').$type<import('@parkquest/types').CustomStampGlyph>(),
   created_at: timestamp('created_at').defaultNow(),
 });
 

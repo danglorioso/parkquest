@@ -6,6 +6,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { HolographicShine } from '@/components/HolographicShine';
 import { ParkStamp } from '@/components/ParkStamp';
 import { PassportWatermark } from '@/components/PassportWatermark';
+import type { CustomStampGlyph } from '@parkquest/types';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -43,6 +44,7 @@ interface Park {
   park_code: string;
   name: string;
   states: string;
+  stamp_glyph: CustomStampGlyph | null;
 }
 
 interface Visit {
@@ -59,6 +61,7 @@ interface StampItem {
   visited: boolean;
   visited_date: string | null;
   colorIdx: number;
+  stamp_glyph: CustomStampGlyph | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -99,6 +102,7 @@ function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) 
         states={item.states}
         colorIdx={item.colorIdx}
         size={STAMP_D}
+        customGlyph={item.stamp_glyph}
       />
       <Text numberOfLines={2} style={st.stampName}>{item.name}</Text>
       {date ? <Text style={st.stampDate}>{date}</Text> : null}
@@ -211,6 +215,7 @@ export default function PassportScreen() {
       const entry: StampItem = {
         park_code: p.park_code, name: p.name, states: p.states,
         visited: !!date, visited_date: date, colorIdx: idx,
+        stamp_glyph: p.stamp_glyph,
       };
       if (date) visited.push(entry);
       else unvisited.push(entry);
@@ -575,6 +580,7 @@ export default function PassportScreen() {
                               size={92}
                               idSuffix="-chip"
                               inkColor={GOLD}
+                              customGlyph={s.stamp_glyph}
                             />
                             {s.visited_date ? (
                               <Text style={st.stampChipDate}>{stampDateStr(s.visited_date)}</Text>

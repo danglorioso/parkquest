@@ -46,6 +46,7 @@ export async function GET() {
         states: parks.states,
         latitude: parks.latitude,
         longitude: parks.longitude,
+        stamp_glyph: parks.stamp_glyph,
         visited_date: visits.visited_date,
         end_date: visits.end_date,
         is_bucket_list: visits.is_bucket_list,

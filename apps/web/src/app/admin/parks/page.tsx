@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import StampGlyphManager from './StampGlyphManager';
 
 interface ParkRow {
   park_code: string;
@@ -50,6 +51,8 @@ export default async function AdminParksPage({
         <h1 className="text-2xl font-extrabold tracking-tight text-ink">Parks</h1>
         <p className="mt-1 text-sm text-ink-mute">Click a column to sort. Averages exclude parks with no logged visits.</p>
       </div>
+
+      <StampGlyphManager />
 
       <Card className="border-hairline p-0 shadow-[var(--shadow-card)]">
         <div className="overflow-x-auto">

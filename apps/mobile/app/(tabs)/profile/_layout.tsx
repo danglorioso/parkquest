@@ -53,11 +53,18 @@ export default function ProfileStackLayout() {
         // this screen and re-fires beforeRemove, and preventDefault()-ing
         // THAT too made the replace call itself forever, which is what blew
         // the "Maximum update depth exceeded" error.
+        //
+        // The replace() itself has to wait a tick: beforeRemove fires
+        // synchronously while the GO_BACK action is still being dispatched,
+        // and calling another navigation action from inside that dispatch
+        // hit the nav ref while it was mid-teardown ("The 'navigation'
+        // object hasn't been initialized yet"). Deferring to a macrotask
+        // lets GO_BACK's own dispatch finish first.
         listeners={() => ({
           beforeRemove: e => {
             if (e.data.action.type === 'REPLACE') return;
             e.preventDefault();
-            router.replace('/(tabs)/profile');
+            setTimeout(() => router.replace('/(tabs)/profile'), 0);
           },
         })}
       />

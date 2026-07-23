@@ -8,6 +8,7 @@ import { DesktopButton } from "@/components/desktop/DesktopButton";
 import { HolographicShine } from "@/components/desktop/HolographicShine";
 import { ParkStamp } from "@/components/desktop/ParkStamp";
 import { PassportWatermark } from "@/components/desktop/PassportWatermark";
+import type { CustomStampGlyph } from "@parkquest/types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Ported from apps/mobile/app/(tabs)/profile/passport.tsx — passport-book
@@ -34,6 +35,7 @@ interface Park {
   park_code: string;
   name: string;
   states: string;
+  stamp_glyph: CustomStampGlyph | null;
 }
 
 interface Visit {
@@ -50,6 +52,7 @@ interface StampItem {
   visited: boolean;
   visited_date: string | null;
   colorIdx: number;
+  stamp_glyph: CustomStampGlyph | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -80,7 +83,7 @@ function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) 
         display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 0",
       }}
     >
-      <ParkStamp parkCode={item.park_code} name={item.name} states={item.states} colorIdx={item.colorIdx} size={STAMP_D} />
+      <ParkStamp parkCode={item.park_code} name={item.name} states={item.states} colorIdx={item.colorIdx} size={STAMP_D} customGlyph={item.stamp_glyph} />
       <div style={{ fontSize: 12, fontWeight: 600, color: P_INK, textAlign: "center", marginTop: 8, lineHeight: 1.3, maxWidth: CELL_W - 8 }}>
         {item.name}
       </div>
@@ -174,7 +177,7 @@ export default function PassportPage() {
     const unvisited: StampItem[] = [];
     allParks.forEach((p, idx) => {
       const date = visitedMap.get(p.park_code) ?? null;
-      const entry: StampItem = { park_code: p.park_code, name: p.name, states: p.states, visited: !!date, visited_date: date, colorIdx: idx };
+      const entry: StampItem = { park_code: p.park_code, name: p.name, states: p.states, visited: !!date, visited_date: date, colorIdx: idx, stamp_glyph: p.stamp_glyph };
       if (date) visited.push(entry);
       else unvisited.push(entry);
     });
@@ -378,7 +381,7 @@ export default function PassportPage() {
                       style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 8px" }}
                     >
                       <div style={{ fontSize: 9, fontWeight: 700, color: GOLD, opacity: 0.75, letterSpacing: "1.5px" }}>{label}</div>
-                      <ParkStamp parkCode={s.park_code} name={s.name} states={s.states} colorIdx={s.colorIdx} size={92} idSuffix="-chip" inkColor={GOLD} />
+                      <ParkStamp parkCode={s.park_code} name={s.name} states={s.states} colorIdx={s.colorIdx} size={92} idSuffix="-chip" inkColor={GOLD} customGlyph={s.stamp_glyph} />
                       {s.visited_date && (
                         <div style={{ fontSize: 10, color: GOLD, opacity: 0.65, fontFamily: "var(--font-mono)" }}>{stampDateStr(s.visited_date)}</div>
                       )}

@@ -16,6 +16,7 @@ export async function GET() {
         longitude: parks.longitude,
         description: parks.description,
         image_url: parks.image_url,
+        stamp_glyph: parks.stamp_glyph,
       })
       .from(parks)
       .where(

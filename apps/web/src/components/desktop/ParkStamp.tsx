@@ -1,6 +1,6 @@
 "use client";
 
-import { getParkGlyph } from "@parkquest/types";
+import { getParkGlyph, glyphTransform, type CustomStampGlyph } from "@parkquest/types";
 
 // ── Stamp palette + helpers ───────────────────────────────────────────────────
 // Ported from apps/mobile/components/ParkStamp.tsx — same seeded ink-worn
@@ -63,7 +63,7 @@ export function stateCode(states: string): string {
 // ── ParkStamp ─────────────────────────────────────────────────────────────────
 
 export function ParkStamp({
-  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = "", inkColor,
+  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = "", inkColor, customGlyph,
 }: {
   parkCode: string;
   name: string;
@@ -75,6 +75,8 @@ export function ParkStamp({
   idSuffix?: string;
   /** Override the seeded park ink — e.g. gold foil on the dark passport cover. */
   inkColor?: string;
+  /** Admin-uploaded center icon (parks.stamp_glyph) — takes priority over the hand-authored PARK_GLYPHS. */
+  customGlyph?: CustomStampGlyph | null;
 }) {
   const c = inkColor ?? stampColor(colorIdx);
   const sc = stateCode(states);
@@ -95,7 +97,7 @@ export function ParkStamp({
     <div style={{ transform: `rotate(${rotate})`, width: size, height: size }}>
       <svg width={size} height={size} viewBox="0 0 100 100">
         <defs>
-          <path id={topId} d="M 17 50 A 33 33 0 0 1 83 50" />
+          <path id={topId} d="M 17 55 A 33 33 0 0 1 83 55" />
           <path id={botId} d="M 17 50 A 33 33 0 0 0 83 50" />
           <radialGradient id={bleedId} cx="50%" cy="50%" r="50%">
             <stop offset="70%" stopColor={c} stopOpacity="0" />
@@ -131,9 +133,15 @@ export function ParkStamp({
           <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c} strokeWidth="1.4" opacity={0.6 + seededRand(parkCode, 800 + i) * 0.35} />
         ))}
 
-        {/* Horizontal band dividers */}
-        <line x1="17" y1="34" x2="83" y2="34" stroke={c} strokeWidth="0.9" opacity="0.8" />
-        <line x1="17" y1="66" x2="83" y2="66" stroke={c} strokeWidth="0.9" opacity="0.8" />
+        {/* Horizontal band dividers — skipped when a custom glyph fills the
+            center, since an uploaded icon isn't drawn with a matching white
+            gap and the lines would cut across it */}
+        {!customGlyph && (
+          <>
+            <line x1="17" y1="34" x2="83" y2="34" stroke={c} strokeWidth="0.9" opacity="0.8" />
+            <line x1="17" y1="66" x2="83" y2="66" stroke={c} strokeWidth="0.9" opacity="0.8" />
+          </>
+        )}
 
         {/* Park name on top arc */}
         <text fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.92" textAnchor="middle">
@@ -156,6 +164,20 @@ export function ParkStamp({
 
         {/* Center scene */}
         {(() => {
+          if (customGlyph) {
+            return (
+              <g transform={glyphTransform(customGlyph.viewBox)}>
+                {customGlyph.paths.map((shape, i) => (
+                  <path
+                    key={i}
+                    d={shape.d}
+                    fill={shape.fill === "white" ? "white" : c}
+                    opacity={shape.opacity ?? 1}
+                  />
+                ))}
+              </g>
+            );
+          }
           const glyph = getParkGlyph(parkCode);
           if (glyph) {
             return glyph.map((shape, i) => (
