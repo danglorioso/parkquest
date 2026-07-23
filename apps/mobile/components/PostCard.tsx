@@ -490,6 +490,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         <ImageLightbox
           images={photos.filter(Boolean).map(url => ({ url }))}
           initialIndex={lightboxIdx}
+          loop={false}
           onClose={finalIndex => {
             setLightboxIdx(null);
             setActiveIdx(finalIndex);

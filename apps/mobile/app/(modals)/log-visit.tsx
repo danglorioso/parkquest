@@ -1196,6 +1196,7 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder, onDragActive
         <ImageLightbox
           images={photos.map(url => ({ url }))}
           initialIndex={lightboxIndex}
+          loop={false}
           onClose={() => setLightboxIndex(null)}
         />
       )}
@@ -1331,10 +1332,16 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   const slide = useRef(new Animated.Value(400)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const closing = useRef(false);
+  // Wheel-paging months/years still fires onChange (same day-of-month, new
+  // month), so applying onPick straight from onChange closed the sheet before
+  // a day was actually chosen. Track the picker's live value here instead and
+  // only hand it to the parent (and close) on an explicit Done/backdrop tap.
+  const [pending, setPending] = useState(value);
 
   useEffect(() => {
     if (visible) {
       closing.current = false;
+      setPending(value);
       slide.setValue(400);
       backdropOpacity.setValue(0);
       Animated.parallel([
@@ -1358,6 +1365,14 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
     ]).start(() => onClose());
   }, [slide, backdropOpacity, onClose]);
 
+  // Applies whatever the picker is currently showing, then closes — used by
+  // both Done and the outside-tap, so a day picked via the wheel isn't lost
+  // just because the sheet was dismissed by tapping the backdrop.
+  const confirm = useCallback(() => {
+    onPick(pending);
+    dismiss();
+  }, [pending, onPick, dismiss]);
+
   // Plain in-screen overlay, deliberately NOT an RN <Modal>: modal windows
   // render the sheet's bottom strip semi-transparent (some compositor quirk
   // verified in the Xcode view debugger — the layer itself, not any child),
@@ -1367,7 +1382,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   return (
     <View style={[StyleSheet.absoluteFillObject, { zIndex: 300 }]}>
       <Animated.View style={[styles.dateBackdrop, { opacity: backdropOpacity }]} pointerEvents="none" />
-      <Pressable style={StyleSheet.absoluteFillObject} onPress={dismiss} />
+      <Pressable style={StyleSheet.absoluteFillObject} onPress={confirm} />
       <Animated.View
         style={[styles.dateSheet, {
           backgroundColor: isDark ? '#201D17' : '#FFFBF1',
@@ -1383,7 +1398,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
         <View style={styles.dateSheetHeader}>
           <View style={{ width: 48 }} />
           <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>{title}</Text>
-          <TouchableOpacity onPress={dismiss} style={{ width: 48, alignItems: 'flex-end' }}>
+          <TouchableOpacity onPress={confirm} style={{ width: 48, alignItems: 'flex-end' }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: C.primary }}>Done</Text>
           </TouchableOpacity>
         </View>
@@ -1393,7 +1408,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
               which UIKit warns about on every layout pass. Full sheet width
               minus padding clears the minimum on every device. */}
           <DateTimePicker
-            value={value}
+            value={pending}
             mode="date"
             display={Platform.OS === 'ios' ? 'inline' : 'default'}
             minimumDate={minimumDate}
@@ -1402,16 +1417,14 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
             themeVariant={isDark ? 'dark' : 'light'}
             style={{ alignSelf: 'stretch' }}
             onChange={(_, d) => {
-              // Picking a day is the job — apply the selection immediately
-              // (so the circle lands on the tapped date), let it sit for a
-              // beat, then slide the sheet away. The wheels don't fire
-              // onChange until an actual date is chosen, so paging months/
-              // years keeps the sheet open; Done remains the no-change
-              // dismiss.
-              if (!d) { dismiss(); return; }
+              // Just track the live value here — paging the month/year wheel
+              // re-fires onChange with the same day-of-month too, and closing
+              // on every fire (the old behavior) could dismiss the sheet
+              // while the user was still spinning to a different month/year,
+              // never landing on the day they meant to tap.
+              if (!d) return;
               Haptics.selectionAsync();
-              onPick(d);
-              setTimeout(dismiss, 180);
+              setPending(d);
             }}
           />
         </View>
@@ -1503,6 +1516,13 @@ function HeroSlide({ emoji, title, subtitle, children }: {
       <Reanimated.View entering={FadeInDown.delay(200).duration(380)} style={{ width: '100%' }}>
         {children}
       </Reanimated.View>
+
+      {/* Every HeroSlide step (Rating/Crowd/Difficulty/Weather/WouldReturn) is
+          skippable — canContinue only gates step 0 — but nothing on-screen
+          said so, which read as required. */}
+      <Text style={{ position: 'absolute', bottom: 4, right: 4, fontSize: 11, color: C.inkMute }}>
+        Optional — skip anytime
+      </Text>
     </View>
   );
 }
@@ -1637,15 +1657,7 @@ function StepWhere({ draft, set, parks, onPickPark, onOpenPicker }: {
         style={unlockedStyle}
         pointerEvents={park ? 'auto' : 'none'}
       >
-        <Section title="Trip title" mb={28}>
-          <TextInput
-            value={draft.title} onChangeText={v => set('title', v.slice(0, 80))}
-            placeholder="Give this trip a name" placeholderTextColor={C.inkMute}
-            style={styles.textField}
-          />
-        </Section>
-
-        <Section title="Dates" tag="required" mb={0}>
+        <Section title="Dates" tag="required" mb={28}>
           <View style={[styles.card, { paddingVertical: 4 }]}>
             <PressableScale
               onPress={() => onOpenPicker('start')}
@@ -1686,6 +1698,14 @@ function StepWhere({ draft, set, parks, onPickPark, onOpenPicker }: {
           {days > 1 && (
             <Text style={{ fontSize: 13, color: C.accent, fontWeight: '700', marginTop: 6 }}>{days} day trip</Text>
           )}
+        </Section>
+
+        <Section title="Trip title" mb={0}>
+          <TextInput
+            value={draft.title} onChangeText={v => set('title', v.slice(0, 80))}
+            placeholder="Give this trip a name" placeholderTextColor={C.inkMute}
+            style={styles.textField}
+          />
         </Section>
       </Reanimated.View>
       </Reanimated.View>

@@ -208,7 +208,7 @@ function LightboxPage({
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
 export function ImageLightbox({
-  images, initialIndex = 0, onClose,
+  images, initialIndex = 0, onClose, loop = true,
 }: {
   images: LightboxImage[];
   initialIndex?: number;
@@ -216,12 +216,16 @@ export function ImageLightbox({
   // caller with its own carousel (e.g. PostCard) can stay in sync instead of
   // resetting to wherever it was before the lightbox opened.
   onClose: (index: number) => void;
+  // Park photos wrap around (there's no natural "last" one); a user's own
+  // post/upload strip has a definite end and shouldn't loop back to the start.
+  loop?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const [idx, setIdx] = useState(initialIndex);
   const [zoomed, setZoomed] = useState(false);
   const listRef = useRef<FlatList<LightboxImage>>(null);
   const n = images.length;
+  const wraps = loop && n > 1;
   const idxRef = useRef(idx);
   idxRef.current = idx;
   // Reads the index at call time (not whatever `idx` a stale closure captured),
@@ -232,14 +236,21 @@ export function ImageLightbox({
   // up front and a clone of the first image at the end. List index `k` maps
   // to real image index `k - 1`. Landing on a clone snaps silently (no
   // animation) to its real counterpart, giving the illusion of an infinite loop.
-  const loopData = n > 1 ? [images[n - 1], ...images, images[0]] : images;
-  const initialListIndex = n > 1 ? initialIndex + 1 : initialIndex;
+  // Non-looping galleries use the images array as-is and simply stop at the ends.
+  const loopData = wraps ? [images[n - 1], ...images, images[0]] : images;
+  const initialListIndex = wraps ? initialIndex + 1 : initialIndex;
 
   const goTo = (k: number) => {
     if (n <= 1) return;
-    const real = ((k % n) + n) % n;
-    listRef.current?.scrollToIndex({ index: real + 1, animated: true });
-    setIdx(real);
+    if (wraps) {
+      const real = ((k % n) + n) % n;
+      listRef.current?.scrollToIndex({ index: real + 1, animated: true });
+      setIdx(real);
+    } else {
+      const real = Math.max(0, Math.min(n - 1, k));
+      listRef.current?.scrollToIndex({ index: real, animated: true });
+      setIdx(real);
+    }
   };
 
   // Arrows and the counter chip fade out after a few seconds of no
@@ -303,6 +314,7 @@ export function ImageLightbox({
           onMomentumScrollEnd={e => {
             if (n <= 1) return;
             const listIndex = Math.round(e.nativeEvent.contentOffset.x / W);
+            if (!wraps) { setIdx(listIndex); return; }
             if (listIndex === 0) {
               listRef.current?.scrollToIndex({ index: n, animated: false });
               setIdx(n - 1);
@@ -316,7 +328,7 @@ export function ImageLightbox({
           renderItem={({ item, index }) => (
             <LightboxPage
               image={item}
-              active={n <= 1 ? index === idx : index === idx + 1}
+              active={wraps ? index === idx + 1 : index === idx}
               onRequestClose={handleClose}
               onZoomChange={setZoomed}
               onTouch={showChromeBriefly}
@@ -349,7 +361,7 @@ export function ImageLightbox({
         )}
 
         {/* Prev / next arrows — fade after a few seconds of inactivity */}
-        {n > 1 && (
+        {n > 1 && (!wraps ? idx > 0 : true) && (
           <Animated.View
             pointerEvents={chromeVisible ? 'auto' : 'none'}
             style={[styles.nav, { left: 16, opacity: chromeOpacity }]}
@@ -359,7 +371,7 @@ export function ImageLightbox({
             </TouchableOpacity>
           </Animated.View>
         )}
-        {n > 1 && (
+        {n > 1 && (!wraps ? idx < n - 1 : true) && (
           <Animated.View
             pointerEvents={chromeVisible ? 'auto' : 'none'}
             style={[styles.nav, { right: 16, opacity: chromeOpacity }]}
