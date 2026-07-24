@@ -9,6 +9,7 @@ import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { type FilterStatus } from "@/components/desktop/MapLeftPanel";
 import { MapRightPanel } from "@/components/desktop/MapRightPanel";
 import { MapSpotlight } from "@/components/desktop/MapSpotlight";
+import { MapLabelsControl, LABEL_FONT_DEFAULT } from "@/components/desktop/MapLabelsControl";
 import { LogVisitModal } from "@/components/LogVisitModal";
 import type { VisitDraft } from "@/components/LogVisitModal";
 import type { NpsSummary } from "@/app/api/parks/nps-all/route";
@@ -65,6 +66,8 @@ export default function Home() {
   const [logVisitDraft, setLogVisitDraft] = useState<Partial<VisitDraft> | undefined>(undefined);
   const [logVisitEditMode, setLogVisitEditMode] = useState(false);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [labelsEnabled, setLabelsEnabled] = useState(true);
+  const [labelFontSize, setLabelFontSize] = useState(LABEL_FONT_DEFAULT);
   const [selectedParkCode, setSelectedParkCode] = useState<string | null>(null);
   const initialFlyDoneRef = useRef(false);
   const initialParkCodeRef = useRef<string | null>(null);
@@ -323,15 +326,14 @@ export default function Home() {
             onSelectPark={selectPark}
             onDeselect={deselectPark}
             flyToTarget={flyToTarget}
+            labelsEnabled={labelsEnabled}
+            labelFontSize={labelFontSize}
           />
 
-          {/* Top-left — Filter + counts pill */}
+          {/* Top-left — Filter + counts pill, and label settings */}
+          <div style={{ position: "absolute", top: 16, left: 16, zIndex: 20, display: "flex", alignItems: "flex-start", gap: 8 }}>
           <div
             style={{
-              position: "absolute",
-              top: 16,
-              left: 16,
-              zIndex: 20,
               background: "rgba(255,251,241,0.92)",
               backdropFilter: "blur(24px) saturate(160%)",
               WebkitBackdropFilter: "blur(24px) saturate(160%)",
@@ -379,6 +381,14 @@ export default function Home() {
                 )}
               </React.Fragment>
             ))}
+          </div>
+
+          <MapLabelsControl
+            labelsEnabled={labelsEnabled}
+            onLabelsEnabledChange={setLabelsEnabled}
+            labelFontSize={labelFontSize}
+            onLabelFontSizeChange={setLabelFontSize}
+          />
           </div>
 
           {/* Top-center — Spotlight search (pushed below filter pill on mobile) */}

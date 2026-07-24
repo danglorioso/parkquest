@@ -187,7 +187,7 @@ function AcquisitionCard({ stats }: { stats: Stats }) {
   ];
 
   return (
-    <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
+    <Card id="app-store-acquisition" className="scroll-mt-20 border-hairline p-5 shadow-[var(--shadow-card)]">
       <h2 className="text-sm font-bold uppercase tracking-wide text-ink-mute">App Store acquisition</h2>
       <p className="mb-4 mt-1 text-xs text-ink-mute">
         Last 30 days, from App Store Connect analytics (published ~48h behind). Conversion is downloads ÷ unique impressions.
@@ -273,7 +273,7 @@ export default async function AdminDashboardPage() {
           delta={{ kind: 'percent', value: signupsPct }}
         />
         <StatCard
-          href="/admin/visits"
+          href="#app-store-acquisition"
           icon={Download}
           label="Downloads (30d)"
           value={stats.app_store_units_30d}

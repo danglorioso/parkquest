@@ -22,6 +22,8 @@ interface Props {
   initialBounds?: [[number, number], [number, number]];
   showControls?: boolean;
   flyToTarget?: { coords: [number, number]; rightPadding?: number } | null;
+  labelsEnabled?: boolean;
+  labelFontSize?: number;
 }
 
 const VISITED_COLOR = "#2F7A4A";
@@ -239,16 +241,17 @@ function buildStyle(): StyleSpecification {
 function buildLabelPillEl(
   park: MapPark,
   onSelectRef: { current?: ((parkCode: string) => void) | undefined },
+  fontSize: number,
 ): HTMLDivElement {
   const el = document.createElement("div");
   el.textContent = shortParkName(park.name);
   Object.assign(el.style, {
-    display: "none", // gated by zoom — set by updateLabelVisibility
+    display: "none", // gated by zoom + labelsEnabled — set by updateLabelVisibility
     padding: "3px 7px",
     borderRadius: "6px",
     border: `0.5px solid ${BORDER_COLOR}`,
     background: "rgba(255,251,241,0.9)",
-    fontSize: "11.5px",
+    fontSize: `${fontSize}px`,
     fontWeight: "700",
     color: INK_COLOR,
     whiteSpace: "nowrap",
@@ -290,24 +293,29 @@ export default function USAMapGL({
   initialBounds,
   showControls = true,
   flyToTarget,
+  labelsEnabled = true,
+  labelFontSize = 11.5,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<maplibregl.Map | null>(null);
   const loadedRef    = useRef(false);
   const labelMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
 
-  // Keep callbacks stable across re-renders
+  // Keep callbacks/props stable for closures registered once at map init
   const onSelectRef  = useRef(onSelectPark);
   const onDeselectRef = useRef(onDeselect);
+  const labelsEnabledRef = useRef(labelsEnabled);
+  const labelFontSizeRef = useRef(labelFontSize);
   useEffect(() => { onSelectRef.current = onSelectPark; }, [onSelectPark]);
   useEffect(() => { onDeselectRef.current = onDeselect; }, [onDeselect]);
+  useEffect(() => { labelFontSizeRef.current = labelFontSize; }, [labelFontSize]);
 
-  // Show name pills only once zoomed in enough to have room for them —
-  // matches the old GL text layer's minzoom gate.
+  // Show name pills only once zoomed in enough to have room for them (matches
+  // the old GL text layer's minzoom gate) and only if labels are toggled on.
   const updateLabelVisibility = () => {
     const map = mapRef.current;
     if (!map) return;
-    const visible = map.getZoom() >= LABEL_ZOOM_GATE;
+    const visible = labelsEnabledRef.current && map.getZoom() >= LABEL_ZOOM_GATE;
     for (const marker of labelMarkersRef.current.values()) {
       marker.getElement().style.display = visible ? "" : "none";
     }
@@ -321,7 +329,7 @@ export default function USAMapGL({
     for (const p of parks) {
       seen.add(p.park_code);
       if (!labelMarkersRef.current.has(p.park_code)) {
-        const el = buildLabelPillEl(p, onSelectRef);
+        const el = buildLabelPillEl(p, onSelectRef, labelFontSizeRef.current);
         const marker = new maplibregl.Marker({ element: el, anchor: "left", offset: [12, 0] })
           .setLngLat([p.position[1], p.position[0]])
           .addTo(map);
@@ -336,6 +344,19 @@ export default function USAMapGL({
     }
     updateLabelVisibility();
   };
+
+  // Toggle visibility immediately when "Show labels" flips.
+  useEffect(() => {
+    labelsEnabledRef.current = labelsEnabled;
+    updateLabelVisibility();
+  }, [labelsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-apply font size to existing pills when the slider moves.
+  useEffect(() => {
+    for (const marker of labelMarkersRef.current.values()) {
+      marker.getElement().style.fontSize = `${labelFontSize}px`;
+    }
+  }, [labelFontSize]);
 
   // Initialize map once
   useEffect(() => {
