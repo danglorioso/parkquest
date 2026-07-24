@@ -1,9 +1,9 @@
 import { NextResponse, after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { visits, parks, userBadges, posts, notifications } from '@/lib/db/schema';
-import { computeStats, conditionsMet, conditionsProgress } from '@/lib/badges';
+import { visits, parks, userBadges, notifications } from '@/lib/db/schema';
+import { computeStats, conditionsMet, conditionsProgress, revokeUnqualifiedBadges } from '@/lib/badges';
 import { getEnabledBadges } from '@/lib/badgeDefs';
 import { sendPushToUser } from '@/lib/push';
 
@@ -63,21 +63,11 @@ export async function GET() {
     }
 
     // Revoke badges the user no longer qualifies for, and delete their badge share posts.
-    // Only ids with a live (enabled) definition are considered, so disabling a
-    // badge never strips it from users who already earned it.
-    const revokedIds = badgeDefs
-      .filter((b) => earnedIds.has(b.badge_id) && !conditionsMet(b.conditions, stats))
-      .map((b) => b.badge_id);
-    if (revokedIds.length > 0) {
-      await Promise.all([
-        db.delete(userBadges).where(and(eq(userBadges.clerk_user_id, userId), inArray(userBadges.badge_id, revokedIds))),
-        db.delete(posts).where(and(eq(posts.clerk_user_id, userId), inArray(posts.badge_id, revokedIds))),
-      ]);
-      revokedIds.forEach(id => {
-        earnedIds.delete(id);
-        earnedMap.delete(id);
-      });
-    }
+    const revokedIds = await revokeUnqualifiedBadges(userId);
+    revokedIds.forEach(id => {
+      earnedIds.delete(id);
+      earnedMap.delete(id);
+    });
 
     const badgesWithStatus = badgeDefs.map((b) => {
       const p = conditionsProgress(b.conditions, stats);

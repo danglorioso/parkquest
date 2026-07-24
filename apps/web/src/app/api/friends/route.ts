@@ -168,14 +168,18 @@ export async function POST(request: Request) {
         // They already sent us a request — auto-accept
         await db.update(friendships).set({ status: 'accepted', updated_at: new Date() }).where(eq(friendships.id, f.id));
         await db.insert(notifications).values({ recipient_id: targetId, actor_id: userId, type: 'friend_accepted' }).catch(() => {});
-        // The request is resolved — clear its "sent you a friend request"
-        // notification, same as the PATCH accept path does.
-        await db.delete(notifications).where(
-          and(
-            eq(notifications.type, 'friend_request'),
-            sql`${notifications.metadata}->>'friendship_id' = ${String(f.id)}`
-          )
-        ).catch(() => {});
+        // The request is resolved — mark its "sent you a friend request"
+        // notification as accepted rather than deleting it, same as the
+        // PATCH accept path, so it settles into "You are now friends" instead
+        // of disappearing from the recipient's notification history.
+        await db.update(notifications)
+          .set({ metadata: sql`${notifications.metadata} || ${JSON.stringify({ resolved: 'accepted' })}::jsonb` })
+          .where(
+            and(
+              eq(notifications.type, 'friend_request'),
+              sql`${notifications.metadata}->>'friendship_id' = ${String(f.id)}`
+            )
+          ).catch(() => {});
         return NextResponse.json({ message: 'Friend request accepted', status: 'accepted' });
       }
       // Rejected — allow re-request
@@ -245,13 +249,18 @@ export async function PATCH(request: Request) {
 
     if (!friendship) return NextResponse.json({ error: 'Friend request not found' }, { status: 404 });
 
-    // The original "sent you a friend request" notification is now resolved either way
-    await db.delete(notifications).where(
-      and(
-        eq(notifications.type, 'friend_request'),
-        sql`${notifications.metadata}->>'friendship_id' = ${String(friendshipId)}`
-      )
-    ).catch(() => {});
+    // The original "sent you a friend request" notification is resolved either
+    // way, but stays in the recipient's list (metadata.resolved flag) instead
+    // of being deleted — otherwise it just vanishes on the next fetch instead
+    // of settling into "You are now friends with X" / "You declined...".
+    await db.update(notifications)
+      .set({ metadata: sql`${notifications.metadata} || ${JSON.stringify({ resolved: action === 'accept' ? 'accepted' : 'declined' })}::jsonb` })
+      .where(
+        and(
+          eq(notifications.type, 'friend_request'),
+          sql`${notifications.metadata}->>'friendship_id' = ${String(friendshipId)}`
+        )
+      ).catch(() => {});
 
     if (action === 'accept') {
       await db.update(friendships).set({ status: 'accepted', updated_at: new Date() }).where(eq(friendships.id, friendshipId));
