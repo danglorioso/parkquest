@@ -372,7 +372,15 @@ export default function FeedScreen() {
           <GlassContainer style={StyleSheet.absoluteFill}>
             <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={isDark ? '#171511' : '#F2EBDB'} />
             <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
-              <Wordmark onPress={triggerRefresh} />
+              {/* Explicit 44px box (matching iconBtn) instead of trusting
+                  flex alignItems:center to match cross-axis centers — the
+                  Wordmark's own row measures shorter than 44 by an amount
+                  that isn't just its rendered height (font metrics on the
+                  text add asymmetric slack above/below the glyphs), so
+                  centering by auto-height alone still read visibly off. */}
+              <View style={{ height: 44, justifyContent: 'center' }}>
+                <Wordmark onPress={triggerRefresh} />
+              </View>
               <View style={styles.topBarActions}>
                 <NotificationBell style={styles.iconBtn} />
                 <TouchableOpacity
@@ -407,7 +415,15 @@ export default function FeedScreen() {
               <View style={[StyleSheet.absoluteFill, styles.topBarFallbackFill]} />
             </View>
             <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
-              <Wordmark onPress={triggerRefresh} />
+              {/* Explicit 44px box (matching iconBtn) instead of trusting
+                  flex alignItems:center to match cross-axis centers — the
+                  Wordmark's own row measures shorter than 44 by an amount
+                  that isn't just its rendered height (font metrics on the
+                  text add asymmetric slack above/below the glyphs), so
+                  centering by auto-height alone still read visibly off. */}
+              <View style={{ height: 44, justifyContent: 'center' }}>
+                <Wordmark onPress={triggerRefresh} />
+              </View>
               <View style={styles.topBarActions}>
                 <NotificationBell style={styles.iconBtn} />
                 <TouchableOpacity
@@ -463,7 +479,7 @@ const styles = StyleSheet.create({
   },
   topBarInner: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     // Asymmetric on purpose: paddingTop pairs with the marginTop pull-up
