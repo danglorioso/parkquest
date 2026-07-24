@@ -263,7 +263,16 @@ export default function FeedScreen() {
           </View>
           {filter === 'friends' && (
             <TouchableOpacity
-              onPress={() => router.push('/(tabs)/profile/friends' as never)}
+              onPress={() => {
+                // Seed the profile tab's stack with its root before navigating to
+                // the nested friends screen — pushing the nested route directly
+                // (from a different tab) left that stack as just [friends] with
+                // no index beneath it, so back had nowhere to go. navigate (not
+                // push) also means tapping "Manage" again while already there
+                // returns to the existing screen instead of stacking a duplicate.
+                router.navigate('/(tabs)/profile' as never);
+                router.navigate('/(tabs)/profile/friends' as never);
+              }}
               hitSlop={8}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingRight: 2 }}
             >
