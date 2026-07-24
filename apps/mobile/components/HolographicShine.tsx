@@ -216,7 +216,7 @@ function SealMark({ cx, cy, r, stroke, strokeWidth = 1 }: {
 // Fabric prop-commit path on this RN/reanimated/svg version combo). Plain
 // RN Animated on a normal View only ever touches opacity, which is the
 // standard, safe path.
-export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize }: {
+export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize, lineIntensity, wavesAboveSeal }: {
   /** Fixed px size for the vertical PARKQUEST edge text. Defaults to scaling
       with container height — right for card-sized containers, oversized on
       the passport page's near-full-screen cover. */
@@ -231,13 +231,23 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize }: {
       lands, whereas a fixed size keeps the pattern rock-steady and lets the
       container's overflow clipping absorb the difference. */
   staticSize?: { w: number; h: number };
+  /** Overrides the default 0.45 opacity ceiling for the colorful wave-line
+      family — the passport page's near-full-screen cover reads the same
+      geometry much larger than the profile card, so it needs to sit fainter
+      to stay clear of the identity/stats text on top. */
+  lineIntensity?: number;
+  /** Stacks the wave lines above the seal/mandala/ribbon group instead of
+      below it (the default) — still behind every real text sibling outside
+      this component regardless, since that's plain document order one level up. */
+  wavesAboveSeal?: boolean;
 } = {}) {
   const [measured, setMeasured] = useState<{ w: number; h: number } | null>(null);
   const size = staticSize ?? measured;
+  const intensity = lineIntensity ?? LINE_INTENSITY;
   const glow = useRef(new Animated.Value(0.08)).current;
   const REST_PHASE = (N_HUES - 1) / 2;
   const hueGlows = useRef(
-    crossfadeWeights(REST_PHASE, N_HUES).map(wt => new Animated.Value(wt * LINE_INTENSITY))
+    crossfadeWeights(REST_PHASE, N_HUES).map(wt => new Animated.Value(wt * intensity))
   ).current;
   // Unbounded hue phase, advanced by tilt deltas — see the listener below.
   const phaseRef = useRef(REST_PHASE);
@@ -289,11 +299,13 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize }: {
 
         crossfadeWeights(phaseRef.current, N_HUES).forEach((wt, i) => {
           Animated.timing(hueGlows[i], {
-            toValue: wt * LINE_INTENSITY, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
+            toValue: wt * intensity, duration: UPDATE_MS, easing: Easing.linear, useNativeDriver: true,
           }).start();
         });
       });
       return () => { sub.remove(); prevRotRef.current = null; };
+    // intensity is a per-mount prop, not reactive state — omitted from deps deliberately
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [size, glow, hueGlows])
   );
 
@@ -329,38 +341,39 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize }: {
     return { rowsA, rowsB, sealCx, sealCy, sealR, rosetteCircles, webLines, frameRings, ribbon };
   }, [size, w, h]);
 
-  return (
-    <View style={StyleSheet.absoluteFillObject} onLayout={staticSize ? undefined : onLayout} pointerEvents="none">
-      {size && layers && (
-        <>
-          {/* Wave lines — always fully colorful (not faint-gold-then-shimmer
-              like the rest of the pattern). Four copies of the identical
-              static geometry, each a different quarter-turn of the same
-              5-stop rainbow; tilt crossfades their opacity via hueGlows, so
-              color shifts across the wheel without any line moving. */}
-          {Array.from({ length: N_HUES }).map((_, vi) => (
-            <Animated.View
-              key={vi}
-              pointerEvents="none"
-              style={[StyleSheet.absoluteFillObject, { opacity: hueGlows[vi] }]}
-            >
-              <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
-                <Defs>
-                  <LinearGradient id={`hue${vi}`} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={w} y2={0}>
-                    {hueStops(vi * (360 / N_HUES)).map((color, si) => (
-                      <Stop key={si} offset={si / 4} stopColor={color} />
-                    ))}
-                  </LinearGradient>
-                </Defs>
-                <G rotation={TILT_A} origin={[w / 2, h / 2]}>
-                  {layers.rowsA.map((d, i) => (
-                    <Path key={i} d={d} stroke={`url(#hue${vi})`} strokeWidth={1} fill="none" />
-                  ))}
-                </G>
-              </Svg>
-            </Animated.View>
+  // Wave lines — always fully colorful (not faint-gold-then-shimmer like the
+  // rest of the pattern). Four copies of the identical static geometry, each
+  // a different quarter-turn of the same 5-stop rainbow; tilt crossfades
+  // their opacity via hueGlows, so color shifts across the wheel without any
+  // line moving. Extracted from render order below so wavesAboveSeal can
+  // stack it relative to the static seal/mandala/ribbon group — it's still
+  // behind every real text sibling outside this component either way, since
+  // that's plain document order one level up (this whole component renders
+  // as the cover's first child).
+  const waveLines = size && layers && Array.from({ length: N_HUES }).map((_, vi) => (
+    <Animated.View
+      key={vi}
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFillObject, { opacity: hueGlows[vi] }]}
+    >
+      <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
+        <Defs>
+          <LinearGradient id={`hue${vi}`} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={w} y2={0}>
+            {hueStops(vi * (360 / N_HUES)).map((color, si) => (
+              <Stop key={si} offset={si / 4} stopColor={color} />
+            ))}
+          </LinearGradient>
+        </Defs>
+        <G rotation={TILT_A} origin={[w / 2, h / 2]}>
+          {layers.rowsA.map((d, i) => (
+            <Path key={i} d={d} stroke={`url(#hue${vi})`} strokeWidth={1} fill="none" />
           ))}
+        </G>
+      </Svg>
+    </Animated.View>
+  ));
 
+  const staticSvg = size && layers && (
           <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} pointerEvents="none">
             <Defs>
               <RadialGradient id="spotlight" cx="18%" cy="8%" r="70%">
@@ -413,6 +426,14 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize }: {
               ))}
             </G>
           </Svg>
+  );
+
+  return (
+    <View style={StyleSheet.absoluteFillObject} onLayout={staticSize ? undefined : onLayout} pointerEvents="none">
+      {size && layers && (
+        <>
+          {wavesAboveSeal ? staticSvg : waveLines}
+          {wavesAboveSeal ? waveLines : staticSvg}
 
           {/* Holo shimmer copy of the seal/rosette/text — plain Animated.View,
               opacity only. Never touches SVG native props directly (see the
