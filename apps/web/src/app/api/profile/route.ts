@@ -53,11 +53,38 @@ export async function PUT(request: Request) {
 
     const { username, display_name, bio, avatar_url } = await request.json();
 
-    if (username !== undefined) {
+    const current = await db
+      .select()
+      .from(userProfiles)
+      .where(eq(userProfiles.clerk_user_id, userId))
+      .limit(1);
+    const currentRow = current[0];
+
+    const RENAME_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+    const cooldownRemaining = (lastChangedAt: Date | null | undefined) => {
+      if (!lastChangedAt) return 0;
+      return RENAME_COOLDOWN_MS - (Date.now() - lastChangedAt.getTime());
+    };
+    const formatRemaining = (ms: number) => {
+      const days = Math.ceil(ms / (24 * 60 * 60 * 1000));
+      return days <= 1 ? '1 day' : `${days} days`;
+    };
+
+    const usernameChanging = username !== undefined && username !== currentRow?.username;
+    const displayNameChanging = display_name !== undefined && display_name !== currentRow?.display_name;
+
+    if (usernameChanging) {
       if (!/^[a-z0-9_]{3,50}$/.test(username)) {
         return NextResponse.json(
           { error: 'Username must be 3–50 characters: lowercase letters, numbers, underscores only' },
           { status: 400 }
+        );
+      }
+      const remaining = cooldownRemaining(currentRow?.username_changed_at);
+      if (remaining > 0) {
+        return NextResponse.json(
+          { error: `Username can only be changed once a week. Try again in ${formatRemaining(remaining)}.` },
+          { status: 429 }
         );
       }
       const taken = await db
@@ -70,11 +97,23 @@ export async function PUT(request: Request) {
       }
     }
 
+    if (displayNameChanging) {
+      const remaining = cooldownRemaining(currentRow?.display_name_changed_at);
+      if (remaining > 0) {
+        return NextResponse.json(
+          { error: `Display name can only be changed once a week. Try again in ${formatRemaining(remaining)}.` },
+          { status: 429 }
+        );
+      }
+    }
+
     const updates: Partial<typeof userProfiles.$inferInsert> = { updated_at: new Date() };
     if (username !== undefined) updates.username = username;
     if (display_name !== undefined) updates.display_name = display_name;
     if (bio !== undefined) updates.bio = bio;
     if (avatar_url !== undefined) updates.avatar_url = avatar_url;
+    if (usernameChanging) updates.username_changed_at = new Date();
+    if (displayNameChanging) updates.display_name_changed_at = new Date();
 
     const [updated] = await db
       .update(userProfiles)

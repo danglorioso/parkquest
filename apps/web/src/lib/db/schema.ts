@@ -30,6 +30,11 @@ export const userProfiles = pgTable('user_profiles', {
   // only exists so feeds/comments can render the admin star without a
   // per-author Clerk lookup. Never grant access based on it.
   is_admin: boolean('is_admin').notNull().default(false),
+  // Set whenever username/display_name actually changes value (not on every
+  // PUT — the mobile edit screen resends both on every save). Backs the
+  // once-per-week rename cooldown in /api/profile.
+  username_changed_at: timestamp('username_changed_at'),
+  display_name_changed_at: timestamp('display_name_changed_at'),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 });
@@ -43,6 +48,19 @@ export const userActivityDays = pgTable('user_activity_days', {
   day: date('day').notNull(),
   last_seen_at: timestamp('last_seen_at').defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.clerk_user_id, t.day] })]);
+
+// OAuth tokens for a connected third-party tracking service (Strava today;
+// provider-agnostic so Garmin/Fitbit can reuse this table later).
+export const userIntegrations = pgTable('user_integrations', {
+  clerk_user_id: varchar('clerk_user_id', { length: 255 }).notNull(),
+  provider: varchar('provider', { length: 20 }).notNull(), // 'strava'
+  access_token: text('access_token').notNull(),
+  refresh_token: text('refresh_token').notNull(),
+  expires_at: timestamp('expires_at').notNull(),
+  external_athlete_id: varchar('external_athlete_id', { length: 64 }),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.clerk_user_id, t.provider] })]);
 
 export const visits = pgTable('visits', {
   id: serial('id').primaryKey(),
@@ -64,6 +82,13 @@ export const visits = pgTable('visits', {
   cover_photo: text('cover_photo'),
   visibility: varchar('visibility', { length: 20 }).default('private'), // 'public' | 'friends' | 'private'
   is_bucket_list: boolean('is_bucket_list').default(false),
+  // Attached tracked-activity stats (from Strava etc, set via /api/integrations/*)
+  distance_meters: real('distance_meters'),
+  duration_seconds: integer('duration_seconds'),
+  elevation_gain_meters: real('elevation_gain_meters'),
+  route_polyline: text('route_polyline'), // Google-encoded polyline
+  external_source: varchar('external_source', { length: 20 }), // 'strava'
+  external_activity_id: varchar('external_activity_id', { length: 64 }),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 });
@@ -182,7 +207,7 @@ export const notifications = pgTable('notifications', {
   post_id: integer('post_id').references(() => posts.id, { onDelete: 'cascade' }),
   visit_id: integer('visit_id').references(() => visits.id, { onDelete: 'cascade' }),
   park_code: varchar('park_code', { length: 10 }).references(() => parks.park_code),
-  metadata: jsonb('metadata').$type<{ message?: string; excerpt?: string; friendship_id?: number; badge_id?: string; badge_name?: string; badge_emoji?: string; title?: string; audience_label?: string }>(),
+  metadata: jsonb('metadata').$type<{ message?: string; excerpt?: string; friendship_id?: number; badge_id?: string; badge_name?: string; badge_emoji?: string; title?: string; audience_label?: string; resolved?: 'accepted' | 'declined' }>(),
   read: boolean('read').default(false).notNull(),
   created_at: timestamp('created_at').defaultNow().notNull(),
 });
