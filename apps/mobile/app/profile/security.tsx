@@ -1,13 +1,15 @@
 import {
   ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import { useState } from 'react';
-import { useUser } from '@clerk/clerk-expo';
+import { useEffect, useState } from 'react';
+import { useAuth, useUser } from '@clerk/clerk-expo';
+import { Ionicons } from '@expo/vector-icons';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { STATIC as BASE_C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
 import { AppleIcon, clerkMsg, GoogleG } from '@/components/AuthAtoms';
 import { showToast } from '@/lib/toast';
+import { disconnectStrava, getStravaAuthorizeUrl, getStravaStatus } from '@/lib/api';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -20,16 +22,84 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function SecurityScreen() {
   const { user } = useUser();
+  const { getToken } = useAuth();
   const C = useColors();
   const styles = useThemedStyles(makeStyles);
 
   const [connectBusy, setConnectBusy] = useState<'google' | 'apple' | null>(null);
   const [passwordModal, setPasswordModal] = useState(false);
   const [pendingDisconnect, setPendingDisconnect] = useState<'google' | 'apple' | null>(null);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [settingPassword, setSettingPassword] = useState(false);
+
+  const [stravaConnected, setStravaConnected] = useState<boolean | null>(null);
+  const [stravaBusy, setStravaBusy] = useState(false);
+
+  const refreshStravaStatus = async () => {
+    const tok = await getToken();
+    if (!tok) return;
+    try {
+      const { connected } = await getStravaStatus(tok);
+      setStravaConnected(connected);
+    } catch {
+      setStravaConnected(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshStravaStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleConnectStrava = async () => {
+    setStravaBusy(true);
+    try {
+      const tok = await getToken();
+      if (!tok) throw new Error('Not signed in');
+      const { url } = await getStravaAuthorizeUrl(tok);
+      const redirectUrl = AuthSession.makeRedirectUri({ path: 'strava-callback' });
+      const result = await WebBrowser.openAuthSessionAsync(url, redirectUrl);
+      if (result.type === 'success' && result.url.includes('success=1')) {
+        await refreshStravaStatus();
+        showToast('Strava connected');
+      } else if (result.type === 'success') {
+        showToast('Could not connect Strava', 'error');
+      }
+    } catch (e) {
+      showToast(clerkMsg(e), 'error');
+    } finally {
+      setStravaBusy(false);
+    }
+  };
+
+  const handleDisconnectStrava = () => {
+    Alert.alert('Disconnect Strava', 'Your logged visits keep their attached stats, but new visits won’t be able to pull in hikes.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Disconnect', style: 'destructive', onPress: async () => {
+          setStravaBusy(true);
+          try {
+            const tok = await getToken();
+            if (tok) await disconnectStrava(tok);
+            setStravaConnected(false);
+            showToast('Strava disconnected');
+          } catch (e) {
+            showToast(clerkMsg(e), 'error');
+          } finally {
+            setStravaBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  // An existing password means Clerk requires it re-entered to change it —
+  // the disconnect-forced flow below only ever opens this modal when the
+  // account has no password yet, so that path never needs this field.
+  const hasPassword = user?.passwordEnabled === true;
 
   const googleAccount = user?.verifiedExternalAccounts.find(a => a.provider === 'google') ?? null;
   const appleAccount  = user?.verifiedExternalAccounts.find(a => a.provider === 'apple')  ?? null;
@@ -45,6 +115,7 @@ export default function SecurityScreen() {
   const closePasswordModal = () => {
     setPasswordModal(false);
     setPendingDisconnect(null);
+    setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
     setPasswordError('');
@@ -108,15 +179,19 @@ export default function SecurityScreen() {
 
   const handleSetPassword = async () => {
     if (!user) return;
+    if (hasPassword && !currentPassword) { setPasswordError('Enter your current password'); return; }
     if (newPassword.length < 8) { setPasswordError('Password must be at least 8 characters'); return; }
     if (newPassword !== confirmPassword) { setPasswordError('Passwords do not match'); return; }
     setPasswordError('');
     setSettingPassword(true);
     try {
-      await user.updatePassword({ newPassword });
+      await user.updatePassword({
+        newPassword,
+        ...(hasPassword ? { currentPassword } : {}),
+      });
       const provider = pendingDisconnect;
       closePasswordModal();
-      showToast('Password set');
+      showToast(hasPassword ? 'Password updated' : 'Password set');
       if (provider) await performDisconnect(provider);
     } catch (e) {
       setPasswordError(clerkMsg(e));
@@ -159,6 +234,54 @@ export default function SecurityScreen() {
         })}
       </View>
 
+      <View style={{ gap: 10 }}>
+        <Text style={styles.fieldLabel}>Password</Text>
+        <View style={styles.row}>
+          <View style={{ width: 24, alignItems: 'center' }}>
+            <Ionicons name="lock-closed-outline" size={18} color={BASE_C.inkSoft} />
+          </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={styles.rowTitle}>Password</Text>
+            <Text style={styles.rowSubtitle}>{hasPassword ? 'Set' : 'Not set'}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => { setPendingDisconnect(null); setPasswordModal(true); }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.buttonText}>{hasPassword ? 'Change' : 'Set password'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={{ gap: 10 }}>
+        <Text style={styles.fieldLabel}>Tracking apps</Text>
+        <View style={styles.row}>
+          <View style={{ width: 24, alignItems: 'center' }}>
+            <Ionicons name="bicycle-outline" size={20} color={BASE_C.inkSoft} />
+          </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={styles.rowTitle}>Strava</Text>
+            <Text style={styles.rowSubtitle}>
+              {stravaConnected === null ? 'Checking…' : stravaConnected ? 'Connected' : 'Not connected'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.button, stravaConnected ? { borderColor: '#C04040' } : null, stravaBusy && { opacity: 0.4 }]}
+            onPress={() => stravaConnected ? handleDisconnectStrava() : handleConnectStrava()}
+            disabled={stravaBusy || stravaConnected === null}
+            activeOpacity={0.7}
+          >
+            {stravaBusy
+              ? <ActivityIndicator color={stravaConnected ? '#C04040' : C.primary} size="small" />
+              : <Text style={[styles.buttonText, stravaConnected ? { color: '#C04040' } : null]}>
+                  {stravaConnected ? 'Disconnect' : 'Connect'}
+                </Text>
+            }
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <Modal visible={passwordModal} transparent animationType="fade" onRequestClose={() => !settingPassword && closePasswordModal()}>
         <Pressable
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
@@ -166,11 +289,29 @@ export default function SecurityScreen() {
         >
           <Pressable onPress={() => {}} style={{ width: '100%', backgroundColor: BASE_C.surface, borderRadius: 16, padding: 24, gap: 16 }}>
             <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: BASE_C.ink }}>Set a password</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: BASE_C.ink }}>
+                {hasPassword ? 'Change your password' : 'Set a password'}
+              </Text>
               <Text style={{ fontSize: 13.5, color: BASE_C.inkMute, lineHeight: 20 }}>
-                That's your only way to sign in right now. Set a password first so disconnecting it doesn't lock you out.
+                {pendingDisconnect
+                  ? "That's your only way to sign in right now. Set a password first so disconnecting it doesn't lock you out."
+                  : hasPassword
+                    ? 'Enter your current password, then choose a new one.'
+                    : 'Add a password so you can sign in without Google or Apple.'}
               </Text>
             </View>
+            {hasPassword && (
+              <Field label="Current password">
+                <TextInput
+                  value={currentPassword}
+                  onChangeText={v => { setCurrentPassword(v); setPasswordError(''); }}
+                  secureTextEntry
+                  placeholder="Current password"
+                  placeholderTextColor={BASE_C.inkMute}
+                  style={styles.input}
+                />
+              </Field>
+            )}
             <Field label="New password">
               <TextInput
                 value={newPassword}
@@ -202,16 +343,16 @@ export default function SecurityScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSetPassword}
-                disabled={settingPassword || !newPassword || !confirmPassword}
+                disabled={settingPassword || !newPassword || !confirmPassword || (hasPassword && !currentPassword)}
                 style={{
                   flex: 1, paddingVertical: 13, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: C.primary,
-                  opacity: (settingPassword || !newPassword || !confirmPassword) ? 0.5 : 1,
+                  opacity: (settingPassword || !newPassword || !confirmPassword || (hasPassword && !currentPassword)) ? 0.5 : 1,
                 }}
               >
                 {settingPassword
                   ? <ActivityIndicator color="#FFFBF1" size="small" />
-                  : <Text style={{ fontSize: 14, fontWeight: '700', color: BASE_C.onPrimary }}>Set password</Text>
+                  : <Text style={{ fontSize: 14, fontWeight: '700', color: BASE_C.onPrimary }}>{hasPassword ? 'Update password' : 'Set password'}</Text>
                 }
               </TouchableOpacity>
             </View>

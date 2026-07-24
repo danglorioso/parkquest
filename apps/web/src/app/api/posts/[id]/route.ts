@@ -93,6 +93,11 @@ export async function GET(
         visit_title:            visits.title,
         visit_notes:            visits.notes,
         visit_would_return:     visits.would_return,
+        visit_distance_meters:       visits.distance_meters,
+        visit_duration_seconds:      visits.duration_seconds,
+        visit_elevation_gain_meters: visits.elevation_gain_meters,
+        visit_route_polyline:        visits.route_polyline,
+        visit_external_source:       visits.external_source,
         visit_ordinal: sql<number>`(SELECT COUNT(*)::int FROM visits v2 WHERE v2.clerk_user_id = ${posts.clerk_user_id} AND v2.park_code = ${posts.park_code} AND v2.visited_date IS NOT NULL AND v2.is_bucket_list = false AND (v2.visited_date < ${visits.visited_date} OR (v2.visited_date = ${visits.visited_date} AND v2.id <= ${visits.id})))`,
       })
       .from(posts)

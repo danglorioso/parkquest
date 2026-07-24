@@ -15,6 +15,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { STATIC as C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
 import { dayCount, fmtDate, fmtRange, MONTHS } from '@/lib/dates';
 import { parkColor } from '@/lib/parkColors';
+import { HikeStatsCard } from '@/components/HikeStatsCard';
 
 const DANGER = '#C0392B';
 
@@ -79,6 +80,11 @@ interface JournalEntry {
   visibility: string | null;
   caption: string | null;
   created_at: string | null;
+  distance_meters: number | null;
+  duration_seconds: number | null;
+  elevation_gain_meters: number | null;
+  route_polyline: string | null;
+  external_source: string | null;
 }
 
 interface Draft {
@@ -645,6 +651,19 @@ export default function JournalEntryScreen() {
               <View style={s.highlightBox}>
                 <Ionicons name="sparkles-outline" size={13} color={T.accent} style={{ marginTop: 2 }} />
                 <Text style={s.highlightText}>"{entry.highlight}"</Text>
+              </View>
+            ) : null}
+
+            {/* Hike stats + route (attached from Strava or a GPX upload in the log-visit wizard) */}
+            {entry.external_source && entry.distance_meters != null ? (
+              <View style={{ marginTop: 14 }}>
+                <HikeStatsCard
+                  distanceMeters={entry.distance_meters}
+                  durationSeconds={entry.duration_seconds}
+                  elevationGainMeters={entry.elevation_gain_meters}
+                  routePolyline={entry.route_polyline}
+                  source={entry.external_source}
+                />
               </View>
             ) : null}
 

@@ -36,6 +36,12 @@ export async function GET(
         photos: visits.photos,
         cover_photo: visits.cover_photo,
         visibility: visits.visibility,
+        distance_meters: visits.distance_meters,
+        duration_seconds: visits.duration_seconds,
+        elevation_gain_meters: visits.elevation_gain_meters,
+        route_polyline: visits.route_polyline,
+        external_source: visits.external_source,
+        external_activity_id: visits.external_activity_id,
       })
       .from(visits)
       .leftJoin(parks, eq(visits.park_code, parks.park_code))
@@ -94,6 +100,12 @@ export async function PATCH(
     if (body.photos !== undefined) set.photos = body.photos;
     if (body.cover_photo !== undefined) set.cover_photo = body.cover_photo;
     if (body.visibility !== undefined) set.visibility = body.visibility;
+    if (body.distance_meters !== undefined) set.distance_meters = body.distance_meters;
+    if (body.duration_seconds !== undefined) set.duration_seconds = body.duration_seconds;
+    if (body.elevation_gain_meters !== undefined) set.elevation_gain_meters = body.elevation_gain_meters;
+    if (body.route_polyline !== undefined) set.route_polyline = body.route_polyline;
+    if (body.external_source !== undefined) set.external_source = body.external_source;
+    if (body.external_activity_id !== undefined) set.external_activity_id = body.external_activity_id;
 
     const updated = await db
       .update(visits)

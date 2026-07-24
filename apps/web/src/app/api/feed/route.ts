@@ -73,6 +73,11 @@ export async function GET(request: Request) {
         visit_companion_names:  sql<Array<{username: string; display_name: string | null; avatar_url: string | null}> | null>`(SELECT json_agg(json_build_object('username', up.username, 'display_name', up.display_name, 'avatar_url', up.avatar_url)) FROM user_profiles up WHERE up.clerk_user_id = ANY(SELECT jsonb_array_elements_text(${visits.companions})))`,
         visit_highlight:        visits.highlight,
         visit_title:            visits.title,
+        visit_distance_meters:       visits.distance_meters,
+        visit_duration_seconds:      visits.duration_seconds,
+        visit_elevation_gain_meters: visits.elevation_gain_meters,
+        visit_route_polyline:        visits.route_polyline,
+        visit_external_source:       visits.external_source,
         visit_ordinal: sql<number>`(SELECT COUNT(*)::int FROM visits v2 WHERE v2.clerk_user_id = ${posts.clerk_user_id} AND v2.park_code = ${posts.park_code} AND v2.visited_date IS NOT NULL AND v2.is_bucket_list = false AND (v2.visited_date < ${visits.visited_date} OR (v2.visited_date = ${visits.visited_date} AND v2.id <= ${visits.id})))`,
       })
       .from(posts)
@@ -152,12 +157,6 @@ export async function GET(request: Request) {
       quoted_post: p.quoted_post_id ? quotedMap.get(p.quoted_post_id) ?? null : null,
       visit_date: p.visit_date ? p.visit_date.toISOString() : null,
     }));
-
-    // Own + friend posts first, preserve recency within groups
-    normalized.sort((a, b) => {
-      if (a.is_friend_post !== b.is_friend_post) return a.is_friend_post ? -1 : 1;
-      return 0;
-    });
 
     return NextResponse.json(normalized);
   } catch (error) {

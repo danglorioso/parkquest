@@ -19,6 +19,7 @@ config.resolver.nodeModulesPaths = [
 const rootPkg = (name) => path.resolve(monorepoRoot, 'node_modules', name);
 config.resolver.extraNodeModules = {
   'expo-blur': rootPkg('expo-blur'),
+  'expo-document-picker': rootPkg('expo-document-picker'),
   'expo-glass-effect': rootPkg('expo-glass-effect'),
   'expo-haptics': rootPkg('expo-haptics'),
   'expo-image-manipulator': rootPkg('expo-image-manipulator'),

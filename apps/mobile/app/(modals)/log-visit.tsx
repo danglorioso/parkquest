@@ -7,6 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as DocumentPicker from 'expo-document-picker';
 import { fitUnderUploadCap } from '@/lib/uploadImage';
 import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -29,6 +30,9 @@ import { PostCard, type FeedPost } from '@/components/PostCard';
 import { parkColor } from '@/lib/parkColors';
 import { relTime } from '@/lib/dates';
 import { getDefaultVisibility } from '@/lib/settings';
+import { getStravaActivities, getStravaStatus, type StravaActivity } from '@/lib/api';
+import { fmtDuration, fmtElevationFt, fmtMiles } from '@/lib/hikeStats';
+import { parseGpx } from '@/lib/gpx';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -52,6 +56,14 @@ interface Draft {
   photos:    string[];
   visibility:'Private' | 'Friends' | 'Public';
   caption:   string;
+  // Attached hike, if any — set via the "Where & when" step's activity picker,
+  // either a matched Strava activity or an imported GPX file.
+  hikeSource:           'strava' | 'gpx' | null;
+  stravaActivityId:     string | null; // only set when hikeSource === 'strava'
+  distanceMeters:       number | null;
+  durationSeconds:      number | null;
+  elevationGainMeters:  number | null;
+  routePolyline:        string | null;
 }
 
 interface ParkInfo { park_code: string; name: string; states: string; image_url: string | null; }
@@ -75,6 +87,12 @@ interface VisitDetail {
   photos: string[] | null;
   cover_photo: string | null;
   visibility: string | null;
+  distance_meters: number | null;
+  duration_seconds: number | null;
+  elevation_gain_meters: number | null;
+  route_polyline: string | null;
+  external_source: string | null;
+  external_activity_id: string | null;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -116,6 +134,8 @@ function makeBlank(): Draft {
     rating: 0, crowd: 0, difficulty: 0, weather: [], wouldReturn: null,
     highlight: '', notes: '', activities: [], companions: [], companionObjs: [],
     photos: [], visibility: 'Friends', caption: '',
+    hikeSource: null, stravaActivityId: null, distanceMeters: null, durationSeconds: null,
+    elevationGainMeters: null, routePolyline: null,
   };
 }
 
@@ -166,6 +186,16 @@ function draftAge(iso: string): string {
 
 function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// YYYY-MM-DD in the device's local calendar day, for the Strava activities
+// date-match query — Date#toISOString() would shift across UTC and misfire
+// near midnight.
+function fmtDateParam(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function dayCount(start: Date | null, end: Date | null): number {
@@ -1555,12 +1585,25 @@ function PressableScale({ onPress, disabled, style, containerStyle, children }: 
   );
 }
 
-function StepWhere({ draft, set, parks, onPickPark, onOpenPicker }: {
+function StepWhere({
+  draft, set, parks, onPickPark, onOpenPicker,
+  stravaConnected, stravaActivities, stravaLoading, stravaBrowsing,
+  onAttachStrava, onClearStrava, onBrowseStrava, onPickGpx, gpxLoading,
+}: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   parks: ParkInfo[]; onPickPark: () => void;
   // Opens the date sheet — owned by the screen root, not this step, so the
   // overlay escapes the step ScrollView (see the DateSheet render up there).
   onOpenPicker: (which: 'start' | 'end') => void;
+  stravaConnected: boolean | null;
+  stravaActivities: StravaActivity[] | null;
+  stravaLoading: boolean;
+  stravaBrowsing: boolean;
+  onAttachStrava: (a: StravaActivity) => void;
+  onClearStrava: () => void;
+  onBrowseStrava: () => void;
+  onPickGpx: () => void;
+  gpxLoading: boolean;
 }) {
   const C = useColors();
   const park = parks.find(p => p.park_code === draft.parkCode);
@@ -1697,6 +1740,80 @@ function StepWhere({ draft, set, parks, onPickPark, onOpenPicker }: {
           </View>
           {days > 1 && (
             <Text style={{ fontSize: 13, color: C.accent, fontWeight: '700', marginTop: 6 }}>{days} day trip</Text>
+          )}
+        </Section>
+
+        <Section title="Hike" tag="optional" mb={28}>
+          {draft.hikeSource ? (
+            <View style={[styles.card, { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }]}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FC4C0233', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name={draft.hikeSource === 'strava' ? 'bicycle' : 'map'} size={18} color="#FC4C02" />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>
+                  {draft.hikeSource === 'strava' ? 'Strava hike attached' : 'GPX route attached'}
+                </Text>
+                <Text style={{ fontSize: 12.5, color: C.inkMute }}>
+                  {draft.distanceMeters != null ? fmtMiles(draft.distanceMeters) : ''}
+                  {draft.durationSeconds != null ? ` · ${fmtDuration(draft.durationSeconds)}` : ''}
+                  {draft.elevationGainMeters != null ? ` · ${fmtElevationFt(draft.elevationGainMeters)} gain` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={onClearStrava} hitSlop={8}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>Change</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {stravaConnected && stravaLoading ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
+                  <ActivityIndicator size="small" color={C.inkMute} />
+                  <Text style={{ fontSize: 13, color: C.inkMute }}>Looking for hikes on this day…</Text>
+                </View>
+              ) : stravaConnected && stravaActivities && stravaActivities.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  {stravaActivities.map(a => (
+                    <PressableScale key={a.id} onPress={() => onAttachStrava(a)} style={[styles.card, { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }]}>
+                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FC4C0233', alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="bicycle-outline" size={18} color="#FC4C02" />
+                      </View>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>{a.name}</Text>
+                        <Text style={{ fontSize: 12.5, color: C.inkMute }}>
+                          {fmtMiles(a.distance_meters)} · {fmtDuration(a.duration_seconds)} · {fmtElevationFt(a.elevation_gain_meters)} gain
+                        </Text>
+                      </View>
+                      <Ionicons name="add-circle-outline" size={22} color={C.primary} />
+                    </PressableScale>
+                  ))}
+                </View>
+              ) : stravaConnected ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ fontSize: 13, color: C.inkMute }}>
+                    {stravaBrowsing ? 'No recent Strava activities found.' : 'No Strava activity found for this day.'}
+                  </Text>
+                  {!stravaBrowsing && (
+                    <TouchableOpacity onPress={onBrowseStrava}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>Browse recent activities</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                onPress={onPickGpx}
+                disabled={gpxLoading}
+                style={[styles.card, { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12, opacity: gpxLoading ? 0.5 : 1 }]}
+              >
+                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+                  {gpxLoading
+                    ? <ActivityIndicator size="small" color={C.inkMute} />
+                    : <Ionicons name="document-outline" size={18} color={C.inkMute} />
+                  }
+                </View>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>Upload a GPX file</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </Section>
 
@@ -2289,6 +2406,97 @@ export default function LogVisitModal() {
     });
   }, [getFreshToken]);
 
+  // ── Strava hike picker ───────────────────────────────────────────────────────
+  const [stravaConnected, setStravaConnected] = useState<boolean | null>(null);
+  const [stravaActivities, setStravaActivities] = useState<StravaActivity[] | null>(null);
+  const [stravaLoading, setStravaLoading] = useState(false);
+  const [stravaBrowsing, setStravaBrowsing] = useState(false);
+
+  useEffect(() => {
+    getFreshToken().then(tok => {
+      if (!tok) return;
+      getStravaStatus(tok).then(r => setStravaConnected(r.connected)).catch(() => setStravaConnected(false));
+    });
+  }, [getFreshToken]);
+
+  const fetchStravaActivities = useCallback(async (date?: string) => {
+    const tok = await getFreshToken();
+    if (!tok) return;
+    setStravaLoading(true);
+    try {
+      const activities = await getStravaActivities(tok, date);
+      setStravaActivities(activities);
+    } catch {
+      setStravaActivities([]);
+    } finally {
+      setStravaLoading(false);
+    }
+  }, [getFreshToken]);
+
+  // Re-suggest matching activities whenever the visit date changes — attaching
+  // an activity already picked once shouldn't be undone by this, so it only
+  // touches the suggestion list, never draft.stravaActivityId.
+  useEffect(() => {
+    if (!stravaConnected || !draft.startDate || isEdit) return;
+    setStravaBrowsing(false);
+    fetchStravaActivities(fmtDateParam(draft.startDate));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stravaConnected, draft.startDate?.toDateString()]);
+
+  const browseStravaActivities = () => {
+    setStravaBrowsing(true);
+    fetchStravaActivities();
+  };
+
+  const attachStravaActivity = (a: StravaActivity) => {
+    set('hikeSource', 'strava');
+    set('stravaActivityId', a.id);
+    set('distanceMeters', a.distance_meters);
+    set('durationSeconds', a.duration_seconds);
+    set('elevationGainMeters', a.elevation_gain_meters);
+    set('routePolyline', a.route_polyline);
+  };
+
+  const [gpxLoading, setGpxLoading] = useState(false);
+
+  const pickGpxFile = async () => {
+    setGpxLoading(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ['application/gpx+xml', 'application/xml', 'text/xml', '*/*'] });
+      if (result.canceled || !result.assets?.length) return;
+      const file = result.assets[0];
+      if (!file.name.toLowerCase().endsWith('.gpx')) {
+        showToast('Please choose a .gpx file', 'error');
+        return;
+      }
+      const xml = await (await fetch(file.uri)).text();
+      const parsed = parseGpx(xml);
+      if (!parsed) {
+        showToast("Couldn't read a route from that file", 'error');
+        return;
+      }
+      set('hikeSource', 'gpx');
+      set('stravaActivityId', null);
+      set('distanceMeters', parsed.distanceMeters);
+      set('durationSeconds', parsed.durationSeconds);
+      set('elevationGainMeters', parsed.elevationGainMeters);
+      set('routePolyline', parsed.routePolyline);
+    } catch {
+      showToast("Couldn't read that GPX file", 'error');
+    } finally {
+      setGpxLoading(false);
+    }
+  };
+
+  const clearStravaActivity = () => {
+    set('hikeSource', null);
+    set('stravaActivityId', null);
+    set('distanceMeters', null);
+    set('durationSeconds', null);
+    set('elevationGainMeters', null);
+    set('routePolyline', null);
+  };
+
   // Prefill the form when editing an existing visit
   useEffect(() => {
     if (!isEdit || !token) return;
@@ -2331,6 +2539,12 @@ export default function LogVisitModal() {
           photos:     orderedPhotos,
           visibility: ['Private', 'Friends', 'Public'].includes(visibility) ? visibility : 'Friends',
           caption,
+          hikeSource:          (v.external_source as 'strava' | 'gpx' | null) ?? null,
+          stravaActivityId:    v.external_source === 'strava' ? v.external_activity_id : null,
+          distanceMeters:      v.distance_meters,
+          durationSeconds:     v.duration_seconds,
+          elevationGainMeters: v.elevation_gain_meters,
+          routePolyline:       v.route_polyline,
         });
       } catch {
         Alert.alert('Could not load visit', 'Please try again.');
@@ -2412,6 +2626,12 @@ export default function LogVisitModal() {
             photos:             draft.photos.length > 0 ? draft.photos : null,
             cover_photo:        draft.photos[0] ?? null,
             visibility:         draft.visibility.toLowerCase(),
+            distance_meters:       draft.distanceMeters,
+            duration_seconds:      draft.durationSeconds,
+            elevation_gain_meters: draft.elevationGainMeters,
+            route_polyline:        draft.routePolyline,
+            external_source:       draft.hikeSource,
+            external_activity_id:  draft.stravaActivityId,
           }),
         });
         if (activeEditPostId != null) {
@@ -2461,6 +2681,12 @@ export default function LogVisitModal() {
           photos:             draft.photos.length > 0 ? draft.photos : null,
           cover_photo:        draft.photos[0] ?? null,
           visibility:         draft.visibility.toLowerCase(),
+          distance_meters:       draft.distanceMeters,
+          duration_seconds:      draft.durationSeconds,
+          elevation_gain_meters: draft.elevationGainMeters,
+          route_polyline:        draft.routePolyline,
+          external_source:       draft.hikeSource,
+          external_activity_id:  draft.stravaActivityId,
         }),
       });
 
@@ -2590,7 +2816,19 @@ export default function LogVisitModal() {
           </View>
         )}
         {!editLoading && step === 0 && (
-          <StepWhere draft={draft} set={set} parks={parks} onPickPark={() => setShowPicker(true)} onOpenPicker={setOpenPicker} />
+          <StepWhere
+            draft={draft} set={set} parks={parks}
+            onPickPark={() => setShowPicker(true)} onOpenPicker={setOpenPicker}
+            stravaConnected={stravaConnected}
+            stravaActivities={stravaActivities}
+            stravaLoading={stravaLoading}
+            stravaBrowsing={stravaBrowsing}
+            onAttachStrava={attachStravaActivity}
+            onClearStrava={clearStravaActivity}
+            onBrowseStrava={browseStravaActivities}
+            onPickGpx={pickGpxFile}
+            gpxLoading={gpxLoading}
+          />
         )}
         {step === 1 && <StepRating draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
         {step === 2 && <StepCrowd draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
