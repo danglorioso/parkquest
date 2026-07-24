@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, Animated, Dimensions, Easing, KeyboardAvoidingView,
-  LayoutAnimation, Linking, Platform, ScrollView, StyleSheet, Text,
+  LayoutAnimation, Linking, Platform, StyleSheet, Text,
   TouchableOpacity, UIManager, View,
 } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
@@ -368,15 +368,10 @@ export default function LandingScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={{ flex: 1 }}>
           <HeroSection />
 
-          <View style={styles.panel}>
+          <View style={[styles.panel, { flex: 1 }]}>
 
             {mode === 'username' ? (
               <>
@@ -461,7 +456,7 @@ export default function LandingScreen() {
             )}
 
           </View>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -512,7 +507,10 @@ const styles = StyleSheet.create({
   },
   outlineBtnText: { fontSize: 15, fontWeight: '700' },
 
-  terms: { fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 12, lineHeight: 17 },
+  // marginTop 'auto' (not a fixed value) pins this to the panel's bottom
+  // edge — the flexible gap that lets this no-longer-scrollable screen
+  // adapt to whatever vertical space is left under the fixed-height hero.
+  terms: { fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 'auto', paddingTop: 12, lineHeight: 17 },
 
   helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
 

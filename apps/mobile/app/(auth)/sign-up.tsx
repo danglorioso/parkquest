@@ -1,6 +1,6 @@
 import {
   KeyboardAvoidingView, LayoutAnimation, Platform,
-  ScrollView, StyleSheet, Text, TouchableOpacity, UIManager, View,
+  StyleSheet, Text, TouchableOpacity, UIManager, View,
 } from 'react-native';
 import { useLayoutEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -154,11 +154,7 @@ export default function SignUpScreen() {
   return (
     <SafeAreaView style={st.screen} edges={['bottom']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 36, paddingBottom: 44 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 36, paddingBottom: 44 }}>
 
           <Text style={st.kicker}>CREATE ACCOUNT</Text>
           <Text style={st.headline}>{headline}</Text>
@@ -224,7 +220,7 @@ export default function SignUpScreen() {
             </View>
           )}
 
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -242,7 +238,10 @@ const st = StyleSheet.create({
   helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
 
 
-  switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
+  // 'auto' (not a fixed value) so it's pinned to the screen's bottom edge —
+  // the flexible gap that lets this no-longer-scrollable screen adapt to
+  // whatever vertical space the device actually has.
+  switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 'auto', paddingTop: 24 },
   switchText: { fontSize: 13, color: C.inkMute },
   switchLink: { fontSize: 13, fontWeight: '700' },
 });
