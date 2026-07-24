@@ -9,12 +9,12 @@ import { MenuView } from '@react-native-menu/menu';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
-import { badgeColors, type BadgeColors } from '@/lib/badges';
+import type { BadgeColors } from '@/lib/badges';
 import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline';
 import { PostCard, ReportSheet, type FeedPost } from '@/components/PostCard';
 import { Avatar } from '@/components/Avatar';
 import { AdminStar } from '@/components/AdminStar';
-import { BadgeDetailModal } from '@/components/BadgeDetailModal';
+import { BadgeDetailModal, BadgePatch } from '@/components/BadgeDetailModal';
 import { EmptyState } from '@/components/EmptyState';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { emitUserBlocked } from '@/lib/blocking';
@@ -652,26 +652,17 @@ export default function UserProfileScreen() {
               <View style={styles.section}>
                 <SectionHeader icon="ribbon-outline" title="BADGES EARNED" />
                 <View style={styles.badgeWrap}>
-                  {profile.badges.map(b => {
-                    const t = badgeColors(b);
-                    return (
-                      <TouchableOpacity
-                        key={b.badge_id}
-                        onPress={() => setSelectedBadge(b)}
-                        activeOpacity={0.7}
-                        style={[styles.badgeChip, {
-                          backgroundColor: t.fill + '14',
-                          borderColor: t.fill + '33',
-                        }]}
-                      >
-                        <Text style={{ fontSize: 15 }}>{b.emoji}</Text>
-                        <View>
-                          <Text style={styles.badgeChipName}>{b.name}</Text>
-                          <Text style={[styles.badgeChipTier, { color: t.fill }]}>{b.tier}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
+                  {profile.badges.map(b => (
+                    <TouchableOpacity
+                      key={b.badge_id}
+                      onPress={() => setSelectedBadge(b)}
+                      activeOpacity={0.7}
+                      style={styles.badgePreviewItem}
+                    >
+                      <BadgePatch emoji={b.emoji} tier={b.tier} colors={b.colors} size={56} earned />
+                      <Text style={styles.badgeChipName} numberOfLines={2}>{b.name}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </View>
             ) : null}
@@ -904,28 +895,22 @@ const styles = StyleSheet.create({
   badgeWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
   },
-  badgeChip: {
-    flexDirection: 'row',
+  // Matches the badge carousel/badge page's circular BadgePatch — was a flat
+  // rectangular chip here, the only place in the app badges didn't look like
+  // the round earned-patch art.
+  badgePreviewItem: {
     alignItems: 'center',
-    gap: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    width: 70,
   },
   badgeChipName: {
     fontSize: 13,
-    fontWeight: '700',
-    color: C.ink,
-    lineHeight: 14,
-  },
-  badgeChipTier: {
-    fontSize: 13,
     fontWeight: '600',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    color: C.ink,
+    textAlign: 'center',
+    lineHeight: 14,
+    marginTop: 6,
   },
 
   // Friends list bottom sheet
