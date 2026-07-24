@@ -5,6 +5,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, desc, or, sql } from 'drizzle-orm';
 import { deleteR2PhotosTrusted, extractPhotoUrls } from '@/lib/photoCleanup';
 import { ensureUserProfile } from '@/lib/ensureUserProfile';
+import { revokeUnqualifiedBadges } from '@/lib/badges';
 
 async function notifyFriendsOfVisit(userId: string, visitId: number, park_code: string) {
   const friends = await db
@@ -63,6 +64,12 @@ export async function GET() {
         photos: visits.photos,
         cover_photo: visits.cover_photo,
         visibility: visits.visibility,
+        distance_meters: visits.distance_meters,
+        duration_seconds: visits.duration_seconds,
+        elevation_gain_meters: visits.elevation_gain_meters,
+        route_polyline: visits.route_polyline,
+        external_source: visits.external_source,
+        external_activity_id: visits.external_activity_id,
         created_at: visits.created_at,
       })
       .from(visits)
@@ -91,6 +98,8 @@ export async function POST(request: Request) {
       park_code, is_bucket_list, visited_date, end_date,
       rating, crowd, difficulty, weather_conditions, activities,
       companions, would_return, highlight, title, notes, photos, cover_photo, visibility,
+      distance_meters, duration_seconds, elevation_gain_meters,
+      route_polyline, external_source, external_activity_id,
     } = body;
 
     if (!park_code) {
@@ -138,6 +147,12 @@ export async function POST(request: Request) {
             photos: photos !== undefined ? photos : existing.photos,
             cover_photo: cover_photo !== undefined ? cover_photo : existing.cover_photo,
             visibility: visitVisibility,
+            distance_meters: distance_meters !== undefined ? distance_meters : existing.distance_meters,
+            duration_seconds: duration_seconds !== undefined ? duration_seconds : existing.duration_seconds,
+            elevation_gain_meters: elevation_gain_meters !== undefined ? elevation_gain_meters : existing.elevation_gain_meters,
+            route_polyline: route_polyline !== undefined ? route_polyline : existing.route_polyline,
+            external_source: external_source !== undefined ? external_source : existing.external_source,
+            external_activity_id: external_activity_id !== undefined ? external_activity_id : existing.external_activity_id,
             updated_at: new Date(),
           })
           .where(eq(visits.id, existing.id))
@@ -175,6 +190,12 @@ export async function POST(request: Request) {
         photos: photos || null,
         cover_photo: cover_photo || null,
         visibility: isBucketList ? 'private' : visitVisibility,
+        distance_meters: distance_meters || null,
+        duration_seconds: duration_seconds || null,
+        elevation_gain_meters: elevation_gain_meters || null,
+        route_polyline: route_polyline || null,
+        external_source: external_source || null,
+        external_activity_id: external_activity_id || null,
       })
       .returning();
 
@@ -220,6 +241,11 @@ export async function DELETE(request: Request) {
     await db
       .delete(visits)
       .where(and(eq(visits.clerk_user_id, userId), eq(visits.park_code, park_code)));
+
+    // Deleting a visit only ever shrinks a user's stats, so this only needs to
+    // check for badges they've now dropped below — the award side still runs
+    // lazily on the next GET /api/badges.
+    await revokeUnqualifiedBadges(userId).catch(e => console.error('Badge revocation check failed:', e));
 
     if (visit && !skipPhotoCleanup) {
       // If a post still points at this visit, it survives the delete (visit_id -> null
