@@ -443,6 +443,19 @@ function FilterPanel({
     setSection(prev => (prev === s ? null : s));
   };
 
+  // Switching tabs away should collapse the filters dropdown — snapped shut
+  // instantly (no animation) since the screen isn't visible, so it never
+  // resumes mid-expanded next time this tab is focused.
+  useFocusEffect(useCallback(() => {
+    return () => {
+      setOpen(false);
+      setSection(null);
+      setSettled(false);
+      setRenderPanel(false);
+      panelAnim.setValue(0);
+    };
+  }, [panelAnim]));
+
   const statusLabel = STATUS_FILTERS.find(f => f.key === statusFilter)?.label ?? 'All';
 
   const sections: Array<{
