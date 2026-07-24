@@ -16,7 +16,6 @@ import { GlassIconBg } from '@/components/GlassIconBg';
 import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 import { ParkStamp } from '@/components/ParkStamp';
 import type { CustomStampGlyph } from '@parkquest/types';
-import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { EmptyState } from '@/components/EmptyState';
 import { HolographicShine } from '@/components/HolographicShine';
@@ -168,7 +167,6 @@ export default function ProfileScreen() {
   const [earnedBadges, setEarnedBadges] = useState<BadgeSummary[]>([]);
   const [selectedBadge, setSelectedBadge] = useState<BadgeSummary | null>(null);
   const [rawVisits, setRawVisits] = useState<any[]>([]);
-  const [searchOpen,   setSearchOpen]   = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
   // Per-fetch success flags — sections show skeletons until their data has
@@ -356,14 +354,6 @@ export default function ProfileScreen() {
   const topBarActions = (
     <View style={styles.topBarActions}>
       <NotificationBell style={styles.iconBtn} />
-      <TouchableOpacity
-        style={styles.iconBtn}
-        activeOpacity={0.7}
-        onPress={() => setSearchOpen(true)}
-      >
-        <GlassIconBg />
-        <Ionicons name="search" size={22} color={C.inkSoft} />
-      </TouchableOpacity>
       <TouchableOpacity
         style={styles.iconBtn}
         activeOpacity={0.8}
@@ -850,8 +840,6 @@ export default function ProfileScreen() {
       {selectedBadge ? (
         <BadgeDetailModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
       ) : null}
-
-      <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
     </View>
   );
 }

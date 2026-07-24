@@ -1833,7 +1833,6 @@ export function ParkProfileScreen({
               }}
               activeOpacity={0.8}
             >
-              <Ionicons name="map-outline" size={14} color={C.primary} />
               <Text style={[styles.viewOnMapBtnText, { color: C.primary }]}>View on full map</Text>
               <Ionicons name="arrow-forward" size={13} color={C.primary} />
             </TouchableOpacity>
@@ -2956,7 +2955,10 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
     padding: 12,
-    width: 96,
+    // Fixed and generous enough for the longest day label ("Wednesday") on
+    // one line — the description text below wraps within this instead of
+    // ever being allowed to stretch the card wider.
+    width: 128,
     alignItems: 'center',
   },
   weatherDay: {
@@ -3112,7 +3114,7 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
   },
   viewOnMapBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
