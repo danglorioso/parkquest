@@ -5,7 +5,7 @@ import {
 import { Image } from 'expo-image';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
@@ -152,6 +152,7 @@ export default function JournalScreen() {
   const tabBarSpace = useTabBarSpace();
   const router = useRouter();
   const T = useColors();
+  const { parkCode, parkName } = useLocalSearchParams<{ parkCode?: string; parkName?: string }>();
 
   const [entries,    setEntries]    = useState<JournalEntry[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -159,6 +160,9 @@ export default function JournalScreen() {
   const [yearFilter, setYearFilter] = useState<number | null>(null);
   const [sortBy,     setSortBy]     = useState<'newest' | 'oldest' | 'rating'>('newest');
   const [sortOpen,   setSortOpen]   = useState(false);
+  // Deep-linked from a stamp's "view your visits" — cleared locally so the
+  // user can back out to the unfiltered journal without re-navigating.
+  const [parkFilter, setParkFilter] = useState<string | null>(parkCode ?? null);
 
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -187,6 +191,7 @@ export default function JournalScreen() {
 
   const filtered = useMemo(() => {
     let list = entries;
+    if (parkFilter) list = list.filter(e => e.park_code === parkFilter);
     if (yearFilter) list = list.filter(e => e.visited_date && new Date(e.visited_date).getFullYear() === yearFilter);
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -199,7 +204,7 @@ export default function JournalScreen() {
     if (sortBy === 'oldest')  return [...list].sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
     if (sortBy === 'rating')  return [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
     return [...list].sort((a, b) => (b.visited_date ?? '').localeCompare(a.visited_date ?? ''));
-  }, [entries, query, yearFilter, sortBy]);
+  }, [entries, query, yearFilter, sortBy, parkFilter]);
 
   const totalPhotos = useMemo(() => entries.reduce((n, e) => n + (e.photos?.length ?? 0), 0), [entries]);
   const SORT_LABELS: Record<typeof sortBy, string> = { newest: 'Newest first', oldest: 'Oldest first', rating: 'Top rated' };
@@ -222,6 +227,21 @@ export default function JournalScreen() {
           </Text>
         )}
       </View>
+
+      {/* Park filter chip — deep-linked from a stamp's "view your visits" */}
+      {parkFilter && (
+        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+          <TouchableOpacity
+            onPress={() => setParkFilter(null)}
+            style={[styles.yearPill, { alignSelf: 'flex-start', backgroundColor: T.primary, borderColor: T.primary, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+          >
+            <Text style={[styles.yearPillText, styles.yearPillTextOn]} numberOfLines={1}>
+              {parkName ?? 'This park'} only
+            </Text>
+            <Ionicons name="close-circle" size={14} color={C.onPrimary} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Filter bar: search + sort */}
       {(entries.length > 0 || query) && (
