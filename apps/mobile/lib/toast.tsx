@@ -3,6 +3,7 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dyn, useColors } from './palette';
+import { useTabBarSpace } from '@/components/FloatingTabBar';
 
 type ToastKind = 'success' | 'error';
 interface ToastMsg { id: number; text: string; kind: ToastKind }
@@ -18,9 +19,10 @@ export function showToast(text: string, kind: ToastKind = 'success') {
 export function ToastHost() {
   const C = useColors();
   const insets = useSafeAreaInsets();
+  const tabBarSpace = useTabBarSpace();
   const [msg, setMsg] = useState<ToastMsg | null>(null);
   const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(-20)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export function ToastHost() {
       if (hideTimer.current) clearTimeout(hideTimer.current);
       setMsg(next);
       opacity.setValue(0);
-      translateY.setValue(-20);
+      translateY.setValue(20);
       Animated.parallel([
         Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
         Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 18 }),
@@ -46,7 +48,10 @@ export function ToastHost() {
   return (
     <Animated.View
       pointerEvents="none"
-      style={[styles.wrap, { top: insets.top + 8, opacity, transform: [{ translateY }] }]}
+      // Bottom-anchored (was pinned under the status bar) — clears the
+      // floating tab bar on tab screens; non-tab screens just get some
+      // extra breathing room above the home indicator instead.
+      style={[styles.wrap, { bottom: Math.max(tabBarSpace, insets.bottom + 24), opacity, transform: [{ translateY }] }]}
     >
       {/* Pill stays dark in both themes (cream text needs a dark backdrop) —
           in dark mode it's a slightly elevated tone with a hairline ring so it
