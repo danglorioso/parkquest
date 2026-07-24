@@ -5,6 +5,7 @@ import {
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { HolographicShine } from '@/components/HolographicShine';
 import { ParkStamp } from '@/components/ParkStamp';
+import { StampDetailModal } from '@/components/StampDetailModal';
 import { PassportWatermark } from '@/components/PassportWatermark';
 import type { CustomStampGlyph } from '@parkquest/types';
 import { StatusBar } from 'expo-status-bar';
@@ -165,6 +166,7 @@ export default function PassportScreen() {
   const [totalBadges, setTotalBadges] = useState(0);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(false);
+  const [selectedStamp, setSelectedStamp] = useState<StampItem | null>(null);
 
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -442,6 +444,8 @@ export default function PassportScreen() {
                       edgeTextSize={30}
                       edgeTextSpan={[0.16, 0.62]}
                       staticSize={{ w: W, h: Dimensions.get('window').height }}
+                      lineIntensity={0.05}
+                      wavesAboveSeal
                     />
 
                     <View style={st.coverMeta}>
@@ -484,8 +488,8 @@ export default function PassportScreen() {
                           // + handle (15pt ≈ 18 line, marginTop 3) so the cover
                           // holds its final height while the profile loads.
                           <>
-                            <View style={{ width: 180, height: 32, borderRadius: 6, backgroundColor: 'rgba(201,169,74,0.25)' }} />
-                            <View style={{ width: 110, height: 18, borderRadius: 5, backgroundColor: 'rgba(201,169,74,0.18)', marginTop: 3 }} />
+                            <View style={{ width: 180, height: 32, borderRadius: 6, backgroundColor: 'rgba(8,16,12,0.55)' }} />
+                            <View style={{ width: 110, height: 18, borderRadius: 5, backgroundColor: 'rgba(8,16,12,0.45)', marginTop: 3 }} />
                           </>
                         )}
                         {profile?.username ? (
@@ -567,7 +571,7 @@ export default function PassportScreen() {
                             key={label}
                             style={st.stampChip}
                             activeOpacity={0.8}
-                            onPress={() => router.push(`/park/${s.park_code}` as never)}
+                            onPress={() => setSelectedStamp(s)}
                           >
                             <Text style={st.stampChipLabel}>{label}</Text>
                             {/* idSuffix: the same park also renders in the stamp
@@ -663,7 +667,7 @@ export default function PassportScreen() {
           return (
             <View style={st.stampRow}>
               {item.items.map(s => s.visited ? (
-                <StampCell key={s.park_code} item={s} onPress={() => router.push(`/park/${s.park_code}` as never)} />
+                <StampCell key={s.park_code} item={s} onPress={() => setSelectedStamp(s)} />
               ) : (
                 <StampPlaceholder key={s.park_code} item={s} />
               ))}
@@ -675,6 +679,21 @@ export default function PassportScreen() {
           );
         }}
       />
+
+      {selectedStamp && (
+        <StampDetailModal
+          stamp={selectedStamp}
+          onClose={() => setSelectedStamp(null)}
+          onViewVisits={s => {
+            setSelectedStamp(null);
+            router.push({ pathname: '/profile/journal', params: { parkCode: s.park_code, parkName: s.name } } as never);
+          }}
+          onParkInfo={s => {
+            setSelectedStamp(null);
+            router.push(`/park/${s.park_code}` as never);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -758,7 +777,10 @@ const st = StyleSheet.create({
   chipSkeleton: {
     height: 148,
     borderRadius: 12,
-    backgroundColor: 'rgba(250,243,224,0.08)',
+    // Opaque enough to hide the cover's wave pattern behind it — the old
+    // 0.08 was near-see-through and let the swirl lines bleed through the
+    // skeleton instead of sitting behind it.
+    backgroundColor: 'rgba(8,16,12,0.55)',
   },
   // Records rows — label/value superlatives inside a stats plate
   recordRow: {

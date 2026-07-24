@@ -1,17 +1,19 @@
 import {
-  ActivityIndicator, Animated, Image, Linking, ScrollView, Share, StyleSheet,
-  Text, TouchableOpacity, View, Alert,
+  ActivityIndicator, Animated, Image, Linking, Platform, ScrollView, Share, StyleSheet,
+  Text, TouchableOpacity, View, Alert, useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { badgeColors, type BadgeColors } from '@/lib/badges';
 import { BadgeDetailModal } from '@/components/BadgeDetailModal';
 import { Wordmark } from '@/components/Wordmark';
 import { GlassIconBg } from '@/components/GlassIconBg';
+import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 import { ParkStamp } from '@/components/ParkStamp';
 import type { CustomStampGlyph } from '@parkquest/types';
 import { SearchOverlay } from '@/components/SearchOverlay';
@@ -150,6 +152,12 @@ export default function ProfileScreen() {
   const tabBarSpace = useTabBarSpace();
   const { user }     = useUser();
   const { signOut }  = useClerk();
+  // Floating glass top bar — duplicated from the feed screen's header so both
+  // tabs share the same look (blur/glass fill, safe-area math, hairline).
+  const insets = useSafeAreaInsets();
+  const TOP_BAR_H = insets.top + 50;
+  const barGlass = liquidGlassAvailable && GlassView != null && GlassContainer != null;
+  const isDark = useColorScheme() === 'dark';
 
   const [profile,      setProfile]      = useState<ProfileInfo | null>(null);
   const [parksVisited, setParksVisited] = useState(0);
@@ -342,48 +350,82 @@ export default function ProfileScreen() {
     return raw.padEnd(44, '<').slice(0, 44);
   })();
 
-  // Top bar — wordmark + actions, matches feed
+  // Floating glass top bar — duplicated from the feed screen's header
+  // (same wordmark + notification/search/settings actions, same
+  // blur/glass fill and safe-area math) so both tabs match exactly.
+  const topBarActions = (
+    <View style={styles.topBarActions}>
+      <NotificationBell style={styles.iconBtn} />
+      <TouchableOpacity
+        style={styles.iconBtn}
+        activeOpacity={0.7}
+        onPress={() => setSearchOpen(true)}
+      >
+        <GlassIconBg />
+        <Ionicons name="search" size={22} color={C.inkSoft} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.iconBtn}
+        activeOpacity={0.8}
+        onPress={() => router.push('/profile/edit' as never)}
+      >
+        <GlassIconBg />
+        <Ionicons name="settings-outline" size={22} color={C.inkSoft} />
+      </TouchableOpacity>
+    </View>
+  );
+
   const topBar = (
-    <View style={styles.topBar}>
-      <Wordmark />
-      <View style={styles.topBarActions}>
-        <NotificationBell style={styles.iconBtn} />
-        <TouchableOpacity
-          style={styles.iconBtn}
-          activeOpacity={0.7}
-          onPress={() => setSearchOpen(true)}
-        >
-          <GlassIconBg />
-          <Ionicons name="search" size={22} color={C.inkSoft} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          activeOpacity={0.8}
-          onPress={() => router.push('/profile/edit' as never)}
-        >
-          <GlassIconBg />
-          <Ionicons name="settings-outline" size={22} color={C.inkSoft} />
-        </TouchableOpacity>
-      </View>
+    <View style={[styles.topBar, { height: TOP_BAR_H }]}>
+      {barGlass && GlassView && GlassContainer ? (
+        <GlassContainer style={StyleSheet.absoluteFill}>
+          <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={isDark ? '#171511' : '#F2EBDB'} />
+          <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
+            <View style={{ height: 44, justifyContent: 'center' }}>
+              <Wordmark onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} />
+            </View>
+            {topBarActions}
+          </View>
+        </GlassContainer>
+      ) : (
+        <>
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            {Platform.OS === 'ios' && (
+              <BlurView
+                intensity={90}
+                tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
+                style={StyleSheet.absoluteFill}
+              />
+            )}
+            <View style={[StyleSheet.absoluteFill, styles.topBarFallbackFill]} />
+          </View>
+          <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
+            <View style={{ height: 44, justifyContent: 'center' }}>
+              <Wordmark onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} />
+            </View>
+            {topBarActions}
+          </View>
+        </>
+      )}
+      <View style={styles.topBarHairline} />
     </View>
   );
 
   if (loading && !profile) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        {topBar}
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={styles.screen}>
+        <View style={{ flex: 1, marginTop: TOP_BAR_H, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={C.primary} />
         </View>
-      </SafeAreaView>
+        {topBar}
+      </View>
     );
   }
 
   if (error && !profile) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        {topBar}
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+      <View style={styles.screen}>
+        <View style={{ flex: 1, marginTop: TOP_BAR_H, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
           <TouchableOpacity
@@ -393,14 +435,19 @@ export default function ProfileScreen() {
             <Text style={{ color: '#FFFBF1', fontWeight: '700', fontSize: 14 }}>Retry</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+        {topBar}
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      {topBar}
-      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}>
+    <View style={styles.screen}>
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        style={{ marginTop: TOP_BAR_H }}
+        contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}
+      >
 
         {/* ── Passport hero card ───────────────────────────────────────────── */}
         <TouchableOpacity
@@ -798,12 +845,14 @@ export default function ProfileScreen() {
         </Text>
       </ScrollView>
 
+      {topBar}
+
       {selectedBadge ? (
         <BadgeDetailModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
       ) : null}
 
       <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1046,20 +1095,33 @@ const styles = StyleSheet.create({
     marginTop: 24, marginHorizontal: 16,
   },
 
-  // Top bar — matches feed
-  // Row rides 8px up into the safe-area gap (centers the buttons between the
-  // dynamic island and the bar's bottom edge); paddingBottom grows by the same
-  // 8 so the hairline stays put.
+  // Floating glass top bar — duplicated verbatim from the feed screen.
   topBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    overflow: 'hidden',
+  },
+  topBarFallbackFill: {
+    backgroundColor: dyn('rgba(242,235,219,0.88)', 'rgba(23,21,17,0.88)'),
+  },
+  topBarInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    marginTop: -8,
     paddingTop: 6,
-    paddingBottom: 14,
-    borderBottomWidth: 0.5,
-    borderBottomColor: C.hairline,
+    paddingBottom: 8,
+  },
+  topBarHairline: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 0.5,
+    backgroundColor: C.hairline,
   },
   topBarActions: {
     flexDirection: 'row',
