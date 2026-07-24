@@ -479,11 +479,11 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
         const actor = items.find(n => n.id === notificationId);
         const name = actor?.actor_display_name || actor?.actor_username || 'them';
         showToast(`You and ${name} are now friends`);
-      } else {
-        // The server deletes the friend_request notification on decline; drop the
-        // row here too instead of leaving a settled "Declined" state behind.
-        setItems(prev => prev.filter(n => n.id !== notificationId));
       }
+      // The server now marks this notification resolved (metadata.resolved)
+      // instead of deleting it — for both accept and decline, so it settles
+      // into "You are now friends with X" / "You declined the friend request
+      // from X" and stays there on the next fetch, rather than vanishing.
     } catch {
       // Roll back to pending so Accept/Decline reappear — the request is still live.
       setFriendReqStatus(prev => {
@@ -619,7 +619,9 @@ export function NotificationBell({ style }: { style?: ViewStyle }) {
                   >
                     <NotificationRow
                       n={item}
-                      status={item.metadata?.friendship_id != null ? (friendReqStatus[item.metadata.friendship_id] ?? 'pending') : 'pending'}
+                      status={item.metadata?.friendship_id != null
+                        ? (friendReqStatus[item.metadata.friendship_id] ?? item.metadata?.resolved ?? 'pending')
+                        : 'pending'}
                       onRespond={handleRespond}
                       onNavigateToUser={(userId) => {
                         dismiss();
