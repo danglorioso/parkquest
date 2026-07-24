@@ -1142,6 +1142,15 @@ export function PostCard({
     setVisibility(post.visibility ?? null);
   }, [post.visibility]);
 
+  // Momentary grow-on-press for the like/comment/share row — same feel as a
+  // physical button, and Animated.spring naturally covers both a quick tap
+  // (press+release fire back to back) and a long hold (stays grown until release).
+  const likeScale    = useRef(new Animated.Value(1)).current;
+  const commentScale = useRef(new Animated.Value(1)).current;
+  const shareScale   = useRef(new Animated.Value(1)).current;
+  const growIn  = (v: Animated.Value) => Animated.spring(v, { toValue: 1.22, useNativeDriver: true, speed: 40, bounciness: 10 }).start();
+  const growOut = (v: Animated.Value) => Animated.spring(v, { toValue: 1,    useNativeDriver: true, speed: 20, bounciness: 6  }).start();
+
   const isOwnPost  = myUserId === post.clerk_user_id;
   const isBadge    = !!post.badge_id;
   const hasPhotos  = !isBadge && !!post.photos?.length;
@@ -1423,35 +1432,42 @@ export function PostCard({
         <TouchableOpacity
           onPress={handleLike}
           onLongPress={() => { if (likeCount > 0) setShowLikers(true); }}
+          onPressIn={() => growIn(likeScale)}
+          onPressOut={() => growOut(likeScale)}
           delayLongPress={300}
           activeOpacity={0.7}
           hitSlop={6}
-          style={[styles.actionBtn, liked && styles.actionBtnLiked]}
+          style={liked && styles.actionBtnLiked}
         >
-          <Ionicons
-            name={liked ? 'heart' : 'heart-outline'}
-            size={22}
-            color={liked ? C.liked : C.inkSoft}
-          />
-          {likeCount > 0 && (
-            <Text style={[styles.actionBtnText, liked && { color: C.liked }]}>
-              {likeCount.toLocaleString()}
-            </Text>
-          )}
+          <Animated.View style={[styles.actionBtn, { transform: [{ scale: likeScale }] }]}>
+            <Ionicons
+              name={liked ? 'heart' : 'heart-outline'}
+              size={22}
+              color={liked ? C.liked : C.inkSoft}
+            />
+            {likeCount > 0 && (
+              <Text style={[styles.actionBtnText, liked && { color: C.liked }]}>
+                {likeCount.toLocaleString()}
+              </Text>
+            )}
+          </Animated.View>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => setShowComments(true)}
+          onPressIn={() => growIn(commentScale)}
+          onPressOut={() => growOut(commentScale)}
           activeOpacity={0.7}
           hitSlop={6}
-          style={styles.actionBtn}
         >
-          <Ionicons name="chatbubble-outline" size={20} color={C.inkSoft} />
-          {commentCount > 0 && (
-            <Text style={styles.actionBtnText}>
-              {commentCount.toLocaleString()}
-            </Text>
-          )}
+          <Animated.View style={[styles.actionBtn, { transform: [{ scale: commentScale }] }]}>
+            <Ionicons name="chatbubble-outline" size={20} color={C.inkSoft} />
+            {commentCount > 0 && (
+              <Text style={styles.actionBtnText}>
+                {commentCount.toLocaleString()}
+              </Text>
+            )}
+          </Animated.View>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1463,12 +1479,15 @@ export function PostCard({
               // user dismissed the share sheet
             }
           }}
+          onPressIn={() => growIn(shareScale)}
+          onPressOut={() => growOut(shareScale)}
           activeOpacity={0.7}
           hitSlop={6}
-          style={styles.actionBtn}
           accessibilityLabel="Share post"
         >
-          <Ionicons name="share-outline" size={20} color={C.inkSoft} />
+          <Animated.View style={[styles.actionBtn, { transform: [{ scale: shareScale }] }]}>
+            <Ionicons name="share-outline" size={20} color={C.inkSoft} />
+          </Animated.View>
         </TouchableOpacity>
       </View>
 
