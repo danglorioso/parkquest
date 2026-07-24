@@ -3,11 +3,13 @@ import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   Modal, Dimensions, Alert, ActivityIndicator, Share,
   StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder, useColorScheme,
+  InteractionManager,
 } from 'react-native';
 import { MenuView } from '@react-native-menu/menu';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Avatar } from '@/components/Avatar';
 import { AdminStar } from '@/components/AdminStar';
+import { HikeStatsCard } from '@/components/HikeStatsCard';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -61,6 +63,12 @@ export interface FeedPost {
   // Only present on the single-post detail fetch (/api/posts/[id]), not feed lists
   visit_notes?: string | null;
   visit_would_return?: string | null;
+  // Attached Strava hike, if any (see HikeStatsCard)
+  visit_distance_meters?: number | null;
+  visit_duration_seconds?: number | null;
+  visit_elevation_gain_meters?: number | null;
+  visit_route_polyline?: string | null;
+  visit_external_source?: string | null;
 }
 
 interface CommentRow {
@@ -109,6 +117,10 @@ const CROWD_LABELS  = ['Empty', 'Quiet', 'Moderate', 'Busy', 'Packed'];
 const DIFF_LABELS   = ['Easy', 'Light', 'Moderate', 'Hard', 'Strenuous'];
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+// iOS system red — matches the native destructive text color these menu
+// items already render in, so the leading SF Symbol matches instead of
+// staying the same ink tone as the non-destructive rows.
+const MENU_DESTRUCTIVE = '#FF3B30';
 
 type TokenGetter = () => Promise<string | null>;
 
@@ -628,6 +640,8 @@ function MetaChip({ icon, children }: { icon?: React.ComponentProps<typeof Ionic
 function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: boolean }) {
   const router = useRouter();
 
+  const hasHikeStats = !!post.visit_external_source && post.visit_distance_meters != null;
+
   const hasAny =
     post.visit_date || post.visit_rating ||
     (post.visit_activities?.length ?? 0) > 0 ||
@@ -635,7 +649,7 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
     post.visit_crowd || post.visit_difficulty ||
     (post.visit_companion_count ?? 0) > 0 ||
     post.visit_highlight || post.visit_title ||
-    post.visit_notes || post.visit_would_return;
+    post.visit_notes || post.visit_would_return || hasHikeStats;
 
   if (!hasAny) return null;
 
@@ -728,6 +742,17 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
         <View style={styles.notesBlock}>
           <Text style={styles.notesLabel}>Notes</Text>
           <Text style={styles.notesText}>{post.visit_notes}</Text>
+        </View>
+      )}
+      {hasHikeStats && (
+        <View style={{ marginTop: 10 }}>
+          <HikeStatsCard
+            distanceMeters={post.visit_distance_meters ?? null}
+            durationSeconds={post.visit_duration_seconds ?? null}
+            elevationGainMeters={post.visit_elevation_gain_meters ?? null}
+            routePolyline={post.visit_route_polyline ?? null}
+            source={post.visit_external_source}
+          />
         </View>
       )}
     </View>
@@ -983,9 +1008,9 @@ function CommentsSheet({
                         }}
                         actions={isOwn ? [
                           { id: 'edit', title: 'Edit', image: 'pencil', imageColor: menuInk },
-                          { id: 'delete', title: 'Delete', image: 'trash', imageColor: menuInk, attributes: { destructive: true } },
+                          { id: 'delete', title: 'Delete', image: 'trash', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
                         ] : [
-                          { id: 'report', title: 'Report', image: 'flag', imageColor: menuInk, attributes: { destructive: true } },
+                          { id: 'report', title: 'Report', image: 'flag', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
                         ]}
                       >
                         <TouchableOpacity
@@ -1100,13 +1125,23 @@ export function PostCard({
   const [allComments, setAllComments] = useState<CommentRow[] | null>(null);
   const previewComments = allComments?.slice(-2) ?? [];
 
+  // Deferred past the screen's own push-transition (InteractionManager waits
+  // for it to finish) — opening this Modal, with its native MenuView/context
+  // menu inside, WHILE the post-detail screen is still animating in left its
+  // touch targets (the "..." menu, the commenter name) unresponsive: iOS
+  // doesn't reliably wire up a context-menu interaction's gesture recognizer
+  // on a view that appears mid-transition.
   useEffect(() => {
-    if (autoOpenComments) setShowComments(true);
+    if (!autoOpenComments) return;
+    const task = InteractionManager.runAfterInteractions(() => setShowComments(true));
+    return () => task.cancel();
   }, [autoOpenComments]);
 
   useEffect(() => {
-    if (autoOpenLikers && likeCount > 0) setShowLikers(true);
-  }, [autoOpenLikers]);
+    if (!autoOpenLikers || likeCount <= 0) return;
+    const task = InteractionManager.runAfterInteractions(() => setShowLikers(true));
+    return () => task.cancel();
+  }, [autoOpenLikers, likeCount]);
 
   // Server comment_count is the source of truth; drop the optimistic local
   // delta once a fresh count arrives so counts don't double-add after a
@@ -1323,10 +1358,10 @@ export function PostCard({
             actions={isOwnPost ? [
               ...(post.visit_id != null ? [{ id: 'edit-visit', title: 'Edit visit', image: 'pencil', imageColor: menuInk }] : []),
               { id: 'edit-caption', title: 'Edit caption', image: 'text.bubble', imageColor: menuInk },
-              { id: 'delete', title: 'Delete post', image: 'trash', imageColor: menuInk, attributes: { destructive: true } },
+              { id: 'delete', title: 'Delete post', image: 'trash', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
             ] : [
-              { id: 'report', title: reported ? 'Reported' : 'Report post', image: 'flag', imageColor: menuInk, attributes: { destructive: true, disabled: reported } },
-              { id: 'block', title: 'Block user', image: 'person.crop.circle.badge.xmark', imageColor: menuInk, attributes: { destructive: true } },
+              { id: 'report', title: reported ? 'Reported' : 'Report post', image: 'flag', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true, disabled: reported } },
+              { id: 'block', title: 'Block user', image: 'person.crop.circle.badge.xmark', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
             ]}
           >
             <TouchableOpacity
