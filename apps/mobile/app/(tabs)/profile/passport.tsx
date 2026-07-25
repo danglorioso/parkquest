@@ -7,6 +7,7 @@ import { HolographicShine } from '@/components/HolographicShine';
 import { ParkStamp } from '@/components/ParkStamp';
 import { StampDetailModal } from '@/components/StampDetailModal';
 import { PassportWatermark } from '@/components/PassportWatermark';
+import { AvatarLightbox } from '@/components/AvatarLightbox';
 import type { CustomStampGlyph } from '@parkquest/types';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -171,6 +172,7 @@ export default function PassportScreen() {
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(false);
   const [selectedStamp, setSelectedStamp] = useState<StampItem | null>(null);
+  const [avatarLightbox, setAvatarLightbox] = useState(false);
 
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -484,7 +486,12 @@ export default function PassportScreen() {
                     </View>
 
                     <View style={st.coverIdentity}>
-                      <View style={[st.coverAvatar, { backgroundColor: T.primary }]}>
+                      <TouchableOpacity
+                        style={[st.coverAvatar, { backgroundColor: T.primary }]}
+                        activeOpacity={avatarUrl ? 0.85 : 1}
+                        disabled={!avatarUrl}
+                        onPress={() => setAvatarLightbox(true)}
+                      >
                         {avatarUrl ? (
                           // Slight overscale — some avatar sources (e.g. Clerk's default
                           // silhouette image) have their graphic inset from the image's
@@ -504,7 +511,7 @@ export default function PassportScreen() {
                             )}
                           </View>
                         )}
-                      </View>
+                      </TouchableOpacity>
                       <View style={{ flex: 1 }}>
                         {name ? (
                           <Text style={st.coverName} numberOfLines={1} adjustsFontSizeToFit>{name}</Text>
@@ -719,6 +726,8 @@ export default function PassportScreen() {
           }}
         />
       )}
+
+      <AvatarLightbox visible={avatarLightbox} url={avatarUrl} onClose={() => setAvatarLightbox(false)} />
     </SafeAreaView>
   );
 }

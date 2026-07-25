@@ -16,6 +16,7 @@ import { Avatar } from '@/components/Avatar';
 import { AdminStar } from '@/components/AdminStar';
 import { BadgeDetailModal, BadgePatch } from '@/components/BadgeDetailModal';
 import { EmptyState } from '@/components/EmptyState';
+import { AvatarLightbox } from '@/components/AvatarLightbox';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { emitUserBlocked } from '@/lib/blocking';
 import { showToast } from '@/lib/toast';
@@ -189,6 +190,7 @@ export default function UserProfileScreen() {
   const [friendBusy, setFriendBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<ProfileBadge | null>(null);
+  const [avatarLightbox, setAvatarLightbox] = useState(false);
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showReportUserSheet, setShowReportUserSheet] = useState(false);
@@ -491,7 +493,13 @@ export default function UserProfileScreen() {
           >
             {/* Hero */}
             <View style={styles.hero}>
-              <Avatar url={profile.avatar_url} name={displayName} size={88} style={styles.avatar} />
+              <TouchableOpacity
+                activeOpacity={profile.avatar_url ? 0.85 : 1}
+                disabled={!profile.avatar_url}
+                onPress={() => setAvatarLightbox(true)}
+              >
+                <Avatar url={profile.avatar_url} name={displayName} size={88} style={styles.avatar} />
+              </TouchableOpacity>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Text style={styles.name}>{displayName}</Text>
@@ -731,6 +739,8 @@ export default function UserProfileScreen() {
             onSubmitted={() => { setReportedUser(true); Alert.alert('Report submitted', "Thanks — we'll review this."); }}
           />
         ) : null}
+
+        <AvatarLightbox visible={avatarLightbox} url={profile?.avatar_url} onClose={() => setAvatarLightbox(false)} />
       </SafeAreaView>
     </>
   );

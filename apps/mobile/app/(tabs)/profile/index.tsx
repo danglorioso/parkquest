@@ -21,6 +21,7 @@ import type { CustomStampGlyph } from '@parkquest/types';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { EmptyState } from '@/components/EmptyState';
 import { HolographicShine } from '@/components/HolographicShine';
+import { AvatarLightbox } from '@/components/AvatarLightbox';
 import { STATIC as C, dyn, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import Svg, { Circle, Text as SvgText } from 'react-native-svg';
@@ -171,6 +172,7 @@ export default function ProfileScreen() {
   const [selectedBadge, setSelectedBadge] = useState<BadgeSummary | null>(null);
   const [sharingBadge, setSharingBadge] = useState<BadgeSummary | null>(null);
   const [selectedStamp, setSelectedStamp] = useState<StampPreview | null>(null);
+  const [avatarLightbox, setAvatarLightbox] = useState(false);
   const [rawVisits, setRawVisits] = useState<any[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
@@ -472,7 +474,12 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           <View style={styles.passportHeader}>
-            <View style={styles.avatarWrap}>
+            <TouchableOpacity
+              style={styles.avatarWrap}
+              activeOpacity={avatarUrl ? 0.85 : 1}
+              disabled={!avatarUrl}
+              onPress={() => setAvatarLightbox(true)}
+            >
               {avatarUrl ? (
                 <Image source={{ uri: avatarUrl }} style={styles.avatar} />
               ) : (
@@ -484,7 +491,7 @@ export default function ProfileScreen() {
                   )}
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
             {realName ? (
               <>
                 <Text style={styles.passportName} numberOfLines={1} adjustsFontSizeToFit>
@@ -867,6 +874,8 @@ export default function ProfileScreen() {
           }}
         />
       ) : null}
+
+      <AvatarLightbox visible={avatarLightbox} url={avatarUrl} onClose={() => setAvatarLightbox(false)} />
     </View>
   );
 }
