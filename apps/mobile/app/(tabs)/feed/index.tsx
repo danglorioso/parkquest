@@ -108,8 +108,7 @@ export default function FeedScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     const tok = await getToken();
-    if (!tok) { setLoading(false); setRefreshing(false); refreshingRef.current = false; return; }
-    setToken(tok);
+    if (tok) setToken(tok);
 
     const isFirstLoad = !hasLoadedRef.current;
 
@@ -118,12 +117,15 @@ export default function FeedScreen() {
     let cache = isFirstLoad ? await loadOfflineFeed() : null;
     if (cache) {
       setPosts(cache.posts);
-      setOfflineFetchedAt(isOnline ? null : cache.fetchedAt);
+      setOfflineFetchedAt(isOnline && tok ? null : cache.fetchedAt);
       setLoading(false);
       hasLoadedRef.current = true;
     }
 
-    if (!isOnline) {
+    // No token also covers Clerk still bootstrapping (e.g. offline at
+    // startup) — same fallback as being offline: show cache, don't hang
+    // waiting on a fetch that needs an Authorization header we don't have.
+    if (!isOnline || !tok) {
       if (!hasLoadedRef.current) {
         cache ??= await loadOfflineFeed();
         if (cache) {

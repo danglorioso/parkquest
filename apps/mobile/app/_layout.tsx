@@ -11,7 +11,7 @@ import {
   JetBrainsMono_600SemiBold,
   JetBrainsMono_700Bold,
 } from '@expo-google-fonts/jetbrains-mono';
-import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
+import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -21,6 +21,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Sentry from '@sentry/react-native';
 import LoadingScreen from '../components/LoadingScreen';
 import { ToastHost } from '../lib/toast';
+import { AUTH_LOAD_TIMEOUT_MS } from '../lib/network';
 
 // enableNative captures native crashes (e.g. uncaught worklet exceptions —
 // the SIGABRT class of crash that shows up with zero JS context in Apple's
@@ -122,12 +123,23 @@ function SplashController({ onReady }: { onReady: () => void }) {
     JetBrainsMono_600SemiBold,
     JetBrainsMono_700Bold,
   });
+  // Clerk's initial bootstrap hits the network with no timeout of its own —
+  // offline (or a hung request), clerkLoaded never flips true and the splash
+  // would sit forever. After AUTH_LOAD_TIMEOUT_MS, proceed without it; the
+  // app falls back to cached offline data and AuthSync re-evaluates once/if
+  // Clerk does finish loading.
+  const [authTimedOut, setAuthTimedOut] = useState(false);
 
   useEffect(() => {
-    if (clerkLoaded && fontsLoaded) {
+    const t = setTimeout(() => setAuthTimedOut(true), AUTH_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if ((clerkLoaded || authTimedOut) && fontsLoaded) {
       onReady();
     }
-  }, [clerkLoaded, fontsLoaded]);
+  }, [clerkLoaded, fontsLoaded, authTimedOut]);
 
   return null;
 }
@@ -227,10 +239,13 @@ function RootLayout() {
           <SafeAreaProvider>
             <StatusBar style="auto" />
             <SplashController onReady={() => setAppReady(true)} />
-            <ClerkLoaded>
-              <AuthSync />
-              <RootStack />
-            </ClerkLoaded>
+            {/* Not wrapped in <ClerkLoaded> — that would block RootStack behind
+                a still-unresolved Clerk bootstrap (e.g. offline), turning the
+                splash timeout above into a blank screen instead of the app.
+                AuthSync and every screen under RootStack already guard on
+                isLoaded/getToken, so rendering before Clerk resolves is safe. */}
+            <AuthSync />
+            <RootStack />
             <LoadingScreen visible={!appReady} />
             <ToastHost />
           </SafeAreaProvider>

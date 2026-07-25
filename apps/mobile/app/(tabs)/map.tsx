@@ -778,8 +778,7 @@ export default function MapScreen() {
 
   const loadData = useCallback(async () => {
     const tok = await getTokenRef.current();
-    if (!tok) return;
-    setToken(tok);
+    if (tok) setToken(tok);
     const isFirstLoad = !hasLoadedRef.current;
     if (isFirstLoad) setLoading(true);
 
@@ -791,12 +790,14 @@ export default function MapScreen() {
       parksData = cache.parks;
       rawParksRef.current = cache.parks;
       mergeVisits(cache.parks, []);
-      setOfflineFetchedAt(isOnline ? null : cache.fetchedAt);
+      setOfflineFetchedAt(isOnline && tok ? null : cache.fetchedAt);
       setLoading(false);
       hasLoadedRef.current = true;
     }
 
-    if (!isOnline) {
+    // No token also covers Clerk still bootstrapping (e.g. offline at
+    // startup) — fall back to cache same as being offline rather than hang.
+    if (!isOnline || !tok) {
       if (!hasLoadedRef.current) {
         cache ??= await loadOfflineParks();
         if (!cache) { setLoading(false); return; }
@@ -829,6 +830,7 @@ export default function MapScreen() {
     }
     if (!parksData) { setLoading(false); return; }
     rawParksRef.current = parksData;
+    if (!tok) { setLoading(false); return; }
     try {
       const visitsData = await apiFetch<Array<{
         id: number; park_code: string; is_bucket_list: boolean;
