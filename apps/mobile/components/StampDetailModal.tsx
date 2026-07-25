@@ -106,7 +106,7 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
               style={styles.secondaryCta}
             >
               <Ionicons name="book-outline" size={14} color={P_INK} />
-              <Text style={styles.secondaryCtaText}>View your visits</Text>
+              <Text style={styles.secondaryCtaText}>Your visits</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onParkInfo(stamp)}

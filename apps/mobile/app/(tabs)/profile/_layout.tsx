@@ -21,15 +21,17 @@ export default function ProfileStackLayout() {
           header (even with a custom headerBackground) paints its default
           white for a frame before the React background mounts. */}
       <Stack.Screen name="passport" options={{ headerShown: false }} />
-      {/* Plain default back — arrow only, no "Profile" label (headerBackTitle
-          is set globally above). The cross-tab entry points that link here
-          (feed's friend filter, onboarding) now seed the profile tab's stack
-          with its root before navigating to this screen, so there's always a
-          real "profile" underneath to pop back to; no forced-redirect hack
+      {/* Plain default back — arrow only, no label. headerBackTitle: '' falls
+          back to the previous screen's route name ("index") instead of
+          hiding the label, so this needs headerBackButtonDisplayMode
+          instead. The cross-tab entry points that link here (feed's friend
+          filter, onboarding) now seed the profile tab's stack with its root
+          before navigating to this screen, so there's always a real
+          "profile" underneath to pop back to; no forced-redirect hack
           needed here anymore. */}
       <Stack.Screen
         name="friends"
-        options={{ title: 'Friends', headerBackTitle: '' }}
+        options={{ title: 'Friends', headerBackButtonDisplayMode: 'minimal' }}
       />
     </Stack>
   );
