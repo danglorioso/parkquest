@@ -3,7 +3,8 @@ import { auth } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { visits, parks, userBadges, notifications } from '@/lib/db/schema';
-import { computeStats, conditionsMet, conditionsProgress, revokeUnqualifiedBadges } from '@/lib/badges';
+import { computeStats, conditionsMet, conditionsProgress } from '@/lib/badges';
+import { revokeUnqualifiedBadges } from '@/lib/badgeRevocation';
 import { getEnabledBadges } from '@/lib/badgeDefs';
 import { sendPushToUser } from '@/lib/push';
 

@@ -5,7 +5,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, desc, or, sql } from 'drizzle-orm';
 import { deleteR2PhotosTrusted, extractPhotoUrls } from '@/lib/photoCleanup';
 import { ensureUserProfile } from '@/lib/ensureUserProfile';
-import { revokeUnqualifiedBadges } from '@/lib/badges';
+import { revokeUnqualifiedBadges } from '@/lib/badgeRevocation';
 
 async function notifyFriendsOfVisit(userId: string, visitId: number, park_code: string) {
   const friends = await db
