@@ -632,7 +632,7 @@ export default function ProfileScreen() {
             >
               <Ionicons name="ribbon-outline" size={13} color={C.primary} />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Text style={[styles.sectionKicker, { color: C.primary }]}>EARNED</Text>
+                <Text style={[styles.sectionKicker, { color: C.primary }]}>RECENT BADGES</Text>
                 <Ionicons name="chevron-forward" size={16} color={C.primary} />
               </View>
             </TouchableOpacity>

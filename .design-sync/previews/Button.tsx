@@ -3,7 +3,7 @@ import { Button } from '@parkquest/ui-primitives';
 
 export function Variants() {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, maxWidth: 340 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
       <Button variant="default">Log a visit</Button>
       <Button variant="secondary">Save for later</Button>
       <Button variant="outline">Cancel</Button>
