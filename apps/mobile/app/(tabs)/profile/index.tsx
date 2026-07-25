@@ -547,18 +547,18 @@ export default function ProfileScreen() {
         {/* ── Recent stamps preview — skeleton until visits load, hidden only when truly empty ── */}
         {(!visitsLoaded || recentStamps.length > 0) && (
           <View style={styles.badgesPreview}>
-            <View style={styles.sectionHeader}>
+            <TouchableOpacity
+              onPress={() => router.push('/profile/passport' as never)}
+              hitSlop={10}
+              style={styles.sectionHeader}
+              activeOpacity={0.6}
+            >
               <Ionicons name="book-outline" size={13} color={C.primary} />
-              <TouchableOpacity
-                onPress={() => router.push('/profile/passport' as never)}
-                hitSlop={10}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
-                activeOpacity={0.6}
-              >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                 <Text style={[styles.sectionKicker, { color: C.primary }]}>RECENT STAMPS</Text>
                 <Ionicons name="chevron-forward" size={16} color={C.primary} />
-              </TouchableOpacity>
-            </View>
+              </View>
+            </TouchableOpacity>
             {!visitsLoaded ? <PreviewSkeleton /> : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
               {recentStamps.map(s => (
@@ -624,18 +624,18 @@ export default function ProfileScreen() {
         {/* ── Earned badges preview — skeleton until badges load, hidden only when truly empty ── */}
         {(!badgesLoaded || earnedBadges.length > 0) && (
           <View style={styles.badgesPreview}>
-            <View style={styles.sectionHeader}>
+            <TouchableOpacity
+              onPress={() => router.push('/profile/badges' as never)}
+              hitSlop={10}
+              style={styles.sectionHeader}
+              activeOpacity={0.6}
+            >
               <Ionicons name="ribbon-outline" size={13} color={C.primary} />
-              <TouchableOpacity
-                onPress={() => router.push('/profile/badges' as never)}
-                hitSlop={10}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
-                activeOpacity={0.6}
-              >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                 <Text style={[styles.sectionKicker, { color: C.primary }]}>EARNED</Text>
                 <Ionicons name="chevron-forward" size={16} color={C.primary} />
-              </TouchableOpacity>
-            </View>
+              </View>
+            </TouchableOpacity>
             {!badgesLoaded ? <PreviewSkeleton /> : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
               {earnedBadges.map(b => (
