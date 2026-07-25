@@ -2,12 +2,21 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CustomStampGlyph } from '@parkquest/types';
-import { ParkStamp, stampColor } from '@/components/ParkStamp';
+import { ParkStamp } from '@/components/ParkStamp';
 import { fullStateName } from '@/lib/stateNames';
 
-// Stamp counterpart to BadgeDetailModal — same dark animated card, but the
-// CTA row is "view your visits" (filtered journal) + "park info" instead of
-// a share-to-feed button, since a stamp isn't a shareable feed post.
+// Stamp counterpart to BadgeDetailModal — same animated-entrance card shape,
+// but stamped in the passport's paper/gold-foil palette (see profile/passport.tsx)
+// instead of the badge modal's dark card: stamp inks are all dark, drawn to sit
+// on paper, so a dark card fights them instead of the passport-book aesthetic
+// letting them read as actual ink. CTA row is "view your visits" (filtered
+// journal) + "park info" instead of a share-to-feed button, since a stamp
+// isn't a shareable feed post.
+
+const PAPER  = '#FAF3E0';
+const GOLD   = '#C9A94A';
+const P_INK  = '#3A2E1C';
+const P_MUTE = 'rgba(58,46,28,0.45)';
 
 export interface StampDetailData {
   park_code: string;
@@ -24,7 +33,6 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
   onViewVisits: (stamp: StampDetailData) => void;
   onParkInfo: (stamp: StampDetailData) => void;
 }) {
-  const ink = stampColor(stamp.colorIdx);
   const stampedDateStr = stamp.visited_date
     ? new Date(stamp.visited_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : null;
@@ -51,7 +59,6 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
         <Animated.View style={[
           styles.modal,
-          { borderColor: ink + '55' },
           {
             opacity: cardAnim,
             transform: [
@@ -61,23 +68,17 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
           },
         ]}>
           <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-            <Ionicons name="close" size={16} color="rgba(255,251,241,0.55)" />
+            <Ionicons name="close" size={16} color={P_INK} />
           </TouchableOpacity>
 
           <Animated.View style={{
-            alignItems: 'center', justifyContent: 'center', paddingTop: 8,
+            position: 'relative', alignItems: 'center', paddingTop: 8,
             opacity: stampAnim,
             transform: [
               { scale:      stampAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) },
               { translateY: stampAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
             ],
           }}>
-            {/* Soft white glow so the stamp's dark ink reads against the card's
-                near-black background — three falling-off rings stand in for a
-                radial gradient, which RN has no built-in primitive for. */}
-            <View style={styles.stampGlowRing3} pointerEvents="none" />
-            <View style={styles.stampGlowRing2} pointerEvents="none" />
-            <View style={styles.stampGlowRing1} pointerEvents="none" />
             <ParkStamp
               parkCode={stamp.park_code}
               name={stamp.name}
@@ -104,7 +105,7 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
               activeOpacity={0.8}
               style={styles.secondaryCta}
             >
-              <Ionicons name="book-outline" size={14} color="#FFFBF1" />
+              <Ionicons name="book-outline" size={14} color={P_INK} />
               <Text style={styles.secondaryCtaText}>View your visits</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -112,7 +113,7 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
               activeOpacity={0.8}
               style={styles.primaryCta}
             >
-              <Ionicons name="information-circle-outline" size={14} color="#1B1A16" />
+              <Ionicons name="information-circle-outline" size={14} color={PAPER} />
               <Text style={styles.primaryCtaText}>Park info</Text>
             </TouchableOpacity>
           </View>
@@ -128,64 +129,54 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', padding: 24,
   },
   modal: {
-    backgroundColor: 'rgba(22,22,18,0.97)',
-    borderRadius: 20, borderWidth: 0.5,
+    backgroundColor: PAPER,
+    borderRadius: 20, borderWidth: 1, borderColor: GOLD + '55',
     padding: 32, paddingTop: 36,
     width: '100%', maxWidth: 380,
     alignItems: 'center', overflow: 'hidden', position: 'relative',
     shadowColor: '#000', shadowOffset: { width: 0, height: 24 },
-    shadowOpacity: 0.5, shadowRadius: 40, elevation: 24,
+    shadowOpacity: 0.35, shadowRadius: 40, elevation: 24,
   },
   modalClose: {
     position: 'absolute', top: 14, right: 14, zIndex: 10,
     width: 28, height: 28, borderRadius: 14,
-    backgroundColor: 'rgba(255,251,241,0.08)',
+    backgroundColor: 'rgba(58,46,28,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
   modalName: {
-    fontSize: 24, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.5,
+    fontSize: 24, fontWeight: '800', color: P_INK, letterSpacing: -0.5,
     marginTop: 16, textAlign: 'center',
   },
   modalDesc: {
-    fontSize: 13.5, color: 'rgba(255,251,241,0.65)',
+    fontSize: 13.5, color: P_MUTE,
     marginTop: 6, textAlign: 'center', lineHeight: 19,
   },
   earnedRow: {
-    marginTop: 20, backgroundColor: 'rgba(255,251,241,0.07)',
+    marginTop: 20, backgroundColor: GOLD + '1c',
     borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8,
   },
   earnedText: {
-    fontSize: 13, fontWeight: '600', color: 'rgba(255,251,241,0.55)', letterSpacing: 0.6,
+    fontSize: 13, fontWeight: '600', color: P_INK, letterSpacing: 0.6,
   },
   ctaRow: {
-    flexDirection: 'column', gap: 8, marginTop: 20, width: '100%',
+    flexDirection: 'row', gap: 8, marginTop: 20, width: '100%',
   },
   secondaryCta: {
+    flex: 1,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: 'rgba(255,251,241,0.10)', borderRadius: 100,
-    paddingHorizontal: 14, paddingVertical: 12,
+    borderRadius: 100, borderWidth: 1, borderColor: GOLD + '55',
+    paddingHorizontal: 14, paddingVertical: 10,
   },
   secondaryCtaText: {
-    fontSize: 12.5, fontWeight: '700', color: '#FFFBF1',
+    fontSize: 12.5, fontWeight: '700', color: P_INK,
   },
   primaryCta: {
+    flex: 1,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: '#FFFBF1', borderRadius: 100,
-    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: GOLD, borderRadius: 100,
+    paddingHorizontal: 14, paddingVertical: 10,
   },
   primaryCtaText: {
-    fontSize: 12.5, fontWeight: '700', color: '#1B1A16',
-  },
-  stampGlowRing1: {
-    position: 'absolute', width: 150, height: 150, borderRadius: 75,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-  },
-  stampGlowRing2: {
-    position: 'absolute', width: 185, height: 185, borderRadius: 92.5,
-    backgroundColor: 'rgba(255,255,255,0.09)',
-  },
-  stampGlowRing3: {
-    position: 'absolute', width: 225, height: 225, borderRadius: 112.5,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    fontSize: 12.5, fontWeight: '700', color: PAPER,
   },
 });
