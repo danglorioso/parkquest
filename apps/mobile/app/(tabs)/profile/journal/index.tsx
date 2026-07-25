@@ -1,5 +1,5 @@
 import {
-  FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet,
+  Alert, FlatList, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -8,10 +8,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { MenuView } from '@react-native-menu/menu';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
-import { STATIC as C, useColors } from '@/lib/palette';
+import { GlassIconBg } from '@/components/GlassIconBg';
+import { STATIC as C, colorStr, useColors } from '@/lib/palette';
 import { dayCount, fmtDate, fmtRange } from '@/lib/dates';
 import { parkColor } from '@/lib/parkColors';
+
+const MENU_DESTRUCTIVE = '#FF3B30';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -75,7 +79,9 @@ function SkeletonCard() {
 
 // ── Entry card ────────────────────────────────────────────────────────────────
 
-function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => void }) {
+function EntryCard({ entry, onPress, onEdit, onDelete }: {
+  entry: JournalEntry; onPress: () => void; onEdit: () => void; onDelete: () => void;
+}) {
   const T = useColors();
   const cover  = entry.cover_photo ?? entry.photos?.[0] ?? null;
   const days   = dayCount(entry.visited_date, entry.end_date);
@@ -86,62 +92,83 @@ function EntryCard({ entry, onPress }: { entry: JournalEntry; onPress: () => voi
     ? 'people-outline' : 'lock-closed-outline';
 
   return (
-    <TouchableOpacity onPress={onPress} style={styles.card} activeOpacity={0.78}>
-      {/* Thumbnail — matches web's 80px left column */}
-      <View style={[styles.thumb, { backgroundColor: parkColor(entry.park_code) }]}>
-        {cover && (
-          <Image
-            source={{ uri: cover }}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-          />
-        )}
-        {(entry.photos?.length ?? 0) > 1 && (
-          <View style={styles.photoCountBadge}>
-            <Ionicons name="images-outline" size={9} color={C.onPrimary} />
-            <Text style={{ color: C.onPrimary, fontSize: 13, fontWeight: '600' }}>{entry.photos!.length}</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Content — matches web's padding: 12px 14px 12px 13px */}
-      <View style={styles.cardContent}>
-        {/* Park name kicker */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <Ionicons name="location" size={10} color={T.primary} />
-          <Text style={[styles.parkKicker, { color: T.primary }]} numberOfLines={1}>
-            {(entry.park_name ?? entry.park_code).toUpperCase()}
-          </Text>
-        </View>
-
-        {/* Title or date */}
-        <Text style={styles.entryTitle} numberOfLines={1}>
-          {entry.title || fmtDate(entry.visited_date)}
-        </Text>
-
-        {/* Date range + duration badge */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={styles.entryDate}>{fmtRange(entry.visited_date, entry.end_date)}</Text>
-          {days > 1 && (
-            <View style={styles.daysBadge}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: T.accent }}>{days}D</Text>
+    <View>
+      <TouchableOpacity onPress={onPress} style={styles.card} activeOpacity={0.78}>
+        {/* Thumbnail — matches web's 80px left column */}
+        <View style={[styles.thumb, { backgroundColor: parkColor(entry.park_code) }]}>
+          {cover && (
+            <Image
+              source={{ uri: cover }}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          )}
+          {(entry.photos?.length ?? 0) > 1 && (
+            <View style={styles.photoCountBadge}>
+              <Ionicons name="images-outline" size={9} color={C.onPrimary} />
+              <Text style={{ color: C.onPrimary, fontSize: 13, fontWeight: '600' }}>{entry.photos!.length}</Text>
             </View>
           )}
         </View>
 
-        {/* Stars + visibility */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-          {entry.rating ? <Stars value={entry.rating} size={11} /> : <View />}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-            <Ionicons name={visIcon as any} size={10} color={visColor} />
-            <Text style={{ fontSize: 13, fontWeight: '600', color: visColor, letterSpacing: 0.8, textTransform: 'uppercase' }}>
-              {visKey}
+        {/* Content — matches web's padding: 12px 14px 12px 13px */}
+        <View style={styles.cardContent}>
+          {/* Park name kicker */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingRight: 26 }}>
+            <Ionicons name="location" size={10} color={T.primary} />
+            <Text style={[styles.parkKicker, { color: T.primary }]} numberOfLines={1}>
+              {(entry.park_name ?? entry.park_code).toUpperCase()}
             </Text>
           </View>
+
+          {/* Title or date */}
+          <Text style={styles.entryTitle} numberOfLines={1}>
+            {entry.title || fmtDate(entry.visited_date)}
+          </Text>
+
+          {/* Date range + duration badge */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.entryDate}>{fmtRange(entry.visited_date, entry.end_date)}</Text>
+            {days > 1 && (
+              <View style={styles.daysBadge}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: T.accent }}>{days}D</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Stars + visibility */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+            {entry.rating ? <Stars value={entry.rating} size={11} /> : <View />}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Ionicons name={visIcon as any} size={10} color={visColor} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: visColor, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                {visKey}
+              </Text>
+            </View>
+          </View>
         </View>
+      </TouchableOpacity>
+
+      {/* Per-entry quick actions — native menu, matches PostCard's post-level "..." */}
+      <View style={styles.entryMenuWrap}>
+        <MenuView
+          onPressAction={({ nativeEvent }) => {
+            if (nativeEvent.event === 'edit') onEdit();
+            else if (nativeEvent.event === 'delete') onDelete();
+          }}
+          actions={[
+            { id: 'edit', title: 'Edit entry', image: 'pencil', imageColor: '#FFFBF1' },
+            { id: 'delete', title: 'Delete entry', image: 'trash', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
+          ]}
+        >
+          <TouchableOpacity style={styles.entryMenuBtn} hitSlop={8} activeOpacity={0.8}>
+            <GlassIconBg onMedia fallbackColor="rgba(20,17,12,0.45)" />
+            <Ionicons name="ellipsis-horizontal" size={13} color="#FFFBF1" />
+          </TouchableOpacity>
+        </MenuView>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -159,7 +186,6 @@ export default function JournalScreen() {
   const [query,      setQuery]      = useState('');
   const [yearFilter, setYearFilter] = useState<number | null>(null);
   const [sortBy,     setSortBy]     = useState<'newest' | 'oldest' | 'rating'>('newest');
-  const [sortOpen,   setSortOpen]   = useState(false);
   // Deep-linked from a stamp's "view your visits" — cleared locally so the
   // user can back out to the unfiltered journal without re-navigating.
   const [parkFilter, setParkFilter] = useState<string | null>(parkCode ?? null);
@@ -182,6 +208,29 @@ export default function JournalScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const confirmDeleteEntry = useCallback((entry: JournalEntry) => {
+    Alert.alert(
+      'Delete entry',
+      `Delete your ${entry.park_name ?? entry.park_code} journal entry? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            const tok = await getTokenRef.current();
+            if (!tok) return;
+            const res = await fetch(
+              `${BASE}/api/visits?park_code=${encodeURIComponent(entry.park_code)}`,
+              { method: 'DELETE', headers: { Authorization: `Bearer ${tok}` } },
+            );
+            if (res.ok) setEntries(list => list.filter(e => e.id !== entry.id));
+            else Alert.alert('Delete failed', 'Could not delete entry.');
+          },
+        },
+      ],
+    );
+  }, []);
 
   const years = useMemo(() => {
     const s = new Set<number>();
@@ -255,10 +304,18 @@ export default function JournalScreen() {
               clearButtonMode="while-editing"
             />
           </View>
-          <TouchableOpacity onPress={() => setSortOpen(true)} style={styles.sortBtn}>
-            <Ionicons name="funnel-outline" size={14} color={C.inkSoft} />
-            <Text style={styles.sortBtnText} numberOfLines={1}>{SORT_LABELS_SHORT[sortBy]}</Text>
-          </TouchableOpacity>
+          <MenuView
+            onPressAction={({ nativeEvent }) => setSortBy(nativeEvent.event as typeof sortBy)}
+            actions={(['newest', 'oldest', 'rating'] as const).map(s => ({
+              id: s, title: SORT_LABELS[s], state: sortBy === s ? 'on' : 'off',
+            }))}
+          >
+            <TouchableOpacity style={styles.sortBtn} activeOpacity={0.8}>
+              <GlassIconBg borderRadius={11} fallbackColor={colorStr(C.surface)} />
+              <Ionicons name="funnel-outline" size={14} color={C.inkSoft} />
+              <Text style={styles.sortBtnText} numberOfLines={1}>{SORT_LABELS_SHORT[sortBy]}</Text>
+            </TouchableOpacity>
+          </MenuView>
         </View>
       )}
 
@@ -309,33 +366,17 @@ export default function JournalScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
-      {/* Sort sheet */}
-      <Modal visible={sortOpen} transparent animationType="fade" onRequestClose={() => setSortOpen(false)}>
-        <Pressable style={styles.sortBackdrop} onPress={() => setSortOpen(false)} />
-        <View style={styles.sortSheet}>
-          <View style={styles.sortSheetHandle} />
-          <Text style={styles.sortSheetTitle}>Sort by</Text>
-          {(['newest', 'oldest', 'rating'] as const).map((s, i, arr) => (
-            <TouchableOpacity
-              key={s}
-              onPress={() => { setSortBy(s); setSortOpen(false); }}
-              style={[styles.sortSheetRow, i < arr.length - 1 && { borderBottomWidth: 0.5, borderBottomColor: C.hairline }]}
-            >
-              <Text style={[styles.sortSheetRowText, sortBy === s && { color: T.primary, fontWeight: '700' }]}>
-                {SORT_LABELS[s]}
-              </Text>
-              {sortBy === s && <Ionicons name="checkmark" size={17} color={T.primary} />}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </Modal>
-
       <FlatList
         data={loading ? [] : filtered}
         keyExtractor={item => String(item.id)}
         renderItem={({ item }) => (
           <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
-            <EntryCard entry={item} onPress={() => router.push(`/profile/journal/${item.id}` as never)} />
+            <EntryCard
+              entry={item}
+              onPress={() => router.push(`/profile/journal/${item.id}` as never)}
+              onEdit={() => router.push(`/profile/journal/${item.id}?edit=1` as never)}
+              onDelete={() => confirmDeleteEntry(item)}
+            />
           </View>
         )}
         ListHeaderComponent={ListHeader}
@@ -368,36 +409,11 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontSize: 13.5, color: C.ink, padding: 0 },
   sortBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: C.surface, borderRadius: 11,
+    borderRadius: 11, overflow: 'hidden',
     paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     borderWidth: 0.5, borderColor: C.hairline,
   },
   sortBtnText: { fontSize: 13, fontWeight: '600', color: C.inkSoft },
-
-  sortBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  sortSheet: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 16,
-    elevation: 20,
-  },
-  sortSheetHandle: {
-    width: 36, height: 4, borderRadius: 2, backgroundColor: C.hairline,
-    alignSelf: 'center', marginTop: 10, marginBottom: 4,
-  },
-  sortSheetTitle: {
-    fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8,
-    textTransform: 'uppercase', paddingHorizontal: 20, paddingVertical: 12,
-  },
-  sortSheetRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16,
-  },
-  sortSheetRowText: { fontSize: 16, fontWeight: '500', color: C.ink },
 
   yearRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 6 },
   yearPill: {
@@ -429,6 +445,15 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 6, right: 6,
     flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 100,
+  },
+  // Sits over the thumbnail's top-right corner — "clear" glass (see
+  // GlassIconBg's onMedia) since it's floating over a photo, not a flat surface.
+  entryMenuWrap: {
+    position: 'absolute', top: 6, left: 50,
+  },
+  entryMenuBtn: {
+    width: 24, height: 24, borderRadius: 12, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
   },
   cardContent: {
     flex: 1, minWidth: 0, padding: 12, paddingLeft: 13, paddingRight: 14, gap: 4,

@@ -9,17 +9,15 @@ interface Props {
   durationSeconds: number | null;
   elevationGainMeters: number | null;
   routePolyline: string | null;
-  source?: 'strava' | 'gpx' | string | null;
 }
 
 // Stat chip row + (if a route was captured) a static, non-interactive route
 // map — shown on a visit's detail view and on post cards for visits with an
-// attached hike (Strava or an imported GPX file). See StepWhere in
-// log-visit.tsx for where this data gets attached.
-export function HikeStatsCard({ distanceMeters, durationSeconds, elevationGainMeters, routePolyline, source }: Props) {
+// attached hike imported from a GPX file. See StepWhere in log-visit.tsx for
+// where this data gets attached.
+export function HikeStatsCard({ distanceMeters, durationSeconds, elevationGainMeters, routePolyline }: Props) {
   const C = useColors();
   const coords = routePolyline ? decodePolyline(routePolyline) : [];
-  const isStrava = source === 'strava';
 
   const lats = coords.map(c => c.latitude);
   const lngs = coords.map(c => c.longitude);
@@ -33,8 +31,8 @@ export function HikeStatsCard({ distanceMeters, durationSeconds, elevationGainMe
   return (
     <View style={[styles.card, { backgroundColor: C.surfaceAlt, borderColor: C.hairline }]}>
       <View style={styles.header}>
-        <Ionicons name={isStrava ? 'bicycle' : 'map'} size={14} color={isStrava ? '#FC4C02' : C.primary} />
-        <Text style={[styles.headerText, { color: C.inkMute }]}>{isStrava ? 'Strava' : 'GPX route'}</Text>
+        <Ionicons name="map" size={14} color={C.primary} />
+        <Text style={[styles.headerText, { color: C.inkMute }]}>GPX route</Text>
       </View>
 
       {region && (
@@ -48,7 +46,7 @@ export function HikeStatsCard({ distanceMeters, durationSeconds, elevationGainMe
           pitchEnabled={false}
           pointerEvents="none"
         >
-          <Polyline coordinates={coords} strokeColor={isStrava ? '#FC4C02' : C.primary} strokeWidth={3} />
+          <Polyline coordinates={coords} strokeColor={C.primary} strokeWidth={3} />
         </MapView>
       )}
 

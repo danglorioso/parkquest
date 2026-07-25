@@ -401,7 +401,7 @@ function DateRow({
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function JournalEntryScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, edit } = useLocalSearchParams<{ id: string; edit?: string }>();
   const { getToken } = useAuth();
   const tabBarSpace = useTabBarSpace();
   const router = useRouter();
@@ -410,7 +410,8 @@ export default function JournalEntryScreen() {
 
   const [entry,   setEntry]   = useState<JournalEntry | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
+  // Deep-linked from the journal list's "Edit entry" quick action.
+  const [editing, setEditing] = useState(edit === '1');
   const [saving,  setSaving]  = useState(false);
   const [token,   setToken]   = useState('');
 
@@ -654,7 +655,7 @@ export default function JournalEntryScreen() {
               </View>
             ) : null}
 
-            {/* Hike stats + route (attached from Strava or a GPX upload in the log-visit wizard) */}
+            {/* Hike stats + route (attached from a GPX upload in the log-visit wizard) */}
             {entry.external_source && entry.distance_meters != null ? (
               <View style={{ marginTop: 14 }}>
                 <HikeStatsCard
@@ -662,7 +663,6 @@ export default function JournalEntryScreen() {
                   durationSeconds={entry.duration_seconds}
                   elevationGainMeters={entry.elevation_gain_meters}
                   routePolyline={entry.route_polyline}
-                  source={entry.external_source}
                 />
               </View>
             ) : null}

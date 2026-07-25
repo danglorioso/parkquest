@@ -1405,7 +1405,7 @@ function StepJournal({ draft, set, activities, npsActivityNames, originalPhotos,
             <input value={draft.highlight} onChange={e => set("highlight", e.target.value.slice(0, 90))}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
               enterKeyHint="done"
-              placeholder="The one moment you'll remember"
+              placeholder="The one moment you'll remember..."
               style={{ width: "100%", background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 14, padding: "13px 52px 13px 14px", fontSize: 15, color: "var(--ink)", outline: "none", fontWeight: 600, boxSizing: "border-box", fontFamily: "inherit" }} />
             <div style={{ ...mono, position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 9.5, color: "var(--ink-mute)", letterSpacing: 0.6, pointerEvents: "none" }}>{draft.highlight.length}/90</div>
           </div>

@@ -1,5 +1,5 @@
-// Formatting + polyline decoding shared by the Strava activity picker
-// (log-visit wizard) and the route/stat display on visit detail + post cards.
+// Formatting + polyline decoding shared by the GPX import step (log-visit
+// wizard) and the route/stat display on visit detail + post cards.
 
 export function fmtMiles(meters: number): string {
   return `${(meters / 1609.34).toFixed(meters >= 1609.34 * 10 ? 0 : 1)} mi`;

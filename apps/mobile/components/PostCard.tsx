@@ -63,7 +63,7 @@ export interface FeedPost {
   // Only present on the single-post detail fetch (/api/posts/[id]), not feed lists
   visit_notes?: string | null;
   visit_would_return?: string | null;
-  // Attached Strava hike, if any (see HikeStatsCard)
+  // Attached GPX hike, if any (see HikeStatsCard)
   visit_distance_meters?: number | null;
   visit_duration_seconds?: number | null;
   visit_elevation_gain_meters?: number | null;
@@ -751,7 +751,6 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
             durationSeconds={post.visit_duration_seconds ?? null}
             elevationGainMeters={post.visit_elevation_gain_meters ?? null}
             routePolyline={post.visit_route_polyline ?? null}
-            source={post.visit_external_source}
           />
         </View>
       )}

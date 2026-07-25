@@ -1,15 +1,14 @@
 import {
   ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import { useEffect, useState } from 'react';
-import { useAuth, useUser } from '@clerk/clerk-expo';
+import { useState } from 'react';
+import { useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { STATIC as BASE_C, useColors, useThemedStyles, type Colors } from '@/lib/palette';
 import { AppleIcon, clerkMsg, GoogleG } from '@/components/AuthAtoms';
 import { showToast } from '@/lib/toast';
-import { disconnectStrava, getStravaAuthorizeUrl, getStravaStatus } from '@/lib/api';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -22,7 +21,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function SecurityScreen() {
   const { user } = useUser();
-  const { getToken } = useAuth();
   const C = useColors();
   const styles = useThemedStyles(makeStyles);
 
@@ -34,67 +32,6 @@ export default function SecurityScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [settingPassword, setSettingPassword] = useState(false);
-
-  const [stravaConnected, setStravaConnected] = useState<boolean | null>(null);
-  const [stravaBusy, setStravaBusy] = useState(false);
-
-  const refreshStravaStatus = async () => {
-    const tok = await getToken();
-    if (!tok) return;
-    try {
-      const { connected } = await getStravaStatus(tok);
-      setStravaConnected(connected);
-    } catch {
-      setStravaConnected(false);
-    }
-  };
-
-  useEffect(() => {
-    refreshStravaStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleConnectStrava = async () => {
-    setStravaBusy(true);
-    try {
-      const tok = await getToken();
-      if (!tok) throw new Error('Not signed in');
-      const { url } = await getStravaAuthorizeUrl(tok);
-      const redirectUrl = AuthSession.makeRedirectUri({ path: 'strava-callback' });
-      const result = await WebBrowser.openAuthSessionAsync(url, redirectUrl);
-      if (result.type === 'success' && result.url.includes('success=1')) {
-        await refreshStravaStatus();
-        showToast('Strava connected');
-      } else if (result.type === 'success') {
-        showToast('Could not connect Strava', 'error');
-      }
-    } catch (e) {
-      showToast(clerkMsg(e), 'error');
-    } finally {
-      setStravaBusy(false);
-    }
-  };
-
-  const handleDisconnectStrava = () => {
-    Alert.alert('Disconnect Strava', 'Your logged visits keep their attached stats, but new visits won’t be able to pull in hikes.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Disconnect', style: 'destructive', onPress: async () => {
-          setStravaBusy(true);
-          try {
-            const tok = await getToken();
-            if (tok) await disconnectStrava(tok);
-            setStravaConnected(false);
-            showToast('Strava disconnected');
-          } catch (e) {
-            showToast(clerkMsg(e), 'error');
-          } finally {
-            setStravaBusy(false);
-          }
-        },
-      },
-    ]);
-  };
 
   // An existing password means Clerk requires it re-entered to change it —
   // the disconnect-forced flow below only ever opens this modal when the
@@ -250,34 +187,6 @@ export default function SecurityScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.buttonText}>{hasPassword ? 'Change' : 'Set password'}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={{ gap: 10 }}>
-        <Text style={styles.fieldLabel}>Tracking apps</Text>
-        <View style={styles.row}>
-          <View style={{ width: 24, alignItems: 'center' }}>
-            <Ionicons name="bicycle-outline" size={20} color={BASE_C.inkSoft} />
-          </View>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={styles.rowTitle}>Strava</Text>
-            <Text style={styles.rowSubtitle}>
-              {stravaConnected === null ? 'Checking…' : stravaConnected ? 'Connected' : 'Not connected'}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.button, stravaConnected ? { borderColor: '#C04040' } : null, stravaBusy && { opacity: 0.4 }]}
-            onPress={() => stravaConnected ? handleDisconnectStrava() : handleConnectStrava()}
-            disabled={stravaBusy || stravaConnected === null}
-            activeOpacity={0.7}
-          >
-            {stravaBusy
-              ? <ActivityIndicator color={stravaConnected ? '#C04040' : C.primary} size="small" />
-              : <Text style={[styles.buttonText, stravaConnected ? { color: '#C04040' } : null]}>
-                  {stravaConnected ? 'Disconnect' : 'Connect'}
-                </Text>
-            }
           </TouchableOpacity>
         </View>
       </View>

@@ -2,7 +2,7 @@ import {
   Animated, Dimensions, Image, Platform, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HolographicShine } from '@/components/HolographicShine';
 import { ParkStamp } from '@/components/ParkStamp';
 import { StampDetailModal } from '@/components/StampDetailModal';
@@ -159,6 +159,10 @@ export default function PassportScreen() {
   ).current;
 
   const [coverH,      setCoverH]      = useState<number | null>(null);
+  // Drives the status bar's icon color (see statusBarUnderlay below) — dark
+  // once the paper section is what's actually behind the status bar strip,
+  // light while the green cover (or its momentary transition flash) is.
+  const [pastCover,   setPastCover]   = useState(false);
   const [profile,     setProfile]     = useState<ProfileInfo | null>(null);
   const [visits,      setVisits]      = useState<Visit[]>([]);
   const [allParks,    setAllParks]    = useState<Park[]>([]);
@@ -203,6 +207,22 @@ export default function PassportScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Toggles the status bar's icon color once the green cover has fully
+  // scrolled past — small hysteresis band so it doesn't flicker right at
+  // the boundary. Mirrors the thresholds statusBarUnderlay fades on below.
+  useEffect(() => {
+    if (coverH == null) return;
+    const boundary = coverH - insets.top;
+    const id = scrollY.addListener(({ value }) => {
+      setPastCover(prev => {
+        if (!prev && value > boundary + 20) return true;
+        if (prev && value < boundary - 20) return false;
+        return prev;
+      });
+    });
+    return () => scrollY.removeListener(id);
+  }, [coverH, insets.top, scrollY]);
 
   // All parks: visited (chrono) first, then unvisited
   const allStampItems = useMemo((): StampItem[] => {
@@ -333,12 +353,14 @@ export default function PassportScreen() {
   // This route renders with no native stack header (see profile/_layout) —
   // the green cover owns the whole top of the screen, including under the
   // status bar. These two float above everything: a green underlay that
-  // keeps the status-bar strip green even mid-scroll, and the back button
-  // the native header would otherwise have provided.
+  // bridges the status-bar strip across the cover→paper seam, and the back
+  // button the native header would otherwise have provided.
   // Invisible while the cover itself is under the status bar (so the cover's
-  // guilloche pattern — not a flat green strip — shows at the very top), then
-  // fades in as the cover's bottom edge scrolls past the status bar, keeping
-  // that strip green over the paper below.
+  // guilloche pattern — not a flat green strip — shows at the very top);
+  // flashes green just long enough to cover the seam as the cover's bottom
+  // edge passes the status bar; then fades back out, since past that point
+  // it's the paper stamp pages behind the strip, not the cover, and it
+  // should read as paper (see the pastCover-driven StatusBar style below).
   const statusBarUnderlay = (
     <Animated.View
       pointerEvents="none"
@@ -347,8 +369,11 @@ export default function PassportScreen() {
         backgroundColor: T.primaryDeep, zIndex: 10,
         opacity: coverH
           ? scrollY.interpolate({
-              inputRange: [coverH - insets.top - 30, coverH - insets.top],
-              outputRange: [0, 1],
+              inputRange: [
+                coverH - insets.top - 30, coverH - insets.top,
+                coverH - insets.top + 20, coverH - insets.top + 50,
+              ],
+              outputRange: [0, 1, 1, 0],
               extrapolate: 'clamp',
             })
           : 0,
@@ -391,7 +416,7 @@ export default function PassportScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: PAPER }} edges={['bottom']}>
-      <StatusBar style="light" />
+      <StatusBar style={pastCover ? 'dark' : 'light'} />
       {statusBarUnderlay}
       {backButton}
       <Animated.View
@@ -442,7 +467,7 @@ export default function PassportScreen() {
                         rebuilt + visibly rescaled the whole pattern mid-look. */}
                     <HolographicShine
                       edgeTextSize={30}
-                      edgeTextSpan={[0.16, 0.62]}
+                      edgeTextSpan={[0.09, 0.32]}
                       staticSize={{ w: W, h: Dimensions.get('window').height }}
                       lineIntensity={0.05}
                       wavesAboveSeal

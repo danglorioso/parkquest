@@ -30,7 +30,6 @@ import { PostCard, type FeedPost } from '@/components/PostCard';
 import { parkColor } from '@/lib/parkColors';
 import { relTime } from '@/lib/dates';
 import { getDefaultVisibility } from '@/lib/settings';
-import { getStravaActivities, getStravaStatus, type StravaActivity } from '@/lib/api';
 import { fmtDuration, fmtElevationFt, fmtMiles } from '@/lib/hikeStats';
 import { parseGpx } from '@/lib/gpx';
 
@@ -56,10 +55,8 @@ interface Draft {
   photos:    string[];
   visibility:'Private' | 'Friends' | 'Public';
   caption:   string;
-  // Attached hike, if any — set via the "Where & when" step's activity picker,
-  // either a matched Strava activity or an imported GPX file.
-  hikeSource:           'strava' | 'gpx' | null;
-  stravaActivityId:     string | null; // only set when hikeSource === 'strava'
+  // Attached hike, if any — set via the "Where & when" step's GPX upload.
+  hikeSource:           'gpx' | null;
   distanceMeters:       number | null;
   durationSeconds:      number | null;
   elevationGainMeters:  number | null;
@@ -134,7 +131,7 @@ function makeBlank(): Draft {
     rating: 0, crowd: 0, difficulty: 0, weather: [], wouldReturn: null,
     highlight: '', notes: '', activities: [], companions: [], companionObjs: [],
     photos: [], visibility: 'Friends', caption: '',
-    hikeSource: null, stravaActivityId: null, distanceMeters: null, durationSeconds: null,
+    hikeSource: null, distanceMeters: null, durationSeconds: null,
     elevationGainMeters: null, routePolyline: null,
   };
 }
@@ -186,16 +183,6 @@ function draftAge(iso: string): string {
 
 function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-// YYYY-MM-DD in the device's local calendar day, for the Strava activities
-// date-match query — Date#toISOString() would shift across UTC and misfire
-// near midnight.
-function fmtDateParam(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 function dayCount(start: Date | null, end: Date | null): number {
@@ -1358,6 +1345,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   const C = useColors();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
   // Slide only the sheet; the backdrop fades separately.
   const slide = useRef(new Animated.Value(400)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -1432,11 +1420,12 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
             <Text style={{ fontSize: 16, fontWeight: '700', color: C.primary }}>Done</Text>
           </TouchableOpacity>
         </View>
-        <View style={{ paddingHorizontal: 12, paddingTop: 4 }}>
-          {/* alignSelf stretch (container un-centered): shrink-to-fit sizing
-              laid the picker out under UIDatePicker's 280pt minimum width,
-              which UIKit warns about on every layout pass. Full sheet width
-              minus padding clears the minimum on every device. */}
+        <View style={{ paddingHorizontal: 12, paddingTop: 4, alignItems: 'center' }}>
+          {/* Explicit fixed width, not alignSelf:'stretch' — full-width stretch let
+              UIDatePicker's own Auto Layout decide the grid's internal position,
+              which isn't always centered in a frame wider than its intrinsic size.
+              A fixed width (clamped above the 280pt minimum UIKit warns about below)
+              plus alignItems:'center' on the wrapper pins it dead center every time. */}
           <DateTimePicker
             value={pending}
             mode="date"
@@ -1445,7 +1434,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
             maximumDate={maximumDate}
             accentColor={C.primary}
             themeVariant={isDark ? 'dark' : 'light'}
-            style={{ alignSelf: 'stretch' }}
+            style={{ width: Math.max(320, Math.min(winW - 24, 380)) }}
             onChange={(_, d) => {
               // Just track the live value here — paging the month/year wheel
               // re-fires onChange with the same day-of-month too, and closing
@@ -1529,29 +1518,33 @@ function HeroSlide({ emoji, title, subtitle, children }: {
   const C = useColors();
   const { height: winH } = useWindowDimensions();
   return (
-    <View style={{ flex: 1, minHeight: Math.min(440, winH * 0.55), justifyContent: 'center', alignItems: 'center' }}>
-      <Reanimated.View entering={FadeInDown.delay(40).duration(320)} style={{ marginBottom: 14 }}>
-        <ReactiveEmoji emoji={emoji} />
-      </Reanimated.View>
+    <View style={{ flex: 1, minHeight: Math.min(440, winH * 0.55) }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Reanimated.View entering={FadeInDown.delay(40).duration(320)} style={{ marginBottom: 14 }}>
+          <ReactiveEmoji emoji={emoji} />
+        </Reanimated.View>
 
-      <Reanimated.View entering={FadeInDown.delay(120).duration(340)} style={{ alignItems: 'center', marginBottom: 28 }}>
-        <Text numberOfLines={2} style={{ fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.4, textAlign: 'center' }}>
-          {title}
-        </Text>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: C.primary, marginTop: 8, minHeight: 20 }}>
-          {subtitle}
-        </Text>
-      </Reanimated.View>
+        <Reanimated.View entering={FadeInDown.delay(120).duration(340)} style={{ alignItems: 'center', marginBottom: 28 }}>
+          <Text numberOfLines={2} style={{ fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.4, textAlign: 'center' }}>
+            {title}
+          </Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: C.primary, marginTop: 8, minHeight: 20 }}>
+            {subtitle}
+          </Text>
+        </Reanimated.View>
 
-      <Reanimated.View entering={FadeInDown.delay(200).duration(380)} style={{ width: '100%' }}>
-        {children}
-      </Reanimated.View>
+        <Reanimated.View entering={FadeInDown.delay(200).duration(380)} style={{ width: '100%' }}>
+          {children}
+        </Reanimated.View>
+      </View>
 
       {/* Every HeroSlide step (Rating/Crowd/Difficulty/Weather/WouldReturn) is
           skippable — canContinue only gates step 0 — but nothing on-screen
-          said so, which read as required. */}
-      <Text style={{ position: 'absolute', bottom: 4, right: 4, fontSize: 11, color: C.inkMute }}>
-        Optional — skip anytime
+          said so, which read as required. Laid out in normal flow below the
+          centered content (not absolute) so a tall grid like Weather's can't
+          grow into it — see StepPhotos for the same label on its own step. */}
+      <Text style={{ alignSelf: 'flex-end', fontSize: 11, color: C.inkMute, paddingTop: 8 }}>
+        Optional
       </Text>
     </View>
   );
@@ -1587,23 +1580,12 @@ function PressableScale({ onPress, disabled, style, containerStyle, children }: 
 
 function StepWhere({
   draft, set, parks, onPickPark, onOpenPicker,
-  stravaConnected, stravaActivities, stravaLoading, stravaBrowsing,
-  onAttachStrava, onClearStrava, onBrowseStrava, onPickGpx, gpxLoading,
 }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   parks: ParkInfo[]; onPickPark: () => void;
   // Opens the date sheet — owned by the screen root, not this step, so the
   // overlay escapes the step ScrollView (see the DateSheet render up there).
   onOpenPicker: (which: 'start' | 'end') => void;
-  stravaConnected: boolean | null;
-  stravaActivities: StravaActivity[] | null;
-  stravaLoading: boolean;
-  stravaBrowsing: boolean;
-  onAttachStrava: (a: StravaActivity) => void;
-  onClearStrava: () => void;
-  onBrowseStrava: () => void;
-  onPickGpx: () => void;
-  gpxLoading: boolean;
 }) {
   const C = useColors();
   const park = parks.find(p => p.park_code === draft.parkCode);
@@ -1743,80 +1725,6 @@ function StepWhere({
           )}
         </Section>
 
-        <Section title="Hike" tag="optional" mb={28}>
-          {draft.hikeSource ? (
-            <View style={[styles.card, { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }]}>
-              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FC4C0233', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name={draft.hikeSource === 'strava' ? 'bicycle' : 'map'} size={18} color="#FC4C02" />
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>
-                  {draft.hikeSource === 'strava' ? 'Strava hike attached' : 'GPX route attached'}
-                </Text>
-                <Text style={{ fontSize: 12.5, color: C.inkMute }}>
-                  {draft.distanceMeters != null ? fmtMiles(draft.distanceMeters) : ''}
-                  {draft.durationSeconds != null ? ` · ${fmtDuration(draft.durationSeconds)}` : ''}
-                  {draft.elevationGainMeters != null ? ` · ${fmtElevationFt(draft.elevationGainMeters)} gain` : ''}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={onClearStrava} hitSlop={8}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>Change</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={{ gap: 10 }}>
-              {stravaConnected && stravaLoading ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
-                  <ActivityIndicator size="small" color={C.inkMute} />
-                  <Text style={{ fontSize: 13, color: C.inkMute }}>Looking for hikes on this day…</Text>
-                </View>
-              ) : stravaConnected && stravaActivities && stravaActivities.length > 0 ? (
-                <View style={{ gap: 8 }}>
-                  {stravaActivities.map(a => (
-                    <PressableScale key={a.id} onPress={() => onAttachStrava(a)} style={[styles.card, { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }]}>
-                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FC4C0233', alignItems: 'center', justifyContent: 'center' }}>
-                        <Ionicons name="bicycle-outline" size={18} color="#FC4C02" />
-                      </View>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>{a.name}</Text>
-                        <Text style={{ fontSize: 12.5, color: C.inkMute }}>
-                          {fmtMiles(a.distance_meters)} · {fmtDuration(a.duration_seconds)} · {fmtElevationFt(a.elevation_gain_meters)} gain
-                        </Text>
-                      </View>
-                      <Ionicons name="add-circle-outline" size={22} color={C.primary} />
-                    </PressableScale>
-                  ))}
-                </View>
-              ) : stravaConnected ? (
-                <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 13, color: C.inkMute }}>
-                    {stravaBrowsing ? 'No recent Strava activities found.' : 'No Strava activity found for this day.'}
-                  </Text>
-                  {!stravaBrowsing && (
-                    <TouchableOpacity onPress={onBrowseStrava}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>Browse recent activities</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ) : null}
-
-              <TouchableOpacity
-                onPress={onPickGpx}
-                disabled={gpxLoading}
-                style={[styles.card, { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12, opacity: gpxLoading ? 0.5 : 1 }]}
-              >
-                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
-                  {gpxLoading
-                    ? <ActivityIndicator size="small" color={C.inkMute} />
-                    : <Ionicons name="document-outline" size={18} color={C.inkMute} />
-                  }
-                </View>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>Upload a GPX file</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </Section>
-
         <Section title="Trip title" mb={0}>
           <TextInput
             value={draft.title} onChangeText={v => set('title', v.slice(0, 80))}
@@ -1865,10 +1773,14 @@ function StepCrowd({ draft, set, onSliderDragChange }: {
   );
 }
 
-function StepDifficulty({ draft, set, onSliderDragChange }: {
+function StepDifficulty({ draft, set, onSliderDragChange, onClearHike, onPickGpx, gpxLoading }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   onSliderDragChange?: (dragging: boolean) => void;
+  onClearHike: () => void;
+  onPickGpx: () => void;
+  gpxLoading: boolean;
 }) {
+  const C = useColors();
   const v = draft.difficulty;
   return (
     <HeroSlide
@@ -1877,6 +1789,43 @@ function StepDifficulty({ draft, set, onSliderDragChange }: {
       subtitle={v > 0 ? DIFF_LABELS[v - 1] : 'Drag or tap to set'}
     >
       <ScaleRow value={v} onChange={x => set('difficulty', x)} labels={DIFF_LABELS} onDragChange={onSliderDragChange} />
+
+      {/* Trail GPX import lives here rather than on Where & when — it pairs
+          naturally with rating the trail's difficulty. See lib/gpx.ts. */}
+      <View style={{ marginTop: 24 }}>
+        {draft.hikeSource ? (
+          <View style={[styles.card, { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }]}>
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="map" size={18} color={C.primary} />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>GPX route attached</Text>
+              <Text style={{ fontSize: 12.5, color: C.inkMute }}>
+                {draft.distanceMeters != null ? fmtMiles(draft.distanceMeters) : ''}
+                {draft.durationSeconds != null ? ` · ${fmtDuration(draft.durationSeconds)}` : ''}
+                {draft.elevationGainMeters != null ? ` · ${fmtElevationFt(draft.elevationGainMeters)} gain` : ''}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onClearHike} hitSlop={8}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>Change</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={onPickGpx}
+            disabled={gpxLoading}
+            style={[styles.card, { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12, opacity: gpxLoading ? 0.5 : 1 }]}
+          >
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+              {gpxLoading
+                ? <ActivityIndicator size="small" color={C.inkMute} />
+                : <Ionicons name="document-outline" size={18} color={C.inkMute} />
+              }
+            </View>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>Upload a GPX file</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </HeroSlide>
   );
 }
@@ -1971,7 +1920,7 @@ function StepJournal({ draft, set, token, npsActivityNames }: {
         <Section title="Highlight">
           <TextInput
             value={draft.highlight} onChangeText={v => set('highlight', v.slice(0, 90))}
-            placeholder="The one moment you'll remember" placeholderTextColor={C.inkMute}
+            placeholder="The one moment you'll remember..." placeholderTextColor={C.inkMute}
             style={[styles.textField, { marginBottom: 0 }]}
           />
           <Text style={styles.charCountOutside}>{draft.highlight.length}/90</Text>
@@ -2406,63 +2355,17 @@ export default function LogVisitModal() {
     });
   }, [getFreshToken]);
 
-  // ── Strava hike picker ───────────────────────────────────────────────────────
-  const [stravaConnected, setStravaConnected] = useState<boolean | null>(null);
-  const [stravaActivities, setStravaActivities] = useState<StravaActivity[] | null>(null);
-  const [stravaLoading, setStravaLoading] = useState(false);
-  const [stravaBrowsing, setStravaBrowsing] = useState(false);
-
-  useEffect(() => {
-    getFreshToken().then(tok => {
-      if (!tok) return;
-      getStravaStatus(tok).then(r => setStravaConnected(r.connected)).catch(() => setStravaConnected(false));
-    });
-  }, [getFreshToken]);
-
-  const fetchStravaActivities = useCallback(async (date?: string) => {
-    const tok = await getFreshToken();
-    if (!tok) return;
-    setStravaLoading(true);
-    try {
-      const activities = await getStravaActivities(tok, date);
-      setStravaActivities(activities);
-    } catch {
-      setStravaActivities([]);
-    } finally {
-      setStravaLoading(false);
-    }
-  }, [getFreshToken]);
-
-  // Re-suggest matching activities whenever the visit date changes — attaching
-  // an activity already picked once shouldn't be undone by this, so it only
-  // touches the suggestion list, never draft.stravaActivityId.
-  useEffect(() => {
-    if (!stravaConnected || !draft.startDate || isEdit) return;
-    setStravaBrowsing(false);
-    fetchStravaActivities(fmtDateParam(draft.startDate));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stravaConnected, draft.startDate?.toDateString()]);
-
-  const browseStravaActivities = () => {
-    setStravaBrowsing(true);
-    fetchStravaActivities();
-  };
-
-  const attachStravaActivity = (a: StravaActivity) => {
-    set('hikeSource', 'strava');
-    set('stravaActivityId', a.id);
-    set('distanceMeters', a.distance_meters);
-    set('durationSeconds', a.duration_seconds);
-    set('elevationGainMeters', a.elevation_gain_meters);
-    set('routePolyline', a.route_polyline);
-  };
-
+  // ── GPX hike import ──────────────────────────────────────────────────────────
   const [gpxLoading, setGpxLoading] = useState(false);
 
   const pickGpxFile = async () => {
     setGpxLoading(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: ['application/gpx+xml', 'application/xml', 'text/xml', '*/*'] });
+      // '*/*' only — mixing 'application/gpx+xml' (not a real registered iOS
+      // UTType) into the type array malformed the allowed-types set on some
+      // iOS versions, silently canceling the whole picker session on tap.
+      // Extension is already checked below, so no need to filter by MIME.
+      const result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
       if (result.canceled || !result.assets?.length) return;
       const file = result.assets[0];
       if (!file.name.toLowerCase().endsWith('.gpx')) {
@@ -2476,7 +2379,6 @@ export default function LogVisitModal() {
         return;
       }
       set('hikeSource', 'gpx');
-      set('stravaActivityId', null);
       set('distanceMeters', parsed.distanceMeters);
       set('durationSeconds', parsed.durationSeconds);
       set('elevationGainMeters', parsed.elevationGainMeters);
@@ -2488,9 +2390,8 @@ export default function LogVisitModal() {
     }
   };
 
-  const clearStravaActivity = () => {
+  const clearHike = () => {
     set('hikeSource', null);
-    set('stravaActivityId', null);
     set('distanceMeters', null);
     set('durationSeconds', null);
     set('elevationGainMeters', null);
@@ -2539,8 +2440,7 @@ export default function LogVisitModal() {
           photos:     orderedPhotos,
           visibility: ['Private', 'Friends', 'Public'].includes(visibility) ? visibility : 'Friends',
           caption,
-          hikeSource:          (v.external_source as 'strava' | 'gpx' | null) ?? null,
-          stravaActivityId:    v.external_source === 'strava' ? v.external_activity_id : null,
+          hikeSource:          (v.external_source as 'gpx' | null) ?? null,
           distanceMeters:      v.distance_meters,
           durationSeconds:     v.duration_seconds,
           elevationGainMeters: v.elevation_gain_meters,
@@ -2631,7 +2531,7 @@ export default function LogVisitModal() {
             elevation_gain_meters: draft.elevationGainMeters,
             route_polyline:        draft.routePolyline,
             external_source:       draft.hikeSource,
-            external_activity_id:  draft.stravaActivityId,
+            external_activity_id:  null,
           }),
         });
         if (activeEditPostId != null) {
@@ -2686,7 +2586,7 @@ export default function LogVisitModal() {
           elevation_gain_meters: draft.elevationGainMeters,
           route_polyline:        draft.routePolyline,
           external_source:       draft.hikeSource,
-          external_activity_id:  draft.stravaActivityId,
+          external_activity_id:  null,
         }),
       });
 
@@ -2819,20 +2719,16 @@ export default function LogVisitModal() {
           <StepWhere
             draft={draft} set={set} parks={parks}
             onPickPark={() => setShowPicker(true)} onOpenPicker={setOpenPicker}
-            stravaConnected={stravaConnected}
-            stravaActivities={stravaActivities}
-            stravaLoading={stravaLoading}
-            stravaBrowsing={stravaBrowsing}
-            onAttachStrava={attachStravaActivity}
-            onClearStrava={clearStravaActivity}
-            onBrowseStrava={browseStravaActivities}
-            onPickGpx={pickGpxFile}
-            gpxLoading={gpxLoading}
           />
         )}
         {step === 1 && <StepRating draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
         {step === 2 && <StepCrowd draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
-        {step === 3 && <StepDifficulty draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
+        {step === 3 && (
+          <StepDifficulty
+            draft={draft} set={set} onSliderDragChange={setSliderDragging}
+            onClearHike={clearHike} onPickGpx={pickGpxFile} gpxLoading={gpxLoading}
+          />
+        )}
         {step === 4 && <StepWeather draft={draft} set={set} />}
         {step === 5 && <StepWouldReturn draft={draft} set={set} />}
         {step === 6 && <StepPhotos draft={draft} set={set} getToken={getFreshToken} originalPhotos={originalPhotos.current} onDragActiveChange={setSliderDragging} />}
@@ -3129,11 +3025,11 @@ const styles = StyleSheet.create({
   },
   searchRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: C.surface, borderRadius: 12, padding: 10,
+    backgroundColor: C.surface, borderRadius: 14, padding: 13,
     borderWidth: 0.5, borderColor: C.hairline, marginBottom: 6,
   },
   searchInput: {
-    flex: 1, fontSize: 13.5, color: C.ink, padding: 0,
+    flex: 1, fontSize: 15, fontWeight: '600', color: C.ink, padding: 0,
   },
   resultsBox: {
     backgroundColor: C.surface, borderRadius: 12,

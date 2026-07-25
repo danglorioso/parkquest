@@ -479,19 +479,17 @@ export default function ProfileScreen() {
                 </View>
               )}
             </View>
-            <View style={{ flex: 1, paddingRight: 30 }}>
-              {realName ? (
-                <>
-                  <Text style={styles.passportName} numberOfLines={1} adjustsFontSizeToFit>
-                    {realName}
-                  </Text>
-                  {username ? <Text style={styles.passportHandle}>@{username}</Text> : null}
-                  {joinDate ? <Text style={styles.passportJoined}>Joined {joinDate}</Text> : null}
-                </>
-              ) : (
-                <NameSkeleton />
-              )}
-            </View>
+            {realName ? (
+              <>
+                <Text style={styles.passportName} numberOfLines={1} adjustsFontSizeToFit>
+                  {realName}
+                </Text>
+                {username ? <Text style={styles.passportHandle}>@{username}</Text> : null}
+                {joinDate ? <Text style={styles.passportJoined}>Joined {joinDate}</Text> : null}
+              </>
+            ) : (
+              <NameSkeleton />
+            )}
           </View>
 
           {profile?.bio ? (
@@ -856,6 +854,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.hairline,
     backgroundColor: C.surface,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
@@ -899,7 +898,7 @@ const styles = StyleSheet.create({
     color: 'rgba(201,169,74,0.28)',
   },
   passportHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 16,
+    alignItems: 'center',
   },
   shareBtn: {
     // Deliberately smaller than the app-wide 44pt round buttons — it's a
@@ -911,14 +910,14 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   passportName: {
-    fontSize: 26, fontWeight: '800', color: GOLD, letterSpacing: -0.5,
+    width: '100%', fontSize: 26, fontWeight: '800', color: GOLD, letterSpacing: -0.5, textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
   },
   passportHandle: {
-    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.85)', letterSpacing: 0.8, marginTop: 2,
+    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.85)', letterSpacing: 0.8, marginTop: 3, textAlign: 'center',
   },
   passportJoined: {
-    fontSize: 13, color: 'rgba(201,169,74,0.8)', marginTop: 4,
+    fontSize: 13, color: 'rgba(201,169,74,0.8)', marginTop: 8, textAlign: 'center',
   },
   passportBio: {
     fontSize: 13.5, color: 'rgba(255,251,241,0.75)', lineHeight: 19, marginTop: 12,

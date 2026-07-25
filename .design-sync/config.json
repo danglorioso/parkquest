@@ -1,0 +1,21 @@
+{
+  "projectId": "6e4205be-0b30-4083-8dec-e395385fb510",
+  "pkg": "@parkquest/ui-primitives",
+  "globalName": "ParkQuestUI",
+  "shape": "package",
+  "srcDir": ".",
+  "tsconfig": "../../../apps/web/tsconfig.json",
+  "cssEntry": "ds-styles.css",
+  "componentSrcMap": {
+    "Button": "button.tsx",
+    "Card": "card.tsx",
+    "AlertDialog": "alert-dialog.tsx",
+    "Calendar": "calendar.tsx",
+    "Dialog": "dialog.tsx",
+    "Form": "form.tsx",
+    "Input": "input.tsx",
+    "Label": "label.tsx",
+    "Popover": "popover.tsx",
+    "Skeleton": "skeleton.tsx"
+  }
+}

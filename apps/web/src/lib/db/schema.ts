@@ -49,19 +49,6 @@ export const userActivityDays = pgTable('user_activity_days', {
   last_seen_at: timestamp('last_seen_at').defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.clerk_user_id, t.day] })]);
 
-// OAuth tokens for a connected third-party tracking service (Strava today;
-// provider-agnostic so Garmin/Fitbit can reuse this table later).
-export const userIntegrations = pgTable('user_integrations', {
-  clerk_user_id: varchar('clerk_user_id', { length: 255 }).notNull(),
-  provider: varchar('provider', { length: 20 }).notNull(), // 'strava'
-  access_token: text('access_token').notNull(),
-  refresh_token: text('refresh_token').notNull(),
-  expires_at: timestamp('expires_at').notNull(),
-  external_athlete_id: varchar('external_athlete_id', { length: 64 }),
-  created_at: timestamp('created_at').defaultNow().notNull(),
-  updated_at: timestamp('updated_at').defaultNow().notNull(),
-}, (t) => [primaryKey({ columns: [t.clerk_user_id, t.provider] })]);
-
 export const visits = pgTable('visits', {
   id: serial('id').primaryKey(),
   clerk_user_id: varchar('clerk_user_id', { length: 255 }).notNull(),
@@ -82,13 +69,14 @@ export const visits = pgTable('visits', {
   cover_photo: text('cover_photo'),
   visibility: varchar('visibility', { length: 20 }).default('private'), // 'public' | 'friends' | 'private'
   is_bucket_list: boolean('is_bucket_list').default(false),
-  // Attached tracked-activity stats (from Strava etc, set via /api/integrations/*)
+  // Attached hike stats, imported from a user-uploaded GPX file (see log-visit's
+  // "Hike" step and lib/gpx.ts on mobile)
   distance_meters: real('distance_meters'),
   duration_seconds: integer('duration_seconds'),
   elevation_gain_meters: real('elevation_gain_meters'),
   route_polyline: text('route_polyline'), // Google-encoded polyline
-  external_source: varchar('external_source', { length: 20 }), // 'strava'
-  external_activity_id: varchar('external_activity_id', { length: 64 }),
+  external_source: varchar('external_source', { length: 20 }), // 'gpx'
+  external_activity_id: varchar('external_activity_id', { length: 64 }), // unused for gpx, kept for a future linked-account source
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 });

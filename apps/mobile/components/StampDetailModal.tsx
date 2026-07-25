@@ -65,13 +65,19 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
           </TouchableOpacity>
 
           <Animated.View style={{
-            alignItems: 'center', paddingTop: 8,
+            alignItems: 'center', justifyContent: 'center', paddingTop: 8,
             opacity: stampAnim,
             transform: [
               { scale:      stampAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) },
               { translateY: stampAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
             ],
           }}>
+            {/* Soft white glow so the stamp's dark ink reads against the card's
+                near-black background — three falling-off rings stand in for a
+                radial gradient, which RN has no built-in primitive for. */}
+            <View style={styles.stampGlowRing3} pointerEvents="none" />
+            <View style={styles.stampGlowRing2} pointerEvents="none" />
+            <View style={styles.stampGlowRing1} pointerEvents="none" />
             <ParkStamp
               parkCode={stamp.park_code}
               name={stamp.name}
@@ -152,22 +158,34 @@ const styles = StyleSheet.create({
     fontSize: 13, fontWeight: '600', color: 'rgba(255,251,241,0.55)', letterSpacing: 0.6,
   },
   ctaRow: {
-    flexDirection: 'row', gap: 8, marginTop: 20, width: '100%',
+    flexDirection: 'column', gap: 8, marginTop: 20, width: '100%',
   },
   secondaryCta: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: 'rgba(255,251,241,0.10)', borderRadius: 100,
-    paddingHorizontal: 14, paddingVertical: 10,
+    paddingHorizontal: 14, paddingVertical: 12,
   },
   secondaryCtaText: {
     fontSize: 12.5, fontWeight: '700', color: '#FFFBF1',
   },
   primaryCta: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: '#FFFBF1', borderRadius: 100,
-    paddingHorizontal: 14, paddingVertical: 10,
+    paddingHorizontal: 14, paddingVertical: 12,
   },
   primaryCtaText: {
     fontSize: 12.5, fontWeight: '700', color: '#1B1A16',
+  },
+  stampGlowRing1: {
+    position: 'absolute', width: 150, height: 150, borderRadius: 75,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  stampGlowRing2: {
+    position: 'absolute', width: 185, height: 185, borderRadius: 92.5,
+    backgroundColor: 'rgba(255,255,255,0.09)',
+  },
+  stampGlowRing3: {
+    position: 'absolute', width: 225, height: 225, borderRadius: 112.5,
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
 });

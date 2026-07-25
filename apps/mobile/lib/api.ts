@@ -467,28 +467,3 @@ export const setNotificationRead = (token: string, id: number, read: boolean) =>
     method: 'PATCH',
     body: JSON.stringify({ read }),
   });
-
-// ── Integrations (Strava) ─────────────────────────────────────────────────────
-
-export interface StravaActivity {
-  id: string;
-  name: string;
-  type: string;
-  distance_meters: number;
-  duration_seconds: number;
-  elevation_gain_meters: number;
-  start_date: string;
-  route_polyline: string | null;
-}
-
-export const getStravaStatus = (token: string) =>
-  req<{ connected: boolean }>('/api/integrations/strava/status', token);
-
-export const getStravaAuthorizeUrl = (token: string) =>
-  req<{ url: string }>('/api/integrations/strava/authorize', token);
-
-export const getStravaActivities = (token: string, date?: string) =>
-  req<StravaActivity[]>(`/api/integrations/strava/activities${date ? `?date=${date}` : ''}`, token);
-
-export const disconnectStrava = (token: string) =>
-  req('/api/integrations/strava/disconnect', token, { method: 'POST' });

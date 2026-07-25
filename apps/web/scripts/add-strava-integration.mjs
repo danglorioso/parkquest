@@ -5,6 +5,11 @@
  * migration files are stale for this DB (see other scripts in this
  * directory), so schema changes are applied by hand.
  *
+ * HISTORICAL: the Strava OAuth connect flow was scrapped (see
+ * drop-user-integrations-table.mjs) after Strava paywalled API access —
+ * re-running this script recreates a table nothing uses. Kept only as a
+ * record of where the (still-live) visits stat columns came from.
+ *
  * Usage: node scripts/add-strava-integration.mjs
  * Requires DATABASE_URL (read from .env.local). Remember to run against
  * BOTH the local and the production database.
