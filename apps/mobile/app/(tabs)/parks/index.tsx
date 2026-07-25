@@ -680,7 +680,6 @@ export default function ParksScreen() {
 
   const loadData = useCallback(async () => {
     const tok = await getToken();
-    if (!tok) return;
     setError(false);
     const isFirstLoad = !hasLoadedRef.current;
     if (isFirstLoad) setLoading(true);
@@ -690,12 +689,14 @@ export default function ParksScreen() {
     let cache = isFirstLoad ? await loadOfflineParks() : null;
     if (cache) {
       setParks(cache.parks);
-      setOfflineFetchedAt(isOnline ? null : cache.fetchedAt);
+      setOfflineFetchedAt(isOnline && tok ? null : cache.fetchedAt);
       setLoading(false);
       hasLoadedRef.current = true;
     }
 
-    if (!isOnline) {
+    // No token also covers Clerk still bootstrapping (e.g. offline at
+    // startup) — fall back to cache same as being offline rather than hang.
+    if (!isOnline || !tok) {
       if (!hasLoadedRef.current) {
         cache ??= await loadOfflineParks();
         if (cache) {
@@ -725,10 +726,12 @@ export default function ParksScreen() {
         }
       }
     }
-    try {
-      setVisits(await apiFetch<Visit[]>('/api/visits', tok));
-    } catch (e) {
-      console.error('Visits load failed:', e);
+    if (tok) {
+      try {
+        setVisits(await apiFetch<Visit[]>('/api/visits', tok));
+      } catch (e) {
+        console.error('Visits load failed:', e);
+      }
     }
     setLoading(false);
   }, [getToken, isOnline]);

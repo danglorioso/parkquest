@@ -9,8 +9,10 @@ import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { badgeColors, type BadgeColors } from '@/lib/badges';
-import { BadgeDetailModal } from '@/components/BadgeDetailModal';
+import type { BadgeColors } from '@/lib/badges';
+import { BadgeDetailModal, BadgePatch } from '@/components/BadgeDetailModal';
+import { BadgeShareSheet } from '@/components/BadgeShareSheet';
+import { StampDetailModal } from '@/components/StampDetailModal';
 import { Wordmark } from '@/components/Wordmark';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
@@ -60,6 +62,7 @@ interface StampPreview {
   states: string;
   colorIdx: number;
   stamp_glyph: CustomStampGlyph | null;
+  visited_date: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -166,6 +169,8 @@ export default function ProfileScreen() {
   const [friendCount,  setFriendCount]  = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<BadgeSummary[]>([]);
   const [selectedBadge, setSelectedBadge] = useState<BadgeSummary | null>(null);
+  const [sharingBadge, setSharingBadge] = useState<BadgeSummary | null>(null);
+  const [selectedStamp, setSelectedStamp] = useState<StampPreview | null>(null);
   const [rawVisits, setRawVisits] = useState<any[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
@@ -295,6 +300,7 @@ export default function ProfileScreen() {
         states: v.states ?? '',
         colorIdx: idx,
         stamp_glyph: v.stamp_glyph ?? null,
+        visited_date: v.visited_date ?? null,
       }))
       .slice(-5)
       .reverse();
@@ -558,7 +564,7 @@ export default function ProfileScreen() {
               {recentStamps.map(s => (
                 <TouchableOpacity
                   key={s.park_code}
-                  onPress={() => router.push(`/park/${s.park_code}` as never)}
+                  onPress={() => setSelectedStamp(s)}
                   activeOpacity={0.7}
                   style={styles.badgePreviewItem}
                 >
@@ -639,8 +645,8 @@ export default function ProfileScreen() {
                   activeOpacity={0.7}
                   style={styles.badgePreviewItem}
                 >
-                  <View style={[styles.badgeCircle, { backgroundColor: badgeColors(b).fill + '22', borderColor: badgeColors(b).fill + '55' }]}>
-                    <Text style={{ fontSize: 22 }}>{b.emoji}</Text>
+                  <View style={{ marginBottom: 6 }}>
+                    <BadgePatch emoji={b.emoji} tier={b.tier} colors={b.colors} size={52} earned />
                   </View>
                   <Text style={styles.badgePreviewName} numberOfLines={2}>{b.name}</Text>
                 </TouchableOpacity>
@@ -836,7 +842,30 @@ export default function ProfileScreen() {
       {topBar}
 
       {selectedBadge ? (
-        <BadgeDetailModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+        <BadgeDetailModal
+          badge={selectedBadge}
+          onClose={() => setSelectedBadge(null)}
+          onShare={() => { setSharingBadge(selectedBadge); setSelectedBadge(null); }}
+        />
+      ) : null}
+
+      {sharingBadge ? (
+        <BadgeShareSheet badge={sharingBadge} onClose={() => setSharingBadge(null)} />
+      ) : null}
+
+      {selectedStamp ? (
+        <StampDetailModal
+          stamp={selectedStamp}
+          onClose={() => setSelectedStamp(null)}
+          onViewVisits={s => {
+            setSelectedStamp(null);
+            router.push({ pathname: '/profile/journal', params: { parkCode: s.park_code, parkName: s.name } } as never);
+          }}
+          onParkInfo={s => {
+            setSelectedStamp(null);
+            router.push(`/park/${s.park_code}` as never);
+          }}
+        />
       ) : null}
     </View>
   );
@@ -975,11 +1004,6 @@ const styles = StyleSheet.create({
 
   badgePreviewItem: {
     alignItems: 'center', width: 70,
-  },
-  badgeCircle: {
-    width: 52, height: 52, borderRadius: 26,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, marginBottom: 6,
   },
   badgePreviewName: {
     fontSize: 13, fontWeight: '600', color: C.ink, textAlign: 'center', lineHeight: 13,

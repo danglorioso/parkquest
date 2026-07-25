@@ -8,7 +8,7 @@ import dynamic from "next/dynamic";
 import {
   MapPin, Users, UserCheck, UserPlus, Clock,
   TreePine, Award, ChevronLeft, X, Lock, Pencil,
-  MoreHorizontal,
+  MoreHorizontal, Share2,
 } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import Logo from "@/components/Logo";
@@ -18,6 +18,7 @@ import { PostCard, ReportDialog, type FeedPost } from "@/components/PostCard";
 import { useToast } from "@/components/ToastProvider";
 import { AdminStar } from "@/components/AdminStar";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
+import { BadgeShareModal } from "@/components/BadgeShareModal";
 
 const APP_STORE_URL: string | null = 'https://apps.apple.com/us/app/parkquest-national-park-log/id6778208311';
 
@@ -104,7 +105,7 @@ function badgeAccent(b: BadgeData): { color: string; bg: string } {
   return { color: TIER_COLOR[b.tier] ?? "#888", bg: TIER_BG[b.tier] ?? "#F9F9F9" };
 }
 
-function BadgeModal({ badge, onClose }: { badge: BadgeData; onClose: () => void }) {
+function BadgeModal({ badge, onClose, isOwnProfile, onShare }: { badge: BadgeData; onClose: () => void; isOwnProfile: boolean; onShare: (badge: BadgeData) => void }) {
   const { color: tierColor, bg: tierBg } = badgeAccent(badge);
   const earnedDate = badge.earned_at
     ? new Date(badge.earned_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
@@ -194,6 +195,26 @@ function BadgeModal({ badge, onClose }: { badge: BadgeData; onClose: () => void 
         ) : (
           <div style={{ textAlign: "center", fontSize: 12, color: "var(--ink-mute)", fontStyle: "italic" }}>
             Not yet earned
+          </div>
+        )}
+
+        {/* Share to feed — own earned badges only */}
+        {isOwnProfile && badge.earned_at && (
+          <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
+            <button
+              onClick={() => { onShare(badge); onClose(); }}
+              style={{
+                background: "var(--ink)",
+                color: "var(--bg)",
+                border: "none", borderRadius: 100,
+                padding: "9px 20px", cursor: "pointer",
+                fontWeight: 700, fontSize: 12.5,
+                display: "inline-flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <Share2 size={13} strokeWidth={2.2} />
+              Share to feed
+            </button>
           </div>
         )}
       </div>
@@ -588,6 +609,7 @@ export default function ProfilePage() {
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
+  const [sharingBadge, setSharingBadge] = useState<BadgeData | null>(null);
   const [editDraft, setEditDraft] = useState<Partial<VisitDraft> | undefined>();
   const { toast } = useToast();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -1046,7 +1068,26 @@ export default function ProfilePage() {
       )}
 
       {selectedBadge && (
-        <BadgeModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+        <BadgeModal
+          badge={selectedBadge}
+          onClose={() => setSelectedBadge(null)}
+          isOwnProfile={profile.is_own_profile}
+          onShare={(b) => { setSelectedBadge(null); setSharingBadge(b); }}
+        />
+      )}
+
+      {sharingBadge && (
+        <BadgeShareModal
+          badge={{
+            id: sharingBadge.badge_id,
+            name: sharingBadge.name,
+            description: sharingBadge.description ?? "",
+            emoji: sharingBadge.emoji,
+            tier: sharingBadge.tier,
+            colors: sharingBadge.colors,
+          }}
+          onClose={() => setSharingBadge(null)}
+        />
       )}
 
       {/* ── Passport stamps ── */}
