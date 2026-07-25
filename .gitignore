@@ -37,3 +37,10 @@ yarn-error.log*
 # claude
 .claude
 .env*.local
+
+# design-sync (durable: config.json, NOTES.md, conventions.md, previews/, overrides/ — committed)
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+.ds-sync/
+ds-bundle/
