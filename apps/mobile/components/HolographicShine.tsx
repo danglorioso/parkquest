@@ -4,7 +4,7 @@ import { DeviceMotion } from 'expo-sensors';
 import { useFocusEffect } from 'expo-router';
 import Svg, {
   Circle, Defs, G, Line, LinearGradient, Path,
-  RadialGradient, Rect, Stop, Text as SvgText,
+  RadialGradient, Rect, Stop, Text as SvgText, TSpan,
 } from 'react-native-svg';
 
 // Hue steps advanced per radian of tilt *change* — the phase accumulates
@@ -20,6 +20,11 @@ const UPDATE_MS = 40; // ~25Hz — smooth enough for a sheen, light on the JS br
 
 const TILT_A = -14; // primary guilloche family — also carries the shimmer
 const TILT_B = 11;  // secondary family, crossing the first for a woven look
+
+// Solid foil color for the edge logo lockup — flat throughout (unlike the
+// url(#holo) gradient used elsewhere in this shimmer layer), matching the
+// passport gold used across the app (see profile screen's GOLD constant).
+const LOGO_FILL = '#C9A94A';
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -217,13 +222,14 @@ function SealMark({ cx, cy, r, stroke, strokeWidth = 1 }: {
 // RN Animated on a normal View only ever touches opacity, which is the
 // standard, safe path.
 export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize, lineIntensity, wavesAboveSeal }: {
-  /** Fixed px size for the vertical PARKQUEST edge text. Defaults to scaling
-      with container height — right for card-sized containers, oversized on
-      the passport page's near-full-screen cover. */
+  /** Fixed px text size for the ParkQuest logo+wordmark lockup on the right
+      edge. Defaults to scaling with container height — right for
+      card-sized containers, oversized on the passport page's
+      near-full-screen cover. */
   edgeTextSize?: number;
-  /** [startFrac, endFrac] of container height the edge text's letter run
-      spans. Defaults to nearly the full height; the passport page pins it
-      to the name-through-stats zone instead. */
+  /** [startFrac, endFrac] of container height the logo+wordmark lockup is
+      vertically centered within. Defaults to nearly the full height; the
+      passport page pins it to the name-through-stats zone instead. */
   edgeTextSpan?: [number, number];
   /** Fixed geometry size in px — skips self-measurement entirely. Use when
       the container's height changes across loading states (e.g. the passport
@@ -454,7 +460,7 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize, lineI
               </Defs>
 
               {/* opacity on the group halves the mandala's share of the tilt
-                  shimmer without dimming the PARKQUEST edge text below it */}
+                  shimmer without dimming the ParkQuest logo lockup below it */}
               <G rotation={TILT_A} origin={[w / 2, h / 2]} opacity={0.45}>
                 <SealMark cx={layers.sealCx} cy={layers.sealCy} r={layers.sealR} stroke="url(#holo)" />
                 {layers.rosetteCircles.map((c, i) => (
@@ -475,29 +481,57 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize, lineI
                 ))}
               </G>
 
-              {/* Micro-print security strip, upright along the right edge.
-                  textLength + lengthAdjust="spacing" stretches the letter run
-                  across the configured span by widening gaps only — glyphs
-                  themselves keep their size (spacingAndGlyphs would scale them). */}
+              {/* ParkQuest logo + wordmark lockup, upright along the right
+                  edge — same mountain glyph + "ParkQuest" wordmark as the
+                  feed/profile header's Wordmark component, laid out
+                  horizontally then rotated -90 as one group so it climbs
+                  the edge exactly like the old rotated PARKQUEST
+                  micro-print did. Solid fill (not the holo gradient) so
+                  glyph and text read as one flat color throughout, same as
+                  a foil stamp. textLength + lengthAdjust="spacing" pins the
+                  text run to a fixed width so the icon's position can be
+                  computed exactly. */}
               {(() => {
                 const [startFrac, endFrac] = edgeTextSpan ?? [0.02, 0.98];
                 const cy = ((startFrac + endFrac) / 2) * h;
-                const runLen = (endFrac - startFrac) * h;
+                const fontSize = edgeTextSize ?? Math.max(8, h * 0.08);
+                const iconSize = fontSize / 0.82; // matches Wordmark's icon:text size ratio
+                // Rotation pivot sits at the row's own vertical center (cy), so
+                // after the -90 turn that vertical thickness becomes the
+                // distance from the right edge — pivotX has to back off by
+                // half of it, or the icon's top/bottom half is clipped by the
+                // card's viewBox instead of sitting flush against the edge.
+                const edgePad = 4;
+                const pivotX = w - iconSize / 2 - edgePad;
+                const gap = fontSize * 0.3;
+                const textWidth = fontSize * 5.2; // tuned for "ParkQuest" at this weight
+                const totalWidth = iconSize + gap + textWidth;
+                const rowStartX = pivotX - totalWidth / 2;
                 return (
-                  <SvgText
-                    x={w - 10}
-                    y={cy}
-                    fontSize={edgeTextSize ?? Math.max(8, h * 0.08)}
-                    fontWeight="700"
-                    letterSpacing={2}
-                    textAnchor="middle"
-                    fill="url(#holo)"
-                    transform={`rotate(-90, ${w - 10}, ${cy})`}
-                    textLength={runLen}
-                    lengthAdjust="spacing"
-                  >
-                    PARKQUEST
-                  </SvgText>
+                  <G transform={`rotate(-90, ${pivotX}, ${cy})`}>
+                    <G transform={`translate(${rowStartX}, ${cy - iconSize / 2}) scale(${iconSize / 24})`}>
+                      <Path
+                        d="M3 20L9 9l3 5 3-7 6 13H3z"
+                        stroke={LOGO_FILL}
+                        strokeWidth={2.2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
+                      />
+                      <Circle cx={20} cy={4} r={3.5} fill={LOGO_FILL} />
+                    </G>
+                    <SvgText
+                      x={rowStartX + iconSize + gap}
+                      y={cy + fontSize * 0.32}
+                      fontSize={fontSize}
+                      fill={LOGO_FILL}
+                      textLength={textWidth}
+                      lengthAdjust="spacing"
+                    >
+                      <TSpan fontWeight="800">Park</TSpan>
+                      <TSpan fontWeight="500">Quest</TSpan>
+                    </SvgText>
+                  </G>
                 );
               })()}
             </Svg>
