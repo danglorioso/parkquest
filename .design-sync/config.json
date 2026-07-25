@@ -3,9 +3,16 @@
   "pkg": "@parkquest/ui-primitives",
   "globalName": "ParkQuestUI",
   "shape": "package",
+  "readmeHeader": ".design-sync/conventions.md",
   "srcDir": ".",
   "tsconfig": "../../../apps/web/tsconfig.json",
   "cssEntry": "ds-styles.css",
+  "overrides": {
+    "Dialog": { "cardMode": "single" },
+    "AlertDialog": { "cardMode": "single" },
+    "Popover": { "cardMode": "single" },
+    "Card": { "cardMode": "column" }
+  },
   "componentSrcMap": {
     "Button": "button.tsx",
     "Card": "card.tsx",
