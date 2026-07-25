@@ -755,7 +755,7 @@ const st = StyleSheet.create({
     fontWeight: '700',
     color: GOLD,
     letterSpacing: 1.8,
-    opacity: 0.8,
+    opacity: 0.45,
   },
   // Passport number + site, relocated to the cover's bottom-left corner —
   // was sharing the top kicker row, but combined they were wide enough to
