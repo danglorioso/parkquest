@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Alert, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, KeyboardAvoidingView, LayoutAnimation, Modal, PanResponder, Platform,
+  ActivityIndicator, Alert, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, Keyboard, KeyboardAvoidingView, LayoutAnimation, Modal, PanResponder, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View, useColorScheme, useWindowDimensions,
 } from 'react-native';
@@ -251,6 +251,7 @@ function StarRating({ value, onChange, onDragChange }: {
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (e) => {
+      Keyboard.dismiss();
       isDragging.current = true;
       onDragChange?.(true);
       const x = e.nativeEvent.pageX - containerX.current;
@@ -361,6 +362,7 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (e) => {
+      Keyboard.dismiss();
       isDragging.current = true;
       onDragChange?.(true);
       // A plain tap glides straight to the snapped dot — jumping the thumb to
@@ -460,6 +462,7 @@ function ScaleRow({ value, onChange, labels, onDragChange }: {
 function WeatherGrid({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
   const C = useColors();
   const toggle = (id: string) => {
+    Keyboard.dismiss();
     Haptics.selectionAsync();
     onChange(value.includes(id) ? value.filter(w => w !== id) : [...value, id]);
   };
@@ -492,8 +495,10 @@ function ActivityChips({ value, onChange, npsActivityNames = [] }: {
   const C = useColors();
   const [customQ, setCustomQ] = useState('');
 
-  const toggle = (a: string) =>
+  const toggle = (a: string) => {
+    Keyboard.dismiss();
     onChange(value.includes(a) ? value.filter(x => x !== a) : value.length < 8 ? [...value, a] : value);
+  };
 
   const removeCustom = (a: string) => onChange(value.filter(x => x !== a));
 
@@ -616,7 +621,7 @@ function ReturnRow({ value, onChange }: { value: Draft['wouldReturn']; onChange:
         return (
           <PressableScale
             key={o.id}
-            onPress={() => { Haptics.selectionAsync(); onChange(on ? null : o.id as Draft['wouldReturn']); }}
+            onPress={() => { Keyboard.dismiss(); Haptics.selectionAsync(); onChange(on ? null : o.id as Draft['wouldReturn']); }}
             style={[styles.returnBtn, { backgroundColor: on ? o.color : C.surface, borderColor: on ? o.color : C.hairline }]}
           >
             <View style={[styles.returnBadge, { backgroundColor: on ? 'rgba(255,255,255,0.25)' : C.surfaceAlt }]}>
@@ -646,7 +651,7 @@ function VisibilityPicker({ value, onChange }: { value: Draft['visibility']; onC
         const on = value === o.v;
         return (
           <TouchableOpacity
-            key={o.v} onPress={() => onChange(o.v)} activeOpacity={0.7}
+            key={o.v} onPress={() => { Keyboard.dismiss(); onChange(o.v); }} activeOpacity={0.7}
             style={[styles.visRow, { borderColor: on ? C.primary : 'transparent', backgroundColor: on ? C.surface : C.surfaceAlt }]}
           >
             <View style={[styles.visIcon, { backgroundColor: on ? C.primary : C.surface, borderColor: on ? C.primary : C.hairline }]}>
