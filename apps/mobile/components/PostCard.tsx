@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, TextInput,
+  View, Text, TouchableOpacity, ScrollView, FlatList, TextInput,
   Modal, Dimensions, Alert, ActivityIndicator, Share,
   StyleSheet, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder, useColorScheme,
   InteractionManager,
@@ -787,8 +787,9 @@ function CommentsSheet({
   const [reportingCommentId, setReportingCommentId] = useState<number | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: number; text: string } | null>(null);
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<FlatList<CommentRow>>(null);
   const scrollY = useRef(0);
+  const editInputRef = useRef<TextInput>(null);
 
   const slide = useRef(new Animated.Value(600)).current;
   const panY = useRef(new Animated.Value(0)).current;
@@ -859,7 +860,7 @@ function CommentsSheet({
         avatar_url: myAvatarUrl ?? null,
       }, ...prev]);
       onCountChange(1);
-      setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 80);
+      setTimeout(() => scrollRef.current?.scrollToOffset({ offset: 0, animated: true }), 80);
     } catch {
       setDraft(text);
     } finally {
@@ -915,115 +916,121 @@ function CommentsSheet({
             </View>
             <View style={{ height: 0.5, backgroundColor: C.hairline }} />
 
-            <ScrollView
+            <FlatList
               ref={scrollRef}
+              data={rows}
+              keyExtractor={c => String(c.id)}
               style={{ maxHeight: SCREEN_H * 0.52 }}
               contentContainerStyle={{ paddingVertical: 4 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               scrollEventThrottle={16}
               onScroll={(e) => { scrollY.current = e.nativeEvent.contentOffset.y; }}
-            >
-              {loading ? (
+              initialNumToRender={8}
+              windowSize={7}
+              ListEmptyComponent={loading ? (
                 <ActivityIndicator size="small" color={C.inkMute} style={{ margin: 24 }} />
-              ) : rows.length === 0 ? (
-                <Text style={styles.sheetEmpty}>No comments yet. Be the first!</Text>
               ) : (
-                rows.map(c => {
-                  const cname = c.display_name ?? c.username ?? 'Explorer';
-                  const isOwn = myUserId && c.user_id === myUserId;
-                  const isExpanded = expandedComments.has(c.id);
-                  const isEditing = editingComment?.id === c.id;
-                  return (
-                    <View key={c.id} style={styles.commentRow}>
-                      <TouchableOpacity onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}>
-                        <Avatar url={c.avatar_url} name={cname} size={36} />
-                      </TouchableOpacity>
-                      <View style={{ flex: 1 }}>
-                        {isEditing ? (
-                          <View style={styles.commentEditInput}>
-                            <TextInput
-                              autoFocus
-                              value={editingComment.text}
-                              onChangeText={t => setEditingComment({ id: c.id, text: t.slice(0, COMMENT_LIMIT) })}
-                              style={[styles.commentTextInput, { paddingLeft: 0 }]}
-                              multiline
-                              returnKeyType="done"
-                              blurOnSubmit
-                              onSubmitEditing={() => editComment(c.id, editingComment.text)}
-                            />
-                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                              <TouchableOpacity onPress={() => editComment(c.id, editingComment.text)}>
-                                <Text style={{ fontSize: 13, fontWeight: '700', color: C.primary }}>Save</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity onPress={() => setEditingComment(null)}>
-                                <Text style={{ fontSize: 13, color: C.inkMute }}>Cancel</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ) : (
-                          <>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Text
-                                style={styles.commentAuthor}
-                                onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}
-                              >
-                                {cname}
-                              </Text>
-                              {c.is_admin ? <AdminStar size={12} /> : null}
-                            </View>
-                            <Text style={[styles.commentInlineText, { marginTop: 2 }]}>
-                              {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
-                                ? c.content
-                                : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
-                              {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
-                                <Text
-                                  style={styles.commentMore}
-                                  onPress={() => setExpandedComments(prev => {
-                                    const next = new Set(prev); next.add(c.id); return next;
-                                  })}
-                                >
-                                  {'… more'}
-                                </Text>
-                              )}
-                            </Text>
-                          </>
-                        )}
-                        <Text style={[styles.commentTime, { marginTop: 3 }]}>{relTime(c.created_at)}</Text>
-                      </View>
-                      <MenuView
-                        onPressAction={({ nativeEvent }) => {
-                          switch (nativeEvent.event) {
-                            case 'edit':
-                              setEditingComment({ id: c.id, text: c.content });
-                              break;
-                            case 'delete':
-                              deleteComment(c.id);
-                              break;
-                            case 'report':
-                              setReportingCommentId(c.id);
-                              break;
-                          }
-                        }}
-                        actions={isOwn ? [
-                          { id: 'edit', title: 'Edit', image: 'pencil', imageColor: menuInk },
-                          { id: 'delete', title: 'Delete', image: 'trash', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
-                        ] : [
-                          { id: 'report', title: 'Report', image: 'flag', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
-                        ]}
-                      >
-                        <TouchableOpacity
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          style={{ paddingLeft: 6, paddingTop: 2 }}
-                        >
-                          <Ionicons name="ellipsis-horizontal" size={15} color={C.inkMute} />
-                        </TouchableOpacity>
-                      </MenuView>
-                    </View>
-                  );
-                })
+                <Text style={styles.sheetEmpty}>No comments yet. Be the first!</Text>
               )}
-            </ScrollView>
+              renderItem={({ item: c }) => {
+                const cname = c.display_name ?? c.username ?? 'Explorer';
+                const isOwn = myUserId && c.user_id === myUserId;
+                const isExpanded = expandedComments.has(c.id);
+                const isEditing = editingComment?.id === c.id;
+                return (
+                  <View style={styles.commentRow}>
+                    <TouchableOpacity onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}>
+                      <Avatar url={c.avatar_url} name={cname} size={36} />
+                    </TouchableOpacity>
+                    <View style={{ flex: 1 }}>
+                      {isEditing ? (
+                        <View style={styles.commentEditInput}>
+                          <TextInput
+                            ref={editInputRef}
+                            value={editingComment.text}
+                            onChangeText={t => setEditingComment({ id: c.id, text: t.slice(0, COMMENT_LIMIT) })}
+                            style={[styles.commentTextInput, { paddingLeft: 0 }]}
+                            multiline
+                            returnKeyType="done"
+                            blurOnSubmit
+                            onSubmitEditing={() => editComment(c.id, editingComment.text)}
+                          />
+                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                            <TouchableOpacity onPress={() => editComment(c.id, editingComment.text)}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: C.primary }}>Save</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => setEditingComment(null)}>
+                              <Text style={{ fontSize: 13, color: C.inkMute }}>Cancel</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text
+                              style={styles.commentAuthor}
+                              onPress={() => { dismiss(); router.push(`/user/${c.user_id}` as never); }}
+                            >
+                              {cname}
+                            </Text>
+                            {c.is_admin ? <AdminStar size={12} /> : null}
+                          </View>
+                          <Text style={[styles.commentInlineText, { marginTop: 2 }]}>
+                            {isExpanded || c.content.length <= COMMENT_PREVIEW_CHARS
+                              ? c.content
+                              : c.content.slice(0, COMMENT_PREVIEW_CHARS)}
+                            {!isExpanded && c.content.length > COMMENT_PREVIEW_CHARS && (
+                              <Text
+                                style={styles.commentMore}
+                                onPress={() => setExpandedComments(prev => {
+                                  const next = new Set(prev); next.add(c.id); return next;
+                                })}
+                              >
+                                {'… more'}
+                              </Text>
+                            )}
+                          </Text>
+                        </>
+                      )}
+                      <Text style={[styles.commentTime, { marginTop: 3 }]}>{relTime(c.created_at)}</Text>
+                    </View>
+                    <MenuView
+                      onPressAction={({ nativeEvent }) => {
+                        switch (nativeEvent.event) {
+                          case 'edit':
+                            setEditingComment({ id: c.id, text: c.content });
+                            // Sheet is already open and settled by the time this menu
+                            // action fires — but autoFocus still forces UITextView layout
+                            // synchronously on tap, so defer it a frame instead.
+                            InteractionManager.runAfterInteractions(() => editInputRef.current?.focus());
+                            break;
+                          case 'delete':
+                            deleteComment(c.id);
+                            break;
+                          case 'report':
+                            setReportingCommentId(c.id);
+                            break;
+                        }
+                      }}
+                      actions={isOwn ? [
+                        { id: 'edit', title: 'Edit', image: 'pencil', imageColor: menuInk },
+                        { id: 'delete', title: 'Delete', image: 'trash', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
+                      ] : [
+                        { id: 'report', title: 'Report', image: 'flag', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
+                      ]}
+                    >
+                      <TouchableOpacity
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{ paddingLeft: 6, paddingTop: 2 }}
+                      >
+                        <Ionicons name="ellipsis-horizontal" size={15} color={C.inkMute} />
+                      </TouchableOpacity>
+                    </MenuView>
+                  </View>
+                );
+              }}
+            />
 
             <View style={{ height: 0.5, backgroundColor: C.hairline }} />
             <View style={styles.commentInput}>

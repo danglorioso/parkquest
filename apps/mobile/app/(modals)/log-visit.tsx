@@ -1001,15 +1001,6 @@ function PhotoCropModal({ uri, index, total, onCancel, onDone }: {
 
 // ── Draggable photo thumb ───────────────────────────────────────────────────
 
-// Grid position (in cells) for a linear array index, row-major, `cols` wide.
-// Called from inside worklets (useAnimatedStyle, gesture .onUpdate), so it
-// needs its own 'worklet' directive — plain functions aren't callable from
-// the UI thread even when referenced from a worklet's closure.
-function cellPos(i: number, cols: number) {
-  'worklet';
-  return { col: i % cols, row: Math.floor(i / cols) };
-}
-
 function DraggablePhotoThumb({
   index, url, isCover, count, cols, cellSize, activeIndex, overIndex, onDragStart, onDragEnd, onPress, onRemove,
 }: {
@@ -1038,7 +1029,8 @@ function DraggablePhotoThumb({
     .onUpdate(e => {
       translateX.value = e.translationX;
       translateY.value = e.translationY;
-      const { col, row } = cellPos(index, cols);
+      const col = index % cols;
+      const row = Math.floor(index / cols);
       const rawCol = Math.max(0, Math.min(cols - 1, col + Math.round(e.translationX / step)));
       const rawRow = Math.max(0, row + Math.round(e.translationY / step));
       const raw = rawRow * cols + rawCol;
@@ -1071,12 +1063,13 @@ function DraggablePhotoThumb({
     }
     // Shifted items land in the grid slot the next/previous index occupies —
     // usually one column over, but a row-wrap slides them a full row instead.
-    const mine = cellPos(index, cols);
-    const target = cellPos(index + shift, cols);
+    const targetIndex = index + shift;
+    const mineCol = index % cols, mineRow = Math.floor(index / cols);
+    const targetCol = targetIndex % cols, targetRow = Math.floor(targetIndex / cols);
     return {
       transform: [
-        { translateX: withTiming((target.col - mine.col) * step, { duration: 160 }) },
-        { translateY: withTiming((target.row - mine.row) * step, { duration: 160 }) },
+        { translateX: withTiming((targetCol - mineCol) * step, { duration: 160 }) },
+        { translateY: withTiming((targetRow - mineRow) * step, { duration: 160 }) },
         { scale: 1 },
       ],
       zIndex: 0, shadowOpacity: 0,
