@@ -269,11 +269,14 @@ export default function FeedScreen() {
                 // Seed the profile tab's stack with its root before navigating to
                 // the nested friends screen — pushing the nested route directly
                 // (from a different tab) left that stack as just [friends] with
-                // no index beneath it, so back had nowhere to go. navigate (not
-                // push) also means tapping "Manage" again while already there
-                // returns to the existing screen instead of stacking a duplicate.
+                // no index beneath it, so back had nowhere to go. The second
+                // navigate is deferred a tick: expo-router's imperative navigate()
+                // computes its target against the state at call time and only
+                // dispatches later, so firing both synchronously back-to-back had
+                // the second call compute against the same stale (pre-navigation)
+                // state as the first, silently dropping the seeded root.
                 router.navigate('/(tabs)/profile' as never);
-                router.navigate('/(tabs)/profile/friends' as never);
+                setTimeout(() => router.navigate('/(tabs)/profile/friends' as never), 0);
               }}
               hitSlop={8}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingRight: 2 }}

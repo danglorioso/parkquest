@@ -95,9 +95,13 @@ export function OnboardingWalkthrough() {
     // friends screen — pushing the nested route directly (while a different
     // tab is focused) left that stack as just [friends] with no index
     // beneath it: no back button, and every later Profile tap re-focused
-    // that same stale stack instead of resetting to the profile root.
+    // that same stale stack instead of resetting to the profile root. The
+    // second navigate is deferred a tick since expo-router's navigate()
+    // computes its target against call-time state and only dispatches
+    // later — firing both synchronously had the second call see the same
+    // stale state as the first, dropping the seeded root.
     router.navigate('/(tabs)/profile' as never);
-    router.navigate('/(tabs)/profile/friends' as never);
+    setTimeout(() => router.navigate('/(tabs)/profile/friends' as never), 0);
   };
 
   if (!visible) return null;
