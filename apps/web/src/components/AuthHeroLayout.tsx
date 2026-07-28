@@ -439,11 +439,40 @@ function DField({
   );
 }
 
-function AppleGlyph() {
+function AppleGlyph({ size = 17 }: { size?: number }) {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
       <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
     </svg>
+  );
+}
+
+function AppStorePill({ compact = false }: { compact?: boolean }) {
+  return (
+    <a
+      href="https://apps.apple.com/us/app/parkquest-national-park-log/id6778208311"
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        marginTop: compact ? 12 : 18,
+        padding: compact ? "5px 10px" : "7px 13px",
+        borderRadius: 999,
+        background: "rgba(255,251,241,0.14)",
+        border: "0.5px solid rgba(255,251,241,0.30)",
+        fontFamily: "var(--font-mono)",
+        fontSize: compact ? 9 : 10.5,
+        letterSpacing: "1px",
+        fontWeight: 700,
+        color: "#FFFBF1",
+        textDecoration: "none",
+      }}
+    >
+      <AppleGlyph size={compact ? 10 : 12} />
+      AVAILABLE NOW ON iOS
+    </a>
   );
 }
 
@@ -1003,6 +1032,7 @@ function MobileHeroSection() {
         <div style={{ fontWeight: 800, fontSize: 34, letterSpacing: -1, lineHeight: 1.05 }}>
           Every park.<br />One journal.
         </div>
+        <AppStorePill compact />
       </div>
     </div>
   );
@@ -1234,6 +1264,7 @@ function HeroSection({ onScroll }: { onScroll: () => void }) {
           Log every U.S. national park you&apos;ve visited, plan the next one,
           collect stamps and badges, and bring your friends along.
         </div>
+        <AppStorePill />
       </div>
 
       {/* Animated scroll-down indicator */}
@@ -1794,7 +1825,7 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
             marginTop: 18,
           }}
         >
-          Scroll up to sign in or create an account.
+          The ParkQuest app is available now on iOS. Scroll up to sign in or create an account.
         </div>
 
         <div style={{ display: "flex", justifyContent: "center", marginTop: 26 }}>
