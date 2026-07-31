@@ -7,6 +7,10 @@ import { getParkGlyph, glyphTransform, type CustomStampGlyph } from '@parkquest/
 // ── Stamp palette + helpers ───────────────────────────────────────────────────
 
 const STAMP_COLORS = ['#5A2418', '#1F3D2E', '#2D4F66', '#3A2E5C', '#7B3A1F'];
+// Same 5 hues, lightened for legibility against a dark page — the light-mode
+// inks are tuned for contrast against cream paper and read as near-black on
+// a dark background.
+const STAMP_COLORS_DARK = ['#E0A98C', '#7FCBA0', '#8FBEDE', '#B3A0E0', '#E8B37E'];
 
 // react-native-svg's iOS backend doesn't honor textAnchor on <TextPath> —
 // text always renders start-aligned from startOffset regardless of the
@@ -20,8 +24,8 @@ const TEXT_ARC_LEN      = Math.PI * TEXT_ARC_R; // semicircle (180° sweep)
 const STATE_TEXT_LEN    = 44; // forced glyph width for "★ XX ★" at fontSize 6.5
 const STATE_START_OFFSET = `${((TEXT_ARC_LEN - STATE_TEXT_LEN) / 2 / TEXT_ARC_LEN * 100).toFixed(2)}%`;
 
-export function stampColor(idx: number): string {
-  return STAMP_COLORS[idx % STAMP_COLORS.length];
+export function stampColor(idx: number, dark = false): string {
+  return (dark ? STAMP_COLORS_DARK : STAMP_COLORS)[idx % STAMP_COLORS.length];
 }
 
 // ── Ink-worn texture ─────────────────────────────────────────────────────────
@@ -78,7 +82,7 @@ export function stateCode(states: string): string {
 // ── Stamp ─────────────────────────────────────────────────────────────────────
 
 export function ParkStamp({
-  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = '', inkColor, customGlyph,
+  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = '', inkColor, customGlyph, dark = false,
 }: {
   parkCode: string;
   name: string;
@@ -93,8 +97,10 @@ export function ParkStamp({
   inkColor?: string;
   /** Admin-uploaded center icon (parks.stamp_glyph) — takes priority over the hand-authored PARK_GLYPHS. */
   customGlyph?: CustomStampGlyph | null;
+  /** Renders against a dark page — picks the lightened ink variant instead of the paper-tuned default. Ignored when inkColor is set. */
+  dark?: boolean;
 }) {
-  const c         = inkColor ?? stampColor(colorIdx);
+  const c         = inkColor ?? stampColor(colorIdx, dark);
   const sc        = stateCode(states);
   // "National Park" is implied by the stamp itself (ring text/compass motif) —
   // drop it so e.g. "Wrangell-St. Elias National Park & Preserve" leaves room

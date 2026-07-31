@@ -1,6 +1,6 @@
 import {
   Animated, Dimensions, Image, Platform, StyleSheet,
-  Text, TouchableOpacity, View,
+  Text, TouchableOpacity, View, useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HolographicShine } from '@/components/HolographicShine';
@@ -18,13 +18,18 @@ import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { STATIC as C, useColors } from '@/lib/palette';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-// Passport-book aesthetic: paper, gold foil, and stamp inks are intentionally
-// fixed — only the cover color follows the app palette.
+// Passport-book aesthetic: gold foil stays fixed across themes (it already
+// reads fine on both cream paper and the dark green cover). Paper + ink pair
+// light/dark so the book itself follows the phone's theme instead of always
+// forcing a light page.
 
-const PAPER  = '#FAF3E0';
-const GOLD   = '#C9A94A';
-const P_INK  = '#3A2E1C';
-const P_MUTE = 'rgba(58,46,28,0.45)';
+const PAPER       = '#FAF3E0';
+const PAPER_DARK  = '#1C1912';
+const GOLD        = '#C9A94A';
+const P_INK       = '#3A2E1C';
+const P_INK_DARK  = '#E8DCC0';
+const P_MUTE      = 'rgba(58,46,28,0.45)';
+const P_MUTE_DARK = 'rgba(232,220,192,0.45)';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const W    = Dimensions.get('window').width;
@@ -90,8 +95,10 @@ type RowItem =
 
 // ── Stamp cell ────────────────────────────────────────────────────────────────
 
-function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) {
+function StampCell({ item, onPress, dark }: { item: StampItem; onPress: () => void; dark: boolean }) {
   const date = item.visited_date ? stampDateStr(item.visited_date) : '';
+  const ink  = dark ? P_INK_DARK : P_INK;
+  const mute = dark ? P_MUTE_DARK : P_MUTE;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -105,33 +112,36 @@ function StampCell({ item, onPress }: { item: StampItem; onPress: () => void }) 
         colorIdx={item.colorIdx}
         size={STAMP_D}
         customGlyph={item.stamp_glyph}
+        dark={dark}
       />
-      <Text numberOfLines={2} style={st.stampName}>{item.name}</Text>
-      {date ? <Text style={st.stampDate}>{date}</Text> : null}
+      <Text numberOfLines={2} style={[st.stampName, { color: ink }]}>{item.name}</Text>
+      {date ? <Text style={[st.stampDate, { color: mute }]}>{date}</Text> : null}
     </TouchableOpacity>
   );
 }
 
-function StampPlaceholder({ item }: { item: StampItem }) {
+function StampPlaceholder({ item, dark }: { item: StampItem; dark: boolean }) {
+  const ink = dark ? P_INK_DARK : P_INK;
   return (
     <View style={[st.stampCell, { opacity: 0.22 }]}>
-      <View style={[st.placeholderCircle, { width: STAMP_D, height: STAMP_D, borderRadius: STAMP_D / 2 }]}>
-        <Ionicons name="add" size={18} color={P_INK} />
+      <View style={[st.placeholderCircle, { width: STAMP_D, height: STAMP_D, borderRadius: STAMP_D / 2, borderColor: ink }]}>
+        <Ionicons name="add" size={18} color={ink} />
       </View>
-      <Text numberOfLines={2} style={[st.stampName, { color: P_INK }]}>{item.name}</Text>
+      <Text numberOfLines={2} style={[st.stampName, { color: ink }]}>{item.name}</Text>
     </View>
   );
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
-function SkeletonRow() {
+function SkeletonRow({ dark }: { dark: boolean }) {
+  const base = dark ? '232,220,192' : '58,46,28';
   return (
     <View style={st.stampRow}>
       {[0,1,2].map(i => (
         <View key={i} style={st.stampCell}>
-          <View style={{ width: STAMP_D, height: STAMP_D, borderRadius: STAMP_D / 2, backgroundColor: 'rgba(58,46,28,0.08)' }} />
-          <View style={{ width: CELL_W - 12, height: 8, borderRadius: 4, backgroundColor: 'rgba(58,46,28,0.06)', marginTop: 8 }} />
+          <View style={{ width: STAMP_D, height: STAMP_D, borderRadius: STAMP_D / 2, backgroundColor: `rgba(${base},0.08)` }} />
+          <View style={{ width: CELL_W - 12, height: 8, borderRadius: 4, backgroundColor: `rgba(${base},0.06)`, marginTop: 8 }} />
         </View>
       ))}
     </View>
@@ -153,6 +163,10 @@ export default function PassportScreen() {
   const { user }      = useUser();
   const router        = useRouter();
   const T             = useColors();
+  const isDark        = useColorScheme() === 'dark';
+  const paper         = isDark ? PAPER_DARK : PAPER;
+  const ink           = isDark ? P_INK_DARK : P_INK;
+  const mute          = isDark ? P_MUTE_DARK : P_MUTE;
   const insets        = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
   const handleScroll = useRef(
@@ -398,7 +412,7 @@ export default function PassportScreen() {
 
   if (error && allParks.length === 0) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: PAPER }} edges={['bottom']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: paper }} edges={['bottom']}>
         <StatusBar style="light" />
         {statusBarUnderlay}
         {backButton}
@@ -417,7 +431,7 @@ export default function PassportScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: PAPER }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: paper }} edges={['bottom']}>
       <StatusBar style={pastCover ? 'dark' : 'light'} />
       {statusBarUnderlay}
       {backButton}
@@ -425,7 +439,7 @@ export default function PassportScreen() {
         pointerEvents="none"
         style={{ transform: [{ translateY: Animated.multiply(scrollY, -PARALLAX_FACTOR) }] }}
       >
-        <PassportWatermark />
+        <PassportWatermark dark={isDark} />
       </Animated.View>
       <Animated.FlatList
         data={listData}
@@ -662,7 +676,7 @@ export default function PassportScreen() {
                     own data page rather than the shiny cover itself */}
                 {profile?.bio ? (
                   <View style={st.infoPage}>
-                    <Text style={st.infoBio}>{profile.bio}</Text>
+                    <Text style={[st.infoBio, { color: ink }]}>{profile.bio}</Text>
                   </View>
                 ) : null}
               </View>
@@ -680,15 +694,15 @@ export default function PassportScreen() {
           }
 
           if (item.type === 'skeleton') {
-            return <SkeletonRow />;
+            return <SkeletonRow dark={isDark} />;
           }
 
           if (item.type === 'empty') {
             return (
               <View style={{ alignItems: 'center', paddingTop: 48, paddingHorizontal: 32, gap: 10 }}>
                 <Text style={{ fontSize: 32 }}>🏕</Text>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: P_INK, textAlign: 'center' }}>No stamps yet</Text>
-                <Text style={{ fontSize: 13, color: P_MUTE, textAlign: 'center', lineHeight: 19 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: ink, textAlign: 'center' }}>No stamps yet</Text>
+                <Text style={{ fontSize: 13, color: mute, textAlign: 'center', lineHeight: 19 }}>
                   Log your first park visit to earn your first stamp.
                 </Text>
               </View>
@@ -699,9 +713,9 @@ export default function PassportScreen() {
           return (
             <View style={st.stampRow}>
               {item.items.map(s => s.visited ? (
-                <StampCell key={s.park_code} item={s} onPress={() => setSelectedStamp(s)} />
+                <StampCell key={s.park_code} item={s} onPress={() => setSelectedStamp(s)} dark={isDark} />
               ) : (
-                <StampPlaceholder key={s.park_code} item={s} />
+                <StampPlaceholder key={s.park_code} item={s} dark={isDark} />
               ))}
               {/* Pad short last row */}
               {item.items.length < 3 && Array.from({ length: 3 - item.items.length }).map((_, i) => (

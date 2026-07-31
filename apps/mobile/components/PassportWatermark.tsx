@@ -27,7 +27,8 @@ for (let y = 0; y <= VB_H; y += STEP) WAVE_YS.push(y);
 // not blank white. Rows above it drop their own opaque background so it
 // shows through. Sized taller than the screen (not "100%") so the parent's
 // scroll-linked translateY has real pattern to reveal instead of empty gap.
-export function PassportWatermark() {
+export function PassportWatermark({ dark = false }: { dark?: boolean }) {
+  const stroke = dark ? 'rgba(232,220,192,0.05)' : 'rgba(58,46,28,0.05)';
   return (
     <Svg
       width="100%"
@@ -38,7 +39,7 @@ export function PassportWatermark() {
       pointerEvents="none"
     >
       {WAVE_YS.map((y, i) => (
-        <Path key={i} d={waveD(y)} stroke="rgba(58,46,28,0.05)" strokeWidth={1} fill="none" />
+        <Path key={i} d={waveD(y)} stroke={stroke} strokeWidth={1} fill="none" />
       ))}
     </Svg>
   );

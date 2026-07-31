@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Easing, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Easing, Modal, StyleSheet, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CustomStampGlyph } from '@parkquest/types';
 import { ParkStamp } from '@/components/ParkStamp';
@@ -13,10 +13,13 @@ import { fullStateName } from '@/lib/stateNames';
 // journal) + "park info" instead of a share-to-feed button, since a stamp
 // isn't a shareable feed post.
 
-const PAPER  = '#FAF3E0';
-const GOLD   = '#C9A94A';
-const P_INK  = '#3A2E1C';
-const P_MUTE = 'rgba(58,46,28,0.45)';
+const PAPER       = '#FAF3E0';
+const PAPER_DARK  = '#1C1912';
+const GOLD        = '#C9A94A';
+const P_INK       = '#3A2E1C';
+const P_INK_DARK  = '#E8DCC0';
+const P_MUTE      = 'rgba(58,46,28,0.45)';
+const P_MUTE_DARK = 'rgba(232,220,192,0.45)';
 
 export interface StampDetailData {
   park_code: string;
@@ -36,6 +39,12 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
   const stampedDateStr = stamp.visited_date
     ? new Date(stamp.visited_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : null;
+
+  const isDark = useColorScheme() === 'dark';
+  const cardBg = isDark ? PAPER_DARK : PAPER;
+  const ink    = isDark ? P_INK_DARK : P_INK;
+  const mute   = isDark ? P_MUTE_DARK : P_MUTE;
+  const closeBg = isDark ? 'rgba(232,220,192,0.10)' : 'rgba(58,46,28,0.08)';
 
   // Entrance — matches BadgeDetailModal: card scales in, stamp pops with overshoot
   const cardAnim  = useRef(new Animated.Value(0)).current;
@@ -59,6 +68,7 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
         <Animated.View style={[
           styles.modal,
+          { backgroundColor: cardBg },
           {
             opacity: cardAnim,
             transform: [
@@ -67,8 +77,8 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
             ],
           },
         ]}>
-          <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-            <Ionicons name="close" size={16} color={P_INK} />
+          <TouchableOpacity onPress={onClose} style={[styles.modalClose, { backgroundColor: closeBg }]}>
+            <Ionicons name="close" size={16} color={ink} />
           </TouchableOpacity>
 
           <Animated.View style={{
@@ -87,15 +97,16 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
               size={130}
               customGlyph={stamp.stamp_glyph}
               idSuffix="-modal"
+              dark={isDark}
             />
           </Animated.View>
 
-          <Text style={styles.modalName}>{stamp.name}</Text>
-          <Text style={styles.modalDesc}>{fullStateName(stamp.states)}</Text>
+          <Text style={[styles.modalName, { color: ink }]}>{stamp.name}</Text>
+          <Text style={[styles.modalDesc, { color: mute }]}>{fullStateName(stamp.states)}</Text>
 
           {stampedDateStr && (
             <View style={styles.earnedRow}>
-              <Text style={styles.earnedText}>✦ Stamped {stampedDateStr}</Text>
+              <Text style={[styles.earnedText, { color: ink }]}>✦ Stamped {stampedDateStr}</Text>
             </View>
           )}
 
@@ -105,8 +116,8 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
               activeOpacity={0.8}
               style={styles.secondaryCta}
             >
-              <Ionicons name="book-outline" size={14} color={P_INK} />
-              <Text style={styles.secondaryCtaText}>Your visits</Text>
+              <Ionicons name="book-outline" size={14} color={ink} />
+              <Text style={[styles.secondaryCtaText, { color: ink }]}>Your visits</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onParkInfo(stamp)}
