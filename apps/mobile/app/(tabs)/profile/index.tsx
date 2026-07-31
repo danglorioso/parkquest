@@ -584,6 +584,7 @@ export default function ProfileScreen() {
                       size={52}
                       idSuffix="-profile"
                       customGlyph={s.stamp_glyph}
+                      dark={isDark}
                     />
                   </View>
                   <Text style={styles.badgePreviewName} numberOfLines={2}>{s.name}</Text>
