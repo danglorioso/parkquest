@@ -85,6 +85,11 @@ export default function FeedScreen() {
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const refreshingRef = useRef(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
+  const offsetRef = useRef(0);
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 20;
   const [filter, setFilter]       = useState<Filter>('all');
   const [error, setError]         = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -146,12 +151,14 @@ export default function FeedScreen() {
     setError(false);
     try {
       const [res] = await Promise.all([
-        fetch(`${BASE}/api/feed`, { headers: { Authorization: `Bearer ${tok}` } }),
+        fetch(`${BASE}/api/feed?limit=${PAGE_SIZE}&offset=0`, { headers: { Authorization: `Bearer ${tok}` } }),
         isRefresh ? new Promise<void>(r => setTimeout(r, 700)) : Promise.resolve(),
       ]);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setPosts(data);
+      offsetRef.current = data.length;
+      setHasMore(data.length === PAGE_SIZE);
       setOfflineFetchedAt(null);
       hasLoadedRef.current = true;
       lastFetchedAtRef.current = new Date().toISOString();
@@ -175,6 +182,35 @@ export default function FeedScreen() {
 
   const loadFeedRef = useRef(loadFeed);
   loadFeedRef.current = loadFeed;
+
+  // Infinite scroll — the initial load only ever pulls PAGE_SIZE posts across
+  // ALL friends combined, so a single friend's older posts were getting
+  // crowded out by everyone else's the moment they scrolled ("Friends" tab
+  // just filters this same small batch client-side). Fetch further pages as
+  // the list end approaches; the API already supports offset, it just wasn't
+  // being used past the first page.
+  const loadMoreFeed = useCallback(async () => {
+    if (loadingMoreRef.current || refreshingRef.current || !hasMore || !isOnline) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const tok = token ?? await getToken();
+      if (!tok) return;
+      const res = await fetch(`${BASE}/api/feed?limit=${PAGE_SIZE}&offset=${offsetRef.current}`, {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: FeedPost[] = await res.json();
+      setPosts(prev => [...prev, ...data]);
+      offsetRef.current += data.length;
+      setHasMore(data.length === PAGE_SIZE);
+    } catch (e) {
+      console.error('Feed load-more failed:', e);
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [token, getToken, hasMore, isOnline]);
 
   useFocusEffect(useCallback(() => { loadFeedRef.current(); }, []));
 
@@ -293,7 +329,11 @@ export default function FeedScreen() {
   // ── Footer component ──────────────────────────────────────────────────────
 
   const ListFooter = filtered.length > 0 && !loading ? (
-    <Text style={styles.endOfFeed}>◆ END OF FEED · ALL CAUGHT UP ◆</Text>
+    loadingMore ? (
+      <ActivityIndicator style={{ paddingVertical: 20 }} color={palette.primary} />
+    ) : !hasMore ? (
+      <Text style={styles.endOfFeed}>◆ END OF FEED · ALL CAUGHT UP ◆</Text>
+    ) : null
   ) : null;
 
   // ── Empty / loading state ─────────────────────────────────────────────────
@@ -352,6 +392,8 @@ export default function FeedScreen() {
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         ListEmptyComponent={ListEmpty}
+        onEndReached={loadMoreFeed}
+        onEndReachedThreshold={0.6}
         style={{ marginTop: TOP_BAR_H }}
         contentContainerStyle={[styles.listContent, { paddingTop: 8, paddingBottom: tabBarSpace + 8 }]}
         showsVerticalScrollIndicator={false}
