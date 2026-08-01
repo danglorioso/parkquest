@@ -101,6 +101,17 @@ export default function FeedScreen() {
   const flatListRef = useRef<FlatList<FeedPost>>(null);
   useScrollToTop(flatListRef);
   const scrollOffsetRef = useRef(0);
+  // Clerk tokens expire in ~60s — never stash getToken itself in a dep array
+  // (unstable identity has caused runaway re-invocation before), always call
+  // through this ref so every fetch gets a fresh token instead of a cached
+  // Clerk instance whose identity happens to still match.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+  // Guards onEndReached against hammering the same failed request — FlatList
+  // can refire onEndReached immediately after a failed page (content height
+  // unchanged, still within threshold), so only retry once the user has
+  // actually scrolled further than where the last attempt started.
+  const lastLoadMoreScrollYRef = useRef(-1);
 
   const scrollToTop = () => flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
 
@@ -191,10 +202,12 @@ export default function FeedScreen() {
   // being used past the first page.
   const loadMoreFeed = useCallback(async () => {
     if (loadingMoreRef.current || refreshingRef.current || !hasMore || !isOnline) return;
+    if (scrollOffsetRef.current <= lastLoadMoreScrollYRef.current) return;
+    lastLoadMoreScrollYRef.current = scrollOffsetRef.current;
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const tok = token ?? await getToken();
+      const tok = await getTokenRef.current();
       if (!tok) return;
       const res = await fetch(`${BASE}/api/feed?limit=${PAGE_SIZE}&offset=${offsetRef.current}`, {
         headers: { Authorization: `Bearer ${tok}` },
@@ -210,7 +223,7 @@ export default function FeedScreen() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [token, getToken, hasMore, isOnline]);
+  }, [hasMore, isOnline]);
 
   useFocusEffect(useCallback(() => { loadFeedRef.current(); }, []));
 
