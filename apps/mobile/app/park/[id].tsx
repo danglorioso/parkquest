@@ -991,12 +991,13 @@ export function ParkProfileScreen({
     // A drag that started at full used to dismiss the whole sheet on
     // basically the same flick that would otherwise just drop it to half —
     // full → gone read as one accidental gesture away. Starting full now
-    // needs a distinctly harder flick, or a drag that's traveled nearly to
-    // the bottom, to skip past half and dismiss outright; anything gentler
-    // settles at half instead of falling all the way through.
+    // needs a very hard flick to skip past half and dismiss outright;
+    // anything gentler — including a drag that's traveled nearly to the
+    // bottom, as long as it's released slowly — settles at half instead of
+    // falling all the way through.
     const startedFull = sheetYBase.current < SHEET_PEEK / 2;
     if (startedFull) {
-      if (vy > 2.2 || raw > SH * 0.88) { dismissSheet(); return; }
+      if (vy > 3.2) { dismissSheet(); return; }
       if (raw < SHEET_PEEK / 2) snapSheetTo(0);
       else snapSheetTo(SHEET_PEEK);
       return;
