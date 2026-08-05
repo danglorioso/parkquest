@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, memo } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, FlatList, TextInput,
   Modal, Dimensions, Alert, ActivityIndicator, Share,
@@ -56,7 +56,7 @@ export interface FeedPost {
   visit_crowd: number | null;
   visit_difficulty: number | null;
   visit_companion_count: number | null;
-  visit_companion_names: Array<{ username: string; display_name: string | null; avatar_url: string | null }> | null;
+  visit_companion_names: Array<{ user_id: string; username: string; display_name: string | null; avatar_url: string | null }> | null;
   visit_highlight: string | null;
   visit_title: string | null;
   visit_ordinal: number | null;
@@ -717,7 +717,7 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
                       {i > 0 && ', '}
                       <Text
                         style={{ textDecorationLine: 'underline' }}
-                        onPress={() => router.push(`/profile/${c.username}` as never)}
+                        onPress={() => router.push(`/user/${c.user_id}` as never)}
                       >
                         {c.display_name ?? `@${c.username}`}
                       </Text>
@@ -1088,7 +1088,12 @@ const VIS_ORDER = ['public', 'friends', 'private'] as const;
 
 // ── PostCard ──────────────────────────────────────────────────────────────────
 
-export function PostCard({
+// Wrapped in memo — the feed's FlatList now appends pages as the user
+// scrolls (see feed/index.tsx), and each parent re-render used to force
+// every mounted card to fully re-render regardless of whether its own
+// `post` prop actually changed (this component has ~9 useState/4 useEffect
+// at the top level alone, plus preload fetches in nested subcomponents).
+function PostCardImpl({
   post,
   myUserId,
   myAvatarUrl,
@@ -1612,6 +1617,8 @@ export function PostCard({
     </View>
   );
 }
+
+export const PostCard = memo(PostCardImpl);
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
