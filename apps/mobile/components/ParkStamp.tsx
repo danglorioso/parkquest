@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import Svg, {
-  Circle, Defs, G, Line, Path as SvgPath, RadialGradient, Stop, Text as SvgText, TextPath,
+  Circle, Defs, Ellipse, G, Line, Path as SvgPath, RadialGradient, Stop, Text as SvgText, TextPath,
 } from 'react-native-svg';
 import { getParkGlyph, glyphTransform, type CustomStampGlyph } from '@parkquest/types';
 
@@ -23,6 +23,14 @@ const TEXT_ARC_R        = 33; // matches the topId/botId path radius below
 const TEXT_ARC_LEN      = Math.PI * TEXT_ARC_R; // semicircle (180° sweep)
 const STATE_TEXT_LEN    = 44; // forced glyph width for "★ XX ★" at fontSize 6.5
 const STATE_START_OFFSET = `${((TEXT_ARC_LEN - STATE_TEXT_LEN) / 2 / TEXT_ARC_LEN * 100).toFixed(2)}%`;
+// Leaves a small margin at each end of the arc so text doesn't touch the
+// path's own start/end points.
+const NAME_ARC_MAX_LEN  = TEXT_ARC_LEN - 6;
+
+/** startOffset that centers a forced-width run of text on the shared name/state arc. */
+function centerOffset(textLen: number): string {
+  return `${((TEXT_ARC_LEN - textLen) / 2 / TEXT_ARC_LEN * 100).toFixed(2)}%`;
+}
 
 export function stampColor(idx: number, dark = false): string {
   return (dark ? STAMP_COLORS_DARK : STAMP_COLORS)[idx % STAMP_COLORS.length];
@@ -55,6 +63,24 @@ function inkSpecks(seed: string, count: number): { x: number; y: number; r: numb
       y: 50 + Math.sin(angle) * radius,
       r: 0.3 + seededRand(seed, i * 4 + 2) * 0.6,
       op: 0.08 + seededRand(seed, i * 4 + 3) * 0.22,
+    };
+  });
+}
+
+// Coarser, elongated ink blotches — patchier uneven-pickup pooling to sit
+// alongside the fine specks above, so the ink reads as absorbed into paper
+// fiber rather than a flat vector fill.
+function inkBlotches(seed: string, count: number): { x: number; y: number; rx: number; ry: number; rot: number; op: number }[] {
+  return Array.from({ length: count }, (_, i) => {
+    const angle = seededRand(seed, i * 5 + 500) * Math.PI * 2;
+    const radius = 20 + seededRand(seed, i * 5 + 501) * 24;
+    return {
+      x: 50 + Math.cos(angle) * radius,
+      y: 50 + Math.sin(angle) * radius,
+      rx: 1.8 + seededRand(seed, i * 5 + 502) * 2.6,
+      ry: 0.8 + seededRand(seed, i * 5 + 503) * 1.4,
+      rot: seededRand(seed, i * 5 + 504) * 180,
+      op: 0.03 + seededRand(seed, i * 5 + 505) * 0.05,
     };
   });
 }
@@ -104,16 +130,25 @@ export function ParkStamp({
   const sc        = stateCode(states);
   // "National Park" is implied by the stamp itself (ring text/compass motif) —
   // drop it so e.g. "Wrangell-St. Elias National Park & Preserve" leaves room
-  // for the part that actually distinguishes the park, "& Preserve".
+  // for the part that actually distinguishes the park, "& Preserve". Only the
+  // most extreme outliers get an ellipsis now — everything else is guaranteed
+  // to fit the arc below via forced textLength rather than by truncating.
   const raw       = name.toUpperCase().replace(/NATIONAL PARK/g, '').replace(/\s+/g, ' ').trim();
-  const shortName = raw.length > 18 ? raw.slice(0, 16) + '…' : raw;
-  const nameFontSize = shortName.length > 16 ? 7 : shortName.length > 13 ? 7.5 : shortName.length > 10 ? 8 : 9;
+  const shortName = raw.length > 30 ? raw.slice(0, 28) + '…' : raw;
+  const nameFontSize = shortName.length > 24 ? 6 : shortName.length > 16 ? 7 : shortName.length > 13 ? 7.5 : shortName.length > 10 ? 8 : 9;
+  const nameLetterSpacing = 1.5;
+  // Estimated natural glyph width at this font size/spacing — only used to
+  // cap textLength so it compresses (never stretches) short names.
+  const nameNaturalLen = shortName.length * (nameFontSize * 0.62 + nameLetterSpacing);
+  const nameTextLen    = Math.min(nameNaturalLen, NAME_ARC_MAX_LEN);
+  const nameStartOffset = centerOffset(nameTextLen);
   const rotate    = rotated ? `${((colorIdx * 37) % 16) - 8}deg` : '0deg';
   const topId     = `top-${parkCode}${idSuffix}`;
   const botId     = `bot-${parkCode}${idSuffix}`;
   const bleedId   = `bleed-${parkCode}${idSuffix}`;
 
-  const specks = inkSpecks(parkCode, 16);
+  const specks   = inkSpecks(parkCode, 16);
+  const blotches = inkBlotches(parkCode, 8);
   // A second, faint impression offset a fraction of a mm — the classic
   // tell of a hand-stamped mark that shifted slightly between the first
   // and second press.
@@ -143,6 +178,14 @@ export function ParkStamp({
           <Circle cx="50" cy="50" r="37" fill="none" stroke={c} strokeWidth="1.1" />
         </G>
 
+        {/* Emboss bevel — a faint light/dark offset pair behind the main
+            rings, like a seal pressed into the paper rather than printed
+            flat on top of it. No blur filter (unreliable cross-platform per
+            the note above) — the sub-pixel offset alone reads as a bevel
+            at this scale. */}
+        <Circle cx="49.4" cy="49.4" r="44" fill="none" stroke="white" strokeWidth="1.1" opacity="0.3" />
+        <Circle cx="50.6" cy="50.6" r="44" fill="none" stroke="black" strokeWidth="1.1" opacity="0.22" />
+
         {/* Outer ring, doubled — a thin line just inside the main border,
             like an engraved medal/seal edge rather than a plain circle.
             Stops at r=40.5, clear of the r=33 name/state text arcs below —
@@ -153,6 +196,15 @@ export function ParkStamp({
         {/* Ink specks — the fine grain an ink pad leaves around the ring */}
         {specks.map((s, i) => (
           <Circle key={i} cx={s.x} cy={s.y} r={s.r} fill={c} opacity={s.op} />
+        ))}
+
+        {/* Ink blotches — coarser, elongated pooling alongside the fine
+            specks above, so ink reads as absorbed into paper fiber */}
+        {blotches.map((b, i) => (
+          <Ellipse
+            key={i} cx={b.x} cy={b.y} rx={b.rx} ry={b.ry} fill={c} opacity={b.op}
+            transform={`rotate(${b.rot} ${b.x} ${b.y})`}
+          />
         ))}
 
         {/* Tick marks between rings at 8 positions (cardinal + diagonal),
@@ -177,11 +229,16 @@ export function ParkStamp({
           </>
         )}
 
-        {/* Park name on top arc — textAnchor set on both the Text and
-            TextPath since react-native-svg doesn't reliably honor it from
-            just one or the other across iOS/Android */}
-        <SvgText fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.92" textAnchor="middle">
-          <TextPath href={`#${topId}`} startOffset="50%" textAnchor="middle">
+        {/* Park name on top arc — startOffset/textLength forced (like the
+            state code below) so a long name compresses to fit the arc
+            instead of overflowing past its start and getting clipped. */}
+        <SvgText fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing={nameLetterSpacing} opacity="0.92">
+          <TextPath
+            href={`#${topId}`}
+            startOffset={nameStartOffset}
+            textLength={nameTextLen}
+            lengthAdjust="spacingAndGlyphs"
+          >
             {shortName}
           </TextPath>
         </SvgText>
