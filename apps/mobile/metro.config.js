@@ -26,6 +26,7 @@ config.resolver.extraNodeModules = {
   'expo-sensors': rootPkg('expo-sensors'),
   '@react-native-community/netinfo': rootPkg('@react-native-community/netinfo'),
   '@react-native-community/slider': rootPkg('@react-native-community/slider'),
+  '@react-native-segmented-control/segmented-control': rootPkg('@react-native-segmented-control/segmented-control'),
   '@sentry/react-native': rootPkg('@sentry/react-native'),
 };
 
