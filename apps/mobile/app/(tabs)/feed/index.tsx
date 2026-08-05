@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DeviceEventEmitter, View, Text, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl, StyleSheet, Platform, useColorScheme,
@@ -268,6 +268,28 @@ export default function FeedScreen() {
     setPosts(prev => prev.filter(p => p.id !== id));
   }, []);
 
+  const handleParkPress = useCallback((code: string) => {
+    router.push(`/park/${code}` as never);
+  }, [router]);
+
+  // Stable identity — FlatList's CellRenderer shallow-compares renderItem
+  // (among other props) to decide whether to re-render a cell. An inline
+  // arrow here would get a new identity every FeedScreen render, forcing
+  // every mounted cell to re-render regardless of whether its own post data
+  // changed, which is exactly what defeats PostCard's memoization below.
+  const renderPost = useCallback(({ item }: { item: FeedPost }) =>
+    token ? (
+      <PostCard
+        post={item}
+        myUserId={user?.id ?? ''}
+        myAvatarUrl={user?.imageUrl}
+        myName={user?.fullName ?? user?.username}
+        onDelete={handleDelete}
+        onParkPress={handleParkPress}
+      />
+    ) : null,
+  [token, user, handleDelete, handleParkPress]);
+
   // Blocking a user should hide their posts from the feed instantly, without
   // waiting on a refetch.
   useEffect(() => {
@@ -277,12 +299,17 @@ export default function FeedScreen() {
     return unsubscribe;
   }, []);
 
-  const filtered = posts.filter(p =>
+  // Memoized — pagination now churns `posts` far more often than before
+  // (a new page appended per scroll), and an unmemoized filter here handed
+  // FlatList a new `data` array reference on every render, forcing it to
+  // re-render every mounted cell regardless of whether that cell's post
+  // actually changed.
+  const filtered = useMemo(() => posts.filter(p =>
     filter === 'friends' ? p.is_friend_post :
     filter === 'visits' ? !!p.visit_id :
     filter === 'badges' ? !!p.badge_id :
     true
-  );
+  ), [posts, filter]);
 
   // ── Header component ──────────────────────────────────────────────────────
 
@@ -390,18 +417,7 @@ export default function FeedScreen() {
         ref={flatListRef}
         data={loading ? [] : filtered}
         keyExtractor={item => String(item.id)}
-        renderItem={({ item }) =>
-          token ? (
-            <PostCard
-              post={item}
-              myUserId={user?.id ?? ''}
-              myAvatarUrl={user?.imageUrl}
-              myName={user?.fullName ?? user?.username}
-              onDelete={handleDelete}
-              onParkPress={(code) => router.push(`/park/${code}` as never)}
-            />
-          ) : null
-        }
+        renderItem={renderPost}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         ListEmptyComponent={ListEmpty}
