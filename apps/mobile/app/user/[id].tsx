@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { MenuView } from '@react-native-menu/menu';
+import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -196,6 +197,7 @@ export default function UserProfileScreen() {
   const [showReportUserSheet, setShowReportUserSheet] = useState(false);
   const [reportedUser, setReportedUser] = useState(false);
   const [postBlockReport, setPostBlockReport] = useState(false);
+  const [tabIndex, setTabIndex] = useState(0);
 
   const isOwnProfile = me?.id === id;
 
@@ -616,90 +618,128 @@ export default function UserProfileScreen() {
               </View>
             ) : null}
 
-            {/* Visited parks map — only when the API returns the field, so a
-                stale deployment doesn't show a misleading empty state */}
-            {profile.visited_parks ? (
+            {/* Tab switcher — native UISegmentedControl */}
             <View style={styles.section}>
-              <SectionHeader icon="map-outline" title="VISITED PARKS" />
-              <View style={styles.mapCard}>
-                {mapParks.length > 0 ? (
-                  <MapView
-                    style={{ width: '100%', height: 220, borderRadius: 14 }}
-                    provider={PROVIDER_DEFAULT}
-                    initialRegion={mapRegion}
-                    rotateEnabled={false}
-                    pitchEnabled={false}
-                    scrollEnabled={false}
-                    zoomEnabled={false}
-                    toolbarEnabled={false}
-                    pointerEvents="none"
-                  >
-                    {mapParks.map(p => (
-                      <Marker
-                        key={p.park_code}
-                        coordinate={{ latitude: p.lat, longitude: p.lng }}
-                        title={p.name}
-                        tracksViewChanges={false}
-                        onCalloutPress={() => router.push(`/park/${p.park_code}` as never)}
-                      >
-                        <View style={styles.markerDot} />
-                      </Marker>
-                    ))}
-                  </MapView>
-                ) : (
-                  <View style={styles.mapEmpty}>
-                    <Ionicons name="map-outline" size={22} color={C.inkMute} />
-                    <Text style={styles.mapEmptyText}>No park visits yet</Text>
-                  </View>
-                )}
-              </View>
+              <SegmentedControl
+                values={['Overview', 'Stamps', 'Timeline']}
+                selectedIndex={tabIndex}
+                onChange={e => setTabIndex(e.nativeEvent.selectedSegmentIndex)}
+                backgroundColor={C.surface as string}
+                tintColor={T.primary as string}
+                fontStyle={{ color: C.inkSoft as string, fontWeight: '600' }}
+                activeFontStyle={{ color: C.onPrimary as string, fontWeight: '700' }}
+                style={styles.segmentedControl}
+              />
             </View>
-            ) : null}
 
-            {/* Badges earned */}
-            {profile.badges?.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader icon="ribbon-outline" title="BADGES EARNED" />
-                <View style={styles.badgeWrap}>
-                  {profile.badges.map(b => (
-                    <TouchableOpacity
-                      key={b.badge_id}
-                      onPress={() => setSelectedBadge(b)}
-                      activeOpacity={0.7}
-                      style={styles.badgePreviewItem}
-                    >
-                      <BadgePatch emoji={b.emoji} tier={b.tier} colors={b.colors} size={56} earned />
-                      <Text style={styles.badgeChipName} numberOfLines={2}>{b.name}</Text>
-                    </TouchableOpacity>
-                  ))}
+            {/* Overview — badges earned */}
+            {tabIndex === 0 ? (
+              profile.badges?.length > 0 ? (
+                <View style={styles.section}>
+                  <SectionHeader icon="ribbon-outline" title="BADGES EARNED" />
+                  <View style={styles.badgeWrap}>
+                    {profile.badges.map(b => (
+                      <TouchableOpacity
+                        key={b.badge_id}
+                        onPress={() => setSelectedBadge(b)}
+                        activeOpacity={0.7}
+                        style={styles.badgePreviewItem}
+                      >
+                        <BadgePatch emoji={b.emoji} tier={b.tier} colors={b.colors} size={56} earned />
+                        <Text style={styles.badgeChipName} numberOfLines={2}>{b.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.tabEmpty}>
+                  <Ionicons name="ribbon-outline" size={22} color={C.inkMute} />
+                  <Text style={styles.tabEmptyText}>No badges earned yet</Text>
+                </View>
+              )
             ) : null}
 
-            {/* Recent posts — same cards as the feed */}
-            {token && posts.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader icon="newspaper-outline" title="RECENT POSTS" />
-                {posts.map(p => (
-                  <PostCard
-                    key={p.id}
-                    post={p}
-                    myUserId={me?.id ?? ''}
-                    myAvatarUrl={me?.imageUrl}
-                    myName={me?.fullName ?? me?.username}
-                    onDelete={pid => setPosts(prev => prev.filter(x => x.id !== pid))}
-                    onParkPress={code => router.push(`/park/${code}` as never)}
-                  />
-                ))}
-              </View>
+            {/* Stamps — visited parks map, only when the API returns the
+                field, so a stale deployment doesn't show a misleading
+                empty state */}
+            {tabIndex === 1 ? (
+              profile.visited_parks ? (
+                <View style={styles.section}>
+                  <View style={styles.mapCard}>
+                    {mapParks.length > 0 ? (
+                      <MapView
+                        style={{ width: '100%', height: 220, borderRadius: 14 }}
+                        provider={PROVIDER_DEFAULT}
+                        initialRegion={mapRegion}
+                        rotateEnabled={false}
+                        pitchEnabled={false}
+                        scrollEnabled={false}
+                        zoomEnabled={false}
+                        toolbarEnabled={false}
+                        pointerEvents="none"
+                      >
+                        {mapParks.map(p => (
+                          <Marker
+                            key={p.park_code}
+                            coordinate={{ latitude: p.lat, longitude: p.lng }}
+                            title={p.name}
+                            tracksViewChanges={false}
+                            onCalloutPress={() => router.push(`/park/${p.park_code}` as never)}
+                          >
+                            <View style={styles.markerDot} />
+                          </Marker>
+                        ))}
+                      </MapView>
+                    ) : (
+                      <View style={styles.mapEmpty}>
+                        <Ionicons name="map-outline" size={22} color={C.inkMute} />
+                        <Text style={styles.mapEmptyText}>No park visits yet</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.tabEmpty}>
+                  <Ionicons name="map-outline" size={22} color={C.inkMute} />
+                  <Text style={styles.tabEmptyText}>No park visits yet</Text>
+                </View>
+              )
             ) : null}
 
-            {/* Journal timeline */}
-            {profile.journal && profile.journal.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader icon="journal-outline" title="JOURNAL" />
-                <JournalTimeline entries={profile.journal ?? []} />
-              </View>
+            {/* Timeline — recent posts (same cards as the feed) + journal */}
+            {tabIndex === 2 ? (
+              (token && posts.length > 0) || (profile.journal && profile.journal.length > 0) ? (
+                <>
+                  {token && posts.length > 0 ? (
+                    <View style={styles.section}>
+                      <SectionHeader icon="newspaper-outline" title="RECENT POSTS" />
+                      {posts.map(p => (
+                        <PostCard
+                          key={p.id}
+                          post={p}
+                          myUserId={me?.id ?? ''}
+                          myAvatarUrl={me?.imageUrl}
+                          myName={me?.fullName ?? me?.username}
+                          onDelete={pid => setPosts(prev => prev.filter(x => x.id !== pid))}
+                          onParkPress={code => router.push(`/park/${code}` as never)}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {profile.journal && profile.journal.length > 0 ? (
+                    <View style={styles.section}>
+                      <SectionHeader icon="journal-outline" title="JOURNAL" />
+                      <JournalTimeline entries={profile.journal ?? []} />
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <View style={styles.tabEmpty}>
+                  <Ionicons name="newspaper-outline" size={22} color={C.inkMute} />
+                  <Text style={styles.tabEmptyText}>Nothing here yet</Text>
+                </View>
+              )
             ) : null}
 
           </ScrollView>
@@ -857,6 +897,21 @@ const styles = StyleSheet.create({
   },
   friendButtonTextSecondary: {
     color: C.inkSoft,
+  },
+
+  // Tab switcher
+  segmentedControl: {
+    height: 34,
+  },
+  tabEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 40,
+  },
+  tabEmptyText: {
+    fontSize: 13,
+    color: C.inkMute,
   },
 
   // Section header
