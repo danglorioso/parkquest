@@ -1989,7 +1989,7 @@ function VisitPreview({ draft, park, userName, username, avatarUrl }: {
     visit_difficulty: draft.difficulty > 0 ? draft.difficulty : null,
     visit_companion_count: draft.companionObjs.length > 0 ? draft.companionObjs.length : null,
     visit_companion_names: draft.companionObjs.length > 0
-      ? draft.companionObjs.map(c => ({ username: c.username, display_name: c.display_name, avatar_url: c.avatar_url }))
+      ? draft.companionObjs.map(c => ({ user_id: c.clerk_user_id, username: c.username, display_name: c.display_name, avatar_url: c.avatar_url }))
       : null,
     visit_highlight: draft.highlight || null,
     visit_title: draft.title || null,
@@ -2014,9 +2014,11 @@ function StepShare({ draft, set, park, userName, username, avatarUrl }: {
       <Reanimated.View entering={FadeInDown.duration(360)}>
         <Section title="Add a caption">
           <TextInput
-            value={draft.caption} onChangeText={v => set('caption', v.slice(0, 500))}
+            value={draft.caption} onChangeText={v => set('caption', v.replace(/\n/g, '').slice(0, 500))}
             placeholder="Share what made this trip special…" placeholderTextColor={C.inkMute}
             multiline style={[styles.textField, styles.textArea]}
+            returnKeyType="done" blurOnSubmit
+            onSubmitEditing={() => Keyboard.dismiss()}
           />
           <Text style={styles.charCountOutside}>{draft.caption.length}/500</Text>
         </Section>
@@ -3234,7 +3236,7 @@ const styles = StyleSheet.create({
   },
   nextBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 15, borderRadius: 14,
+    paddingVertical: 15, borderRadius: 14, minHeight: 50,
     width: '100%',
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 8, elevation: 4,
