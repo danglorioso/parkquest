@@ -323,6 +323,19 @@ export default function ProfileScreen() {
     }
   };
 
+  // Invite flow — /download is a short marketing redirect to the App Store
+  // listing (see apps/web next.config.ts), not a profile deep link, since
+  // the recipient doesn't have the app installed yet.
+  const handleInviteFriend = async () => {
+    try {
+      await Share.share({
+        message: `I've been using ParkQuest to log and share my national park trips — you should check it out! https://parkquest.me/download`,
+      });
+    } catch {
+      // user dismissed the share sheet
+    }
+  };
+
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -790,6 +803,22 @@ export default function ProfileScreen() {
               subtitle="People exploring with you"
               count={friendCount > 0 ? friendCount : undefined}
               onPress={() => router.push('/profile/friends' as never)}
+            />
+          </View>
+        </View>
+
+        {/* ── Invite a friend ──────────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="share-social-outline" size={13} color={C.inkMute} />
+            <Text style={styles.sectionKicker}>SPREAD THE WORD</Text>
+          </View>
+          <View style={styles.card}>
+            <NavRow
+              icon="share-social-outline"
+              label="Invite a friend"
+              subtitle="Share the ParkQuest download link"
+              onPress={handleInviteFriend}
             />
           </View>
         </View>
