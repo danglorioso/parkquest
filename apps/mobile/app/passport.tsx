@@ -16,6 +16,7 @@ import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { buildMrzLines, passportNo, stampDateStr } from '@/lib/passport';
+import { GlassIconBg } from '@/components/GlassIconBg';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Passport-book aesthetic: gold foil stays fixed across themes (it already
@@ -434,6 +435,7 @@ export default function PassportScreen() {
   const topBar = (
     <View style={[st.topBar, { top: insets.top + 4 }]} pointerEvents="box-none">
       <TouchableOpacity onPress={dismiss} hitSlop={8} style={st.topBarBtn}>
+        <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
         <Ionicons name="close" size={22} color={GOLD} />
       </TouchableOpacity>
       <Text style={st.topBarTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
@@ -444,6 +446,7 @@ export default function PassportScreen() {
         hitSlop={8}
         style={st.topBarBtn}
       >
+        <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
         <Ionicons name="share-outline" size={20} color={GOLD} />
       </TouchableOpacity>
     </View>
@@ -482,6 +485,7 @@ export default function PassportScreen() {
         hitSlop={10}
         style={st.scrollHintBtn}
       >
+        <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
         <Ionicons name="chevron-down" size={20} color={GOLD} />
       </TouchableOpacity>
     </Animated.View>
@@ -859,10 +863,12 @@ const st = StyleSheet.create({
     justifyContent: 'space-between',
   },
   topBarBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(8,16,12,0.45)',
+    // 44pt — the app-wide round icon button size (matches the park page
+    // header buttons); GlassIconBg supplies the fill, so no backgroundColor.
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -882,7 +888,7 @@ const st = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: 'rgba(8,16,12,0.45)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },

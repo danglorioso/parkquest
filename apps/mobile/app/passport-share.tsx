@@ -17,6 +17,7 @@ import {
 import { buildMrzLines, passportNo } from '@/lib/passport';
 import { showToast } from '@/lib/toast';
 import { useColors } from '@/lib/palette';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import type { CustomStampGlyph } from '@parkquest/types';
 
 // Pre-share screen (Flighty-style): a live preview of the exportable
@@ -201,6 +202,7 @@ export default function PassportShareScreen() {
       {/* Top bar: close / title / aspect toggle */}
       <View style={st.topBar}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={8} style={st.roundBtn}>
+          <GlassIconBg fallbackColor="rgba(8,16,12,0.45)" />
           <Ionicons name="close" size={22} color={GOLD} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
@@ -208,7 +210,7 @@ export default function PassportShareScreen() {
           <Text style={st.subtitle}>View and Share</Text>
         </View>
         {/* Spacer balances the X so the title stays centered */}
-        <View style={{ width: 40 }} />
+        <View style={{ width: 44 }} />
       </View>
 
       {/* Preview */}
@@ -263,6 +265,7 @@ export default function PassportShareScreen() {
             style={[st.dest, (!data || busy) && { opacity: 0.4 }]}
           >
             <View style={st.destIcon}>
+              <GlassIconBg borderRadius={16} fallbackColor="rgba(8,16,12,0.45)" />
               <Ionicons name={d.icon} size={22} color={GOLD} />
             </View>
             <Text style={st.destLabel}>{d.label}</Text>
@@ -285,10 +288,12 @@ const st = StyleSheet.create({
     paddingVertical: 10,
   },
   roundBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(201,169,74,0.12)',
+    // 44pt — the app-wide round icon button size (matches the park page /
+    // profile header buttons); GlassIconBg supplies the fill.
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -331,7 +336,7 @@ const st = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 16,
-    backgroundColor: 'rgba(201,169,74,0.12)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
