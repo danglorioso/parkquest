@@ -6,6 +6,7 @@ import {
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import type { EmailAddressResource } from '@clerk/types';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,15 @@ import { relTime } from '@/lib/dates';
 import { useIsOnline } from '@/lib/network';
 
 const ERROR = '#C04040';
+
+const APP_VERSION = (() => {
+  const version = Constants.expoConfig?.version;
+  const build = Platform.OS === 'ios'
+    ? Constants.expoConfig?.ios?.buildNumber
+    : String(Constants.expoConfig?.android?.versionCode ?? '');
+  if (!version) return null;
+  return build ? `${version} (${build})` : version;
+})();
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -688,6 +698,10 @@ export default function EditProfileScreen() {
             <Text style={styles.deleteBtnText}>Delete account</Text>
           </TouchableOpacity>
 
+          {APP_VERSION ? (
+            <Text style={styles.versionText}>ParkQuest {APP_VERSION}</Text>
+          ) : null}
+
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1106,6 +1120,14 @@ function makeStyles(C: Colors) {
     fontWeight: '500',
     color: C.inkMute,
     textDecorationLine: 'underline',
+  },
+  versionText: {
+    fontSize: 11.5,
+    fontWeight: '500',
+    color: C.inkMute,
+    opacity: 0.6,
+    textAlign: 'center',
+    marginTop: 14,
   },
   });
 }
