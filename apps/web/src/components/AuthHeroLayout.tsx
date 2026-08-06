@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSignIn, useSignUp, useUser } from "@clerk/nextjs";
-import { Map, Pencil, Award, Compass, ArrowRight } from "lucide-react";
+import { Map, Pencil, Award, Compass, ArrowRight, Heart, MessageCircle, Share2 } from "lucide-react";
 import { AppStoreBadge } from "./AppStoreBadge";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -11,6 +11,30 @@ import { AppStoreBadge } from "./AppStoreBadge";
 function topoPattern(color: string, opacity: number): string {
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='420' height='420' viewBox='0 0 420 420'><g fill='none' stroke='${color}' stroke-opacity='${opacity}' stroke-width='1'><path d='M-20 60 Q 60 30 130 60 T 280 60 T 440 60'/><path d='M-20 110 Q 60 80 130 110 T 280 110 T 440 110'/><path d='M-20 160 Q 60 130 130 160 T 280 160 T 440 160'/><path d='M-20 210 Q 60 180 130 210 T 280 210 T 440 210'/><path d='M-20 260 Q 60 230 130 260 T 280 260 T 440 260'/><path d='M-20 310 Q 60 280 130 310 T 280 310 T 440 310'/><path d='M-20 360 Q 60 330 130 360 T 280 360 T 440 360'/><path d='M-20 410 Q 60 380 130 410 T 280 410 T 440 410'/></g></svg>`;
   return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+}
+
+// Deterministic per-park fallback color — mirrors lib/parkColors.ts on mobile,
+// used when a park has no NPS image_url on file.
+const PARK_GRADIENTS: [string, string, string][] = [
+  ["#1F3D2E", "#2F7A4A", "#C56B3D"],
+  ["#2D4F66", "#1F3D2E", "#D89A3A"],
+  ["#7B3A1F", "#C56B3D", "#1F3D2E"],
+  ["#3A2E5C", "#6E97A3", "#D89A3A"],
+  ["#2F7A4A", "#1F3D2E", "#2D4F66"],
+];
+function parkColor(code: string): string {
+  const idx = code.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % PARK_GRADIENTS.length;
+  return PARK_GRADIENTS[idx][0];
+}
+function relTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${Math.max(mins, 1)}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d`;
+  return `${Math.floor(days / 30)}mo`;
 }
 
 const ANIMATIONS = `
@@ -21,7 +45,6 @@ const ANIMATIONS = `
   @keyframes pqSunGlow        { 0%,100% { opacity: 0.55; transform: scale(1) } 50% { opacity: 0.85; transform: scale(1.04) } }
   @keyframes pqTopoDrift      { 0% { background-position: 0 0 } 100% { background-position: 420px 200px } }
   @keyframes pqScrollHint     { 0%,100% { transform: translateX(-50%) translateY(0); opacity: 0.7 } 50% { transform: translateX(-50%) translateY(6px); opacity: 1 } }
-  @keyframes pqFloat          { 0%,100% { transform: translateY(0) rotate(var(--pq-r,0deg)) } 50% { transform: translateY(-6px) rotate(var(--pq-r,0deg)) } }
   @keyframes pqCloud          { 0% { transform: translateX(-110%) } 100% { transform: translateX(800%) } }
   @keyframes pqShootingStar   {
     0%,10%  { transform: translateX(0) translateY(0) rotate(-42deg); opacity: 0; }
@@ -30,6 +53,7 @@ const ANIMATIONS = `
     100%    { transform: translateX(var(--ss-dx,-320px)) translateY(var(--ss-dy,320px)) rotate(-42deg); opacity: 0; }
   }
   .pq-left-col::-webkit-scrollbar { display: none }
+  .pq-screens-row::-webkit-scrollbar { display: none }
   @media (prefers-reduced-motion: reduce) {
     .pq-left-col *, .pq-left-col *::before, .pq-left-col *::after {
       animation: none !important;
@@ -67,16 +91,17 @@ const CLOUDS: Array<{ width: string; top: string; opacity: number; duration: num
 ];
 
 const FEATURES = [
-  { icon: Map,     title: "Every visit, mapped",  desc: "Tap a park, mark it visited. Watch your trail across the U.S. fill in over years." },
-  { icon: Pencil,  title: "Journal as you go",    desc: "Notes, photos, companions, dates. Private by default — share what you want." },
-  { icon: Award,   title: "Earn the patches",     desc: "18 badges across five tiers. Sunrise visits, winter trips, the legendary Sixty-Three." },
-  { icon: Compass, title: "Plan the next trip",   desc: "Itineraries on the map. Invite friends. Weather forecasts baked in." },
+  { icon: Map,     title: "Every visit, mapped",  desc: "Tap a park, mark it visited. Watch your passport fill in with stamps across all 63 U.S. national parks." },
+  { icon: Pencil,  title: "Journal as you go",    desc: "Notes, photos, companions, ratings — plus GPX hike import for real distance, elevation, and route stats." },
+  { icon: Award,   title: "Earn the patches",     desc: "32 badges across five tiers, from your First Steps to the Century Club to a legendary Park Legend crown for all 63." },
+  { icon: Compass, title: "Share the journey",    desc: "A real social feed — like, comment, add friends, and post your latest badge or trip for the community to see." },
 ];
 
 const SCREENS = [
-  { title: "The Passport", subtitle: "Every visit, stamped", pal: ["#1F3D2E","#3F5949","#152A20"], rotate: "-3deg", delay: "0s",   mt: 0  },
-  { title: "The Map",      subtitle: "63 parks, your pace",  pal: ["#2D4F66","#7B9CA8","#1A3548"], rotate: "1.5deg",delay: "1.5s", mt: 28 },
-  { title: "Badges",       subtitle: "Five tiers of glory",  pal: ["#7B3A1F","#D89A3A","#582410"], rotate: "-1deg", delay: "3s",   mt: 0  },
+  { title: "Explore the parks",  subtitle: "All 63, filterable by region, status, and activities", image: "/screens/pq_web_allparks.jpg" },
+  { title: "The Map",            subtitle: "Every park at a glance — visited, bucket list, or still to go", image: "/screens/pq_web_map.jpg" },
+  { title: "Park profiles",      subtitle: "Activities, entrance fees, and your own visit history", image: "/screens/pq_web_map_popoversheet.jpg" },
+  { title: "The Passport",       subtitle: "An official-feeling record of every stamp you've earned", image: "/screens/pq_web_passport.jpg" },
 ];
 
 // ── Form components ──────────────────────────────────────────────────────────
@@ -1399,7 +1424,16 @@ function AboutSection() {
             D
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: "#FFFBF1" }}>Dan Glorioso</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#FFFBF1" }}>
+              <a
+                href="https://danglorioso.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "inherit", textDecoration: "none" }}
+              >
+                Dan Glorioso
+              </a>
+            </div>
             <div
               style={{
                 fontFamily: "var(--font-mono)",
@@ -1451,7 +1485,7 @@ function FeaturesSection() {
           maxWidth: 480,
         }}
       >
-        Built for explorers,<br /> and everyone else.
+        Made for however you explore.
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
         {FEATURES.map((f, i) => (
@@ -1516,86 +1550,88 @@ function FeaturesSection() {
   );
 }
 
-function ScreenPreview({
+function ScreenshotCard({
   title,
   subtitle,
-  pal,
-  rotate,
-  delay,
+  image,
 }: {
   title: string;
   subtitle: string;
-  pal: string[];
-  rotate: string;
-  delay: string;
+  image: string;
 }) {
   return (
     <div
-      style={
-        {
-          flex: 1,
-          background: "#FFFBF1",
-          borderRadius: 14,
-          overflow: "hidden",
-          border: "0.5px solid rgba(58,46,28,0.15)",
-          boxShadow: "0 12px 32px rgba(58,42,18,0.18)",
-          animation: `pqFloat 6s ease-in-out infinite ${delay}`,
-          "--pq-r": rotate,
-        } as React.CSSProperties
-      }
+      className="flex-shrink-0 w-[85vw] sm:w-[520px] md:w-[560px]"
+      style={{ scrollSnapAlign: "start", transition: "transform 220ms cubic-bezier(.2,.7,.3,1)", transformOrigin: "top center" }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1.015)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
     >
-      {/* Window chrome */}
       <div
         style={{
-          height: 22,
-          background: "#F2EBDB",
-          borderBottom: "0.5px solid rgba(58,46,28,0.12)",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 8px",
-          gap: 5,
-        }}
-      >
-        <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#ff736a" }} />
-        <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#febc2e" }} />
-        <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#19c332" }} />
-      </div>
-      {/* Body */}
-      <div
-        style={{
-          height: 200,
           position: "relative",
-          background: `linear-gradient(160deg, ${pal[0]}, ${pal[1]} 60%, ${pal[2]})`,
+          borderRadius: 16,
+          padding: 12,
+          background: "#FFFBF1",
+          border: "1.5px solid rgba(31,61,46,0.55)",
+          boxShadow: "0 18px 40px rgba(58,42,18,0.28), 0 2px 0 rgba(31,61,46,0.08) inset",
+          transition: "transform 220ms cubic-bezier(.2,.7,.3,1)",
         }}
       >
+        {/* Trail-map texture on the matte border */}
         <div
           style={{
             position: "absolute",
             inset: 0,
-            backgroundImage: topoPattern("#FFFBF1", 0.10),
-            backgroundSize: "180px 180px",
+            borderRadius: 16,
+            backgroundImage: topoPattern("#1F3D2E", 0.10),
+            backgroundSize: "160px 160px",
+            pointerEvents: "none",
           }}
         />
+        {/* Compass-glyph corner mark */}
         <div
-          style={{ position: "absolute", bottom: 14, left: 14, right: 14, color: "#FFFBF1" }}
+          style={{
+            position: "absolute",
+            top: 10,
+            left: 12,
+            zIndex: 2,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            color: "var(--accent-2)",
+          }}
         >
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 8,
-              letterSpacing: "1.4px",
-              opacity: 0.7,
-              textTransform: "uppercase",
-              fontWeight: 600,
-            }}
-          >
-            SCREEN PREVIEW
-          </div>
-          <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: -0.3, marginTop: 2 }}>
-            {title}
-          </div>
-          <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 1 }}>{subtitle}</div>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 20L9 9l3 5 3-7 6 13H3z" />
+            <circle cx="20" cy="4" r="3.5" fill="currentColor" stroke="none" />
+          </svg>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "1.4px", fontWeight: 700, color: "#7B5A2E" }}>
+            PARKQUEST
+          </span>
         </div>
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            marginTop: 22,
+            borderRadius: 8,
+            overflow: "hidden",
+            border: "0.5px solid rgba(58,46,28,0.18)",
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={image}
+            alt={`${title} — real ParkQuest screenshot`}
+            style={{ display: "block", width: "100%", height: "auto" }}
+          />
+        </div>
+      </div>
+      <div style={{ padding: "14px 4px 0" }}>
+        <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: -0.3, color: "#2B2418" }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 13, opacity: 0.65, marginTop: 2, color: "#2B2418", lineHeight: 1.4 }}>{subtitle}</div>
       </div>
     </div>
   );
@@ -1604,7 +1640,7 @@ function ScreenPreview({
 function ScreenshotsSection() {
   return (
     <div
-      className="px-6 py-16 md:px-[60px] md:py-[80px]"
+      className="py-16 md:py-[80px]"
       style={{
         background: "#FAF3E0",
         position: "relative",
@@ -1622,45 +1658,281 @@ function ScreenshotsSection() {
         }}
       />
       <div style={{ position: "relative" }}>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            letterSpacing: "2.2px",
-            color: "rgba(58,46,28,0.55)",
-            textTransform: "uppercase",
-            fontWeight: 600,
-          }}
-        >
-          A LOOK INSIDE
+        <div className="px-6 md:px-[60px]">
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              letterSpacing: "2.2px",
+              color: "rgba(58,46,28,0.55)",
+              textTransform: "uppercase",
+              fontWeight: 600,
+            }}
+          >
+            A LOOK INSIDE
+          </div>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: 38,
+              color: "#3A2E1C",
+              letterSpacing: -1,
+              lineHeight: 1.05,
+              marginTop: 14,
+              maxWidth: 480,
+            }}
+          >
+            Fast to use.<br />Built for real trips.
+          </div>
+          <div style={{ fontSize: 15, color: "rgba(58,46,28,0.62)", marginTop: 12, maxWidth: 480, lineHeight: 1.5 }}>
+            Available on iOS from the App Store, or right here in the browser at parkquest.me.
+          </div>
         </div>
-        <div
-          style={{
-            fontWeight: 800,
-            fontSize: 38,
-            color: "#3A2E1C",
-            letterSpacing: -1,
-            lineHeight: 1.05,
-            marginTop: 14,
-            maxWidth: 480,
-          }}
-        >
-          Premium feel.<br />Outdoor soul.
-        </div>
-        <div className="flex gap-4 mt-9 pb-2 overflow-x-auto md:overflow-x-visible">
-          {SCREENS.map((s, i) => (
-            <div key={i} className="flex-shrink-0 md:flex-1" style={{ width: 260, marginTop: s.mt }}>
-              <ScreenPreview {...s} />
-            </div>
-          ))}
-        </div>
+        <ScreensCarousel />
       </div>
     </div>
   );
 }
 
-function SocialProofSection() {
-  const avatarColors = ["#2F7A4A", "#D89A3A", "#2D4F66", "#8B5DBF", "#C56B3D"];
+function ScreensCarousel() {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(false);
+
+  const updateEdges = () => {
+    const el = rowRef.current;
+    if (!el) return;
+    setAtStart(el.scrollLeft <= 4);
+    setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 4);
+  };
+
+  useEffect(() => {
+    updateEdges();
+    window.addEventListener("resize", updateEdges);
+    return () => window.removeEventListener("resize", updateEdges);
+  }, []);
+
+  const scrollByCard = (dir: 1 | -1) => {
+    rowRef.current?.scrollBy({ left: dir * rowRef.current.clientWidth * 0.9, behavior: "smooth" });
+  };
+
+  const arrowBtn = (side: "left" | "right"): React.CSSProperties => ({
+    position: "absolute",
+    top: "38%",
+    [side]: 12,
+    transform: "translateY(-50%)",
+    width: 44,
+    height: 44,
+    borderRadius: "50%",
+    background: "rgba(255,251,241,0.92)",
+    border: "1px solid rgba(58,46,28,0.18)",
+    boxShadow: "0 8px 20px rgba(58,42,18,0.28)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    zIndex: 3,
+  } as React.CSSProperties);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <div
+        ref={rowRef}
+        onScroll={updateEdges}
+        className="pq-screens-row flex gap-6 mt-9 pl-8 md:pl-[72px] pr-12 md:pr-[84px] pb-2 scroll-pl-8 md:scroll-pl-[72px] scroll-pr-12 md:scroll-pr-[84px]"
+        style={{ overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        {SCREENS.map((s, i) => (
+          <ScreenshotCard key={i} {...s} />
+        ))}
+      </div>
+
+      {!atStart && (
+        <button
+          type="button"
+          aria-label="Previous screenshot"
+          onClick={() => scrollByCard(-1)}
+          style={arrowBtn("left")}
+        >
+          <ArrowRight size={18} color="#3A2E1C" strokeWidth={2.4} style={{ transform: "rotate(180deg)" }} />
+        </button>
+      )}
+      {!atEnd && (
+        <button
+          type="button"
+          aria-label="Next screenshot"
+          onClick={() => scrollByCard(1)}
+          style={arrowBtn("right")}
+        >
+          <ArrowRight size={18} color="#3A2E1C" strokeWidth={2.4} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface ShowcasePost {
+  id: number;
+  caption: string | null;
+  highlight: string | null;
+  badge_id: string | null;
+  park_code: string | null;
+  park_name: string | null;
+  park_image_url: string | null;
+  states: string | null;
+  username: string;
+  display_name: string | null;
+  rating: number | null;
+  created_at: string;
+  like_count: number;
+  comment_count: number;
+}
+
+const AVATAR_COLORS = ["#2F7A4A", "#D89A3A", "#2D4F66", "#8B5DBF", "#C56B3D", "#3F7A6E"];
+
+// A non-interactive stand-in for the real feed's PostCard — same anatomy
+// (avatar/header, park hero banner, like/comment/share row) but nothing here
+// is clickable. Real uploaded photos never leave the app: every card shows
+// the park's own banner image instead, exactly like the app's own fallback
+// for photo-less posts.
+function CommunityPostCard({ post, avatarColor }: { post: ShowcasePost; avatarColor: string }) {
+  const name = post.display_name || post.username;
+  const initial = name.charAt(0).toUpperCase();
+  const text = post.caption || post.highlight || "";
+  const isBadge = !!post.badge_id;
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        borderRadius: 16,
+        border: "0.5px solid var(--hairline)",
+        overflow: "hidden",
+        boxShadow: "0 14px 34px rgba(0,0,0,0.28)",
+        cursor: "default",
+      }}
+    >
+      {isBadge && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "9px 18px",
+            background: "var(--surface-alt)",
+            borderBottom: "1px solid var(--hairline)",
+          }}
+        >
+          <Award size={13} color="var(--primary)" strokeWidth={2.2} />
+          <span style={{ fontSize: 11.5, letterSpacing: "1.2px", fontWeight: 700, color: "var(--primary)" }}>
+            BADGE EARNED
+          </span>
+        </div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 10px" }}>
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            flexShrink: 0,
+            background: avatarColor,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 800,
+            fontSize: 13,
+            color: "#FFFBF1",
+          }}
+        >
+          {initial}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{name}</div>
+          <div style={{ fontSize: 12, color: "var(--ink-mute)", marginTop: 1 }}>
+            @{post.username} · {relTime(post.created_at)}
+          </div>
+        </div>
+      </div>
+
+      {text && (
+        <div style={{ padding: "0 18px 12px", fontSize: 14.5, color: "var(--ink)", lineHeight: 1.5 }}>
+          {text.length > 160 ? `${text.slice(0, 160).trim()}…` : text}
+        </div>
+      )}
+
+      {!isBadge && post.park_name && (
+        <div style={{ position: "relative", height: 168 }}>
+          {post.park_image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={post.park_image_url}
+              alt={post.park_name}
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <div style={{ position: "absolute", inset: 0, background: parkColor(post.park_code ?? "zz") }} />
+          )}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(180deg, transparent 25%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.82) 100%)",
+            }}
+          />
+          <div style={{ position: "absolute", left: 16, right: 16, bottom: 12, color: "#FFFBF1" }}>
+            <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: -0.2 }}>{post.park_name}</div>
+            {post.rating != null && (
+              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
+                {"★".repeat(post.rating)} {post.rating}/5
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 22,
+          padding: "10px 18px",
+          borderTop: "0.5px solid var(--hairline)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <Heart size={18} color="var(--ink-mute)" strokeWidth={1.8} />
+          {post.like_count > 0 && (
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-mute)" }}>{post.like_count}</span>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <MessageCircle size={17} color="var(--ink-mute)" strokeWidth={1.8} />
+          {post.comment_count > 0 && (
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-mute)" }}>{post.comment_count}</span>
+          )}
+        </div>
+        <Share2 size={16} color="var(--ink-mute)" strokeWidth={1.8} />
+      </div>
+    </div>
+  );
+}
+
+function CommunitySection() {
+  const [posts, setPosts] = useState<ShowcasePost[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/public/showcase")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: ShowcasePost[]) => { if (!cancelled) setPosts(data); })
+      .catch(() => { if (!cancelled) setPosts([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (posts && posts.length === 0) return null;
+
   return (
     <div
       className="px-6 py-16 md:px-[60px] md:py-[80px]"
@@ -1669,98 +1941,36 @@ function SocialProofSection() {
         borderTop: "0.5px solid rgba(255,251,241,0.10)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 26 }}>
-        <div style={{ display: "flex" }}>
-          {avatarColors.map((color, i) => (
-            <div
-              key={i}
-              style={{
-                marginLeft: i === 0 ? 0 : -10,
-                width: 48,
-                height: 48,
-                borderRadius: "50%",
-                background: color,
-                border: "2px solid var(--primary-deep)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 800,
-                fontSize: 15,
-                color: "#FFFBF1",
-                flexShrink: 0,
-              }}
-            >
-              {["M", "J", "S", "R", "N"][i]}
-            </div>
-          ))}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, fontSize: 28, color: "#FFFBF1", letterSpacing: -0.6 }}>
-            24,318 explorers
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: "rgba(255,251,241,0.7)",
-              letterSpacing: "0.8px",
-              marginTop: 4,
-              fontWeight: 600,
-            }}
-          >
-            148,290 STAMPS · 1,842 BADGES EARNED THIS MONTH · 12 NEW PARKS LOGGED TODAY
-          </div>
-        </div>
+      <div
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10.5,
+          letterSpacing: "2.2px",
+          color: "rgba(255,251,241,0.65)",
+          textTransform: "uppercase",
+          fontWeight: 600,
+        }}
+      >
+        FROM THE COMMUNITY
+      </div>
+      <div
+        style={{
+          fontWeight: 800,
+          fontSize: 38,
+          color: "#FFFBF1",
+          letterSpacing: -1,
+          lineHeight: 1.05,
+          marginTop: 14,
+          maxWidth: 480,
+        }}
+      >
+        Real trips, real people.
       </div>
 
-      <div style={{ marginTop: 50, maxWidth: 620 }}>
-        <div
-          style={{
-            fontStyle: "italic",
-            fontSize: 24,
-            color: "#FFFBF1",
-            letterSpacing: -0.3,
-            lineHeight: 1.4,
-            fontWeight: 500,
-          }}
-        >
-          &ldquo;The first app I&apos;ve used that actually feels designed for being outside,
-          not for staring at my phone in line at REI.&rdquo;
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: "50%",
-              background: "var(--visited)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 12,
-              color: "#FFFBF1",
-              flexShrink: 0,
-            }}
-          >
-            M
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#FFFBF1" }}>Maya Okafor</div>
-            <div
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: "rgba(255,251,241,0.6)",
-                letterSpacing: "0.6px",
-                marginTop: 1,
-                fontWeight: 600,
-              }}
-            >
-              23 PARKS · PORTLAND, OR
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-9">
+        {(posts ?? []).slice(0, 3).map((post, i) => (
+          <CommunityPostCard key={post.id} post={post} avatarColor={AVATAR_COLORS[i % AVATAR_COLORS.length]} />
+        ))}
       </div>
     </div>
   );
@@ -2012,7 +2222,7 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
         <AboutSection />
         <FeaturesSection />
         <ScreenshotsSection />
-        {/* <SocialProofSection /> */}
+        <CommunitySection />
         <FinalCTASection onAbout={scrollToAbout} />
       </div>
 
@@ -2160,7 +2370,7 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
         <AboutSection />
         <FeaturesSection />
         <ScreenshotsSection />
-        <SocialProofSection />
+        <CommunitySection />
         <FinalCTASection onAbout={scrollToAbout} />
       </div>
     </div>
