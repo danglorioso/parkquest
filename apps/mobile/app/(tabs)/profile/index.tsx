@@ -308,20 +308,9 @@ export default function ProfileScreen() {
       .reverse();
   }, [rawVisits]);
 
-  const handleShare = async () => {
-    if (!user?.id) return;
-    // Universal Link — opens the app if installed, web profile otherwise
-    const url = username
-      ? `https://parkquest.me/u/${username}`
-      : `parkquest://user/${user.id}`;
-    try {
-      await Share.share({
-        message: `Follow ${displayName} on ParkQuest and explore national parks together! ${url}`,
-      });
-    } catch {
-      // user dismissed the share sheet
-    }
-  };
+  // Passport card's share button → the pre-share/export screen (image
+  // preview + destinations), same flow the full passport screen opens.
+  const handleShare = () => router.push('/passport-share' as never);
 
   // Invite flow — /download is a short marketing redirect to the App Store
   // listing (see apps/web next.config.ts), not a profile deep link, since
@@ -463,7 +452,7 @@ export default function ProfileScreen() {
         {/* ── Passport hero card ───────────────────────────────────────────── */}
         <TouchableOpacity
           style={[styles.passportCard, { backgroundColor: C.primaryDeep, shadowColor: C.primaryDeep }]}
-          onPress={() => router.push('/profile/passport' as never)}
+          onPress={() => router.push('/passport' as never)}
           activeOpacity={0.88}
         >
           {/* Guilloche background — same shared component as the full
@@ -524,7 +513,7 @@ export default function ProfileScreen() {
 
           <View style={styles.passportStats}>
             {([
-              { label: 'VISITED', value: visitsLoaded ? `${parksVisited}/63` : '–', href: '/profile/passport' },
+              { label: 'VISITED', value: visitsLoaded ? `${parksVisited}/63` : '–', href: '/passport' },
               { label: 'TRIPS',   value: visitsLoaded ? String(tripsCount) : '–', href: '/profile/journal' },
               { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–', href: '/profile/badges' },
               { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–', href: '/profile/friends' },
@@ -568,7 +557,7 @@ export default function ProfileScreen() {
         {(!visitsLoaded || recentStamps.length > 0) && (
           <View style={styles.badgesPreview}>
             <TouchableOpacity
-              onPress={() => router.push('/profile/passport' as never)}
+              onPress={() => router.push('/passport' as never)}
               hitSlop={10}
               style={styles.sectionHeader}
               activeOpacity={0.6}
@@ -604,7 +593,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               ))}
               <TouchableOpacity
-                onPress={() => router.push('/profile/passport' as never)}
+                onPress={() => router.push('/passport' as never)}
                 style={styles.badgePreviewItem}
                 activeOpacity={0.7}
               >
@@ -794,7 +783,7 @@ export default function ProfileScreen() {
               label="Passport"
               subtitle="Stamps from every visit"
               count={parksVisited > 0 ? parksVisited : undefined}
-              onPress={() => router.push('/profile/passport' as never)}
+              onPress={() => router.push('/passport' as never)}
             />
             <View style={styles.rowDivider} />
             <NavRow

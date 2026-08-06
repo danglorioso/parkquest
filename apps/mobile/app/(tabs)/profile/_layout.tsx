@@ -16,11 +16,6 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="badges"   options={{ title: 'Badges' }} />
       <Stack.Screen name="journal/index" options={{ title: 'Journal' }} />
       <Stack.Screen name="journal/[id]" options={{ headerBackTitle: 'Journal' }} />
-      {/* No native header at all — the screen's own green cover extends up
-          under the status bar and provides its own back button. A native
-          header (even with a custom headerBackground) paints its default
-          white for a frame before the React background mounts. */}
-      <Stack.Screen name="passport" options={{ headerShown: false }} />
       {/* Plain default back — arrow only, no label. headerBackTitle: '' falls
           back to the previous screen's route name ("index") instead of
           hiding the label, so this needs headerBackButtonDisplayMode

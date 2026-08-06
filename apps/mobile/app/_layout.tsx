@@ -176,6 +176,20 @@ function RootStack() {
           genuinely non-interactive at the native level with no override —
           that's what made the map underneath un-pannable no matter how the
           sheet's own pointerEvents were configured). */}
+      {/* Passport presents as a full-screen modal sliding up over whatever
+          screen opened it (Flighty-style) — not another layer in the profile
+          stack. The screen draws its own top bar (X / title / share); no
+          native header. */}
+      <Stack.Screen
+        name="passport"
+        options={{ presentation: 'fullScreenModal', headerShown: false }}
+      />
+      {/* Pre-share/export screen — modal over the passport (or straight over
+          the profile via its share button). */}
+      <Stack.Screen
+        name="passport-share"
+        options={{ presentation: 'modal', headerShown: false }}
+      />
       <Stack.Screen
         name="profile/edit"
         // Native back item with the label hidden ('minimal') — suppresses the

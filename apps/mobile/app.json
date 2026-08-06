@@ -65,6 +65,12 @@
         {
           "locationWhenInUsePermission": "ParkQuest uses your location to show nearby parks."
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "ParkQuest saves your exported passport image to your photo library."
+        }
       ]
     ],
     "experiments": {

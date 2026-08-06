@@ -14,8 +14,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
-import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { STATIC as C, useColors } from '@/lib/palette';
+import { buildMrzLines, passportNo, stampDateStr } from '@/lib/passport';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Passport-book aesthetic: gold foil stays fixed across themes (it already
@@ -59,6 +59,7 @@ interface Visit {
   is_bucket_list: boolean;
   visited_date: string | null;
   rating?: number | null;
+  photos?: string[] | null;
 }
 
 interface StampItem {
@@ -69,19 +70,6 @@ interface StampItem {
   visited_date: string | null;
   colorIdx: number;
   stamp_glyph: CustomStampGlyph | null;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function passportNo(username: string): string {
-  const n = ((username.length * 73291 + 41023) % 9999999).toString().padStart(7, '0');
-  return `PQ${n}`;
-}
-
-function stampDateStr(iso: string): string {
-  const d = new Date(iso);
-  const M = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  return `${M[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
 // ── Row types for FlatList ────────────────────────────────────────────────────
@@ -159,7 +147,6 @@ const PARALLAX_FACTOR = 0.6;
 
 export default function PassportScreen() {
   const { getToken }  = useAuth();
-  const tabBarSpace = useTabBarSpace();
   const { user }      = useUser();
   const router        = useRouter();
   const T             = useColors();
@@ -169,6 +156,7 @@ export default function PassportScreen() {
   const mute          = isDark ? P_MUTE_DARK : P_MUTE;
   const insets        = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
+  const listRef = useRef<Animated.FlatList<RowItem>>(null);
   const handleScroll = useRef(
     Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })
   ).current;
@@ -263,10 +251,16 @@ export default function PassportScreen() {
   }, [allParks, visits]);
 
   const visitedCount = useMemo(() => allStampItems.filter(s => s.visited).length, [allStampItems]);
-  const bucketCount  = useMemo(() => visits.filter(v => v.is_bucket_list).length, [visits]);
   // Distinct from visitedCount — a park visited twice is one stamped park
   // but two trips, so this counts visit log entries, not unique parks.
   const tripsCount   = useMemo(() => visits.filter(v => !v.is_bucket_list && v.visited_date).length, [visits]);
+  // Total photos logged across real visits — reflects actual content the
+  // user contributed, unlike bucket-list count (trivially inflatable by
+  // just adding every park to the list) which this stat replaced.
+  const photoCount   = useMemo(
+    () => visits.reduce((n, v) => n + (v.is_bucket_list ? 0 : (v.photos?.length ?? 0)), 0),
+    [visits]
+  );
   const statesCount  = useMemo(() => {
     const s = new Set<string>();
     allStampItems.filter(si => si.visited).forEach(si => si.states.split(',').forEach(st => s.add(st.trim())));
@@ -286,12 +280,32 @@ export default function PassportScreen() {
   const firstStamp  = visitedStamps[0] ?? null;
   const latestStamp = visitedStamps.length > 1 ? visitedStamps[visitedStamps.length - 1] : null;
 
+  // Security-microprint band — mimics a real passport's data-page microtext:
+  // document number + bearer name interleaved with park-code/year stamp
+  // codes (e.g. "YOSE'24"), not just a plain park-name list. Falls back to
+  // a document motto for a fresh passport with no stamps yet.
+  const microprint = useMemo(() => {
+    const uname = (profile?.username ?? user?.username ?? 'EXPLORER').toUpperCase();
+    const num   = passportNo(profile?.username ?? user?.username ?? 'explorer');
+    const stampCodes = visitedStamps.map(s => {
+      const yy = s.visited_date ? String(new Date(s.visited_date).getFullYear()).slice(-2) : null;
+      return `${s.park_code.toUpperCase()}${yy ? `'${yy}` : ''}`;
+    });
+    const bits = stampCodes.length
+      ? [num, uname, ...stampCodes]
+      : [num, uname, 'NATIONAL PARK PASSPORT', 'EXPLORE MORE'];
+    // Repeat enough to always overflow one clipped line regardless of count
+    return (bits.join(' ✦ ') + ' ✦ ').repeat(Math.ceil(20 / Math.max(1, bits.length)));
+  }, [visitedStamps, profile?.username, user?.username]);
+
   // Text "records" rows — computed from real visit logs. Each is null when
   // there's no data to back it, and its row just doesn't render.
   const records = useMemo(() => {
     const parkName = (code: string) => allParks.find(p => p.park_code === code)?.name?.replace(/ National Park.*$/, '') ?? code;
     const dated = visits.filter(v => !v.is_bucket_list && v.visited_date);
-    if (dated.length === 0) return { mostVisited: null, topRated: null };
+    if (dated.length === 0) {
+      return { mostVisited: null, topRated: null, favSeason: null, busiestYear: null, exploring: null };
+    }
 
     const counts = new Map<string, number>();
     dated.forEach(v => counts.set(v.park_code, (counts.get(v.park_code) ?? 0) + 1));
@@ -304,10 +318,37 @@ export default function PassportScreen() {
       (b.rating! - a.rating!) || (a.visited_date ?? '').localeCompare(b.visited_date ?? '')
     )[0] ?? null;
 
+    // Favorite season — which quarter of the wheel gets the most trips.
+    // Dec–Feb winter, Mar–May spring, Jun–Aug summer, Sep–Nov fall.
+    const SEASONS = ['Winter ❄️', 'Spring 🌸', 'Summer ☀️', 'Fall 🍂'];
+    const seasonIdx = (m: number) => (m === 11 || m < 2) ? 0 : m < 5 ? 1 : m < 8 ? 2 : 3;
+    const seasonCounts = [0, 0, 0, 0];
+    dated.forEach(v => { seasonCounts[seasonIdx(new Date(v.visited_date!).getMonth())]++; });
+    const favIdx = seasonCounts.indexOf(Math.max(...seasonCounts));
+
+    // Busiest year — most stamps logged; ties go to the most recent year
+    const yearCounts = new Map<number, number>();
+    dated.forEach(v => {
+      const y = new Date(v.visited_date!).getFullYear();
+      yearCounts.set(y, (yearCounts.get(y) ?? 0) + 1);
+    });
+    let byYear = 0, byCount = 0;
+    yearCounts.forEach((n, y) => {
+      if (n > byCount || (n === byCount && y > byYear)) { byYear = y; byCount = n; }
+    });
+
+    // Days on trail — how long this passport has been collecting stamps
+    const firstDate = dated.map(v => v.visited_date!).sort()[0];
+    const days = Math.max(1, Math.floor((Date.now() - new Date(firstDate).getTime()) / 86_400_000));
+    const sinceStr = new Date(firstDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
     return {
       // Only meaningful once some park has 2+ visits
       mostVisited: mvCode ? { name: parkName(mvCode), detail: `${mvCount} visits` } : null,
       topRated:    top ? { name: parkName(top.park_code), detail: `${'★'.repeat(Math.round(top.rating!))}` } : null,
+      favSeason:   { name: SEASONS[favIdx], detail: `${seasonCounts[favIdx]} ${seasonCounts[favIdx] === 1 ? 'trip' : 'trips'}` },
+      busiestYear: { name: String(byYear), detail: `${byCount} ${byCount === 1 ? 'stamp' : 'stamps'}` },
+      exploring:   { name: `${days.toLocaleString()} days`, detail: `since ${sinceStr}` },
     };
   }, [visits, allParks]);
 
@@ -320,25 +361,13 @@ export default function PassportScreen() {
     : null;
 
   // MRZ-style bottom strip — same format as the profile page's passport card
-  const mrzName = name ?? 'Explorer';
-  const mrzUsername = profile?.username ?? user?.username ?? '';
-  const mrzLine1 = (() => {
-    const parts = mrzName.toUpperCase().replace(/[^A-Z ]/g, '').split(' ');
-    const surname = (parts[0] ?? 'UNKNOWN').slice(0, 12);
-    const given = (parts.slice(1).join('<') || 'EXPLORER').slice(0, 10);
-    const raw = `P<USA<<${surname}<<${given}`;
-    return raw.padEnd(44, '<').slice(0, 44);
-  })();
-  const mrzLine2 = (() => {
-    const uid = user?.id?.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(-7).padStart(7, '0') ?? '0000000';
-    const joined = user?.createdAt
-      ? new Date(user.createdAt).toISOString().slice(2, 10).replace(/-/g, '')
-      : '000000';
-    const parks3 = String(visitedCount).padStart(3, '0');
-    const uname = mrzUsername.toUpperCase().slice(0, 9).padEnd(9, '<');
-    const raw = `${uid}<USA${joined}${parks3}${uname}`;
-    return raw.padEnd(44, '<').slice(0, 44);
-  })();
+  const [mrzLine1, mrzLine2] = buildMrzLines({
+    name: name ?? 'Explorer',
+    username: profile?.username ?? user?.username ?? '',
+    userId: user?.id ?? null,
+    createdAt: user?.createdAt ?? null,
+    visitedCount,
+  });
 
   // Build FlatList rows: header + stamp rows (with page dividers)
   const listData = useMemo((): RowItem[] => {
@@ -396,18 +425,66 @@ export default function PassportScreen() {
       }}
     />
   );
-  const backButton = (
-    <TouchableOpacity
-      onPress={() => {
-        if (router.canGoBack()) router.back();
-        else router.replace('/(tabs)/profile');
-      }}
-      hitSlop={8}
-      style={{ position: 'absolute', top: insets.top + 4, left: 10, zIndex: 20, flexDirection: 'row', alignItems: 'center' }}
+  // Modal-style top bar (Flighty-style): X to dismiss, centered title,
+  // share on the right — floats over the green cover.
+  const dismiss = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)/profile');
+  };
+  const topBar = (
+    <View style={[st.topBar, { top: insets.top + 4 }]} pointerEvents="box-none">
+      <TouchableOpacity onPress={dismiss} hitSlop={8} style={st.topBarBtn}>
+        <Ionicons name="close" size={22} color={GOLD} />
+      </TouchableOpacity>
+      <Text style={st.topBarTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+        ParkQuest Passport
+      </Text>
+      <TouchableOpacity
+        onPress={() => router.push('/passport-share' as never)}
+        hitSlop={8}
+        style={st.topBarBtn}
+      >
+        <Ionicons name="share-outline" size={20} color={GOLD} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Scroll-down hint — chevron at the bottom of the screen that fades away
+  // as soon as the user starts scrolling (there's always content below the
+  // near-full-screen cover). Tapping it scrolls straight past the cover to
+  // the stamp grid, same boundary statusBarUnderlay/pastCover key off.
+  const scrollHint = (
+    <Animated.View
+      pointerEvents="box-none"
+      style={[
+        st.scrollHint,
+        {
+          bottom: insets.bottom + 14,
+          opacity: scrollY.interpolate({
+            inputRange: [0, 60],
+            outputRange: [1, 0],
+            extrapolate: 'clamp',
+          }),
+        },
+      ]}
     >
-      <Ionicons name="chevron-back" size={26} color={GOLD} />
-      <Text style={{ fontSize: 16, fontWeight: '600', color: GOLD, marginLeft: -2 }}>Profile</Text>
-    </TouchableOpacity>
+      <TouchableOpacity
+        // The top bar floats over the screen's top edge rather than pushing
+        // content down, so it covers the same on-screen pixels regardless of
+        // scroll position. Scrolling to exactly coverH would put the first
+        // stamp row's top edge right at screen y=0 — under the bar (and the
+        // Dynamic Island above it). Stop short so that band still shows the
+        // (harmless) bottom of the cover instead.
+        onPress={() => listRef.current?.scrollToOffset({
+          offset: Math.max(0, (coverH ?? 0) - (insets.top + 58)),
+          animated: true,
+        })}
+        hitSlop={10}
+        style={st.scrollHintBtn}
+      >
+        <Ionicons name="chevron-down" size={20} color={GOLD} />
+      </TouchableOpacity>
+    </Animated.View>
   );
 
   if (error && allParks.length === 0) {
@@ -415,7 +492,7 @@ export default function PassportScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: paper }} edges={['bottom']}>
         <StatusBar style="light" />
         {statusBarUnderlay}
-        {backButton}
+        {topBar}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load</Text>
@@ -434,7 +511,8 @@ export default function PassportScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: paper }} edges={['bottom']}>
       <StatusBar style={pastCover ? 'dark' : 'light'} />
       {statusBarUnderlay}
-      {backButton}
+      {topBar}
+      {scrollHint}
       <Animated.View
         pointerEvents="none"
         style={{ transform: [{ translateY: Animated.multiply(scrollY, -PARALLAX_FACTOR) }] }}
@@ -442,6 +520,7 @@ export default function PassportScreen() {
         <PassportWatermark dark={isDark} />
       </Animated.View>
       <Animated.FlatList
+        ref={listRef}
         data={listData}
         onScroll={handleScroll}
         scrollEventThrottle={16}
@@ -453,7 +532,7 @@ export default function PassportScreen() {
           return `row-${item.rowIdx}`;
         }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
         renderItem={({ item }) => {
           if (item.type === 'header') {
             return (
@@ -495,7 +574,7 @@ export default function PassportScreen() {
                           "runs past the page" printed-document feel as the corner
                           watermark band, rather than wrapping to a second line. */}
                       <Text style={st.headerKicker} numberOfLines={1} ellipsizeMode="clip">
-                        PARKQUEST.ME · NATIONAL PARK PASSPORT · OFFICIAL RECORD OF VISITATION
+                        OFFICIAL RECORD OF VISITATION · AMERICA'S 63 NATIONAL PARKS · PARKQUEST.ME
                       </Text>
                     </View>
 
@@ -550,7 +629,7 @@ export default function PassportScreen() {
                     {/* Watermark band — same repeating-text security-print
                         motif as the profile page's passport card */}
                     <Text style={st.coverWatermark} numberOfLines={1} ellipsizeMode="clip" pointerEvents="none">
-                      {'PARKQUEST • '.repeat(20)}
+                      {microprint}
                     </Text>
 
                     {/* Solid scrim behind the numbers — the guilloche pattern reads
@@ -559,34 +638,51 @@ export default function PassportScreen() {
                         of how the pattern underneath gets tuned later. */}
                     <View style={st.statsPlate}>
                       <View style={st.infoStats}>
-                        {[
-                          { label: 'TRIPS',  value: loading ? '–' : String(tripsCount) },
-                          { label: 'STATES', value: loading ? '–' : `${statesCount}/${totalParkStates}` },
-                          // Only stat that links anywhere — it's the sole way to reach the
-                          // bucket list, which otherwise has no dedicated entry point.
-                          { label: 'BUCKET', value: loading ? '–' : String(bucketCount), onPress: () => router.push('/(tabs)/map?filter=bucketList' as never) },
-                          { label: 'BADGES', value: loading ? '–' : `${badgeCount}/${totalBadges}` },
-                        ].map((s, i) => {
-                          const Wrap = s.onPress ? TouchableOpacity : View;
+                        {([
+                          { label: 'TRIPS',  icon: 'footsteps', value: loading ? '–' : String(tripsCount) },
+                          // Has a real denominator worth showing — not all 50 US
+                          // states have a national park, so a bare count reads
+                          // as "only visited N states" when N/50 was never the
+                          // real ceiling. totalParkStates is the true max — kept,
+                          // but rendered small/muted (a "/of" suffix, not a
+                          // second headline number) so it doesn't fight the
+                          // actual stat for attention.
+                          { label: 'STATES', icon: 'map',       value: loading ? '–' : String(statesCount), sub: loading ? '' : `/${totalParkStates}` },
+                          // Photos, not bucket-list count — bucket list is
+                          // trivially inflatable (add every park) and already
+                          // reachable via the Map/Parks tab filters, so it
+                          // isn't a meaningful passport stat.
+                          { label: 'PHOTOS', icon: 'camera',    value: loading ? '–' : String(photoCount) },
+                          { label: 'BADGES', icon: 'ribbon',    value: loading ? '–' : String(badgeCount) },
+                        ] as const).map((s, i) => {
                           return (
-                            <Wrap
+                            <View
                               key={s.label}
                               style={[st.infoStat, i > 0 && st.infoStatBorder]}
-                              {...(s.onPress ? { onPress: s.onPress, activeOpacity: 0.6 } : {})}
                             >
-                              <Text style={st.infoStatLabel}>{s.label}</Text>
-                              <Text style={st.infoStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                                {s.value}
+                              <Ionicons name={s.icon} size={15} color={GOLD} style={st.infoStatIcon} />
+                              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                                <Text style={st.infoStatVal}>{s.value}</Text>
+                                {'sub' in s && s.sub ? <Text style={st.infoStatSub}>{s.sub}</Text> : null}
                               </Text>
-                            </Wrap>
+                              <Text style={st.infoStatLabel}>{s.label}</Text>
+                            </View>
                           );
                         })}
                       </View>
 
                       <View style={st.infoProgress}>
-                        <Text style={st.infoProgressText}>
-                          {loading ? 'Loading…' : `${visitedCount} of 63 parks stamped`}
-                        </Text>
+                        {/* One line, never wraps: copy left, percent right */}
+                        <View style={st.infoProgressRow}>
+                          <Text style={st.infoProgressText} numberOfLines={1}>
+                            {loading ? 'Loading…' : `${visitedCount} of 63 parks stamped`}
+                          </Text>
+                          {!loading && (
+                            <Text style={st.infoProgressPct}>
+                              {Math.round((visitedCount / 63) * 100)}%
+                            </Text>
+                          )}
+                        </View>
                         <View style={st.progressTrack}>
                           <View style={[st.progressFill, { width: `${(visitedCount / 63) * 100}%` as `${number}%` }]} />
                         </View>
@@ -640,12 +736,15 @@ export default function PassportScreen() {
                       </View>
                     )}
 
-                    {/* Records — personal superlatives pulled from the visit log */}
-                    {!loading && (records.mostVisited || records.topRated) && (
+                    {/* Records — personal superlatives + fun facts pulled from the visit log */}
+                    {!loading && (records.mostVisited || records.topRated || records.favSeason) && (
                       <View style={[st.statsPlate, { marginTop: 10 }]}>
                         {([
-                          { label: 'MOST VISITED', rec: records.mostVisited },
-                          { label: 'TOP RATED',    rec: records.topRated },
+                          { label: 'MOST VISITED',  rec: records.mostVisited },
+                          { label: 'TOP RATED',     rec: records.topRated },
+                          { label: 'TRAIL SEASON',  rec: records.favSeason },
+                          { label: 'BUSIEST YEAR',  rec: records.busiestYear },
+                          { label: 'DAYS ON TRAIL', rec: records.exploring },
                         ] as const).filter(r => r.rec).map((r, i) => (
                           <View key={r.label} style={[st.recordRow, i > 0 && st.recordRowBorder]}>
                             <Text style={st.recordLabel}>{r.label}</Text>
@@ -749,6 +848,44 @@ export default function PassportScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const st = StyleSheet.create({
+  // ── Modal top bar (X / title / share) ──
+  topBar: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  topBarBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(8,16,12,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topBarTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: GOLD,
+    letterSpacing: 0.3,
+  },
+  // Scroll-down hint chevron, floating over the bottom of the cover
+  scrollHint: {
+    position: 'absolute',
+    alignSelf: 'center',
+    zIndex: 20,
+  },
+  scrollHintBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(8,16,12,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   // Outer shadow layer — full-bleed (no margins/radius), so the shadow is
   // only visible peeking out along the bottom edge, like the cover lifting
   // slightly off the paper page beneath it.
@@ -774,11 +911,11 @@ const st = StyleSheet.create({
     marginBottom: 14,
   },
   headerKicker: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: GOLD,
     letterSpacing: 1.8,
-    opacity: 0.45,
+    opacity: 0.26,   // watermark, not headline — reads on a second look
   },
   // Passport number + site, relocated to the cover's bottom-left corner —
   // was sharing the top kicker row, but combined they were wide enough to
@@ -923,10 +1060,10 @@ const st = StyleSheet.create({
   coverWatermark: {
     marginHorizontal: -20,
     marginBottom: 14,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 2.4,
-    color: 'rgba(201,169,74,0.22)',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: 'rgba(201,169,74,0.16)',
   },
   // Solid-ish backing so the stat digits stay legible over the guilloche
   // pattern regardless of how that pattern's own opacity gets tuned.
@@ -968,34 +1105,60 @@ const st = StyleSheet.create({
     borderLeftWidth: 0.5,
     borderLeftColor: 'rgba(201,169,74,0.3)',
   },
+  infoStatIcon: {
+    opacity: 0.7,
+    marginBottom: 3,
+  },
   infoStatLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     color: GOLD,
     letterSpacing: 1.5,
-    opacity: 0.85,
+    opacity: 0.7,
+    marginTop: 2,
   },
   infoStatVal: {
-    fontSize: 30,
+    fontSize: 26,
     fontWeight: '800',
     color: GOLD,
     letterSpacing: -0.5,
-    marginTop: 2,
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  infoStatSub: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: GOLD,
+    opacity: 0.55,
+    letterSpacing: -0.2,
   },
   infoProgress: {
     gap: 6,
     paddingBottom: 12,
   },
+  // Lines up with progressTrack's own inset below, without touching the bar's width
+  infoProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    gap: 8,
+  },
   infoProgressText: {
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '600',
     color: GOLD,
     opacity: 0.75,
     letterSpacing: 0.5,
-    marginLeft: 16, // lines up with progressTrack's own inset below, without touching the bar's width
+  },
+  infoProgressPct: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: GOLD,
+    opacity: 0.9,
+    letterSpacing: 0.5,
   },
   progressTrack: {
     height: 3,
