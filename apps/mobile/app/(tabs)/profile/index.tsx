@@ -28,7 +28,7 @@ import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
 // Passport gold foil — fixed across palettes, matches the passport screen
-const GOLD = '#C9A94A';
+const GOLD = '#F0C550';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -472,7 +472,7 @@ export default function ProfileScreen() {
             onPress={handleShare}
             hitSlop={8}
           >
-            <Ionicons name="share-outline" size={16} color="#C9A94A" />
+            <Ionicons name="share-outline" size={16} color="#F0C550" />
           </TouchableOpacity>
 
           <View style={styles.passportHeader}>

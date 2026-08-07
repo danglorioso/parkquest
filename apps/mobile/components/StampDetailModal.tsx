@@ -15,7 +15,7 @@ import { fullStateName } from '@/lib/stateNames';
 
 const PAPER       = '#FAF3E0';
 const PAPER_DARK  = '#1C1912';
-const GOLD        = '#C9A94A';
+const GOLD        = '#F0C550';
 const P_INK       = '#3A2E1C';
 const P_INK_DARK  = '#E8DCC0';
 const P_MUTE      = 'rgba(58,46,28,0.45)';

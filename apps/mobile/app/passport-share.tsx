@@ -26,7 +26,7 @@ import type { CustomStampGlyph } from '@parkquest/types';
 // it (profile page's passport card or the passport screen itself).
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
-const GOLD = '#C9A94A';
+const GOLD = '#F0C550';
 
 interface Park {
   park_code: string;
@@ -54,6 +54,12 @@ export default function PassportShareScreen() {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const cardRef = useRef<View>(null);
+  // Measured instead of guessed — a flat fudge-factor left a big gap of dead
+  // green above/below the card on tall screens (previewZone centers its
+  // content, so any slack it doesn't need becomes visible padding).
+  // Real top-bar/destination-row heights let the card grow to fill it.
+  const [topBarH, setTopBarH] = useState(0);
+  const [destRowH, setDestRowH] = useState(0);
 
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -130,12 +136,19 @@ export default function PassportShareScreen() {
 
   // Fit the fixed-size export card into the space between header and
   // destination row — scaled visually, captured at full design size.
+  // Waits for the real top-bar/destination-row heights (see topBarH/destRowH
+  // above) rather than a guessed constant, so the card fills the space
+  // actually available instead of floating in a sea of dead cover green.
   const winH = Dimensions.get('window').height;
   const scale = useMemo(() => {
-    const availW = Dimensions.get('window').width - 56;
-    const availH = winH - insets.top - insets.bottom - 260;
+    const availW = Dimensions.get('window').width - 32;
+    // destRowH already bakes in its own paddingBottom: insets.bottom + 18 (it's
+    // measured via onLayout, which includes padding) — don't subtract
+    // insets.bottom a second time here, only insets.top (consumed by the
+    // screen's own paddingTop, outside topBarH).
+    const availH = winH - insets.top - topBarH - destRowH - 24;
     return Math.min(availW / EXPORT_W, availH / EXPORT_H.square, 1);
-  }, [winH, insets.top, insets.bottom]);
+  }, [winH, insets.top, topBarH, destRowH]);
 
   const capture = useCallback(async (): Promise<string | null> => {
     try {
@@ -200,7 +213,7 @@ export default function PassportShareScreen() {
       <StatusBar style="light" />
 
       {/* Top bar: close / title / aspect toggle */}
-      <View style={st.topBar}>
+      <View style={st.topBar} onLayout={e => setTopBarH(e.nativeEvent.layout.height)}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={8} style={st.roundBtn}>
           <GlassIconBg fallbackColor="rgba(8,16,12,0.45)" />
           <Ionicons name="close" size={22} color={GOLD} />
@@ -255,7 +268,10 @@ export default function PassportShareScreen() {
       </View>
 
       {/* Destinations */}
-      <View style={[st.destRow, { paddingBottom: insets.bottom + 18 }]}>
+      <View
+        style={[st.destRow, { paddingBottom: insets.bottom + 18 }]}
+        onLayout={e => setDestRowH(e.nativeEvent.layout.height)}
+      >
         {destinations.map(d => (
           <TouchableOpacity
             key={d.label}

@@ -81,6 +81,9 @@ PODS:
     - ExpoModulesCore
   - ExpoLocation (19.0.8):
     - ExpoModulesCore
+  - ExpoMediaLibrary (18.2.1):
+    - ExpoModulesCore
+    - React-Core
   - ExpoModulesCore (3.0.30):
     - boost
     - DoubleConversion
@@ -113,6 +116,8 @@ PODS:
   - ExpoSecureStore (15.0.8):
     - ExpoModulesCore
   - ExpoSensors (15.0.8):
+    - ExpoModulesCore
+  - ExpoSMS (14.0.8):
     - ExpoModulesCore
   - ExpoSplashScreen (31.0.13):
     - ExpoModulesCore
@@ -2060,6 +2065,34 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
+  - react-native-view-shot (4.0.3):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - fmt
+    - glog
+    - hermes-engine
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - SocketRocket
+    - Yoga
   - React-NativeModulesApple (0.81.5):
     - boost
     - DoubleConversion
@@ -3013,9 +3046,11 @@ DEPENDENCIES:
   - ExpoLinearGradient (from `../../../node_modules/expo-linear-gradient/ios`)
   - ExpoLinking (from `../../../node_modules/expo-linking/ios`)
   - ExpoLocation (from `../../../node_modules/expo-location/ios`)
+  - ExpoMediaLibrary (from `../../../node_modules/expo-media-library/ios`)
   - ExpoModulesCore (from `../../../node_modules/expo-modules-core`)
   - ExpoSecureStore (from `../../../node_modules/expo-secure-store/ios`)
   - ExpoSensors (from `../../../node_modules/expo-sensors/ios`)
+  - ExpoSMS (from `../../../node_modules/expo-sms/ios`)
   - ExpoSplashScreen (from `../../../node_modules/expo-splash-screen/ios`)
   - ExpoWebBrowser (from `../../../node_modules/expo-web-browser/ios`)
   - fast_float (from `../../../node_modules/react-native/third-party-podspecs/fast_float.podspec`)
@@ -3063,6 +3098,7 @@ DEPENDENCIES:
   - react-native-safe-area-context (from `../../../node_modules/react-native-safe-area-context`)
   - "react-native-segmented-control (from `../../../node_modules/@react-native-segmented-control/segmented-control`)"
   - "react-native-slider (from `../../../node_modules/@react-native-community/slider`)"
+  - react-native-view-shot (from `../../../node_modules/react-native-view-shot`)
   - React-NativeModulesApple (from `../../../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-oscompat (from `../../../node_modules/react-native/ReactCommon/oscompat`)
   - React-perflogger (from `../../../node_modules/react-native/ReactCommon/reactperflogger`)
@@ -3162,12 +3198,16 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/expo-linking/ios"
   ExpoLocation:
     :path: "../../../node_modules/expo-location/ios"
+  ExpoMediaLibrary:
+    :path: "../../../node_modules/expo-media-library/ios"
   ExpoModulesCore:
     :path: "../../../node_modules/expo-modules-core"
   ExpoSecureStore:
     :path: "../../../node_modules/expo-secure-store/ios"
   ExpoSensors:
     :path: "../../../node_modules/expo-sensors/ios"
+  ExpoSMS:
+    :path: "../../../node_modules/expo-sms/ios"
   ExpoSplashScreen:
     :path: "../../../node_modules/expo-splash-screen/ios"
   ExpoWebBrowser:
@@ -3261,6 +3301,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/@react-native-segmented-control/segmented-control"
   react-native-slider:
     :path: "../../../node_modules/@react-native-community/slider"
+  react-native-view-shot:
+    :path: "../../../node_modules/react-native-view-shot"
   React-NativeModulesApple:
     :path: "../../../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios"
   React-oscompat:
@@ -3364,9 +3406,11 @@ SPEC CHECKSUMS:
   ExpoLinearGradient: 809102bdb979f590083af49f7fa4805cd931bd58
   ExpoLinking: 2ef632ad5013e3f1568fae9408d56ab9af5efc55
   ExpoLocation: d5b61cb4970fa982e39ca94246a206a0c3b812ca
+  ExpoMediaLibrary: a3093b04365b245bb23b25b6eba84eb6ab55fecb
   ExpoModulesCore: 20899b4dd703e10a543ff4c50ee1543e47d90082
   ExpoSecureStore: d32f751874a2ceb5aaeebeb3578e165c1ba2b24a
   ExpoSensors: 8f9fe9a9ffd36ca9c2f0fe40dafc0a063f844420
+  ExpoSMS: 34f6c0d30e6f87c53fd3ab137bb862b61a58d44e
   ExpoSplashScreen: bc3cffefca2716e5f22350ca109badd7e50ec14d
   ExpoWebBrowser: 970dd4c64c29c955c3af664c8058ba768a4c9187
   fast_float: b32c788ed9c6a8c584d114d0047beda9664e7cc6
@@ -3416,6 +3460,7 @@ SPEC CHECKSUMS:
   react-native-safe-area-context: c00143b4823773bba23f2f19f85663ae89ceb460
   react-native-segmented-control: bf6e0032726727498e18dd437ae88afcdbc18e99
   react-native-slider: 663776e5683e257de8df8091abc2d93ff6ec67db
+  react-native-view-shot: 6c008e58f4720de58370848201c5d4a082c6d4ca
   React-NativeModulesApple: ebf2ce72b35870036900d6498b33724386540a71
   React-oscompat: eb0626e8ba1a2c61673c991bf9dc21834898475d
   React-perflogger: 509e1f9a3ee28df71b0a66de806ac515ce951246

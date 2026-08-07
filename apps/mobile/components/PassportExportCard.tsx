@@ -14,11 +14,16 @@ import type { CustomStampGlyph } from '@parkquest/types';
 
 export const EXPORT_W = 360;
 export const EXPORT_H: Record<ExportVariant, number> = {
-  square: 450,
+  // Taller than a plain 4:5 (was 450) — the pre-share screen fits this card
+  // into the space between its top bar and destination row, and at 450 that
+  // left a lot of dead green above/below on most phones. Grown along with
+  // the internal spacing/type below so the extra height reads as a more
+  // generously laid-out card, not just a bigger blank flex spacer.
+  square: 520,
   story:  640,
 };
 
-const GOLD = '#C9A94A';
+const GOLD = '#F0C550';
 
 export type ExportVariant = 'square' | 'story';
 
@@ -77,6 +82,7 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
         staticSize={{ w: EXPORT_W, h: H }}
         lineIntensity={0.05}
         wavesAboveSeal
+        staticShimmer
       />
 
       {/* Kicker — same edge-to-edge printed-document strip as the cover */}
@@ -98,9 +104,9 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
           ) : (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               {data.name ? (
-                <Text style={{ fontSize: 22, fontWeight: '900', color: GOLD }}>{data.name.slice(0, 2).toUpperCase()}</Text>
+                <Text style={{ fontSize: 24, fontWeight: '900', color: GOLD }}>{data.name.slice(0, 2).toUpperCase()}</Text>
               ) : (
-                <Ionicons name="person" size={22} color={GOLD} style={{ opacity: 0.5 }} />
+                <Ionicons name="person" size={24} color={GOLD} style={{ opacity: 0.5 }} />
               )}
             </View>
           )}
@@ -154,7 +160,7 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
                 name={s.name}
                 states={s.states}
                 colorIdx={s.colorIdx}
-                size={story ? 96 : 68}
+                size={story ? 96 : 82}
                 idSuffix={`-export-${variant}`}
                 inkColor={GOLD}
                 customGlyph={s.stamp_glyph}
@@ -199,20 +205,20 @@ const st = StyleSheet.create({
   identity: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    marginTop: 16,
+    gap: 16,
+    marginTop: 22,
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
     borderWidth: 2,
     borderColor: GOLD + '66',
     overflow: 'hidden',
     flexShrink: 0,
   },
   name: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: GOLD,
     letterSpacing: -0.4,
@@ -221,36 +227,36 @@ const st = StyleSheet.create({
     textShadowRadius: 3,
   },
   handle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: GOLD,
     opacity: 0.75,
     letterSpacing: 0.4,
-    marginTop: 2,
+    marginTop: 3,
   },
   joined: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
     color: GOLD,
     opacity: 0.6,
     letterSpacing: 0.3,
-    marginTop: 2,
+    marginTop: 3,
   },
   watermark: {
     marginHorizontal: -20,
-    marginTop: 12,
-    marginBottom: 14,
+    marginTop: 18,
+    marginBottom: 18,
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 1.6,
     color: 'rgba(201,169,74,0.22)',
   },
   hero: {
-    gap: 6,
-    marginBottom: 12,
+    gap: 8,
+    marginBottom: 16,
   },
   heroText: {
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '800',
     color: GOLD,
     letterSpacing: -0.2,
@@ -259,11 +265,11 @@ const st = StyleSheet.create({
     backgroundColor: 'rgba(8,16,12,0.42)',
     borderRadius: 14,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
   statsRow: {
     flexDirection: 'row',
-    paddingVertical: 10,
+    paddingVertical: 14,
   },
   stat: {
     flex: 1,
@@ -274,24 +280,24 @@ const st = StyleSheet.create({
     borderLeftColor: 'rgba(201,169,74,0.3)',
   },
   statLabel: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: GOLD,
     letterSpacing: 1.5,
     opacity: 0.85,
   },
   statVal: {
-    fontSize: 22,
+    fontSize: 25,
     fontWeight: '800',
     color: GOLD,
     letterSpacing: -0.5,
-    marginTop: 2,
+    marginTop: 3,
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
   statSub: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: GOLD,
     opacity: 0.55,
@@ -312,22 +318,22 @@ const st = StyleSheet.create({
   chipRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 10,
+    marginTop: 16,
   },
   chip: {
     flex: 1,
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
   chipLabel: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: '700',
     color: GOLD,
     opacity: 0.75,
     letterSpacing: 1.5,
   },
   chipDate: {
-    fontSize: 9,
+    fontSize: 10,
     color: GOLD,
     opacity: 0.65,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
@@ -339,21 +345,21 @@ const st = StyleSheet.create({
     marginBottom: 6,
   },
   corner: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '600',
     color: GOLD,
     letterSpacing: 1.1,
     opacity: 0.65,
   },
   brand: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
     color: GOLD,
     letterSpacing: 0.2,
     opacity: 0.95,
   },
   mrzStrip: {
-    paddingTop: 8,
+    paddingTop: 10,
     borderTopWidth: 0.5,
     borderTopColor: 'rgba(201,169,74,0.15)',
   },

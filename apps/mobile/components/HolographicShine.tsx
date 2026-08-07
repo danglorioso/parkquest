@@ -24,7 +24,7 @@ const TILT_B = 11;  // secondary family, crossing the first for a woven look
 // Solid foil color for the edge logo lockup — flat throughout (unlike the
 // url(#holo) gradient used elsewhere in this shimmer layer), matching the
 // passport gold used across the app (see profile screen's GOLD constant).
-const LOGO_FILL = '#C9A94A';
+const LOGO_FILL = '#F0C550';
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -221,7 +221,7 @@ function SealMark({ cx, cy, r, stroke, strokeWidth = 1 }: {
 // Fabric prop-commit path on this RN/reanimated/svg version combo). Plain
 // RN Animated on a normal View only ever touches opacity, which is the
 // standard, safe path.
-export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize, lineIntensity, wavesAboveSeal }: {
+export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize, lineIntensity, wavesAboveSeal, staticShimmer }: {
   /** Fixed px text size for the ParkQuest logo+wordmark lockup on the right
       edge. Defaults to scaling with container height — right for
       card-sized containers, oversized on the passport page's
@@ -246,6 +246,13 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize, lineI
       below it (the default) — still behind every real text sibling outside
       this component regardless, since that's plain document order one level up. */
   wavesAboveSeal?: boolean;
+  /** Freezes the hue pattern at its resting phase and skips the DeviceMotion
+      subscription entirely — for renders that get captured as a static image
+      (the passport export card) rather than viewed live, where a
+      device-tilt-driven shimmer would be pointless overhead and, worse,
+      would make the captured frame depend on whatever tilt the phone
+      happened to be at when the user tapped "share." */
+  staticShimmer?: boolean;
 } = {}) {
   const [measured, setMeasured] = useState<{ w: number; h: number } | null>(null);
   const size = staticSize ?? measured;
@@ -276,7 +283,7 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize, lineI
   // useFocusEffect starts/stops the subscription with screen focus instead.
   useFocusEffect(
     useCallback(() => {
-      if (!size) return; // wait for a measured layout before we have a px range to map into
+      if (!size || staticShimmer) return; // wait for a measured layout before we have a px range to map into
       DeviceMotion.setUpdateInterval(UPDATE_MS);
       const sub = DeviceMotion.addListener(({ rotation }) => {
         if (!rotation) return;
