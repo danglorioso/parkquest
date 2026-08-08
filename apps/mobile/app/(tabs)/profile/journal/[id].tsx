@@ -4,11 +4,12 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useCallback, useRef, useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import * as ImagePicker from 'expo-image-picker';
 import { fitUnderUploadCap } from '@/lib/uploadImage';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -213,20 +214,22 @@ function PhotoHero({ photos, cover }: { photos: string[]; cover: string | null }
         {photos.length > 1 && (
           <>
             <TouchableOpacity
-              style={s.heroArrow}
+              style={[s.heroArrow, idx === 0 && { opacity: 0.3 }]}
               onPress={() => setIdx(i => (i - 1 + photos.length) % photos.length)}
               disabled={idx === 0}
             >
-              <View style={[s.heroArrowBg, idx === 0 && { opacity: 0.3 }]}>
+              <View style={s.heroArrowBg}>
+                <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
                 <Ionicons name="chevron-back" size={18} color="#FFFBF1" />
               </View>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.heroArrow, { right: 12, left: undefined }]}
+              style={[s.heroArrow, { right: 12, left: undefined }, idx === photos.length - 1 && { opacity: 0.3 }]}
               onPress={() => setIdx(i => (i + 1) % photos.length)}
               disabled={idx === photos.length - 1}
             >
-              <View style={[s.heroArrowBg, idx === photos.length - 1 && { opacity: 0.3 }]}>
+              <View style={s.heroArrowBg}>
+                <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
                 <Ionicons name="chevron-forward" size={18} color="#FFFBF1" />
               </View>
             </TouchableOpacity>
@@ -330,11 +333,13 @@ function PhotoStrip({
                 style={s.stripCoverBtn}
                 onPress={() => onCoverChange(uri === cover ? null : uri)}
               >
+                <GlassIconBg onMedia borderRadius={11} fallbackColor="rgba(0,0,0,0.4)" />
                 <Ionicons name={cover === uri ? 'star' : 'star-outline'} size={12} color="#FFFBF1" />
               </TouchableOpacity>
               {/* Remove */}
               <TouchableOpacity style={s.stripRemoveBtn} onPress={() => remove(uri)}>
-                <Ionicons name="close-circle" size={18} color="#FFFBF1" />
+                <GlassIconBg onMedia borderRadius={11} fallbackColor="rgba(0,0,0,0.4)" />
+                <Ionicons name="close" size={14} color="#FFFBF1" />
               </TouchableOpacity>
             </View>
           ))}
@@ -404,6 +409,7 @@ export default function JournalEntryScreen() {
   const { id, edit } = useLocalSearchParams<{ id: string; edit?: string }>();
   const { getToken } = useAuth();
   const tabBarSpace = useTabBarSpace();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const s = useThemedStyles(makeStyles);
   const T = useColors();
@@ -579,17 +585,29 @@ export default function JournalEntryScreen() {
 
     return (
       <SafeAreaView style={s.screen} edges={['bottom']}>
-        <Stack.Screen options={{
-          title: entry.park_name ?? entry.park_code,
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { visitId: String(entry.id) } } as never)}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Ionicons name="create-outline" size={22} color={T.primary} />
-            </TouchableOpacity>
-          ),
-        }} />
+        <Stack.Screen options={{ headerShown: false }} />
+
+        {/* Floating back + edit — 44pt glass circles over the hero, same
+            recipe as the park detail page's header buttons, since this
+            screen is the journal's own photo-hero detail view. */}
+        <View pointerEvents="box-none" style={[StyleSheet.absoluteFillObject, { zIndex: 10 }]}>
+          <TouchableOpacity
+            style={[s.floatBtn, { top: insets.top + 8, left: 16 }]}
+            onPress={() => router.back()}
+            hitSlop={8}
+          >
+            <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+            <Ionicons name="chevron-back" size={22} color="#FFFBF1" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.floatBtn, { top: insets.top + 8, right: 16 }]}
+            onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { visitId: String(entry.id) } } as never)}
+            hitSlop={8}
+          >
+            <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+            <Ionicons name="create-outline" size={19} color="#FFFBF1" />
+          </TouchableOpacity>
+        </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}>
           {/* Hero photo section */}
@@ -914,8 +932,14 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   heroPlaceholder: { width: W, height: 200, justifyContent: 'flex-end', padding: 16 },
   heroArrow: { position: 'absolute', left: 12, top: '50%', marginTop: -20 },
   heroArrowBg: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    width: 36, height: 36, borderRadius: 18, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Floating header — 44pt circle recipe shared with park/[id]'s backBtn.
+  floatBtn: {
+    position: 'absolute',
+    width: 44, height: 44, borderRadius: 22, overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center',
   },
   heroDots: {
@@ -998,9 +1022,17 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   chipTextOn: { color: C.onPrimary },
 
   // Photo strip
-  stripThumb:     { width: 80, height: 80, borderRadius: 8, overflow: 'hidden' },
-  stripCoverBtn:  { position: 'absolute', top: 4, left: 4, padding: 2 },
-  stripRemoveBtn: { position: 'absolute', top: 2, right: 2 },
+  stripThumb: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden' },
+  stripCoverBtn: {
+    position: 'absolute', top: 4, left: 4,
+    width: 22, height: 22, borderRadius: 11, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  stripRemoveBtn: {
+    position: 'absolute', top: 4, right: 4,
+    width: 22, height: 22, borderRadius: 11, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
+  },
   stripAdd: {
     width: 80, height: 80, borderRadius: 8, borderWidth: 1.5, borderStyle: 'dashed',
     borderColor: T.primary, alignItems: 'center', justifyContent: 'center',
