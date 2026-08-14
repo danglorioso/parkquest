@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import StampGlyphManager from './StampGlyphManager';
+import SyncParksPanel from './SyncParksPanel';
 
 interface ParkRow {
   park_code: string;
@@ -52,6 +53,7 @@ export default async function AdminParksPage({
         <p className="mt-1 text-sm text-ink-mute">Click a column to sort. Averages exclude parks with no logged visits.</p>
       </div>
 
+      <SyncParksPanel />
       <StampGlyphManager />
 
       <Card className="border-hairline p-0 shadow-[var(--shadow-card)]">
