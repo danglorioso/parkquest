@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Megaphone, Users, MapPin, Send, Eye, UserCheck, Search, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { CollapsibleCard } from '../CollapsibleCard';
 
 interface ParkOption { park_code: string; name: string }
 interface Broadcast { message: string; title: string | null; audience_label: string | null; sent_at: string; recipient_count: number }
@@ -393,8 +394,7 @@ export default function BroadcastPage() {
         )}
       </Card>
 
-      <div>
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-mute">Recent broadcasts</h2>
+      <CollapsibleCard title="Recent broadcasts">
         {history === null ? (
           <p className="text-sm text-ink-mute">Loading…</p>
         ) : history.length === 0 ? (
@@ -423,7 +423,7 @@ export default function BroadcastPage() {
             ))}
           </div>
         )}
-      </div>
+      </CollapsibleCard>
     </div>
   );
 }

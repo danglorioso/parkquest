@@ -25,12 +25,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-screen bg-bg">
       <header className="border-b border-hairline bg-surface">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-4">
-          <div className="flex items-center gap-3">
+          <Link href="/admin" className="flex items-center gap-3">
             <Wordmark size="large" />
             <span className="rounded-full bg-primary px-2.5 py-1 text-xs font-extrabold uppercase tracking-wider text-primary-foreground">
               Admin
             </span>
-          </div>
+          </Link>
           <AdminNav />
         </div>
       </header>

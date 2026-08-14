@@ -10,6 +10,7 @@ import {
   DailyActiveUsersChart, AppStoreDownloadsChart, AppStoreMetricChart, DeviceDonutChart,
 } from './AdminCharts';
 import { UsageGauges } from './UsageGauges';
+import { CollapsibleCard } from './CollapsibleCard';
 
 interface Stats {
   total_users: number;
@@ -350,28 +351,25 @@ export default async function AdminDashboardPage() {
           <SignupsChart data={stats.signups_by_day} />
         </Card>
 
-        <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Moderation queue</h2>
+        <CollapsibleCard title="Moderation queue">
           <ReportsStatusBar status={stats.reports_by_status} />
           <Link href="/admin/reports" className="mt-4 inline-block text-xs font-semibold text-primary hover:underline">
             View reports queue →
           </Link>
-        </Card>
+        </CollapsibleCard>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-ink-mute">Top parks by visits</h2>
-            <Link href="/admin/parks" className="text-xs font-semibold text-primary hover:underline">All parks →</Link>
-          </div>
+        <CollapsibleCard
+          title="Top parks by visits"
+          headerRight={<Link href="/admin/parks" className="shrink-0 text-xs font-semibold text-primary hover:underline">All parks →</Link>}
+        >
           <TopParksList parks={stats.top_parks} />
-        </Card>
+        </CollapsibleCard>
 
-        <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink-mute">Usage &amp; limits</h2>
+        <CollapsibleCard title="Usage & limits">
           <UsageGauges />
-        </Card>
+        </CollapsibleCard>
       </div>
     </div>
   );

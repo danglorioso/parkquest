@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { RefreshCw, Check } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { CollapsibleCard } from '../CollapsibleCard';
 import type { Change } from '@/app/api/admin/parks/sync/route';
 
 const btnBase =
@@ -86,18 +86,16 @@ export default function SyncParksPanel() {
   };
 
   return (
-    <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-ink">Sync from NPS</h2>
-          <p className="mt-0.5 text-sm text-ink-mute">Review NPS changes before applying them.</p>
-        </div>
+    <CollapsibleCard
+      title="Sync from NPS"
+      subtitle="Review NPS changes before applying them."
+      headerRight={
         <button type="button" onClick={check} disabled={checking} className={`${btnBase} shrink-0 border-hairline bg-surface text-ink hover:bg-surface-alt`}>
           <RefreshCw className={`h-4 w-4 ${checking ? 'animate-spin' : ''}`} />
           {checking ? 'Checking…' : 'Check for updates'}
         </button>
-      </div>
-
+      }
+    >
       {error && <p className="mt-3 text-sm font-medium text-red-600">{error}</p>}
 
       {result && (
@@ -172,6 +170,6 @@ export default function SyncParksPanel() {
           </div>
         </>
       )}
-    </Card>
+    </CollapsibleCard>
   );
 }

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { userBadges, customBadges } from '@/lib/db/schema';
+import { userBadges, customBadges, userProfiles } from '@/lib/db/schema';
 
 export interface BadgeStatRow {
   id: string;
@@ -8,23 +8,14 @@ export interface BadgeStatRow {
   emoji: string;
   tier: string;
   count: number;
-  pct_of_active: number;
+  pct_of_users: number;
 }
 
-export async function getBadgeStats(): Promise<{ badges: BadgeStatRow[]; active_users: number }> {
-  const [counts, [{ count: activeUsers }], badgeRows] = await Promise.all([
+export async function getBadgeStats(): Promise<{ badges: BadgeStatRow[]; total_users: number }> {
+  const [counts, [{ count: totalUsers }], badgeRows] = await Promise.all([
     db.select({ badge_id: userBadges.badge_id, count: sql<number>`COUNT(*)::int` })
       .from(userBadges).groupBy(userBadges.badge_id),
-    // "Active users" here = ever engaged (at least one post/visit/like/comment),
-    // not a time-windowed cohort — the stable denominator for a lifetime breakdown.
-    db.execute(sql`
-      SELECT COUNT(DISTINCT user_id)::int AS count FROM (
-        SELECT clerk_user_id AS user_id FROM posts
-        UNION SELECT clerk_user_id FROM visits
-        UNION SELECT user_id FROM likes
-        UNION SELECT user_id FROM comments
-      ) t
-    `).then(r => r.rows as { count: number }[]),
+    db.select({ count: sql<number>`COUNT(*)::int` }).from(userProfiles),
     db.select().from(customBadges),
   ]);
 
@@ -38,10 +29,10 @@ export async function getBadgeStats(): Promise<{ badges: BadgeStatRow[]; active_
         emoji: b.emoji,
         tier: b.tier,
         count,
-        pct_of_active: activeUsers > 0 ? Math.round((count / activeUsers) * 1000) / 10 : 0,
+        pct_of_users: totalUsers > 0 ? Math.round((count / totalUsers) * 1000) / 10 : 0,
       };
     })
     .sort((a, b) => b.count - a.count);
 
-  return { badges, active_users: activeUsers };
+  return { badges, total_users: totalUsers };
 }

@@ -19,6 +19,37 @@ function parseDay(day: string): Date {
   return new Date(`${day}T00:00:00`);
 }
 
+// Left-hand scale for the CSS flex/height bar charts below — max at top,
+// midpoint, 0 at the baseline. `heightClass` must match the bar area's own
+// height class so the ticks line up with the bars beside them.
+function YAxis({ max, heightClass }: { max: number; heightClass: string }) {
+  return (
+    <div className={`flex ${heightClass} w-5 shrink-0 flex-col justify-between text-right leading-none text-ink-mute`} style={{ fontSize: 8 }}>
+      <span>{max}</span>
+      <span>{Math.round(max / 2)}</span>
+      <span>0</span>
+    </div>
+  );
+}
+
+// Light 0/mid/max reference lines behind a bar area, drawn as the
+// container's own background rather than absolutely-positioned child divs —
+// an element's background always paints before (behind) every descendant,
+// content or positioned, so this can't lose a z-index/stacking-context fight.
+function gridLinesStyle(positions: string, count = 3): React.CSSProperties {
+  const line = 'linear-gradient(var(--hairline), var(--hairline))';
+  return {
+    backgroundImage: Array(count).fill(line).join(', '),
+    backgroundSize: '100% 1px',
+    backgroundPosition: positions,
+    backgroundRepeat: 'no-repeat',
+  };
+}
+const GRID_LINES_3 = gridLinesStyle('top, center, bottom');
+// Sparkline's plot area is padded within its viewBox (max maps to 10% down,
+// 0 to 80%), not flush with the box edges — matches its y-axis labels.
+const GRID_LINES_2 = gridLinesStyle('0 10%, 0 80%', 2);
+
 function ChartTooltip({ tip }: { tip: TooltipState | null }) {
   if (!tip) return null;
   return (
@@ -40,31 +71,37 @@ export function SignupsChart({ data }: { data: { day: string; count: number }[] 
 
   return (
     <div className="relative">
-      <div className="flex h-28 items-end gap-[3px]">
-        {data.map(d => (
-          <div
-            key={d.day}
-            className="group flex h-full flex-1 items-end"
-            onMouseEnter={e => {
-              const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-              const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
-              setTip({
-                x: r.left - parent.left + r.width / 2,
-                y: r.top - parent.top,
-                title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-                value: `${d.count} signup${d.count !== 1 ? 's' : ''}`,
-              });
-            }}
-            onMouseLeave={() => setTip(null)}
-          >
-            <div
-              className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
-              style={{ height: `${Math.max((d.count / max) * 100, d.count > 0 ? 6 : 2)}%`, minHeight: 2 }}
-            />
-          </div>
-        ))}
+      <div className="flex gap-2">
+        <YAxis max={max} heightClass="h-28" />
+        <div className="relative flex h-28 flex-1 items-end gap-[3px] border-l border-hairline pl-2" style={GRID_LINES_3}>
+          {data.map(d => {
+            const heightPct = Math.max((d.count / max) * 100, d.count > 0 ? 6 : 2);
+            return (
+              <div
+                key={d.day}
+                className="group flex h-full flex-1 items-end"
+                onMouseEnter={e => {
+                  const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                  const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
+                  setTip({
+                    x: r.left - parent.left + r.width / 2,
+                    y: r.top - parent.top + r.height * (1 - heightPct / 100),
+                    title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                    value: `${d.count} signup${d.count !== 1 ? 's' : ''}`,
+                  });
+                }}
+                onMouseLeave={() => setTip(null)}
+              >
+                <div
+                  className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
+                  style={{ height: `${heightPct}%`, minHeight: 2 }}
+                />
+              </div>
+            );
+          })}
+          <ChartTooltip tip={tip} />
+        </div>
       </div>
-      <ChartTooltip tip={tip} />
     </div>
   );
 }
@@ -81,37 +118,45 @@ export function AppStoreDownloadsChart({ data }: { data: { day: string; units: n
 
   return (
     <div className="relative">
-      <div className="flex h-28 items-end gap-[3px]">
-        {data.map(d => (
-          <div
-            key={d.day}
-            className="group flex h-full flex-1 items-end"
-            onMouseEnter={e => {
-              const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-              const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
-              setTip({
-                x: r.left - parent.left + r.width / 2,
-                y: r.top - parent.top,
-                title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-                value: d.units == null ? 'No data yet' : `${d.units} unit${d.units !== 1 ? 's' : ''}`,
-              });
-            }}
-            onMouseLeave={() => setTip(null)}
-          >
-            {d.units != null && (
-              <div
-                className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
-                style={{ height: `${Math.max((d.units / max) * 100, d.units > 0 ? 6 : 2)}%`, minHeight: 2 }}
-              />
-            )}
+      <div className="flex gap-2">
+        <YAxis max={max} heightClass="h-28" />
+        <div className="flex-1">
+          <div className="relative flex h-28 items-end gap-[3px] border-l border-hairline pl-2" style={GRID_LINES_3}>
+            {data.map(d => {
+              const heightPct = d.units == null ? 0 : Math.max((d.units / max) * 100, d.units > 0 ? 6 : 2);
+              return (
+                <div
+                  key={d.day}
+                  className="group flex h-full flex-1 items-end"
+                  onMouseEnter={e => {
+                    const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
+                    setTip({
+                      x: r.left - parent.left + r.width / 2,
+                      y: r.top - parent.top + r.height * (1 - heightPct / 100),
+                      title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                      value: d.units == null ? 'No data yet' : `${d.units} unit${d.units !== 1 ? 's' : ''}`,
+                    });
+                  }}
+                  onMouseLeave={() => setTip(null)}
+                >
+                  {d.units != null && (
+                    <div
+                      className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
+                      style={{ height: `${heightPct}%`, minHeight: 2 }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+            <ChartTooltip tip={tip} />
           </div>
-        ))}
+          <div className="mt-1.5 flex justify-between pl-2 text-[10px] text-ink-mute">
+            <span>{parseDay(data[0].day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+            <span>Today</span>
+          </div>
+        </div>
       </div>
-      <div className="mt-1.5 flex justify-between text-[10px] text-ink-mute">
-        <span>{parseDay(data[0].day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-        <span>Today</span>
-      </div>
-      <ChartTooltip tip={tip} />
     </div>
   );
 }
@@ -133,35 +178,43 @@ export function DailyActiveUsersChart({ data }: { data: { day: string; count: nu
 
   return (
     <div className="relative">
-      <div className="flex h-32 items-end gap-[3px]">
-        {days.map(d => (
-          <div
-            key={d.day}
-            className="group flex h-full flex-1 items-end"
-            onMouseEnter={e => {
-              const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-              const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
-              setTip({
-                x: r.left - parent.left + r.width / 2,
-                y: r.top - parent.top,
-                title: d.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-                value: `${d.count} active user${d.count !== 1 ? 's' : ''}`,
-              });
-            }}
-            onMouseLeave={() => setTip(null)}
-          >
-            <div
-              className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
-              style={{ height: `${Math.max((d.count / max) * 100, d.count > 0 ? 6 : 2)}%`, minHeight: 2 }}
-            />
+      <div className="flex gap-2">
+        <YAxis max={max} heightClass="h-32" />
+        <div className="flex-1">
+          <div className="relative flex h-32 items-end gap-[3px] border-l border-hairline pl-2" style={GRID_LINES_3}>
+            {days.map(d => {
+              const heightPct = Math.max((d.count / max) * 100, d.count > 0 ? 6 : 2);
+              return (
+                <div
+                  key={d.day}
+                  className="group flex h-full flex-1 items-end"
+                  onMouseEnter={e => {
+                    const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
+                    setTip({
+                      x: r.left - parent.left + r.width / 2,
+                      y: r.top - parent.top + r.height * (1 - heightPct / 100),
+                      title: d.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                      value: `${d.count} active user${d.count !== 1 ? 's' : ''}`,
+                    });
+                  }}
+                  onMouseLeave={() => setTip(null)}
+                >
+                  <div
+                    className="w-full rounded-t-[4px] bg-primary transition-opacity group-hover:opacity-70"
+                    style={{ height: `${heightPct}%`, minHeight: 2 }}
+                  />
+                </div>
+              );
+            })}
+            <ChartTooltip tip={tip} />
           </div>
-        ))}
+          <div className="mt-1.5 flex justify-between pl-2 text-[10px] text-ink-mute">
+            <span>{days[0].date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+            <span>Today</span>
+          </div>
+        </div>
       </div>
-      <div className="mt-1.5 flex justify-between text-[10px] text-ink-mute">
-        <span>{days[0].date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-        <span>Today</span>
-      </div>
-      <ChartTooltip tip={tip} />
     </div>
   );
 }
@@ -537,6 +590,7 @@ export function AppStoreMetricChart({ data, unit }: {
   unit?: string;
 }) {
   const [tip, setTip] = useState<TooltipState | null>(null);
+  const [hoverDay, setHoverDay] = useState<string | null>(null);
   const gradientId = useId();
   const known = data.map(d => d.value).filter((v): v is number => v != null);
   const max = Math.max(...known, 1);
@@ -548,15 +602,27 @@ export function AppStoreMetricChart({ data, unit }: {
   // case, Apple's ~48h lag) leaves the chart trailing off before the edge
   // instead of compressing the timeline.
   const points = data
-    .map((d, i) => (d.value == null ? null : { x: n > 1 ? (i / (n - 1)) * 100 : 50, y: 32 - (d.value / max) * 28 }))
-    .filter((p): p is { x: number; y: number } => p != null);
+    .map((d, i) => (d.value == null ? null : { day: d.day, x: n > 1 ? (i / (n - 1)) * 100 : 50, y: 32 - (d.value / max) * 28 }))
+    .filter((p): p is { day: string; x: number; y: number } => p != null);
+  const hoveredPoint = hoverDay != null ? points.find(p => p.day === hoverDay) : undefined;
   const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
   const areaPath = points.length
     ? `M ${points[0].x} 36 ${points.map(p => `L ${p.x} ${p.y}`).join(' ')} L ${points[points.length - 1].x} 36 Z`
     : '';
 
+  // Plot area is padded within the 0–40 viewBox (max maps to y=4, 0 maps to
+  // y=32, not the box edges) — position the two labels at those same
+  // fractional offsets rather than the box's literal top/bottom.
+  const maxLabel = Number.isInteger(max) ? String(max) : max.toFixed(1);
+
   return (
-    <div className="relative h-16">
+    <div className="flex gap-1.5">
+      <div className="relative h-16 w-5 shrink-0 text-right leading-none text-ink-mute" style={{ fontSize: 8 }}>
+        <span className="absolute right-0 -translate-y-1/2" style={{ top: '10%' }}>{maxLabel}</span>
+        <span className="absolute right-0 -translate-y-1/2" style={{ top: '80%' }}>0</span>
+      </div>
+      <div className="flex-1">
+      <div className="relative h-16 border-l border-hairline pl-2" style={GRID_LINES_2}>
       <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-full w-full overflow-visible">
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -577,6 +643,15 @@ export function AppStoreMetricChart({ data, unit }: {
           />
         )}
       </svg>
+      {hoveredPoint && (
+        // An SVG <circle> here would get squashed into an ellipse by the
+        // viewBox's preserveAspectRatio="none" stretch — an HTML dot
+        // positioned by percentage isn't subject to that distortion.
+        <div
+          className="pointer-events-none absolute h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px]"
+          style={{ left: `${hoveredPoint.x}%`, top: `${(hoveredPoint.y / 40) * 100}%`, background: 'var(--primary)', borderColor: 'var(--surface)' }}
+        />
+      )}
       <div className="absolute inset-0 flex">
         {data.map(d => (
           <div
@@ -585,18 +660,28 @@ export function AppStoreMetricChart({ data, unit }: {
             onMouseEnter={e => {
               const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
               const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
+              // Same fractional y as the dot/gridlines — no data point still
+              // anchors near the baseline instead of snapping to the chart top.
+              const yFrac = d.value == null ? 0.8 : (32 - (d.value / max) * 28) / 40;
+              setHoverDay(d.day);
               setTip({
                 x: r.left - parent.left + r.width / 2,
-                y: 0,
+                y: yFrac * parent.height,
                 title: parseDay(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
                 value: d.value == null ? 'No data yet' : `${d.value.toLocaleString()}${unit ?? ''}`,
               });
             }}
-            onMouseLeave={() => setTip(null)}
+            onMouseLeave={() => { setHoverDay(null); setTip(null); }}
           />
         ))}
       </div>
       <ChartTooltip tip={tip} />
+      </div>
+      <div className="mt-1 flex justify-between pl-2 text-[9px] leading-none text-ink-mute">
+        <span>{parseDay(data[0].day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+        <span>Today</span>
+      </div>
+      </div>
     </div>
   );
 }

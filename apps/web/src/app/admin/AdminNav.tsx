@@ -8,14 +8,14 @@ import { LayoutDashboard, Flag, Users, Image as ImageIcon, MapPin, Award, Trees,
 const LINKS = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/admin/activity', label: 'Activity', icon: Activity },
-  { href: '/admin/reports', label: 'Reports', icon: Flag },
-  { href: '/admin/users', label: 'Users', icon: Users },
-  { href: '/admin/posts', label: 'Posts', icon: ImageIcon },
-  { href: '/admin/visits', label: 'Visits', icon: MapPin },
-  { href: '/admin/badges', label: 'Badges', icon: Award },
   { href: '/admin/parks', label: 'Parks', icon: Trees },
+  { href: '/admin/posts', label: 'Posts', icon: ImageIcon },
+  { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/badges', label: 'Badges', icon: Award },
+  { href: '/admin/visits', label: 'Visits', icon: MapPin },
   { href: '/admin/notifications', label: 'Broadcast', icon: Megaphone },
   { href: '/admin/email-health', label: 'Email', icon: Mail },
+  { href: '/admin/reports', label: 'Reports', icon: Flag },
 ];
 
 function renderLinks(pathname: string, onNavigate?: () => void) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { CollapsibleCard } from '../CollapsibleCard';
 import { describeCondition, TIER_CONFIG, type BadgeTier } from '@/lib/badges';
 import type { BadgeColors, BadgeCondition } from '@parkquest/types';
 import {
@@ -101,118 +101,117 @@ export default function BadgeManager() {
   const updateCondition = (i: number, c: BadgeCondition) =>
     setForm(f => ({ ...f, conditions: f.conditions.map((old, idx) => (idx === i ? c : old)) }));
 
-  return (
-    <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-ink">Badges</h2>
-          <p className="mt-0.5 text-sm text-ink-mute">
-            Edit any badge&apos;s name, description, emoji, tier, colors, or earning
-            criteria. Users earn badges automatically once every condition is met.
-          </p>
+  const editorPanel = (
+    <div className="mt-3 rounded-xl border border-primary/40 bg-surface p-4">
+      <h3 className="font-semibold text-ink">{editingId === 'new' ? 'New badge' : 'Edit badge'}</h3>
+
+      <DisplayFieldsEditor
+        form={form}
+        tierLabels={TIER_LABELS}
+        onChange={patch => setForm(f => ({ ...f, ...patch }))}
+      />
+
+      <div className="mt-3">
+        <div className="mb-1 flex items-center justify-between">
+          <label className="text-xs font-medium text-ink-mute">Conditions (user must meet all of them)</label>
+          <button
+            type="button"
+            className="text-xs font-semibold text-primary hover:underline"
+            onClick={() => setForm(f => ({ ...f, conditions: [...f.conditions, { type: 'parks_visited', count: 1 }] }))}
+          >
+            + Add condition
+          </button>
         </div>
-        <button type="button" onClick={openNew} className={`${btnBase} border-primary bg-primary text-white hover:opacity-90`}>
-          <Plus className="h-4 w-4" /> New badge
+        <div className="flex flex-col gap-2">
+          {form.conditions.map((c, i) => (
+            <ConditionEditor
+              key={i}
+              condition={c}
+              parks={parks}
+              onChange={next => updateCondition(i, next)}
+              onRemove={() => setForm(f => ({ ...f, conditions: f.conditions.filter((_, idx) => idx !== i) }))}
+              removable={form.conditions.length > 1}
+            />
+          ))}
+        </div>
+      </div>
+
+      <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={form.enabled}
+          onChange={e => setForm(f => ({ ...f, enabled: e.target.checked }))}
+        />
+        Enabled (evaluated and shown to users)
+      </label>
+
+      {error && <p className="mt-3 text-sm font-medium text-red-600">{error}</p>}
+
+      <div className="mt-4 flex gap-2">
+        <button type="button" onClick={save} disabled={saving} className={`${btnBase} border-primary bg-primary text-white hover:opacity-90`}>
+          {saving ? 'Saving…' : editingId === 'new' ? 'Create badge' : 'Save changes'}
+        </button>
+        <button type="button" onClick={close} className={`${btnBase} border-hairline bg-surface text-ink hover:bg-surface-alt`}>
+          Cancel
         </button>
       </div>
+    </div>
+  );
+
+  return (
+    <CollapsibleCard
+      title="Badges"
+      subtitle="Edit any badge's name, description, emoji, tier, colors, or earning criteria. Users earn badges automatically once every condition is met."
+      headerRight={
+        <button type="button" onClick={openNew} className={`${btnBase} shrink-0 whitespace-nowrap border-primary bg-primary text-white hover:opacity-90`}>
+          <Plus className="h-4 w-4" /> New badge
+        </button>
+      }
+    >
+      {editingId === 'new' && editorPanel}
 
       {/* List */}
       <div className="mt-4 flex flex-col gap-2">
         {badges === null && <p className="text-sm text-ink-mute">Loading…</p>}
         {badges?.length === 0 && <p className="text-sm text-ink-mute">No badges yet.</p>}
         {badges?.map(b => (
-          <div key={b.id} className="flex items-start gap-3 rounded-lg border border-hairline p-3">
-            <span
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl leading-none"
-              style={{ background: badgeGradient(b.colors ?? null, b.tier) }}
-            >
-              {b.emoji}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-ink">{b.name}</span>
-                <span className={`text-xs font-semibold ${TIER_CONFIG[b.tier].labelColor}`}>{TIER_CONFIG[b.tier].label}</span>
-                {!b.enabled && (
-                  <span className="rounded-full bg-surface-alt px-2 py-0.5 text-xs font-medium text-ink-mute">Disabled</span>
-                )}
-                <span className="text-xs text-ink-mute">{b.earned_count} earned</span>
+          <div key={b.id}>
+            <div className="flex items-start gap-3 rounded-lg border border-hairline p-3">
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl leading-none"
+                style={{ background: badgeGradient(b.colors ?? null, b.tier) }}
+              >
+                {b.emoji}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-ink">{b.name}</span>
+                  <span className={`text-xs font-semibold ${TIER_CONFIG[b.tier].labelColor}`}>{TIER_CONFIG[b.tier].label}</span>
+                  {!b.enabled && (
+                    <span className="rounded-full bg-surface-alt px-2 py-0.5 text-xs font-medium text-ink-mute">Disabled</span>
+                  )}
+                  <span className="text-xs text-ink-mute">{b.earned_count} earned</span>
+                </div>
+                <p className="mt-0.5 truncate text-sm text-ink-soft">{b.description}</p>
+                <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+                  {b.conditions.map((c, i) => (
+                    <li key={i} className="text-xs text-ink-mute">• {describeCondition(c, parkNames)}</li>
+                  ))}
+                </ul>
               </div>
-              <p className="mt-0.5 truncate text-sm text-ink-soft">{b.description}</p>
-              <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-                {b.conditions.map((c, i) => (
-                  <li key={i} className="text-xs text-ink-mute">• {describeCondition(c, parkNames)}</li>
-                ))}
-              </ul>
+              <div className="flex shrink-0 gap-1">
+                <button type="button" onClick={() => openEdit(b)} className="rounded p-1.5 text-ink-mute hover:text-ink" aria-label={`Edit ${b.name}`}>
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button type="button" onClick={() => remove(b)} className="rounded p-1.5 text-ink-mute hover:text-red-600" aria-label={`Delete ${b.name}`}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-            <div className="flex shrink-0 gap-1">
-              <button type="button" onClick={() => openEdit(b)} className="rounded p-1.5 text-ink-mute hover:text-ink" aria-label={`Edit ${b.name}`}>
-                <Pencil className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={() => remove(b)} className="rounded p-1.5 text-ink-mute hover:text-red-600" aria-label={`Delete ${b.name}`}>
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
+            {editingId === b.id && editorPanel}
           </div>
         ))}
       </div>
-
-      {/* Editor */}
-      {editingId !== null && (
-        <div className="mt-4 rounded-xl border border-primary/40 bg-surface p-4">
-          <h3 className="font-semibold text-ink">{editingId === 'new' ? 'New badge' : 'Edit badge'}</h3>
-
-          <DisplayFieldsEditor
-            form={form}
-            tierLabels={TIER_LABELS}
-            onChange={patch => setForm(f => ({ ...f, ...patch }))}
-          />
-
-          <div className="mt-3">
-            <div className="mb-1 flex items-center justify-between">
-              <label className="text-xs font-medium text-ink-mute">Conditions (user must meet all of them)</label>
-              <button
-                type="button"
-                className="text-xs font-semibold text-primary hover:underline"
-                onClick={() => setForm(f => ({ ...f, conditions: [...f.conditions, { type: 'parks_visited', count: 1 }] }))}
-              >
-                + Add condition
-              </button>
-            </div>
-            <div className="flex flex-col gap-2">
-              {form.conditions.map((c, i) => (
-                <ConditionEditor
-                  key={i}
-                  condition={c}
-                  parks={parks}
-                  onChange={next => updateCondition(i, next)}
-                  onRemove={() => setForm(f => ({ ...f, conditions: f.conditions.filter((_, idx) => idx !== i) }))}
-                  removable={form.conditions.length > 1}
-                />
-              ))}
-            </div>
-          </div>
-
-          <label className="mt-3 flex items-center gap-2 text-sm text-ink">
-            <input
-              type="checkbox"
-              checked={form.enabled}
-              onChange={e => setForm(f => ({ ...f, enabled: e.target.checked }))}
-            />
-            Enabled (evaluated and shown to users)
-          </label>
-
-          {error && <p className="mt-3 text-sm font-medium text-red-600">{error}</p>}
-
-          <div className="mt-4 flex gap-2">
-            <button type="button" onClick={save} disabled={saving} className={`${btnBase} border-primary bg-primary text-white hover:opacity-90`}>
-              {saving ? 'Saving…' : editingId === 'new' ? 'Create badge' : 'Save changes'}
-            </button>
-            <button type="button" onClick={close} className={`${btnBase} border-hairline bg-surface text-ink hover:bg-surface-alt`}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-    </Card>
+    </CollapsibleCard>
   );
 }

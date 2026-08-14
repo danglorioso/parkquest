@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Upload, X } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { CollapsibleCard } from '../CollapsibleCard';
 import { ParkStamp } from '@/components/desktop/ParkStamp';
 import type { CustomStampGlyph, StampGlyphShape } from '@parkquest/types';
 
@@ -119,17 +119,11 @@ export default function StampGlyphManager() {
   };
 
   return (
-    <Card className="border-hairline p-5 shadow-[var(--shadow-card)]">
-      <div>
-        <h2 className="text-lg font-bold text-ink">Stamp glyphs</h2>
-        <p className="mt-0.5 text-sm text-ink-mute">
-          Upload a square SVG icon (a monument, landmark, or symbol from the park) to replace the
-          center art on that park&apos;s passport stamp. Works best with solid/filled icons —
-          only &lt;path&gt; elements are read, and outline-only icons won&apos;t render.
-        </p>
-      </div>
-
-      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+    <CollapsibleCard
+      title="Stamp glyphs"
+      subtitle="Upload a square SVG icon (a monument, landmark, or symbol from the park) to replace the center art on that park's passport stamp. Works best with solid/filled icons — only <path> elements are read, and outline-only icons won't render."
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <select
           className={`${fieldClass} sm:max-w-xs`}
           value={selected}
@@ -211,6 +205,6 @@ export default function StampGlyphManager() {
           </div>
         )}
       </div>
-    </Card>
+    </CollapsibleCard>
   );
 }
