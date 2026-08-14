@@ -46,9 +46,10 @@ function gridLinesStyle(positions: string, count = 3): React.CSSProperties {
   };
 }
 const GRID_LINES_3 = gridLinesStyle('top, center, bottom');
-// Sparkline's plot area is padded within its viewBox (max maps to 10% down,
-// 0 to 80%), not flush with the box edges — matches its y-axis labels.
-const GRID_LINES_2 = gridLinesStyle('0 10%, 0 80%', 2);
+// Sparkline's plot area only pads the top (max maps to 10% down) — 0 sits
+// flush on the bottom edge, matching its y-axis label and the container's
+// own bottom border.
+const GRID_LINES_2 = gridLinesStyle('0 10%, 0 100%', 2);
 
 function ChartTooltip({ tip }: { tip: TooltipState | null }) {
   if (!tip) return null;
@@ -73,7 +74,7 @@ export function SignupsChart({ data }: { data: { day: string; count: number }[] 
     <div className="relative">
       <div className="flex gap-2">
         <YAxis max={max} heightClass="h-28" />
-        <div className="relative flex h-28 flex-1 items-end gap-[3px] border-l border-hairline pl-2" style={GRID_LINES_3}>
+        <div className="relative flex h-28 flex-1 items-end gap-[3px] border-b border-l border-hairline pl-2" style={GRID_LINES_3}>
           {data.map(d => {
             const heightPct = Math.max((d.count / max) * 100, d.count > 0 ? 6 : 2);
             return (
@@ -121,7 +122,7 @@ export function AppStoreDownloadsChart({ data }: { data: { day: string; units: n
       <div className="flex gap-2">
         <YAxis max={max} heightClass="h-28" />
         <div className="flex-1">
-          <div className="relative flex h-28 items-end gap-[3px] border-l border-hairline pl-2" style={GRID_LINES_3}>
+          <div className="relative flex h-28 items-end gap-[3px] border-b border-l border-hairline pl-2" style={GRID_LINES_3}>
             {data.map(d => {
               const heightPct = d.units == null ? 0 : Math.max((d.units / max) * 100, d.units > 0 ? 6 : 2);
               return (
@@ -181,7 +182,7 @@ export function DailyActiveUsersChart({ data }: { data: { day: string; count: nu
       <div className="flex gap-2">
         <YAxis max={max} heightClass="h-32" />
         <div className="flex-1">
-          <div className="relative flex h-32 items-end gap-[3px] border-l border-hairline pl-2" style={GRID_LINES_3}>
+          <div className="relative flex h-32 items-end gap-[3px] border-b border-l border-hairline pl-2" style={GRID_LINES_3}>
             {days.map(d => {
               const heightPct = Math.max((d.count / max) * 100, d.count > 0 ? 6 : 2);
               return (
@@ -601,28 +602,27 @@ export function AppStoreMetricChart({ data, unit }: {
   // point's real index in the full range, so a gap at the tail (the normal
   // case, Apple's ~48h lag) leaves the chart trailing off before the edge
   // instead of compressing the timeline.
+  // 0 sits flush on the container's bottom border, matching the y-axis's "0"
+  // — only the top gets breathing room above the max point.
   const points = data
-    .map((d, i) => (d.value == null ? null : { day: d.day, x: n > 1 ? (i / (n - 1)) * 100 : 50, y: 32 - (d.value / max) * 28 }))
+    .map((d, i) => (d.value == null ? null : { day: d.day, x: n > 1 ? (i / (n - 1)) * 100 : 50, y: 4 + (1 - d.value / max) * 36 }))
     .filter((p): p is { day: string; x: number; y: number } => p != null);
   const hoveredPoint = hoverDay != null ? points.find(p => p.day === hoverDay) : undefined;
   const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
   const areaPath = points.length
-    ? `M ${points[0].x} 36 ${points.map(p => `L ${p.x} ${p.y}`).join(' ')} L ${points[points.length - 1].x} 36 Z`
+    ? `M ${points[0].x} 40 ${points.map(p => `L ${p.x} ${p.y}`).join(' ')} L ${points[points.length - 1].x} 40 Z`
     : '';
 
-  // Plot area is padded within the 0–40 viewBox (max maps to y=4, 0 maps to
-  // y=32, not the box edges) — position the two labels at those same
-  // fractional offsets rather than the box's literal top/bottom.
   const maxLabel = Number.isInteger(max) ? String(max) : max.toFixed(1);
 
   return (
     <div className="flex gap-1.5">
       <div className="relative h-16 w-5 shrink-0 text-right leading-none text-ink-mute" style={{ fontSize: 8 }}>
         <span className="absolute right-0 -translate-y-1/2" style={{ top: '10%' }}>{maxLabel}</span>
-        <span className="absolute right-0 -translate-y-1/2" style={{ top: '80%' }}>0</span>
+        <span className="absolute right-0 -translate-y-1/2" style={{ top: '100%' }}>0</span>
       </div>
       <div className="flex-1">
-      <div className="relative h-16 border-l border-hairline pl-2" style={GRID_LINES_2}>
+      <div className="relative h-16 border-b border-l border-hairline pl-2" style={GRID_LINES_2}>
       <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-full w-full overflow-visible">
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -662,7 +662,7 @@ export function AppStoreMetricChart({ data, unit }: {
               const parent = (e.currentTarget as HTMLDivElement).closest('.relative')!.getBoundingClientRect();
               // Same fractional y as the dot/gridlines — no data point still
               // anchors near the baseline instead of snapping to the chart top.
-              const yFrac = d.value == null ? 0.8 : (32 - (d.value / max) * 28) / 40;
+              const yFrac = d.value == null ? 1 : (4 + (1 - d.value / max) * 36) / 40;
               setHoverDay(d.day);
               setTip({
                 x: r.left - parent.left + r.width / 2,
