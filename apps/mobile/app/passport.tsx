@@ -48,11 +48,17 @@ interface ProfileInfo {
   avatar_url: string | null;
 }
 
+// Mirrors apps/web's ParkScopeStats/BadgeParkScope (apps/web/src/lib/badges.ts,
+// packages/types) — kept local since mobile can't import from the web app.
+interface ParkScopeStat { visited: number; total: number }
+type ParkScopes = { national_park: ParkScopeStat; historic_park: ParkScopeStat; all: ParkScopeStat };
+
 interface Park {
   park_code: string;
   name: string;
   states: string;
   stamp_glyph: CustomStampGlyph | null;
+  is_national_park: boolean;
 }
 
 interface Visit {
@@ -172,6 +178,7 @@ export default function PassportScreen() {
   const [allParks,    setAllParks]    = useState<Park[]>([]);
   const [badgeCount,  setBadgeCount]  = useState(0);
   const [totalBadges, setTotalBadges] = useState(0);
+  const [parkScopes,  setParkScopes]  = useState<ParkScopes | null>(null);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(false);
   const [selectedStamp, setSelectedStamp] = useState<StampItem | null>(null);
@@ -202,6 +209,7 @@ export default function PassportScreen() {
         const all = badgesRes.value?.badges ?? badgesRes.value ?? [];
         setBadgeCount(all.filter((b: { earned: boolean }) => b.earned).length);
         setTotalBadges(all.length);
+        if (badgesRes.value?.stats?.parkScopes) setParkScopes(badgesRes.value.stats.parkScopes);
       }
     } catch (e) {
       console.error('Passport load:', e);
@@ -229,7 +237,11 @@ export default function PassportScreen() {
     return () => scrollY.removeListener(id);
   }, [coverH, insets.top, scrollY]);
 
-  // All parks: visited (chrono) first, then unvisited
+  // The stamp grid is National Parks only — the curated 63, not every park
+  // area the app tracks. The AREAS stat below covers everything.
+  const nationalParks = useMemo(() => allParks.filter(p => p.is_national_park), [allParks]);
+
+  // National parks: visited (chrono) first, then unvisited
   const allStampItems = useMemo((): StampItem[] => {
     const visitedMap = new Map<string, string>();
     visits.forEach(v => {
@@ -237,7 +249,7 @@ export default function PassportScreen() {
     });
     const visited: StampItem[] = [];
     const unvisited: StampItem[] = [];
-    allParks.forEach((p, idx) => {
+    nationalParks.forEach((p, idx) => {
       const date = visitedMap.get(p.park_code) ?? null;
       const entry: StampItem = {
         park_code: p.park_code, name: p.name, states: p.states,
@@ -249,7 +261,7 @@ export default function PassportScreen() {
     });
     visited.sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
     return [...visited, ...unvisited];
-  }, [allParks, visits]);
+  }, [nationalParks, visits]);
 
   const visitedCount = useMemo(() => allStampItems.filter(s => s.visited).length, [allStampItems]);
   // Distinct from visitedCount — a park visited twice is one stamped park
@@ -644,6 +656,10 @@ export default function PassportScreen() {
                       <View style={st.infoStats}>
                         {([
                           { label: 'TRIPS',  icon: 'footsteps', value: loading ? '–' : String(tripsCount) },
+                          // Every park area regardless of designation — distinct
+                          // from the stamp grid below, which is National Parks
+                          // only. This one grows as more designations get added.
+                          { label: 'AREAS',  icon: 'earth', value: loading || !parkScopes ? '–' : String(parkScopes.all.visited), sub: loading || !parkScopes ? '' : `/${parkScopes.all.total}` },
                           // Has a real denominator worth showing — not all 50 US
                           // states have a national park, so a bare count reads
                           // as "only visited N states" when N/50 was never the
@@ -679,16 +695,16 @@ export default function PassportScreen() {
                         {/* One line, never wraps: copy left, percent right */}
                         <View style={st.infoProgressRow}>
                           <Text style={st.infoProgressText} numberOfLines={1}>
-                            {loading ? 'Loading…' : `${visitedCount} of 63 parks stamped`}
+                            {loading ? 'Loading…' : `${visitedCount} of ${nationalParks.length} parks stamped`}
                           </Text>
                           {!loading && (
                             <Text style={st.infoProgressPct}>
-                              {Math.round((visitedCount / 63) * 100)}%
+                              {nationalParks.length > 0 ? Math.round((visitedCount / nationalParks.length) * 100) : 0}%
                             </Text>
                           )}
                         </View>
                         <View style={st.progressTrack}>
-                          <View style={[st.progressFill, { width: `${(visitedCount / 63) * 100}%` as `${number}%` }]} />
+                          <View style={[st.progressFill, { width: `${nationalParks.length > 0 ? (visitedCount / nationalParks.length) * 100 : 0}%` as `${number}%` }]} />
                         </View>
                       </View>
                     </View>

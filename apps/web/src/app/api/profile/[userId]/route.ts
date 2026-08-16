@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, count, and, or, isNotNull, sql } from 'drizzle-orm';
+import { eq, count, countDistinct, and, or, isNotNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles, visits, friendships, parks, userBadges } from '@/lib/db/schema';
 import { getBadgeDisplayMap } from '@/lib/badgeDefs';
@@ -35,11 +35,16 @@ export async function GET(
       }
     }
 
-    const [[visitStats], [friendCountRow], earnedBadges, allVisitsRaw, friendshipRows] = await Promise.all([
+    const [[visitStats], [parksTotalRow], [friendCountRow], earnedBadges, allVisitsRaw, friendshipRows] = await Promise.all([
+      // Distinct park_code, scoped to National Parks (the curated 63) — not
+      // a raw visit-log count, which double-counts repeat visits and would
+      // include every park designation with no distinction.
       db
-        .select({ count: count() })
+        .select({ count: countDistinct(visits.park_code) })
         .from(visits)
-        .where(sql`${visits.clerk_user_id} = ${userId} AND ${visits.is_bucket_list} = false AND ${visits.visited_date} IS NOT NULL`),
+        .innerJoin(parks, eq(parks.park_code, visits.park_code))
+        .where(sql`${visits.clerk_user_id} = ${userId} AND ${visits.is_bucket_list} = false AND ${visits.visited_date} IS NOT NULL AND ${parks.is_national_park} = true`),
+      db.select({ count: count() }).from(parks).where(eq(parks.is_national_park, true)),
       db.select({ count: count() }).from(friendships).where(
         and(
           or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId)),
@@ -141,6 +146,7 @@ export async function GET(
     return NextResponse.json({
       ...profile,
       parks_visited: visitStats.count,
+      parks_total: parksTotalRow.count,
       friend_count: friendCountRow.count,
       friendship_status,
       badges,

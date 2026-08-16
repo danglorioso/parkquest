@@ -57,6 +57,7 @@ interface UserProfile {
   is_admin?: boolean;
   created_at: string | null;
   parks_visited: number;
+  parks_total: number;
   friend_count: number;
   friendship_status: FriendshipStatus;
   badges: ProfileBadge[];
@@ -527,7 +528,7 @@ export default function UserProfileScreen() {
               <View style={styles.statCell}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 1 }}>
                   <Text style={styles.statValue}>{profile.parks_visited}</Text>
-                  <Text style={styles.statSub}>/63</Text>
+                  <Text style={styles.statSub}>/{profile.parks_total}</Text>
                 </View>
                 <Text style={styles.statLabel}>PARKS</Text>
               </View>

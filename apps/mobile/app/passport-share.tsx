@@ -33,6 +33,7 @@ interface Park {
   name: string;
   states: string;
   stamp_glyph: CustomStampGlyph | null;
+  is_national_park: boolean;
 }
 
 interface Visit {
@@ -82,10 +83,14 @@ export default function PassportShareScreen() {
         if (!v.is_bucket_list && v.visited_date) visitedMap.set(v.park_code, v.visited_date);
       });
 
+      // Share card mirrors the passport screen: National Parks only (the
+      // curated 63), not every park area the app tracks.
+      const nationalParks = (parks ?? []).filter(p => p.is_national_park);
+
       const visitedStamps: ExportStamp[] = [];
       const stampedStates = new Set<string>();
       const allStates = new Set<string>();
-      (parks ?? []).forEach((p, idx) => {
+      nationalParks.forEach((p, idx) => {
         p.states.split(',').forEach(s => allStates.add(s.trim()));
         const date = visitedMap.get(p.park_code);
         if (date) {
@@ -115,6 +120,7 @@ export default function PassportShareScreen() {
           ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
           : null,
         visitedCount,
+        totalParks: nationalParks.length,
         tripsCount: (visits ?? []).filter(v => !v.is_bucket_list && v.visited_date).length,
         statesCount: stampedStates.size,
         totalParkStates: allStates.size,

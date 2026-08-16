@@ -27,6 +27,7 @@ interface ParkFromDB {
   longitude: string | null;
   description: string | null;
   image_url: string | null;
+  is_national_park: boolean;
 }
 
 export interface VisitEntry {
@@ -52,6 +53,7 @@ interface ParkForMap {
   visibility?: string | null;
   visits?: VisitEntry[];
   image_url?: string | null;
+  is_national_park: boolean;
 }
 
 
@@ -60,12 +62,14 @@ export default function Home() {
   const router = useRouter();
 
   const [parks, setParks] = useState<ParkForMap[]>([]);
-  const [visitedParksCount, setVisitedParksCount] = useState(0);
   const [npsCache, setNpsCache] = useState<Record<string, NpsSummary>>({});
   const [logVisitOpen, setLogVisitOpen] = useState(false);
   const [logVisitDraft, setLogVisitDraft] = useState<Partial<VisitDraft> | undefined>(undefined);
   const [logVisitEditMode, setLogVisitEditMode] = useState(false);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  // Map defaults to National Parks (the curated 63) — everything else (the
+  // new Historical Parks, and whatever gets added later) is opt-in.
+  const [showAllParkTypes, setShowAllParkTypes] = useState(false);
   const [labelsEnabled, setLabelsEnabled] = useState(true);
   const [labelFontSize, setLabelFontSize] = useState(LABEL_FONT_DEFAULT);
   const [selectedParkCode, setSelectedParkCode] = useState<string | null>(null);
@@ -165,10 +169,6 @@ export default function Home() {
             };
           }
         }
-
-        setVisitedParksCount(visitedParkCodes.size);
-      } else {
-        setVisitedParksCount(0);
       }
 
       const transformedParks: ParkForMap[] = parksData
@@ -193,6 +193,7 @@ export default function Home() {
             photos: journal?.photos ?? null,
             visibility: journal?.visibility ?? null,
             image_url: park.image_url,
+            is_national_park: park.is_national_park,
           };
         });
 
@@ -302,13 +303,18 @@ export default function Home() {
     setLogVisitOpen(true);
   };
 
-  const bucketListCount = parks.filter(p => p.status === 'bucketList').length;
+  // Map pins + status-filter counts respect the park-type toggle; search
+  // (MapSpotlight, below) deliberately doesn't — you can still find and log
+  // a visit to any park regardless of what the map is currently showing.
+  const visibleParks = showAllParkTypes ? parks : parks.filter(p => p.is_national_park);
+
+  const bucketListCount = visibleParks.filter(p => p.status === 'bucketList').length;
 
   const filteredParks = filterStatus === 'all'
-    ? parks
+    ? visibleParks
     : filterStatus === 'notVisited'
-      ? parks.filter(p => p.status === 'notVisited' || p.status === 'bucketList')
-      : parks.filter(p => p.status === filterStatus);
+      ? visibleParks.filter(p => p.status === 'notVisited' || p.status === 'bucketList')
+      : visibleParks.filter(p => p.status === filterStatus);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -351,10 +357,10 @@ export default function Home() {
             }}
           >
             {[
-              { key: "all" as FilterStatus,        dot: "var(--ink)",       label: "ALL",     count: parks.length },
-              { key: "visited" as FilterStatus,    dot: "var(--visited)",   label: "VISITED", count: visitedParksCount },
+              { key: "all" as FilterStatus,        dot: "var(--ink)",       label: "ALL",     count: visibleParks.length },
+              { key: "visited" as FilterStatus,    dot: "var(--visited)",   label: "VISITED", count: visibleParks.filter(p => p.status === "visited").length },
               { key: "bucketList" as FilterStatus, dot: "var(--bucket)",    label: "BUCKET",  count: bucketListCount },
-              { key: "notVisited" as FilterStatus, dot: "var(--unvisited)", label: "TO GO",   count: parks.filter(p => p.status === "notVisited").length },
+              { key: "notVisited" as FilterStatus, dot: "var(--unvisited)", label: "TO GO",   count: visibleParks.filter(p => p.status === "notVisited").length },
             ].map((f, i, arr) => (
               <React.Fragment key={f.key}>
                 <button
@@ -382,6 +388,29 @@ export default function Home() {
               </React.Fragment>
             ))}
           </div>
+
+          <button
+            onClick={() => { setShowAllParkTypes((v) => !v); deselectPark(); }}
+            aria-pressed={showAllParkTypes}
+            style={{
+              background: "rgba(255,251,241,0.92)",
+              backdropFilter: "blur(24px) saturate(160%)",
+              WebkitBackdropFilter: "blur(24px) saturate(160%)",
+              border: "0.5px solid var(--hairline)",
+              borderRadius: 100,
+              padding: "6px 12px",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              fontWeight: 600,
+              letterSpacing: "0.6px",
+              color: showAllParkTypes ? "var(--ink)" : "var(--ink-soft)",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {showAllParkTypes ? "ALL PARK TYPES" : "NATIONAL PARKS"}
+          </button>
 
           <MapLabelsControl
             labelsEnabled={labelsEnabled}

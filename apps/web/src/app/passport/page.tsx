@@ -8,7 +8,8 @@ import { DesktopButton } from "@/components/desktop/DesktopButton";
 import { HolographicShine } from "@/components/desktop/HolographicShine";
 import { ParkStamp } from "@/components/desktop/ParkStamp";
 import { PassportWatermark } from "@/components/desktop/PassportWatermark";
-import type { CustomStampGlyph } from "@parkquest/types";
+import type { CustomStampGlyph, BadgeParkScope } from "@parkquest/types";
+import type { ParkScopeStats } from "@/lib/badges";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Ported from apps/mobile/app/(tabs)/profile/passport.tsx — passport-book
@@ -36,6 +37,7 @@ interface Park {
   name: string;
   states: string;
   stamp_glyph: CustomStampGlyph | null;
+  is_national_park: boolean;
 }
 
 interface Visit {
@@ -130,6 +132,9 @@ export default function PassportPage() {
   const [allParks, setAllParks] = useState<Park[]>([]);
   const [badgeCount, setBadgeCount] = useState(0);
   const [totalBadges, setTotalBadges] = useState(0);
+  // 'all' = every park area regardless of designation, vs. the passport's
+  // main stamp count which is National Parks only — see BadgeParkScope.
+  const [parkScopes, setParkScopes] = useState<Record<BadgeParkScope, ParkScopeStats> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -152,6 +157,7 @@ export default function PassportPage() {
         const all = badgesRes.value?.badges ?? badgesRes.value ?? [];
         setBadgeCount(all.filter((b: { earned: boolean }) => b.earned).length);
         setTotalBadges(all.length);
+        if (badgesRes.value?.stats?.parkScopes) setParkScopes(badgesRes.value.stats.parkScopes);
       }
       setLoading(false);
     }).catch(() => { setError(true); setLoading(false); });
@@ -167,7 +173,12 @@ export default function PassportPage() {
     fetchAll();
   }
 
-  // All parks: visited (chrono) first, then unvisited
+  // The passport's stamp grid is National Parks only — the curated 63, not
+  // every park area the app tracks. A separate "AREAS" stat below covers
+  // everything; don't fold the two together here.
+  const nationalParks = useMemo(() => allParks.filter((p) => p.is_national_park), [allParks]);
+
+  // National parks: visited (chrono) first, then unvisited
   const allStampItems = useMemo((): StampItem[] => {
     const visitedMap = new Map<string, string>();
     visits.forEach((v) => {
@@ -175,7 +186,7 @@ export default function PassportPage() {
     });
     const visited: StampItem[] = [];
     const unvisited: StampItem[] = [];
-    allParks.forEach((p, idx) => {
+    nationalParks.forEach((p, idx) => {
       const date = visitedMap.get(p.park_code) ?? null;
       const entry: StampItem = { park_code: p.park_code, name: p.name, states: p.states, visited: !!date, visited_date: date, colorIdx: idx, stamp_glyph: p.stamp_glyph };
       if (date) visited.push(entry);
@@ -183,7 +194,7 @@ export default function PassportPage() {
     });
     visited.sort((a, b) => (a.visited_date ?? "").localeCompare(b.visited_date ?? ""));
     return [...visited, ...unvisited];
-  }, [allParks, visits]);
+  }, [nationalParks, visits]);
 
   const visitedCount = useMemo(() => allStampItems.filter((s) => s.visited).length, [allStampItems]);
   const bucketCount = useMemo(() => visits.filter((v) => v.is_bucket_list).length, [visits]);
@@ -334,9 +345,10 @@ export default function PassportPage() {
 
               {/* Stats plate */}
               <div style={{ background: "rgba(8,16,12,0.42)", borderRadius: 14, padding: "4px 8px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", padding: "12px 0", marginBottom: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", padding: "12px 0", marginBottom: 10 }}>
                   {[
                     { label: "TRIPS", value: loading ? "–" : String(tripsCount) },
+                    { label: "AREAS", value: loading || !parkScopes ? "–" : `${parkScopes.all.visited}/${parkScopes.all.total}` },
                     { label: "STATES", value: loading ? "–" : `${statesCount}/${totalParkStates}` },
                     { label: "BUCKET", value: loading ? "–" : String(bucketCount), onPress: () => router.push("/parks?status=bucketList") },
                     { label: "BADGES", value: loading ? "–" : `${badgeCount}/${totalBadges}` },
@@ -360,10 +372,10 @@ export default function PassportPage() {
 
                 <div style={{ paddingBottom: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: GOLD, opacity: 0.75, letterSpacing: 0.5, marginLeft: 16, marginBottom: 6 }}>
-                    {loading ? "Loading…" : `${visitedCount} of 63 parks stamped`}
+                    {loading ? "Loading…" : `${visitedCount} of ${nationalParks.length} parks stamped`}
                   </div>
                   <div style={{ height: 3, margin: "0 16px", background: `${GOLD}22`, borderRadius: 2, overflow: "hidden" }}>
-                    <div style={{ height: 3, width: `${(visitedCount / 63) * 100}%`, background: GOLD, borderRadius: 2, opacity: 0.9, transition: "width 500ms" }} />
+                    <div style={{ height: 3, width: `${nationalParks.length > 0 ? (visitedCount / nationalParks.length) * 100 : 0}%`, background: GOLD, borderRadius: 2, opacity: 0.9, transition: "width 500ms" }} />
                   </div>
                 </div>
               </div>

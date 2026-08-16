@@ -42,6 +42,7 @@ export interface PassportExportData {
   avatarUrl: string | null;
   joinDate: string | null;
   visitedCount: number;
+  totalParks: number;
   tripsCount: number;
   statesCount: number;
   totalParkStates: number;
@@ -127,9 +128,9 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
       {/* Hero line — the one number that matters most, same wording as the
           full passport screen's own progress row */}
       <View style={st.hero}>
-        <Text style={st.heroText} numberOfLines={1}>{data.visitedCount} of 63 parks stamped</Text>
+        <Text style={st.heroText} numberOfLines={1}>{data.visitedCount} of {data.totalParks} parks stamped</Text>
         <View style={st.progressTrack}>
-          <View style={[st.progressFill, { width: `${(data.visitedCount / 63) * 100}%` as `${number}%` }]} />
+          <View style={[st.progressFill, { width: `${data.totalParks > 0 ? (data.visitedCount / data.totalParks) * 100 : 0}%` as `${number}%` }]} />
         </View>
       </View>
 
