@@ -15,6 +15,16 @@ export const parks = pgTable('parks', {
   // /admin/parks). Null falls back to PARK_GLYPHS in @parkquest/types, then
   // to the default mountain/trees scene — see ParkStamp.tsx in both clients.
   stamp_glyph: jsonb('stamp_glyph').$type<import('@parkquest/types').CustomStampGlyph>(),
+  // Raw NPS `designation` string (e.g. "National Historical Park") — display/
+  // filter use, not authoritative for badge scoping since NPS's own text is
+  // inconsistent (46+ variant spellings across the full unit list).
+  designation: varchar('designation', { length: 100 }),
+  // Curated flag for the original 63 National Parks, decoupled from the raw
+  // `designation` text above — the "visit every park" badge and any other
+  // "classic 63" logic must key off this, not off designation string
+  // matching, so expanding into new designations later can never silently
+  // change what that badge means to someone mid-progress.
+  is_national_park: boolean('is_national_park').notNull().default(false),
   created_at: timestamp('created_at').defaultNow(),
 });
 

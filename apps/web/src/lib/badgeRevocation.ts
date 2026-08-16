@@ -19,7 +19,10 @@ export async function revokeUnqualifiedBadges(userId: string): Promise<string[]>
       .select({ park_code: visits.park_code, is_bucket_list: visits.is_bucket_list, visited_date: visits.visited_date })
       .from(visits)
       .where(eq(visits.clerk_user_id, userId)),
-    db.select({ park_code: parks.park_code, states: parks.states }).from(parks),
+    db.select({
+      park_code: parks.park_code, states: parks.states,
+      is_national_park: parks.is_national_park, designation: parks.designation,
+    }).from(parks),
     db.select({ badge_id: userBadges.badge_id }).from(userBadges).where(eq(userBadges.clerk_user_id, userId)),
     getEnabledBadges(),
   ]);

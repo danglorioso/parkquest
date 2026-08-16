@@ -1,4 +1,4 @@
-import type { BadgeColors, BadgeCondition, BadgeConditionType, BadgeTier } from '@parkquest/types';
+import type { BadgeColors, BadgeCondition, BadgeConditionType, BadgeParkScope, BadgeTier } from '@parkquest/types';
 
 const TIERS: BadgeTier[] = ['bronze', 'silver', 'gold', 'platinum', 'legendary'];
 
@@ -6,6 +6,12 @@ const NUMERIC_TYPES: BadgeConditionType[] = [
   'parks_visited', 'states_visited', 'bucket_list_count', 'total_visits',
   'visits_to_single_park', 'parks_in_year', 'visits_in_year',
 ];
+
+const SCOPES: BadgeParkScope[] = ['national_park', 'historic_park', 'all'];
+/** Undefined (not a stored default) falls back to 'national_park' — see BadgeParkScope. */
+function validateScope(raw: unknown): BadgeParkScope | undefined {
+  return typeof raw === 'string' && (SCOPES as string[]).includes(raw) ? (raw as BadgeParkScope) : undefined;
+}
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
@@ -38,12 +44,16 @@ export function validateConditions(raw: unknown): BadgeCondition[] | string {
     const c = item as Record<string, unknown>;
     const type = c.type as BadgeConditionType;
 
-    if (NUMERIC_TYPES.includes(type)) {
+    if (type === 'parks_visited') {
+      const count = Number(c.count);
+      if (!Number.isInteger(count) || count < 1) return `Condition "${type}" needs a count of at least 1`;
+      conditions.push({ type, count, scope: validateScope(c.scope) });
+    } else if (NUMERIC_TYPES.includes(type)) {
       const count = Number(c.count);
       if (!Number.isInteger(count) || count < 1) return `Condition "${type}" needs a count of at least 1`;
       conditions.push({ type, count });
     } else if (type === 'all_parks_visited') {
-      conditions.push({ type });
+      conditions.push({ type, scope: validateScope(c.scope) });
     } else if (type === 'specific_parks') {
       const parkCodes = Array.isArray(c.parkCodes)
         ? c.parkCodes.filter((p): p is string => typeof p === 'string' && p.length > 0)

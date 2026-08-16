@@ -174,8 +174,8 @@ export interface BadgesResponse {
  * badge must hold (AND). Numeric types compare a user stat against `count`.
  */
 export type BadgeConditionType =
-  | 'parks_visited'          // unique parks visited >= count
-  | 'all_parks_visited'      // visited every park in the system (count ignored)
+  | 'parks_visited'          // unique parks visited >= count, within `scope`
+  | 'all_parks_visited'      // visited every park in `scope` (count ignored)
   | 'states_visited'         // unique states visited >= count
   | 'bucket_list_count'      // bucket list items >= count
   | 'total_visits'           // total visit logs (trips) >= count
@@ -184,8 +184,20 @@ export type BadgeConditionType =
   | 'visits_in_year'         // visit logs in one calendar year >= count
   | 'specific_parks';        // visited a specific collection of parks
 
+/**
+ * Which slice of `parks` a `parks_visited`/`all_parks_visited` condition
+ * counts against. 'national_park' is the curated 63 — NOT "any area the NPS
+ * operates" (that ambiguity is exactly why this isn't just called "parks").
+ * Defaults to 'national_park' when omitted, since every badge written before
+ * this field existed was implicitly scoped to the only parks that existed
+ * then — never default new conditions to 'all' without saying so explicitly.
+ */
+export type BadgeParkScope = 'national_park' | 'historic_park' | 'all';
+
 export interface BadgeCondition {
   type: BadgeConditionType;
+  /** parks_visited / all_parks_visited only. Defaults to 'national_park'. */
+  scope?: BadgeParkScope;
   /** Threshold for numeric types; for specific_parks + mode 'any', how many of the listed parks. */
   count?: number;
   /** specific_parks only: the park collection. */
