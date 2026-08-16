@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
-import type { BadgeColors, BadgeCondition, BadgeConditionType, BadgeTier } from '@parkquest/types';
+import type { BadgeColors, BadgeCondition, BadgeConditionType, BadgeParkScope, BadgeTier } from '@parkquest/types';
 
 export const fieldClass =
   'w-full rounded-lg border border-hairline bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-mute focus:outline-none focus:ring-2 focus:ring-primary/40';
@@ -34,6 +34,15 @@ export const CONDITION_LABELS: Record<BadgeConditionType, string> = {
 };
 
 export interface ParkOption { park_code: string; name: string }
+
+// 'national_park' is the curated 63 — NOT "any area the NPS operates".
+// That's what 'all' is for, named that way specifically so it can't be
+// mistaken for "all National Parks" in this dropdown.
+export const SCOPE_LABELS: Record<BadgeParkScope, string> = {
+  national_park: 'National Parks',
+  historic_park: 'National Historical Parks',
+  all: 'any park area',
+};
 
 export function badgeGradient(colors: BadgeColors | null, tier: BadgeTier): string {
   const c = colors ?? TIER_FILL_LIGHT[tier] ?? TIER_FILL_LIGHT.bronze;
@@ -100,6 +109,20 @@ export function ColorsEditor({
 
 // ── Condition row editor ────────────────────────────────────────────────────────
 
+function ScopeSelect({ condition, onChange }: { condition: BadgeCondition; onChange: (c: BadgeCondition) => void }) {
+  return (
+    <select
+      className={`${fieldClass} w-auto`}
+      value={condition.scope ?? 'national_park'}
+      onChange={e => onChange({ ...condition, scope: e.target.value as BadgeParkScope })}
+    >
+      {(Object.keys(SCOPE_LABELS) as BadgeParkScope[]).map(s => (
+        <option key={s} value={s}>{SCOPE_LABELS[s]}</option>
+      ))}
+    </select>
+  );
+}
+
 export function ConditionEditor({
   condition, parks, onChange, onRemove, removable,
 }: {
@@ -163,7 +186,20 @@ export function ConditionEditor({
               />
             )}
           </>
-        ) : isAllParks ? null : (
+        ) : isAllParks ? (
+          <ScopeSelect condition={condition} onChange={onChange} />
+        ) : condition.type === 'parks_visited' ? (
+          <>
+            <span className="text-sm text-ink-mute">at least</span>
+            <input
+              type="number" min={1}
+              className={`${fieldClass} w-24`}
+              value={condition.count ?? 1}
+              onChange={e => onChange({ ...condition, count: Number(e.target.value) })}
+            />
+            <ScopeSelect condition={condition} onChange={onChange} />
+          </>
+        ) : (
           <>
             <span className="text-sm text-ink-mute">at least</span>
             <input

@@ -8,13 +8,22 @@
 // it must never pull in `@/lib/db` or anything else that touches env vars only
 // set server-side. DB-touching badge logic lives in badgeRevocation.ts instead.
 
-import type { BadgeCondition } from '@parkquest/types';
+import type { BadgeCondition, BadgeParkScope } from '@parkquest/types';
 
 export type BadgeTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'legendary';
 
+const DEFAULT_SCOPE: BadgeParkScope = 'national_park';
+
+export interface ParkScopeStats {
+  visited: number;
+  total: number;
+}
+
 export interface UserStats {
-  parksVisited: number;
-  totalParks: number;
+  // Visited/total pairs per BadgeParkScope — 'national_park' is the curated
+  // 63, 'historic_park' matches designation exactly, 'all' is every row.
+  // See computeStats for how each is derived.
+  parkScopes: Record<BadgeParkScope, ParkScopeStats>;
   statesVisited: number;
   bucketListCount: number;
   parksThisYear: number;
@@ -86,8 +95,14 @@ export const TIER_CONFIG: Record<BadgeTier, {
 /** current/target progress for one condition against the user's stats */
 export function conditionProgress(c: BadgeCondition, stats: UserStats): { current: number; target: number } {
   switch (c.type) {
-    case 'parks_visited':         return { current: stats.parksVisited,          target: c.count ?? 1 };
-    case 'all_parks_visited':     return { current: stats.parksVisited,          target: stats.totalParks };
+    case 'parks_visited': {
+      const s = stats.parkScopes[c.scope ?? DEFAULT_SCOPE];
+      return { current: s.visited, target: c.count ?? 1 };
+    }
+    case 'all_parks_visited': {
+      const s = stats.parkScopes[c.scope ?? DEFAULT_SCOPE];
+      return { current: s.visited, target: s.total };
+    }
     case 'states_visited':        return { current: stats.statesVisited,         target: c.count ?? 1 };
     case 'bucket_list_count':     return { current: stats.bucketListCount,       target: c.count ?? 1 };
     case 'total_visits':          return { current: stats.totalVisits,           target: c.count ?? 1 };
@@ -127,12 +142,21 @@ export function conditionsProgress(conditions: BadgeCondition[], stats: UserStat
   return worst;
 }
 
+// Only non-default scopes get named explicitly — 'national_park' (the
+// default) keeps the plain "park"/"parks" wording every existing badge
+// description already uses, so nothing already written changes.
+function scopeNoun(scope: BadgeParkScope | undefined, plural: boolean): string {
+  if (scope === 'historic_park') return plural ? 'National Historical Parks' : 'National Historical Park';
+  if (scope === 'all') return plural ? 'park areas' : 'park area';
+  return plural ? 'parks' : 'park';
+}
+
 /** Human-readable summary of one condition (admin UI + badge descriptions). */
 export function describeCondition(c: BadgeCondition, parkNames?: Map<string, string>): string {
   const n = c.count ?? 1;
   switch (c.type) {
-    case 'parks_visited':         return `Visit ${n} park${n === 1 ? '' : 's'}`;
-    case 'all_parks_visited':     return `Visit every park`;
+    case 'parks_visited':         return `Visit ${n} ${scopeNoun(c.scope, n !== 1)}`;
+    case 'all_parks_visited':     return `Visit every ${scopeNoun(c.scope, false)}`;
     case 'states_visited':        return `Visit parks in ${n} state${n === 1 ? '' : 's'}`;
     case 'bucket_list_count':     return `Add ${n} park${n === 1 ? '' : 's'} to your bucket list`;
     case 'total_visits':          return `Log ${n} total trip${n === 1 ? '' : 's'}`;
@@ -154,7 +178,7 @@ export function describeCondition(c: BadgeCondition, parkNames?: Map<string, str
 
 export function computeStats(
   userVisits: Array<{ park_code: string; is_bucket_list: boolean | null; visited_date: Date | null }>,
-  allParks: Array<{ park_code: string; states: string }>
+  allParks: Array<{ park_code: string; states: string; is_national_park: boolean; designation: string | null }>
 ): UserStats {
   const parksMap = new Map(allParks.map(p => [p.park_code, p.states]));
 
@@ -162,6 +186,22 @@ export function computeStats(
   const bucketListItems = userVisits.filter(v => v.is_bucket_list);
 
   const visitedCodes = new Set(actualVisits.map(v => v.park_code));
+
+  // parks_visited/all_parks_visited need a visited/total pair per scope —
+  // 'historic_park' matches the designation exactly (a single clean NPS
+  // string, unlike "National Park" which spans several variant spellings —
+  // see is_national_park for why that one's a curated flag, not a match).
+  const scopeCodeSets: Record<BadgeParkScope, Set<string>> = {
+    national_park: new Set(allParks.filter(p => p.is_national_park).map(p => p.park_code)),
+    historic_park: new Set(allParks.filter(p => p.designation === 'National Historical Park').map(p => p.park_code)),
+    all: new Set(allParks.map(p => p.park_code)),
+  };
+  const parkScopes = Object.fromEntries(
+    (Object.entries(scopeCodeSets) as [BadgeParkScope, Set<string>][]).map(([scope, codes]) => [
+      scope,
+      { total: codes.size, visited: [...visitedCodes].filter(c => codes.has(c)).length },
+    ])
+  ) as Record<BadgeParkScope, ParkScopeStats>;
 
   const statesSet = new Set<string>();
   visitedCodes.forEach(code => {
@@ -191,8 +231,7 @@ export function computeStats(
   const maxVisitsToOnePark = Object.values(byPark).reduce((m, n) => Math.max(m, n), 0);
 
   return {
-    parksVisited: visitedCodes.size,
-    totalParks: allParks.length,
+    parkScopes,
     statesVisited: statesSet.size,
     bucketListCount: bucketListItems.length,
     parksThisYear,
