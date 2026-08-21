@@ -11,6 +11,10 @@ export interface MapPark {
   name: string;
   position: [number, number]; // [lat, lng]
   status: "visited" | "notVisited" | "bucketList";
+  // Unset (e.g. the profile page's small visited-parks map) renders as if
+  // true — full-size/primary — rather than forcing every caller to plumb
+  // this through just to avoid the historical-park demotion styling.
+  is_national_park?: boolean;
 }
 
 interface Props {
@@ -65,6 +69,7 @@ function parksGeoJSON(parks: MapPark[], selectedCode?: string | null): GeoJSON.F
         name: p.name,
         status: p.status,
         selected: p.park_code === selectedCode,
+        is_national_park: p.is_national_park,
       },
     })),
   };
@@ -186,7 +191,8 @@ function buildStyle(): StyleSpecification {
         },
       },
 
-      // Park marker halos
+      // Park marker halos — smaller/fainter for non-National-Park pins, so
+      // the curated 63 stay visually primary when both types are on screen.
       {
         id: "parks-halo",
         type: "circle",
@@ -195,6 +201,7 @@ function buildStyle(): StyleSpecification {
           "circle-radius": [
             "case",
             ["==", ["get", "selected"], true], 17,
+            ["==", ["get", "is_national_park"], false], 7,
             ["==", ["get", "status"], "visited"], 13,
             10,
           ],
@@ -204,7 +211,12 @@ function buildStyle(): StyleSpecification {
             ["==", ["get", "status"], "bucketList"], BUCKET_COLOR,
             UNVISIT_COLOR,
           ],
-          "circle-opacity": ["case", ["==", ["get", "selected"], true], 0.24, 0.15],
+          "circle-opacity": [
+            "case",
+            ["==", ["get", "selected"], true], 0.24,
+            ["==", ["get", "is_national_park"], false], 0.08,
+            0.15,
+          ],
         },
       },
 
@@ -217,6 +229,7 @@ function buildStyle(): StyleSpecification {
           "circle-radius": [
             "case",
             ["==", ["get", "selected"], true], 10,
+            ["==", ["get", "is_national_park"], false], 4.5,
             ["==", ["get", "status"], "visited"], 7.5,
             6,
           ],
@@ -226,7 +239,13 @@ function buildStyle(): StyleSpecification {
             ["==", ["get", "status"], "bucketList"], BUCKET_COLOR,
             UNVISIT_COLOR,
           ],
-          "circle-stroke-width": ["case", ["==", ["get", "selected"], true], 2, 1.5],
+          "circle-opacity": ["case", ["==", ["get", "is_national_park"], false], 0.72, 1],
+          "circle-stroke-width": [
+            "case",
+            ["==", ["get", "selected"], true], 2,
+            ["==", ["get", "is_national_park"], false], 1,
+            1.5,
+          ],
           "circle-stroke-color": LAND_FILL,
         },
       },
@@ -245,15 +264,20 @@ function buildLabelPillEl(
 ): HTMLDivElement {
   const el = document.createElement("div");
   el.textContent = shortParkName(park.name);
+  // Historical park labels stay smaller/lighter — same hierarchy as their
+  // dots, so National Parks keep reading as the map's primary content.
+  // Unset (is_national_park === undefined) defaults to primary, same as
+  // the GL paint expressions do for callers that don't set it.
+  const isPrimary = park.is_national_park !== false;
   Object.assign(el.style, {
     display: "none", // gated by zoom + labelsEnabled — set by updateLabelVisibility
-    padding: "3px 7px",
+    padding: isPrimary ? "3px 7px" : "2px 5px",
     borderRadius: "6px",
     border: `0.5px solid ${BORDER_COLOR}`,
-    background: "rgba(255,251,241,0.9)",
-    fontSize: `${fontSize}px`,
-    fontWeight: "700",
-    color: INK_COLOR,
+    background: isPrimary ? "rgba(255,251,241,0.9)" : "rgba(255,251,241,0.7)",
+    fontSize: `${isPrimary ? fontSize : fontSize - 1.5}px`,
+    fontWeight: isPrimary ? "700" : "600",
+    color: isPrimary ? INK_COLOR : `${INK_COLOR}99`,
     whiteSpace: "nowrap",
     cursor: "pointer",
     userSelect: "none",

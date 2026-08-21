@@ -10,6 +10,7 @@ import { type FilterStatus } from "@/components/desktop/MapLeftPanel";
 import { MapRightPanel } from "@/components/desktop/MapRightPanel";
 import { MapSpotlight } from "@/components/desktop/MapSpotlight";
 import { MapLabelsControl, LABEL_FONT_DEFAULT } from "@/components/desktop/MapLabelsControl";
+import { MapParkTypesControl, PARK_TYPES, DEFAULT_PARK_TYPES } from "@/components/desktop/MapParkTypesControl";
 import { LogVisitModal } from "@/components/LogVisitModal";
 import type { VisitDraft } from "@/components/LogVisitModal";
 import type { NpsSummary } from "@/app/api/parks/nps-all/route";
@@ -28,6 +29,7 @@ interface ParkFromDB {
   description: string | null;
   image_url: string | null;
   is_national_park: boolean;
+  designation: string | null;
 }
 
 export interface VisitEntry {
@@ -54,6 +56,7 @@ interface ParkForMap {
   visits?: VisitEntry[];
   image_url?: string | null;
   is_national_park: boolean;
+  designation: string | null;
 }
 
 
@@ -69,7 +72,7 @@ export default function Home() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   // Map defaults to National Parks (the curated 63) — everything else (the
   // new Historical Parks, and whatever gets added later) is opt-in.
-  const [showAllParkTypes, setShowAllParkTypes] = useState(false);
+  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(DEFAULT_PARK_TYPES);
   const [labelsEnabled, setLabelsEnabled] = useState(true);
   const [labelFontSize, setLabelFontSize] = useState(LABEL_FONT_DEFAULT);
   const [selectedParkCode, setSelectedParkCode] = useState<string | null>(null);
@@ -194,6 +197,7 @@ export default function Home() {
             visibility: journal?.visibility ?? null,
             image_url: park.image_url,
             is_national_park: park.is_national_park,
+            designation: park.designation,
           };
         });
 
@@ -303,10 +307,13 @@ export default function Home() {
     setLogVisitOpen(true);
   };
 
-  // Map pins + status-filter counts respect the park-type toggle; search
+  // Map pins + status-filter counts respect the park-type filter; search
   // (MapSpotlight, below) deliberately doesn't — you can still find and log
   // a visit to any park regardless of what the map is currently showing.
-  const visibleParks = showAllParkTypes ? parks : parks.filter(p => p.is_national_park);
+  const visibleParks = parks.filter(p => PARK_TYPES.some(t => enabledParkTypes.has(t.key) && t.match(p)));
+  const parkTypeCounts: Record<string, number> = Object.fromEntries(
+    PARK_TYPES.map(t => [t.key, parks.filter(t.match).length])
+  );
 
   const bucketListCount = visibleParks.filter(p => p.status === 'bucketList').length;
 
@@ -389,28 +396,18 @@ export default function Home() {
             ))}
           </div>
 
-          <button
-            onClick={() => { setShowAllParkTypes((v) => !v); deselectPark(); }}
-            aria-pressed={showAllParkTypes}
-            style={{
-              background: "rgba(255,251,241,0.92)",
-              backdropFilter: "blur(24px) saturate(160%)",
-              WebkitBackdropFilter: "blur(24px) saturate(160%)",
-              border: "0.5px solid var(--hairline)",
-              borderRadius: 100,
-              padding: "6px 12px",
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              fontWeight: 600,
-              letterSpacing: "0.6px",
-              color: showAllParkTypes ? "var(--ink)" : "var(--ink-soft)",
-              cursor: "pointer",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-              whiteSpace: "nowrap",
+          <MapParkTypesControl
+            enabled={enabledParkTypes}
+            counts={parkTypeCounts}
+            onToggleType={(key) => {
+              setEnabledParkTypes((prev) => {
+                const next = new Set(prev);
+                if (next.has(key)) next.delete(key); else next.add(key);
+                return next;
+              });
+              deselectPark();
             }}
-          >
-            {showAllParkTypes ? "ALL PARK TYPES" : "NATIONAL PARKS"}
-          </button>
+          />
 
           <MapLabelsControl
             labelsEnabled={labelsEnabled}

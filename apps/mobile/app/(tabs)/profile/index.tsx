@@ -517,7 +517,7 @@ export default function ProfileScreen() {
 
           <View style={styles.passportStats}>
             {([
-              { label: 'VISITED', value: badgesLoaded ? `${parksVisited}/${parksTotal}` : '–', href: '/passport' },
+              { label: 'NP VISITED', value: badgesLoaded ? `${parksVisited}/${parksTotal}` : '–', href: '/passport' },
               { label: 'TRIPS',   value: visitsLoaded ? String(tripsCount) : '–', href: '/profile/journal' },
               { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–', href: '/profile/badges' },
               { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–', href: '/profile/friends' },
@@ -988,13 +988,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.2)',
   },
   passportStatItem: {
-    width: '50%', marginBottom: 14,
+    width: '50%', marginBottom: 14, alignItems: 'center',
   },
   passportStatLabel: {
-    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.8)', letterSpacing: 1.2,
+    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.8)', letterSpacing: 1.2, textAlign: 'center',
   },
   passportStatVal: {
-    fontSize: 26, fontWeight: '800', color: GOLD, marginTop: 2, letterSpacing: -0.3,
+    fontSize: 26, fontWeight: '800', color: GOLD, marginTop: 2, letterSpacing: -0.3, textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
   passportProgress: {

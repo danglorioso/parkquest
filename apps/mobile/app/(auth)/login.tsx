@@ -6,8 +6,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSignIn } from '@clerk/clerk-expo';
 import { useNavigation, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import {
-  clerkMsg, ErrorBox, FField, InfoText, MONO, PrimaryBtn, SecondaryBtn,
+  clerkMsg, ErrorBox, FField, InfoText, MONO, PrimaryBtn,
 } from '@/components/AuthAtoms';
 import { STATIC as C, useColors } from '@/lib/palette';
 
@@ -36,8 +37,28 @@ export default function LoginScreen() {
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
+  // Steps back within this screen (mfa/forgot_verify/forgot_email all lead
+  // back toward 'form') rather than popping the whole screen — the header's
+  // own back button is replaced below to actually do this, instead of the
+  // previous approach of hiding it (headerLeft: () => null, which wasn't
+  // reliably suppressing the native arrow) and placing a second, redundant
+  // back button inline under the primary action button on every step.
+  const stepBack = () => {
+    setError('');
+    if (step === 'mfa') { setStep('form'); setMfaCode(''); }
+    else if (step === 'forgot_email') { setStep('form'); }
+    else if (step === 'forgot_verify') { setStep('forgot_email'); setFgCode(''); }
+  };
+
   useLayoutEffect(() => {
-    navigation.setOptions({ headerLeft: step === 'form' ? undefined : () => null });
+    navigation.setOptions({
+      headerLeft: step === 'form' ? undefined : () => (
+        <TouchableOpacity onPress={stepBack} hitSlop={10} style={{ paddingRight: 12, paddingVertical: 4 }}>
+          <Ionicons name="chevron-back" size={24} color={T.primary} />
+        </TouchableOpacity>
+      ),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation, step]);
 
   const handleSignIn = async () => {
@@ -135,7 +156,6 @@ export default function LoginScreen() {
               <FField label="VERIFICATION CODE" value={mfaCode} onChange={setMfaCode} keyboard="number-pad" autoFocus />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Verify" onPress={handleMfa} loading={busy} />
-              <SecondaryBtn icon="chevron-back" onPress={() => { setStep('form'); setMfaCode(''); setError(''); }} />
             </>}
 
             {step === 'form' && <>
@@ -159,7 +179,6 @@ export default function LoginScreen() {
               <FField label="EMAIL" value={fgEmail} onChange={setFgEmail} keyboard="email-address" autoFocus />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Send Reset Code" onPress={handleForgotSend} loading={busy} disabled={!fgEmail} />
-              <SecondaryBtn icon="chevron-back" onPress={() => { setStep('form'); setError(''); }} />
             </>}
 
             {step === 'forgot_verify' && <>
@@ -175,7 +194,6 @@ export default function LoginScreen() {
               />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Reset Password" onPress={handleForgotReset} loading={busy} disabled={!fgCode || !fgPw} />
-              <SecondaryBtn icon="chevron-back" onPress={() => { setStep('forgot_email'); setFgCode(''); setError(''); }} />
             </>}
           </View>
 

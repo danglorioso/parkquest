@@ -130,8 +130,6 @@ export default function PassportPage() {
   const [profile, setProfile] = useState<ProfileInfo | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [allParks, setAllParks] = useState<Park[]>([]);
-  const [badgeCount, setBadgeCount] = useState(0);
-  const [totalBadges, setTotalBadges] = useState(0);
   // 'all' = every park area regardless of designation, vs. the passport's
   // main stamp count which is National Parks only — see BadgeParkScope.
   const [parkScopes, setParkScopes] = useState<Record<BadgeParkScope, ParkScopeStats> | null>(null);
@@ -153,11 +151,8 @@ export default function PassportPage() {
       if (profRes.status === "fulfilled" && profRes.value) setProfile(profRes.value);
       if (visitsRes.status === "fulfilled") setVisits(visitsRes.value ?? []);
       if (parksRes.status === "fulfilled") setAllParks(parksRes.value ?? []);
-      if (badgesRes.status === "fulfilled") {
-        const all = badgesRes.value?.badges ?? badgesRes.value ?? [];
-        setBadgeCount(all.filter((b: { earned: boolean }) => b.earned).length);
-        setTotalBadges(all.length);
-        if (badgesRes.value?.stats?.parkScopes) setParkScopes(badgesRes.value.stats.parkScopes);
+      if (badgesRes.status === "fulfilled" && badgesRes.value?.stats?.parkScopes) {
+        setParkScopes(badgesRes.value.stats.parkScopes);
       }
       setLoading(false);
     }).catch(() => { setError(true); setLoading(false); });
@@ -198,7 +193,6 @@ export default function PassportPage() {
 
   const visitedCount = useMemo(() => allStampItems.filter((s) => s.visited).length, [allStampItems]);
   const bucketCount = useMemo(() => visits.filter((v) => v.is_bucket_list).length, [visits]);
-  const tripsCount = useMemo(() => visits.filter((v) => !v.is_bucket_list && v.visited_date).length, [visits]);
   const statesCount = useMemo(() => {
     const s = new Set<string>();
     allStampItems.filter((si) => si.visited).forEach((si) => si.states.split(",").forEach((st) => s.add(st.trim())));
@@ -345,13 +339,16 @@ export default function PassportPage() {
 
               {/* Stats plate */}
               <div style={{ background: "rgba(8,16,12,0.42)", borderRadius: 14, padding: "4px 8px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", padding: "12px 0", marginBottom: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", padding: "12px 0", marginBottom: 10 }}>
                   {[
-                    { label: "TRIPS", value: loading ? "–" : String(tripsCount) },
+                    // Every park area regardless of designation — also echoed
+                    // in the muted caption below the progress bar.
                     { label: "AREAS", value: loading || !parkScopes ? "–" : `${parkScopes.all.visited}/${parkScopes.all.total}` },
+                    // National Parks only — same numbers as the progress line
+                    // below, surfaced as a quick-glance number too.
+                    { label: "NP VISITED", value: loading ? "–" : `${visitedCount}/${nationalParks.length}` },
                     { label: "STATES", value: loading ? "–" : `${statesCount}/${totalParkStates}` },
                     { label: "BUCKET", value: loading ? "–" : String(bucketCount), onPress: () => router.push("/parks?status=bucketList") },
-                    { label: "BADGES", value: loading ? "–" : `${badgeCount}/${totalBadges}` },
                   ].map((s, i) => {
                     const Wrap = s.onPress ? "button" : "div";
                     return (

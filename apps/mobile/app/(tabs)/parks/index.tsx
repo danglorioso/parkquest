@@ -15,6 +15,7 @@ import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { MenuView } from '@react-native-menu/menu';
+import { PARK_TYPES, DEFAULT_PARK_TYPES, parkTypeCollapsedLabel } from '@/lib/parkTypes';
 import * as Location from 'expo-location';
 import { fullStateName } from '@/lib/stateNames';
 import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
@@ -44,6 +45,8 @@ interface Park {
   image_url: string | null;
   latitude: string | null;
   longitude: string | null;
+  is_national_park?: boolean;
+  designation?: string | null;
 }
 
 interface Visit {
@@ -391,6 +394,7 @@ function FilterPanel({
   allActivities, allTopics, filtersLoading,
   hasFilter, onReset,
   sortBy, onSortChange,
+  enabledParkTypes, parkTypeCounts, onToggleParkType,
 }: {
   statusFilter: StatusFilter; onStatusFilter: (s: StatusFilter) => void;
   regionFilters: string[]; onRegionToggle: (r: string) => void; onClearRegions: () => void;
@@ -399,6 +403,7 @@ function FilterPanel({
   allActivities: string[]; allTopics: string[]; filtersLoading: boolean;
   hasFilter: boolean; onReset: () => void;
   sortBy: SortBy; onSortChange: (s: SortBy) => void;
+  enabledParkTypes: Set<string>; parkTypeCounts: Record<string, number>; onToggleParkType: (key: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [renderPanel, setRenderPanel] = useState(false);
@@ -503,6 +508,26 @@ function FilterPanel({
             <Text style={[styles.pillResetText, { color: accent }]}>Reset</Text>
           </TouchableOpacity>
         )}
+
+        {/* Park type — real native UIMenu, same taxonomy/behavior as the map
+            tab's filter (see lib/parkTypes). Multi-select checkable rows,
+            not a single-active toggle. */}
+        <MenuView
+          onPressAction={({ nativeEvent }) => onToggleParkType(nativeEvent.event)}
+          actions={PARK_TYPES.map(t => ({
+            id: t.key,
+            title: t.label,
+            subtitle: String(parkTypeCounts[t.key] ?? 0),
+            state: enabledParkTypes.has(t.key) ? 'on' : 'off',
+          }))}
+        >
+          <View style={styles.filterToggle}>
+            <Ionicons name="pricetags-outline" size={15} color={C.inkSoft} />
+            <Text style={styles.filterToggleText} numberOfLines={1}>
+              {parkTypeCollapsedLabel(enabledParkTypes)}
+            </Text>
+          </View>
+        </MenuView>
 
         {/* Spacer pushes the sort control to the right edge */}
         <View style={{ flex: 1 }} />
@@ -660,6 +685,9 @@ export default function ParksScreen() {
   const [query,   setQuery]   = useState('');
   const [statusFilter,  setStatusFilter]  = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('closest');
+  // Same taxonomy/default as the map tab — National Parks only until opted
+  // into more (see lib/parkTypes).
+  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(DEFAULT_PARK_TYPES);
   const [regionFilters, setRegionFilters] = useState<string[]>([]);
   const [activityFilters, setActivityFilters] = useState<string[]>([]);
   const [topicFilters,    setTopicFilters]    = useState<string[]>([]);
@@ -810,6 +838,7 @@ export default function ParksScreen() {
 
   const filtered = useMemo(() => {
     return parks.filter(p => {
+      if (!PARK_TYPES.some(t => enabledParkTypes.has(t.key) && t.match(p))) return false;
       const status = parkStatus(p.park_code, visits);
       if (statusFilter !== 'all' && status !== statusFilter) return false;
       if (regionFilters.length > 0) {
@@ -852,7 +881,12 @@ export default function ParksScreen() {
       // 'az', or 'closest' without a location fix yet
       return a.name.localeCompare(b.name);
     });
-  }, [parks, visits, query, statusFilter, regionFilters, activityFilters, topicFilters, activitiesMap, topicsMap, userLocation, sortBy]);
+  }, [parks, visits, query, statusFilter, regionFilters, activityFilters, topicFilters, activitiesMap, topicsMap, userLocation, sortBy, enabledParkTypes]);
+
+  const parkTypeCounts: Record<string, number> = useMemo(
+    () => Object.fromEntries(PARK_TYPES.map(t => [t.key, parks.filter(t.match).length])),
+    [parks]
+  );
 
   const hasFilter = statusFilter !== 'all' || regionFilters.length > 0
     || activityFilters.length > 0 || topicFilters.length > 0;
@@ -977,6 +1011,13 @@ export default function ParksScreen() {
         filtersLoading={filtersLoading}
         hasFilter={hasFilter} onReset={handleReset}
         sortBy={sortBy} onSortChange={handleSortChange}
+        enabledParkTypes={enabledParkTypes}
+        parkTypeCounts={parkTypeCounts}
+        onToggleParkType={key => setEnabledParkTypes(prev => {
+          const next = new Set(prev);
+          if (next.has(key)) next.delete(key); else next.add(key);
+          return next;
+        })}
       />
 
       {/* Results count */}

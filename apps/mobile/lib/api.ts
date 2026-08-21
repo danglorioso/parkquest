@@ -284,6 +284,8 @@ export interface ParkDetail {
   latitude: string | null;
   longitude: string | null;
   image_url: string | null;
+  is_national_park?: boolean;
+  designation?: string | null;
 }
 
 export const getParks = (token: string | null) =>
