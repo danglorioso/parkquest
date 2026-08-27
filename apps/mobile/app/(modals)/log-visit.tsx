@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, Alert, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, Keyboard, KeyboardAvoidingView, LayoutAnimation, Modal, PanResponder, Platform,
-  Pressable, ScrollView, StyleSheet, Text, TextInput,
+  Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput,
   TouchableOpacity, View, useColorScheme, useWindowDimensions,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -1256,6 +1256,21 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder, onDragActive
 
 // ── ParkPickerSheet ───────────────────────────────────────────────────────────
 
+const AZ_INDEX = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+function groupParksByLetter(list: ParkInfo[]): { title: string; data: ParkInfo[] }[] {
+  const map = new Map<string, ParkInfo[]>();
+  for (const p of list) {
+    const c = (p.name[0] ?? '#').toUpperCase();
+    const letter = /[A-Z]/.test(c) ? c : '#';
+    if (!map.has(letter)) map.set(letter, []);
+    map.get(letter)!.push(p);
+  }
+  // `list` arrives pre-sorted by name, so Map insertion order is already
+  // alphabetical — no extra sort needed here.
+  return [...map.entries()].map(([title, data]) => ({ title, data }));
+}
+
 function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
   visible: boolean; parks: ParkInfo[]; selected: string;
   onClose: () => void; onPick: (code: string) => void;
@@ -1263,11 +1278,45 @@ function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
   const C = useColors();
   const [q, setQ] = useState('');
   const insets = useSafeAreaInsets();
+  const listRef = useRef<SectionList<ParkInfo>>(null);
+  const [railH, setRailH] = useState(0);
+  const [activeLetter, setActiveLetter] = useState<string | null>(null);
 
   const filtered = (q.trim()
     ? parks.filter(p => p.name.toLowerCase().includes(q.toLowerCase()) || p.states.toLowerCase().includes(q.toLowerCase()))
     : parks
   ).sort((a, b) => a.name.localeCompare(b.name));
+
+  const sections = useMemo(() => groupParksByLetter(filtered), [filtered]);
+  // Grouping/jumping only makes sense against the unfiltered alphabet — once
+  // the user is typing a query, the search box is already doing the work.
+  const showIndexRail = !q.trim() && sections.length > 1;
+
+  const jumpToLetter = (letter: string) => {
+    const titles = sections.map(s => s.title);
+    let idx = titles.indexOf(letter);
+    if (idx === -1) idx = titles.findIndex(t => t > letter);
+    if (idx === -1) idx = titles.length - 1;
+    if (idx < 0) return;
+    if (letter !== activeLetter) setActiveLetter(letter);
+    listRef.current?.scrollToLocation({ sectionIndex: idx, itemIndex: 0, animated: false, viewOffset: 0 });
+  };
+
+  const letterAtY = (y: number) =>
+    AZ_INDEX[Math.min(AZ_INDEX.length - 1, Math.max(0, Math.floor((y / railH) * AZ_INDEX.length)))];
+
+  // Recreated each render so its handlers close over the latest sections/railH —
+  // cheap here, and avoids stale-closure bugs from caching via useRef.
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: e => { Haptics.selectionAsync(); jumpToLetter(letterAtY(e.nativeEvent.locationY)); },
+    onPanResponderMove: e => jumpToLetter(letterAtY(e.nativeEvent.locationY)),
+    onPanResponderRelease: () => setActiveLetter(null),
+    onPanResponderTerminate: () => setActiveLetter(null),
+  });
+
+  const availableLetters = useMemo(() => new Set(sections.map(s => s.title)), [sections]);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -1285,7 +1334,7 @@ function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
         <View style={styles.pickerSearch}>
           <Ionicons name="search" size={15} color={C.inkMute} />
           <TextInput
-            value={q} onChangeText={setQ} placeholder="Search 63 parks…"
+            value={q} onChangeText={setQ} placeholder={`Search ${parks.length} parks…`}
             placeholderTextColor={C.inkMute} style={{ flex: 1, fontSize: 15, color: C.ink }}
             autoFocus autoCorrect={false}
           />
@@ -1296,30 +1345,64 @@ function ParkPickerSheet({ visible, parks, selected, onClose, onPick }: {
           )}
         </View>
 
-        {/* List */}
-        <FlatList
-          data={filtered}
-          keyExtractor={p => p.park_code}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
-          renderItem={({ item: p }) => {
-            const on = selected === p.park_code;
-            const state2 = p.states.split(',')[0].trim().slice(0, 2).toUpperCase();
-            return (
-              <TouchableOpacity onPress={() => { onPick(p.park_code); onClose(); }} activeOpacity={0.7}
-                style={[styles.parkRow, { backgroundColor: on ? C.surfaceAlt : 'transparent' }]}>
-                <View style={[styles.parkBadge, { backgroundColor: C.primary }]}>
-                  <Text style={{ color: C.onPrimary, fontWeight: '800', fontSize: 13 }}>{state2}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>{p.name}</Text>
-                  <Text style={{ fontSize: 13, color: C.inkMute }}>{fullStateName(p.states.split(',')[0].trim())}</Text>
-                </View>
-                {on && <Ionicons name="checkmark" size={17} color={C.primary} />}
-              </TouchableOpacity>
-            );
-          }}
-        />
+        {/* List + A–Z index rail */}
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <SectionList
+            ref={listRef}
+            sections={sections}
+            keyExtractor={p => p.park_code}
+            keyboardShouldPersistTaps="handled"
+            stickySectionHeadersEnabled
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20, paddingRight: showIndexRail ? 28 : 10 }}
+            onScrollToIndexFailed={() => {}}
+            renderSectionHeader={({ section }) => (
+              <View style={[styles.pickerSectionHeader, { backgroundColor: C.surface }]}>
+                <Text style={{ fontSize: 12.5, fontWeight: '800', color: C.inkMute }}>{section.title}</Text>
+              </View>
+            )}
+            renderItem={({ item: p }) => {
+              const on = selected === p.park_code;
+              const state2 = p.states.split(',')[0].trim().slice(0, 2).toUpperCase();
+              return (
+                <TouchableOpacity onPress={() => { onPick(p.park_code); onClose(); }} activeOpacity={0.7}
+                  style={[styles.parkRow, { backgroundColor: on ? C.surfaceAlt : 'transparent' }]}>
+                  <View style={[styles.parkBadge, { backgroundColor: C.primary }]}>
+                    <Text style={{ color: C.onPrimary, fontWeight: '800', fontSize: 13 }}>{state2}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', fontSize: 13.5, color: C.ink }}>{p.name}</Text>
+                    <Text style={{ fontSize: 13, color: C.inkMute }}>{fullStateName(p.states.split(',')[0].trim())}</Text>
+                  </View>
+                  {on && <Ionicons name="checkmark" size={17} color={C.primary} />}
+                </TouchableOpacity>
+              );
+            }}
+          />
+          {showIndexRail && (
+            <View
+              style={styles.pickerAzRail}
+              onLayout={e => setRailH(e.nativeEvent.layout.height)}
+              {...panResponder.panHandlers}
+            >
+              {AZ_INDEX.map(letter => (
+                <Text
+                  key={letter}
+                  style={[
+                    styles.pickerAzRailLetter,
+                    {
+                      color: C.primary,
+                      opacity: activeLetter === letter ? 1 : availableLetters.has(letter) ? 0.55 : 0.22,
+                      fontWeight: activeLetter === letter ? '800' : '700',
+                    },
+                  ]}
+                >
+                  {letter}
+                </Text>
+              ))}
+            </View>
+          )}
+        </View>
       </View>
     </Modal>
   );
@@ -3143,6 +3226,19 @@ const styles = StyleSheet.create({
   parkBadge: {
     width: 34, height: 34, borderRadius: 9,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  pickerSectionHeader: {
+    paddingHorizontal: 14, paddingVertical: 4,
+  },
+  // Fixed width, full-height touch/drag target — letters are spaced out with
+  // justify-content so a tap or vertical drag anywhere maps to a letter via
+  // (touchY / railHeight) * 26 in ParkPickerSheet's letterAtY.
+  pickerAzRail: {
+    width: 22, alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  pickerAzRailLetter: {
+    fontSize: 10, lineHeight: 12,
   },
 
   // Date sheet
