@@ -1285,8 +1285,11 @@ const styles = StyleSheet.create({
     backgroundColor: dyn('rgba(255,251,241,0.93)', 'rgba(32,29,23,0.93)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    // Overshoots on purpose — a value past half the bar's own height just
+    // clamps to a full pill (iOS 26's rounded search bar look) regardless
+    // of how tall paddingVertical ends up making it.
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
