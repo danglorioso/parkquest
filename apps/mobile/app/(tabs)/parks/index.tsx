@@ -159,6 +159,7 @@ function ParkCard({
   park, status, descLines = 2, onTitleLayout, distance, priority = 'high',
 }: { park: Park; status: ParkStatus; descLines?: number; onTitleLayout?: (lines: number) => void; distance?: number | null; priority?: 'high' | 'low' }) {
   const router = useRouter();
+  const { primary } = useColors();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
   const stateCode = park.states.split(',')[0].trim();
@@ -167,7 +168,14 @@ function ParkCard({
   return (
     <TouchableOpacity
       onPress={() => router.push(`/park/${park.park_code}` as never)}
-      style={[styles.card, { width: CARD_W }]}
+      style={[
+        styles.card,
+        { width: CARD_W },
+        // One of the curated 63 — a primary-accent border, not just the
+        // usual neutral hairline, so they read as distinct from the other
+        // designations at a glance.
+        park.is_national_park && { borderWidth: 1.5, borderColor: primary },
+      ]}
       activeOpacity={0.85}
     >
       <View style={[styles.cardImg, { backgroundColor: g1 }]}>
@@ -254,6 +262,7 @@ function ParkListRow({
   park, status, visitCount, distance, priority = 'high',
 }: { park: Park; status: ParkStatus; visitCount: number; distance?: number | null; priority?: 'high' | 'low' }) {
   const router = useRouter();
+  const { primary } = useColors();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
   const stateCode = park.states.split(',')[0].trim();
@@ -272,7 +281,10 @@ function ParkListRow({
   return (
     <TouchableOpacity
       onPress={() => router.push(`/park/${park.park_code}` as never)}
-      style={styles.listCard}
+      style={[
+        styles.listCard,
+        park.is_national_park && { borderWidth: 1.5, borderColor: primary },
+      ]}
       activeOpacity={0.85}
     >
       <View style={[styles.listCardImg, { backgroundColor: g1 }]}>
@@ -521,8 +533,14 @@ function FilterPanel({
             state: enabledParkTypes.has(t.key) ? 'on' : 'off',
           }))}
         >
-          <View style={styles.filterToggle}>
-            <Ionicons name="pricetags-outline" size={15} color={C.inkSoft} />
+          {/* Fixed width — parkTypeCollapsedLabel's text ranges from "ALL"
+              to "NO PARKS SHOWN", and letting the button reflow to fit
+              whichever one is selected shoved Sort (pushed right by the
+              flex spacer below) sideways every time the selection changed.
+              Wide enough for the longest label at this font/weight without
+              truncating. */}
+          <View style={[styles.filterToggle, styles.parkTypeToggle]}>
+            <Ionicons name="ribbon-outline" size={15} color={C.inkSoft} />
             <Text style={styles.filterToggleText} numberOfLines={1}>
               {parkTypeCollapsedLabel(enabledParkTypes)}
             </Text>
@@ -1137,8 +1155,11 @@ const styles = StyleSheet.create({
     marginHorizontal: H_PAD,
     marginBottom: 12,
     backgroundColor: C.surface,
-    borderRadius: 12,
-    padding: 10,
+    // Overshoots on purpose — clamps to a full pill (iOS 26 search bar
+    // look, matches the map page's search bar) regardless of exact height.
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderWidth: 0.5,
     borderColor: C.hairline,
   },
@@ -1167,6 +1188,7 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
   },
   filterToggleActive: {},
+  parkTypeToggle: { width: 158 },
   filterToggleText: {
     fontSize: 13,
     fontWeight: '600',

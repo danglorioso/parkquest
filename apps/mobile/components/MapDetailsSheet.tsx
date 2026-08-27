@@ -238,9 +238,13 @@ const styles = StyleSheet.create({
     backgroundColor: dyn('rgba(31,61,46,0.55)', 'rgba(240,234,217,0.5)'),
   },
   // Inset 1.5px from rowActiveBorder on every side, revealing the ring.
+  // Dark mode darkens (rgba black) rather than lightens — the row's own
+  // text is already a light cream in dark mode, so a light cream-tinted
+  // fill behind it (the previous rgba(240,234,217,...)) was cutting the
+  // exact contrast that made it readable.
   rowActiveFill: {
     position: 'absolute', top: 1.5, left: 1.5, right: 1.5, bottom: 1.5,
-    backgroundColor: dyn('rgba(31,61,46,0.08)', 'rgba(240,234,217,0.12)'),
+    backgroundColor: dyn('rgba(31,61,46,0.08)', 'rgba(0,0,0,0.28)'),
   },
   rowActiveRadiusFirst: { borderTopLeftRadius: 10, borderTopRightRadius: 10 },
   rowActiveRadiusLast: { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 },
