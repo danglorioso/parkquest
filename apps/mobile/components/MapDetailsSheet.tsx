@@ -96,6 +96,8 @@ export function MapDetailsSheet({
           <View style={styles.section}>
             {statusOptions.map((s, i) => {
               const active = s.key === activeStatus;
+              const isFirst = i === 0;
+              const isLast = i === statusOptions.length - 1;
               return (
                 <TouchableOpacity
                   key={s.key}
@@ -104,9 +106,30 @@ export function MapDetailsSheet({
                   style={[
                     styles.row,
                     i < statusOptions.length - 1 && styles.rowBorder,
-                    active && styles.rowActive,
+                    // Square border, never radius — a rounded corner here
+                    // combined with borderWidth is the iOS "gray band" bug
+                    // (see log-visit.tsx's date sheet comment). The section
+                    // container's own overflow:hidden crops the sliver that
+                    // pokes past its curve on a first/last active row, which
+                    // reads fine at this border's 1.5px weight.
+                    active && styles.rowActiveBorder,
                   ]}
                 >
+                  {active && (
+                    // Separate fill layer, radius but no border — this is
+                    // what actually needs to match the section's rounded
+                    // corners so the highlight doesn't look like a square
+                    // box dropped into a rounded list.
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        StyleSheet.absoluteFill,
+                        styles.rowActiveFill,
+                        isFirst && styles.rowActiveFillFirst,
+                        isLast && styles.rowActiveFillLast,
+                      ]}
+                    />
+                  )}
                   <View style={[styles.dot, { backgroundColor: s.dot }]} />
                   <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>{s.label}</Text>
                   <Text style={styles.rowCount}>{s.count}</Text>
