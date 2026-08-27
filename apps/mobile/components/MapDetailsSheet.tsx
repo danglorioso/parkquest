@@ -103,32 +103,38 @@ export function MapDetailsSheet({
                   key={s.key}
                   onPress={() => onSelectStatus(s.key)}
                   activeOpacity={0.7}
-                  style={[
-                    styles.row,
-                    i < statusOptions.length - 1 && styles.rowBorder,
-                    // Square border, never radius — a rounded corner here
-                    // combined with borderWidth is the iOS "gray band" bug
-                    // (see log-visit.tsx's date sheet comment). The section
-                    // container's own overflow:hidden crops the sliver that
-                    // pokes past its curve on a first/last active row, which
-                    // reads fine at this border's 1.5px weight.
-                    active && styles.rowActiveBorder,
-                  ]}
+                  style={[styles.row, i < statusOptions.length - 1 && styles.rowBorder]}
                 >
                   {active && (
-                    // Separate fill layer, radius but no border — this is
-                    // what actually needs to match the section's rounded
-                    // corners so the highlight doesn't look like a square
-                    // box dropped into a rounded list.
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        StyleSheet.absoluteFill,
-                        styles.rowActiveFill,
-                        isFirst && styles.rowActiveFillFirst,
-                        isLast && styles.rowActiveFillLast,
-                      ]}
-                    />
+                    // Two stacked radius-only rects (no borderWidth on
+                    // either) instead of an actual RN border — a rounded
+                    // corner combined with borderWidth is the iOS "gray
+                    // band" bug (see log-visit.tsx's date sheet comment),
+                    // and a SQUARE border paired with this rounded fill
+                    // just moved the mismatch to the opposite layer instead
+                    // of fixing it. Drawing the "border" as a slightly
+                    // bigger colored rect peeking out from behind the inset
+                    // fill sidesteps the bug entirely — both layers round
+                    // together since they're both plain radius, no stroke.
+                    <>
+                      <View
+                        pointerEvents="none"
+                        style={[
+                          StyleSheet.absoluteFill,
+                          styles.rowActiveBorder,
+                          isFirst && styles.rowActiveRadiusFirst,
+                          isLast && styles.rowActiveRadiusLast,
+                        ]}
+                      />
+                      <View
+                        pointerEvents="none"
+                        style={[
+                          styles.rowActiveFill,
+                          isFirst && styles.rowActiveRadiusFirst,
+                          isLast && styles.rowActiveRadiusLast,
+                        ]}
+                      />
+                    </>
                   )}
                   <View style={[styles.dot, { backgroundColor: s.dot }]} />
                   <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>{s.label}</Text>
@@ -225,24 +231,19 @@ const styles = StyleSheet.create({
   rowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.hairline,
   },
-  rowActive: {
-    backgroundColor: dyn('rgba(31,61,46,0.08)', 'rgba(240,234,217,0.12)'),
-    // borderBottomWidth/Color set explicitly, not just via the borderWidth/
-    // borderColor shorthand — a non-last active row also carries rowBorder's
-    // own thin borderBottomWidth/borderBottomColor (its next-row separator),
-    // and that more specific bottom pair was winning over the shorthand,
-    // leaving the highlighted box looking like it had no bottom edge.
-    borderWidth: 1.5,
-    borderColor: dyn('rgba(31,61,46,0.35)', 'rgba(240,234,217,0.4)'),
-    borderBottomWidth: 1.5,
-    borderBottomColor: dyn('rgba(31,61,46,0.35)', 'rgba(240,234,217,0.4)'),
-    // Uniform radius, not "round only the edge touching the container" —
-    // that partial-radius + borderWidth combo is a known iOS RN rendering
-    // bug (see log-visit.tsx's date sheet comment): the unrounded edge
-    // renders semi-transparent instead of a flat color, showing up as a
-    // gray shadow band. Rounding all four corners the same avoids it.
-    borderRadius: 10,
+  // Full-bleed colored rect, sits behind rowActiveFill — the 1.5px ring
+  // that peeks out around the inset fill below IS the "border". No
+  // borderWidth property anywhere on this, just a flat backgroundColor.
+  rowActiveBorder: {
+    backgroundColor: dyn('rgba(31,61,46,0.55)', 'rgba(240,234,217,0.5)'),
   },
+  // Inset 1.5px from rowActiveBorder on every side, revealing the ring.
+  rowActiveFill: {
+    position: 'absolute', top: 1.5, left: 1.5, right: 1.5, bottom: 1.5,
+    backgroundColor: dyn('rgba(31,61,46,0.08)', 'rgba(240,234,217,0.12)'),
+  },
+  rowActiveRadiusFirst: { borderTopLeftRadius: 10, borderTopRightRadius: 10 },
+  rowActiveRadiusLast: { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 },
   dot: { width: 9, height: 9, borderRadius: 4.5 },
   rowLabel: { fontSize: 14, fontWeight: '600', color: C.inkSoft },
   rowLabelActive: { color: C.ink },

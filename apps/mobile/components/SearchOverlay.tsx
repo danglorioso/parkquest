@@ -479,8 +479,10 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceAlt,
     borderWidth: 0.5,
     borderColor: C.hairline,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    // Overshoots on purpose — clamps to a full pill (iOS 26 search bar
+    // look, matches the map page's search bar) regardless of exact height.
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 10,
   },
   searchInput: {

@@ -19,6 +19,7 @@ import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 import { ParkStamp } from '@/components/ParkStamp';
 import type { CustomStampGlyph } from '@parkquest/types';
 import { NotificationBell } from '@/components/NotificationCenter';
+import { SearchOverlay } from '@/components/SearchOverlay';
 import { EmptyState } from '@/components/EmptyState';
 import { HolographicShine } from '@/components/HolographicShine';
 import { AvatarLightbox } from '@/components/AvatarLightbox';
@@ -177,6 +178,7 @@ export default function ProfileScreen() {
   const [sharingBadge, setSharingBadge] = useState<BadgeSummary | null>(null);
   const [selectedStamp, setSelectedStamp] = useState<StampPreview | null>(null);
   const [avatarLightbox, setAvatarLightbox] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [rawVisits, setRawVisits] = useState<any[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
@@ -368,6 +370,14 @@ export default function ProfileScreen() {
   const topBarActions = (
     <View style={styles.topBarActions}>
       <NotificationBell style={styles.iconBtn} />
+      <TouchableOpacity
+        style={styles.iconBtn}
+        activeOpacity={0.8}
+        onPress={() => setSearchOpen(true)}
+      >
+        <GlassIconBg />
+        <Ionicons name="search" size={22} color={C.inkSoft} />
+      </TouchableOpacity>
       <TouchableOpacity
         style={styles.iconBtn}
         activeOpacity={0.8}
@@ -899,6 +909,7 @@ export default function ProfileScreen() {
       ) : null}
 
       <AvatarLightbox visible={avatarLightbox} url={avatarUrl} onClose={() => setAvatarLightbox(false)} />
+      <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
     </View>
   );
 }
