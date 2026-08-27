@@ -15,7 +15,7 @@ import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { MenuView } from '@react-native-menu/menu';
-import { PARK_TYPES, DEFAULT_PARK_TYPES } from '@/lib/parkTypes';
+import { PARK_TYPES } from '@/lib/parkTypes';
 import * as Location from 'expo-location';
 import { fullStateName } from '@/lib/stateNames';
 import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
@@ -723,9 +723,9 @@ export default function ParksScreen() {
   const [query,   setQuery]   = useState('');
   const [statusFilter,  setStatusFilter]  = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('closest');
-  // Same taxonomy/default as the map tab — National Parks only until opted
-  // into more (see lib/parkTypes).
-  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(DEFAULT_PARK_TYPES);
+  // Unlike the map tab (which defaults to National Parks only — see
+  // lib/parkTypes), this list defaults to every designation shown.
+  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(new Set(PARK_TYPES.map(t => t.key)));
   const [regionFilters, setRegionFilters] = useState<string[]>([]);
   const [activityFilters, setActivityFilters] = useState<string[]>([]);
   const [topicFilters,    setTopicFilters]    = useState<string[]>([]);
