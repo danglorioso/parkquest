@@ -15,7 +15,7 @@ import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { MenuView } from '@react-native-menu/menu';
-import { PARK_TYPES, DEFAULT_PARK_TYPES, parkTypeCollapsedLabel } from '@/lib/parkTypes';
+import { PARK_TYPES, DEFAULT_PARK_TYPES } from '@/lib/parkTypes';
 import * as Location from 'expo-location';
 import { fullStateName } from '@/lib/stateNames';
 import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
@@ -406,7 +406,7 @@ function FilterPanel({
   allActivities, allTopics, filtersLoading,
   hasFilter, onReset,
   sortBy, onSortChange,
-  enabledParkTypes, parkTypeCounts, onToggleParkType,
+  enabledParkTypes, parkTypeCounts, onToggleParkType, onSelectAllParkTypes,
 }: {
   statusFilter: StatusFilter; onStatusFilter: (s: StatusFilter) => void;
   regionFilters: string[]; onRegionToggle: (r: string) => void; onClearRegions: () => void;
@@ -416,6 +416,7 @@ function FilterPanel({
   hasFilter: boolean; onReset: () => void;
   sortBy: SortBy; onSortChange: (s: SortBy) => void;
   enabledParkTypes: Set<string>; parkTypeCounts: Record<string, number>; onToggleParkType: (key: string) => void;
+  onSelectAllParkTypes: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [renderPanel, setRenderPanel] = useState(false);
@@ -521,32 +522,6 @@ function FilterPanel({
           </TouchableOpacity>
         )}
 
-        {/* Park type — real native UIMenu, same taxonomy/behavior as the map
-            tab's filter (see lib/parkTypes). Multi-select checkable rows,
-            not a single-active toggle. */}
-        <MenuView
-          onPressAction={({ nativeEvent }) => onToggleParkType(nativeEvent.event)}
-          actions={PARK_TYPES.map(t => ({
-            id: t.key,
-            title: t.label,
-            subtitle: String(parkTypeCounts[t.key] ?? 0),
-            state: enabledParkTypes.has(t.key) ? 'on' : 'off',
-          }))}
-        >
-          {/* Fixed width — parkTypeCollapsedLabel's text ranges from "ALL"
-              to "NO PARKS SHOWN", and letting the button reflow to fit
-              whichever one is selected shoved Sort (pushed right by the
-              flex spacer below) sideways every time the selection changed.
-              Wide enough for the longest label at this font/weight without
-              truncating. */}
-          <View style={[styles.filterToggle, styles.parkTypeToggle]}>
-            <Ionicons name="ribbon-outline" size={15} color={C.inkSoft} />
-            <Text style={styles.filterToggleText} numberOfLines={1}>
-              {parkTypeCollapsedLabel(enabledParkTypes)}
-            </Text>
-          </View>
-        </MenuView>
-
         {/* Spacer pushes the sort control to the right edge */}
         <View style={{ flex: 1 }} />
 
@@ -566,6 +541,51 @@ function FilterPanel({
           </View>
         </MenuView>
       </View>
+
+      {/* Designation quick-access chips — same taxonomy/toggle semantics as
+          the map tab's chip row (see PARK_TYPES/onToggleParkType/
+          onSelectAllParkTypes). Replaced the old ribbon-icon dropdown that
+          used to sit in the toggle row above. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ marginTop: 8 }}
+        contentContainerStyle={styles.designationChipRow}
+      >
+        <TouchableOpacity
+          onPress={onSelectAllParkTypes}
+          activeOpacity={0.75}
+          style={[styles.designationChip, enabledParkTypes.size === PARK_TYPES.length && styles.designationChipActive]}
+        >
+          <Text
+            style={[
+              styles.designationChipText,
+              enabledParkTypes.size === PARK_TYPES.length && styles.designationChipTextActive,
+            ]}
+            numberOfLines={1}
+          >
+            All
+          </Text>
+        </TouchableOpacity>
+        {PARK_TYPES.map(t => {
+          const active = enabledParkTypes.has(t.key);
+          return (
+            <TouchableOpacity
+              key={t.key}
+              onPress={() => onToggleParkType(t.key)}
+              activeOpacity={0.75}
+              style={[styles.designationChip, active && styles.designationChipActive]}
+            >
+              <Text style={[styles.designationChipText, active && styles.designationChipTextActive]} numberOfLines={1}>
+                {t.label}
+              </Text>
+              <Text style={[styles.designationChipCount, active && styles.designationChipCountActive]}>
+                {parkTypeCounts[t.key] ?? 0}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       {/* Active filter chips — horizontally scrollable */}
       {activeCount > 0 && (
@@ -1032,10 +1052,15 @@ export default function ParksScreen() {
         enabledParkTypes={enabledParkTypes}
         parkTypeCounts={parkTypeCounts}
         onToggleParkType={key => setEnabledParkTypes(prev => {
+          // Coming from "All" (every type enabled) — tapping one specific
+          // type narrows down to just that type, rather than removing it
+          // from the full set (matches the map tab's chip row behavior).
+          if (prev.size === PARK_TYPES.length) return new Set([key]);
           const next = new Set(prev);
           if (next.has(key)) next.delete(key); else next.add(key);
           return next;
         })}
+        onSelectAllParkTypes={() => setEnabledParkTypes(new Set(PARK_TYPES.map(t => t.key)))}
       />
 
       {/* Results count */}
@@ -1188,7 +1213,6 @@ const styles = StyleSheet.create({
     borderColor: C.hairline,
   },
   filterToggleActive: {},
-  parkTypeToggle: { width: 158 },
   filterToggleText: {
     fontSize: 13,
     fontWeight: '600',
@@ -1206,6 +1230,45 @@ const styles = StyleSheet.create({
   filterBadgeText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  designationChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  designationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    height: 32,
+  },
+  // Inverted ink/bg fill, not a hue — matches the map tab's same chip row
+  // (a colored chip here would read as a status color instead).
+  designationChipActive: {
+    backgroundColor: C.ink,
+    borderColor: C.ink,
+  },
+  designationChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.inkSoft,
+  },
+  designationChipTextActive: {
+    color: C.bg,
+  },
+  designationChipCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.inkMute,
+    fontVariant: ['tabular-nums'],
+  },
+  designationChipCountActive: {
+    color: C.bg,
+    opacity: 0.7,
   },
   filterPanel: {
     marginTop: 8,

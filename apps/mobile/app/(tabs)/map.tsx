@@ -638,13 +638,23 @@ export default function MapScreen() {
   );
 
   // Shared by the Map Details sheet's checklist and the quick-access chip
-  // row below the search bar — both just flip one key's membership.
+  // row below the search bar.
   const toggleParkType = useCallback((key: string) => {
     setEnabledParkTypes(prev => {
+      // Coming from "All" (every type enabled) — tapping one specific type
+      // narrows down to just that type, rather than removing it from the
+      // full set (which would hide the exact thing you just tapped and
+      // leave everything else showing instead).
+      if (prev.size === PARK_TYPES.length) return new Set([key]);
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+    setSelectedPark(null);
+  }, []);
+
+  const selectAllParkTypes = useCallback(() => {
+    setEnabledParkTypes(new Set(PARK_TYPES.map(t => t.key)));
     setSelectedPark(null);
   }, []);
 
@@ -1127,6 +1137,18 @@ export default function MapScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipRow}
         >
+          <TouchableOpacity
+            onPress={selectAllParkTypes}
+            activeOpacity={0.75}
+            style={[styles.chip, enabledParkTypes.size === PARK_TYPES.length && styles.chipActive]}
+          >
+            <Text
+              style={[styles.chipText, enabledParkTypes.size === PARK_TYPES.length && styles.chipTextActive]}
+              numberOfLines={1}
+            >
+              All
+            </Text>
+          </TouchableOpacity>
           {PARK_TYPES.map(t => {
             const active = enabledParkTypes.has(t.key);
             return (
@@ -1185,6 +1207,7 @@ export default function MapScreen() {
           enabledParkTypes={enabledParkTypes}
           parkTypeCounts={parkTypeCounts}
           onToggleParkType={toggleParkType}
+          onSelectAllParkTypes={selectAllParkTypes}
           labelsEnabled={labelsEnabled}
           onLabelsEnabledChange={setLabelsEnabled}
           labelFontSize={labelFontSize}

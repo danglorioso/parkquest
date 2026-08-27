@@ -23,6 +23,7 @@ interface Props {
   enabledParkTypes: Set<string>;
   parkTypeCounts: Record<string, number>;
   onToggleParkType: (key: string) => void;
+  onSelectAllParkTypes: () => void;
   labelsEnabled: boolean;
   onLabelsEnabledChange: (v: boolean) => void;
   labelFontSize: number;
@@ -34,7 +35,7 @@ interface Props {
 export function MapDetailsSheet({
   onClose,
   statusOptions, activeStatus, onSelectStatus,
-  enabledParkTypes, parkTypeCounts, onToggleParkType,
+  enabledParkTypes, parkTypeCounts, onToggleParkType, onSelectAllParkTypes,
   labelsEnabled, onLabelsEnabledChange, labelFontSize, onLabelFontSizeChange, labelFontMin, labelFontMax,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -147,6 +148,26 @@ export function MapDetailsSheet({
           {/* ── Park types — multi-select ── */}
           <Text style={styles.sectionLabel}>Park types</Text>
           <View style={styles.section}>
+            {(() => {
+              const allChecked = enabledParkTypes.size === PARK_TYPES.length;
+              return (
+                <TouchableOpacity
+                  onPress={onSelectAllParkTypes}
+                  activeOpacity={0.7}
+                  style={[styles.row, styles.rowBorder]}
+                >
+                  <Ionicons
+                    name={allChecked ? 'checkbox' : 'square-outline'}
+                    size={19}
+                    color={allChecked ? T.primary : C.inkMute}
+                  />
+                  <Text style={[styles.rowLabel, allChecked && styles.rowLabelActive]}>All</Text>
+                  <Text style={styles.rowCount}>
+                    {Object.values(parkTypeCounts).reduce((a, b) => a + b, 0)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })()}
             {PARK_TYPES.map((t, i) => {
               const checked = enabledParkTypes.has(t.key);
               return (
