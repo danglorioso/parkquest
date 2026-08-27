@@ -42,12 +42,12 @@ const INK_COLOR     = "#3D3726";
 // Same zoom the old GL text-symbol layer used to gate labels at.
 const LABEL_ZOOM_GATE = 7;
 
-// Strips the "National Park" designation for map labels, where space is
+// Strips the designation suffix for map labels, where space is
 // tight — mirrors the mobile map's shortParkName.
 function shortParkName(name: string): string {
   return name
     .replace(/^National Park of /i, "")
-    .replace(/ National (?:and State )?Parks?(?: (?:&|and) Preserve)?$/i, "")
+    .replace(/ National (?:Historical )?(?:and State )?Parks?(?: (?:&|and) Preserve)?$/i, "")
     .trim();
 }
 

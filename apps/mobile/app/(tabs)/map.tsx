@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated, DeviceEventEmitter, Dimensions, Keyboard, Platform,
-  Pressable, StyleSheet,
+  Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View, useColorScheme,
   type ColorValue,
 } from 'react-native';
@@ -246,14 +246,15 @@ function markerConfig(status: ParkStatus, selected: boolean, dark: boolean, isNa
   return { color, border, dotR, haloR, haloOpacity, dotOpacity, borderWidth };
 }
 
-// Strips the "National Park" designation for map labels, where space is tight —
-// "Grand Canyon National Park" → "Grand Canyon". Handles the "X National Park &
-// Preserve" / "National and State Parks" variants and the one park named
-// "National Park of American Samoa" (designation is a prefix, not a suffix).
+// Strips the designation suffix for map labels, where space is tight —
+// "Grand Canyon National Park" → "Grand Canyon", "Coltsville National
+// Historical Park" → "Coltsville". Handles the "X National Park & Preserve" /
+// "National and State Parks" variants and the one park named "National Park
+// of American Samoa" (designation is a prefix, not a suffix).
 function shortParkName(name: string): string {
   return name
     .replace(/^National Park of /i, '')
-    .replace(/ National (?:and State )?Parks?(?: (?:&|and) Preserve)?$/i, '')
+    .replace(/ National (?:Historical )?(?:and State )?Parks?(?: (?:&|and) Preserve)?$/i, '')
     .trim();
 }
 
@@ -635,6 +636,17 @@ export default function MapScreen() {
   const parkTypeCounts: Record<string, number> = Object.fromEntries(
     PARK_TYPES.map(t => [t.key, parks.filter(t.match).length])
   );
+
+  // Shared by the Map Details sheet's checklist and the quick-access chip
+  // row below the search bar — both just flip one key's membership.
+  const toggleParkType = useCallback((key: string) => {
+    setEnabledParkTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+    setSelectedPark(null);
+  }, []);
 
   const counts: Record<FilterStatus, number> = {
     all:        visibleParks.length,
@@ -1104,6 +1116,38 @@ export default function MapScreen() {
         />
       </View>
 
+      {/* Park-type quick-access chips — same toggleParkType/PARK_TYPES the
+          Map Details sheet's checklist uses, just surfaced as one-tap
+          shortcuts instead of buried in the sheet. PARK_TYPES is already
+          ordered most-common-first (national parks, then historical parks,
+          ...), so no separate sort here. */}
+      <View style={[styles.chipRowWrap, { top: insets.top + (offlineFetchedAt ? 98 : 62) }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+        >
+          {PARK_TYPES.map(t => {
+            const active = enabledParkTypes.has(t.key);
+            return (
+              <TouchableOpacity
+                key={t.key}
+                onPress={() => toggleParkType(t.key)}
+                activeOpacity={0.75}
+                style={[styles.chip, active && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                  {t.label}
+                </Text>
+                <Text style={[styles.chipCount, active && styles.chipCountActive]}>
+                  {parkTypeCounts[t.key] ?? 0}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       {/* The park sheet itself. Rendered last so it paints over everything
           above BY DEFAULT, but several map overlays (searchBarWrap: 40,
           mapControls: 31, filterPillWrap/mapLoadingOverlay: 20) set an
@@ -1140,14 +1184,7 @@ export default function MapScreen() {
           onSelectStatus={(key) => { setFilterStatus(key as FilterStatus); setSelectedPark(null); }}
           enabledParkTypes={enabledParkTypes}
           parkTypeCounts={parkTypeCounts}
-          onToggleParkType={(key) => {
-            setEnabledParkTypes(prev => {
-              const next = new Set(prev);
-              if (next.has(key)) next.delete(key); else next.add(key);
-              return next;
-            });
-            setSelectedPark(null);
-          }}
+          onToggleParkType={toggleParkType}
           labelsEnabled={labelsEnabled}
           onLabelsEnabledChange={setLabelsEnabled}
           labelFontSize={labelFontSize}
@@ -1183,6 +1220,59 @@ const styles = StyleSheet.create({
     right: 14,
     zIndex: 40,
     elevation: 10,
+  },
+  chipRowWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 39,
+    elevation: 9,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: dyn('rgba(255,251,241,0.93)', 'rgba(32,29,23,0.93)'),
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    height: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  // Inverted ink/bg fill, not a hue — a colored chip here would read as yet
+  // another status color (the map already uses green/amber/gray for
+  // visited/bucket/not-visited), same mistake the marker ring made earlier.
+  chipActive: {
+    backgroundColor: C.ink,
+    borderColor: C.ink,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.inkSoft,
+  },
+  chipTextActive: {
+    color: C.bg,
+  },
+  chipCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.inkMute,
+    fontVariant: ['tabular-nums'],
+  },
+  chipCountActive: {
+    color: C.bg,
+    opacity: 0.7,
   },
   // Same input bar shape as the header's SearchOverlay (12pt radius, 10pt
   // vertical padding, 15pt text) — but filled with the warm translucent white
