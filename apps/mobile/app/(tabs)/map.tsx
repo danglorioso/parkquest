@@ -18,7 +18,8 @@ import { CompassSpinner } from '@/components/LoadingScreen';
 import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useIsOnline } from '@/lib/network';
-import { PARK_TYPES, DEFAULT_PARK_TYPES } from '@/lib/parkTypes';
+import { PARK_TYPES } from '@/lib/parkTypes';
+import { getDefaultParkTypes } from '@/lib/settings';
 import { MapDetailsSheet, type StatusOption } from '@/components/MapDetailsSheet';
 import { ParkProfileScreen } from '../park/[id]';
 
@@ -622,9 +623,11 @@ export default function MapScreen() {
   // instead of three separate floating pills — see MapDetailsSheet.
   const [mapDetailsOpen, setMapDetailsOpen] = useState(false);
   const isDarkScheme = useColorScheme() === 'dark';
-  // Map defaults to National Parks (the curated 63) — every other
-  // designation is opt-in, multi-select (see PARK_TYPES).
-  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(DEFAULT_PARK_TYPES);
+  // Starts as every type shown (matches the all-parks list's own default)
+  // then swaps to whatever the user's set in Profile → Appearance, once
+  // that async read resolves — see lib/settings' getDefaultParkTypes.
+  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(() => new Set(PARK_TYPES.map(t => t.key)));
+  useEffect(() => { getDefaultParkTypes().then(keys => setEnabledParkTypes(new Set(keys))); }, []);
   // Last declutter result — fed back in as the sticky set so still-fitting
   // labels survive font-size changes and region nudges.
   const prevVisibleLabelsRef = useRef<Set<string>>(new Set());
@@ -653,8 +656,13 @@ export default function MapScreen() {
     setSelectedPark(null);
   }, []);
 
-  const selectAllParkTypes = useCallback(() => {
-    setEnabledParkTypes(new Set(PARK_TYPES.map(t => t.key)));
+  // Tapping "All" while it's already active turns everything off, same as
+  // tapping an active individual chip removes just that one — "All" behaves
+  // like any other selectable option, not a one-way "reset" shortcut.
+  const toggleAllParkTypes = useCallback(() => {
+    setEnabledParkTypes(prev =>
+      prev.size === PARK_TYPES.length ? new Set() : new Set(PARK_TYPES.map(t => t.key))
+    );
     setSelectedPark(null);
   }, []);
 
@@ -1138,7 +1146,7 @@ export default function MapScreen() {
           contentContainerStyle={styles.chipRow}
         >
           <TouchableOpacity
-            onPress={selectAllParkTypes}
+            onPress={toggleAllParkTypes}
             activeOpacity={0.75}
             style={[styles.chip, enabledParkTypes.size === PARK_TYPES.length && styles.chipActive]}
           >
@@ -1207,7 +1215,7 @@ export default function MapScreen() {
           enabledParkTypes={enabledParkTypes}
           parkTypeCounts={parkTypeCounts}
           onToggleParkType={toggleParkType}
-          onSelectAllParkTypes={selectAllParkTypes}
+          onToggleAllParkTypes={toggleAllParkTypes}
           labelsEnabled={labelsEnabled}
           onLabelsEnabledChange={setLabelsEnabled}
           labelFontSize={labelFontSize}

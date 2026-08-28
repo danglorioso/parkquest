@@ -169,7 +169,9 @@ export default function ProfileScreen() {
   // visits here, so this can't drift from the passport screen's own count.
   const [parksVisited, setParksVisited] = useState(0);
   const [parksTotal,   setParksTotal]   = useState(0);
-  const [tripsCount,   setTripsCount]   = useState(0);
+  // Every park area regardless of designation — mirrors the passport
+  // screen's own AREAS stat (stats.parkScopes.all), not just the curated 63.
+  const [areasVisited, setAreasVisited] = useState(0);
   const [badgesEarned, setBadgesEarned] = useState(0);
   const [totalBadges,  setTotalBadges]  = useState(0);
   const [friendCount,  setFriendCount]  = useState(0);
@@ -206,7 +208,10 @@ export default function ProfileScreen() {
       const [profRes, visitsRes, badgesRes, friendsRes] = await Promise.allSettled([
         apiFetch<ProfileInfo>('/api/profile', tok),
         apiFetch<any[]>('/api/visits', tok),
-        apiFetch<{ badges: BadgeSummary[]; stats?: { parkScopes?: { national_park?: { visited: number; total: number } } } }>('/api/badges', tok),
+        apiFetch<{ badges: BadgeSummary[]; stats?: { parkScopes?: {
+          national_park?: { visited: number; total: number };
+          all?: { visited: number; total: number };
+        } } }>('/api/badges', tok),
         apiFetch<any[]>(`/api/friends?userId=${user?.id}&type=friends`, tok),
       ]);
 
@@ -217,7 +222,6 @@ export default function ProfileScreen() {
       if (profRes.status === 'fulfilled')   setProfile(profRes.value);
       if (visitsRes.status === 'fulfilled') {
         const vs = visitsRes.value;
-        setTripsCount(vs.filter((v: any) => !v.is_bucket_list && v.visited_date).length);
         setRawVisits(vs);
         setVisitsLoaded(true);
       }
@@ -231,6 +235,8 @@ export default function ProfileScreen() {
         setTotalBadges(all.length);
         const npScope = badgesRes.value.stats?.parkScopes?.national_park;
         if (npScope) { setParksVisited(npScope.visited); setParksTotal(npScope.total); }
+        const allScope = badgesRes.value.stats?.parkScopes?.all;
+        if (allScope) setAreasVisited(allScope.visited);
         setEarnedBadges(earned.slice(0, 5));
         setBadgesLoaded(true);
       }
@@ -528,7 +534,7 @@ export default function ProfileScreen() {
           <View style={styles.passportStats}>
             {([
               { label: 'NP VISITED', value: badgesLoaded ? `${parksVisited}/${parksTotal}` : '–', href: '/passport' },
-              { label: 'TRIPS',   value: visitsLoaded ? String(tripsCount) : '–', href: '/profile/journal' },
+              { label: 'AREAS',   value: badgesLoaded ? String(areasVisited) : '–', href: '/passport' },
               { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–', href: '/profile/badges' },
               { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–', href: '/profile/friends' },
             ] as { label: string; value: string; href: string }[]).map(s => (

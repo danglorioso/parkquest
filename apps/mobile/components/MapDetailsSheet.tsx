@@ -23,7 +23,7 @@ interface Props {
   enabledParkTypes: Set<string>;
   parkTypeCounts: Record<string, number>;
   onToggleParkType: (key: string) => void;
-  onSelectAllParkTypes: () => void;
+  onToggleAllParkTypes: () => void;
   labelsEnabled: boolean;
   onLabelsEnabledChange: (v: boolean) => void;
   labelFontSize: number;
@@ -35,7 +35,7 @@ interface Props {
 export function MapDetailsSheet({
   onClose,
   statusOptions, activeStatus, onSelectStatus,
-  enabledParkTypes, parkTypeCounts, onToggleParkType, onSelectAllParkTypes,
+  enabledParkTypes, parkTypeCounts, onToggleParkType, onToggleAllParkTypes,
   labelsEnabled, onLabelsEnabledChange, labelFontSize, onLabelFontSizeChange, labelFontMin, labelFontMax,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -152,7 +152,7 @@ export function MapDetailsSheet({
               const allChecked = enabledParkTypes.size === PARK_TYPES.length;
               return (
                 <TouchableOpacity
-                  onPress={onSelectAllParkTypes}
+                  onPress={onToggleAllParkTypes}
                   activeOpacity={0.7}
                   style={[styles.row, styles.rowBorder]}
                 >

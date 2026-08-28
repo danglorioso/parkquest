@@ -16,6 +16,8 @@ import { clerkMsg } from '@/components/AuthAtoms';
 import * as ImagePicker from 'expo-image-picker';
 import { showToast } from '@/lib/toast';
 import { getParks, getParksNpsAll } from '@/lib/api';
+import { PARK_TYPES } from '@/lib/parkTypes';
+import { getDefaultParkTypes, setDefaultParkTypes } from '@/lib/settings';
 import {
   loadOfflineParks, saveOfflineParks, onOfflineParksChanged,
   saveOfflineParksNps, prefetchParkImages,
@@ -68,6 +70,35 @@ export default function EditProfileScreen() {
   const C = useColors();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
+
+  const [defaultParkTypes, setDefaultParkTypesState] = useState<Set<string> | null>(null);
+  useEffect(() => { getDefaultParkTypes().then(keys => setDefaultParkTypesState(new Set(keys))); }, []);
+
+  const toggleDefaultParkType = (key: string) => {
+    setDefaultParkTypesState(prev => {
+      const cur = prev ?? new Set(PARK_TYPES.map(t => t.key));
+      // Coming from "All" — tapping one specific type narrows down to just
+      // that type (matches the map/parks-list chip rows' own behavior).
+      let next: Set<string>;
+      if (cur.size === PARK_TYPES.length) {
+        next = new Set([key]);
+      } else {
+        next = new Set(cur);
+        if (next.has(key)) next.delete(key); else next.add(key);
+      }
+      setDefaultParkTypes(Array.from(next));
+      return next;
+    });
+  };
+
+  const toggleAllDefaultParkTypes = () => {
+    setDefaultParkTypesState(prev => {
+      const allSelected = (prev?.size ?? 0) === PARK_TYPES.length;
+      const next = allSelected ? new Set<string>() : new Set(PARK_TYPES.map(t => t.key));
+      setDefaultParkTypes(Array.from(next));
+      return next;
+    });
+  };
 
   const [firstName,     setFirstName]     = useState('');
   const [lastName,      setLastName]      = useState('');
@@ -635,6 +666,54 @@ export default function EditProfileScreen() {
                     {selected && (
                       <Ionicons name="checkmark" size={18} color={colors.primary} style={{ marginLeft: 'auto' }} />
                     )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Default map view — which park designations the map + all-parks
+              list start with enabled. Same multi-select semantics as their
+              own chip rows (see lib/parkTypes/lib/settings). */}
+          <View style={[fieldStyles.field, { gap: 10, marginTop: 14 }]}>
+            <Text style={fieldStyles.fieldLabel}>Default map view</Text>
+            <View style={styles.paletteGrid}>
+              {(() => {
+                const allSelected = defaultParkTypes != null && defaultParkTypes.size === PARK_TYPES.length;
+                return (
+                  <TouchableOpacity
+                    onPress={toggleAllDefaultParkTypes}
+                    activeOpacity={0.7}
+                    style={[styles.paletteChip, allSelected && { borderColor: C.primary, backgroundColor: C.surface }]}
+                  >
+                    <Ionicons
+                      name={allSelected ? 'checkbox' : 'square-outline'}
+                      size={18}
+                      color={allSelected ? C.primary : C.inkMute}
+                    />
+                    <Text style={[styles.paletteLabel, allSelected && { color: C.ink, fontWeight: '700' }]}>
+                      All
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()}
+              {PARK_TYPES.map(t => {
+                const selected = defaultParkTypes?.has(t.key) ?? true;
+                return (
+                  <TouchableOpacity
+                    key={t.key}
+                    onPress={() => toggleDefaultParkType(t.key)}
+                    activeOpacity={0.7}
+                    style={[styles.paletteChip, selected && { borderColor: C.primary, backgroundColor: C.surface }]}
+                  >
+                    <Ionicons
+                      name={selected ? 'checkbox' : 'square-outline'}
+                      size={18}
+                      color={selected ? C.primary : C.inkMute}
+                    />
+                    <Text style={[styles.paletteLabel, selected && { color: C.ink, fontWeight: '700' }]}>
+                      {t.label}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}

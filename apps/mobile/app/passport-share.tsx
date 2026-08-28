@@ -86,6 +86,11 @@ export default function PassportShareScreen() {
       // Share card mirrors the passport screen: National Parks only (the
       // curated 63), not every park area the app tracks.
       const nationalParks = (parks ?? []).filter(p => p.is_national_park);
+      // AREAS stat below is the one exception — it covers every designation
+      // the app tracks, not just the curated 63 (mirrors passport.tsx's own
+      // AREAS tile, sourced from parkScopes.all there).
+      const areasVisited = (parks ?? []).filter(p => visitedMap.has(p.park_code)).length;
+      const areasTotal = (parks ?? []).length;
 
       const visitedStamps: ExportStamp[] = [];
       const stampedStates = new Set<string>();
@@ -121,7 +126,8 @@ export default function PassportShareScreen() {
           : null,
         visitedCount,
         totalParks: nationalParks.length,
-        tripsCount: (visits ?? []).filter(v => !v.is_bucket_list && v.visited_date).length,
+        areasVisited,
+        areasTotal,
         statesCount: stampedStates.size,
         totalParkStates: allStates.size,
         badgeCount: allBadges.filter((b: { earned: boolean }) => b.earned).length,

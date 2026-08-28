@@ -1745,7 +1745,7 @@ function StepWhere({
                   </View>
                   <View>
                     <Text style={{ fontWeight: '800', fontSize: 16, color: C.ink, letterSpacing: -0.2 }}>Select a park</Text>
-                    <Text style={{ fontSize: 13, color: C.inkMute, marginTop: 2 }}>Search all 63 national parks</Text>
+                    <Text style={{ fontSize: 13, color: C.inkMute, marginTop: 2 }}>Search national parks and more</Text>
                   </View>
                 </View>
               )}

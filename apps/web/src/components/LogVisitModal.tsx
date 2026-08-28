@@ -396,7 +396,7 @@ function ParkPickerDialog({ parks, value, onClose, onPick }: {
           <div style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)", letterSpacing: -0.3 }}>Which park did you visit?</div>
           <div style={{ background: "var(--surface-alt)", borderRadius: 11, padding: "9px 12px", marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
             <Search style={{ width: 16, height: 16, color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2} />
-            <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Search 63 parks…" style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 14, color: "var(--ink)", fontFamily: "inherit" }} />
+            <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Search parks…" style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 14, color: "var(--ink)", fontFamily: "inherit" }} />
           </div>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 12px" }}>
@@ -463,7 +463,7 @@ function ParkHeroRow({ park, onChangePark }: { park: ParkData | undefined; onCha
         </div>
         <div style={{ textAlign: "left" }}>
           <div style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)", letterSpacing: -0.2 }}>Select a park</div>
-          <div style={{ fontSize: 12.5, color: "var(--ink-mute)", marginTop: 2 }}>Search over all US national parks</div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-mute)", marginTop: 2 }}>Search national parks and more</div>
         </div>
       </button>
     );

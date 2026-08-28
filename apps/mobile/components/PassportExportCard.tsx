@@ -43,7 +43,8 @@ export interface PassportExportData {
   joinDate: string | null;
   visitedCount: number;
   totalParks: number;
-  tripsCount: number;
+  areasVisited: number;
+  areasTotal: number;
   statesCount: number;
   totalParkStates: number;
   badgeCount: number;
@@ -67,7 +68,7 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
   // STATES, whose "/total" is real information (not all 50 US states have
   // a park) but rendered small so it doesn't fight the headline number.
   const stats = [
-    { label: 'TRIPS',  value: String(data.tripsCount) },
+    { label: 'AREAS',  value: String(data.areasVisited), sub: `/${data.areasTotal}` },
     { label: 'STATES', value: String(data.statesCount), sub: `/${data.totalParkStates}` },
     { label: 'BADGES', value: String(data.badgeCount) },
   ];
@@ -298,10 +299,10 @@ const st = StyleSheet.create({
     textShadowRadius: 2,
   },
   statSub: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     color: GOLD,
-    opacity: 0.55,
+    opacity: 0.4,
     letterSpacing: -0.2,
   },
   progressTrack: {

@@ -16,6 +16,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { MenuView } from '@react-native-menu/menu';
 import { PARK_TYPES } from '@/lib/parkTypes';
+import { getDefaultParkTypes } from '@/lib/settings';
 import * as Location from 'expo-location';
 import { fullStateName } from '@/lib/stateNames';
 import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
@@ -406,7 +407,7 @@ function FilterPanel({
   allActivities, allTopics, filtersLoading,
   hasFilter, onReset,
   sortBy, onSortChange,
-  enabledParkTypes, parkTypeCounts, onToggleParkType, onSelectAllParkTypes,
+  enabledParkTypes, parkTypeCounts, onToggleParkType, onToggleAllParkTypes,
 }: {
   statusFilter: StatusFilter; onStatusFilter: (s: StatusFilter) => void;
   regionFilters: string[]; onRegionToggle: (r: string) => void; onClearRegions: () => void;
@@ -416,7 +417,7 @@ function FilterPanel({
   hasFilter: boolean; onReset: () => void;
   sortBy: SortBy; onSortChange: (s: SortBy) => void;
   enabledParkTypes: Set<string>; parkTypeCounts: Record<string, number>; onToggleParkType: (key: string) => void;
-  onSelectAllParkTypes: () => void;
+  onToggleAllParkTypes: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [renderPanel, setRenderPanel] = useState(false);
@@ -544,7 +545,7 @@ function FilterPanel({
 
       {/* Designation quick-access chips — same taxonomy/toggle semantics as
           the map tab's chip row (see PARK_TYPES/onToggleParkType/
-          onSelectAllParkTypes). Replaced the old ribbon-icon dropdown that
+          onToggleAllParkTypes). Replaced the old ribbon-icon dropdown that
           used to sit in the toggle row above. */}
       <ScrollView
         horizontal
@@ -553,7 +554,7 @@ function FilterPanel({
         contentContainerStyle={styles.designationChipRow}
       >
         <TouchableOpacity
-          onPress={onSelectAllParkTypes}
+          onPress={onToggleAllParkTypes}
           activeOpacity={0.75}
           style={[styles.designationChip, enabledParkTypes.size === PARK_TYPES.length && styles.designationChipActive]}
         >
@@ -723,9 +724,11 @@ export default function ParksScreen() {
   const [query,   setQuery]   = useState('');
   const [statusFilter,  setStatusFilter]  = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('closest');
-  // Unlike the map tab (which defaults to National Parks only — see
-  // lib/parkTypes), this list defaults to every designation shown.
-  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(new Set(PARK_TYPES.map(t => t.key)));
+  // Starts as every type shown, then swaps to whatever the user's set in
+  // Profile → Appearance once that async read resolves (same setting the
+  // map tab reads — see lib/settings' getDefaultParkTypes).
+  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(() => new Set(PARK_TYPES.map(t => t.key)));
+  useEffect(() => { getDefaultParkTypes().then(keys => setEnabledParkTypes(new Set(keys))); }, []);
   const [regionFilters, setRegionFilters] = useState<string[]>([]);
   const [activityFilters, setActivityFilters] = useState<string[]>([]);
   const [topicFilters,    setTopicFilters]    = useState<string[]>([]);
@@ -1060,7 +1063,9 @@ export default function ParksScreen() {
           if (next.has(key)) next.delete(key); else next.add(key);
           return next;
         })}
-        onSelectAllParkTypes={() => setEnabledParkTypes(new Set(PARK_TYPES.map(t => t.key)))}
+        onToggleAllParkTypes={() => setEnabledParkTypes(prev =>
+          prev.size === PARK_TYPES.length ? new Set() : new Set(PARK_TYPES.map(t => t.key))
+        )}
       />
 
       {/* Results count */}

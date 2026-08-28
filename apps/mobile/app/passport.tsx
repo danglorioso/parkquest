@@ -1100,10 +1100,10 @@ const st = StyleSheet.create({
     textShadowRadius: 2,
   },
   infoStatSub: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     color: GOLD,
-    opacity: 0.5,
+    opacity: 0.4,
     letterSpacing: -0.2,
   },
   infoProgress: {
