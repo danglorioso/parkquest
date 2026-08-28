@@ -48,11 +48,17 @@ interface ProfileInfo {
   avatar_url: string | null;
 }
 
+// Mirrors apps/web's ParkScopeStats/BadgeParkScope (apps/web/src/lib/badges.ts,
+// packages/types) — kept local since mobile can't import from the web app.
+interface ParkScopeStat { visited: number; total: number }
+type ParkScopes = { national_park: ParkScopeStat; historic_park: ParkScopeStat; all: ParkScopeStat };
+
 interface Park {
   park_code: string;
   name: string;
   states: string;
   stamp_glyph: CustomStampGlyph | null;
+  is_national_park: boolean;
 }
 
 interface Visit {
@@ -170,8 +176,7 @@ export default function PassportScreen() {
   const [profile,     setProfile]     = useState<ProfileInfo | null>(null);
   const [visits,      setVisits]      = useState<Visit[]>([]);
   const [allParks,    setAllParks]    = useState<Park[]>([]);
-  const [badgeCount,  setBadgeCount]  = useState(0);
-  const [totalBadges, setTotalBadges] = useState(0);
+  const [parkScopes,  setParkScopes]  = useState<ParkScopes | null>(null);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(false);
   const [selectedStamp, setSelectedStamp] = useState<StampItem | null>(null);
@@ -198,10 +203,8 @@ export default function PassportScreen() {
       if (profRes.status   === 'fulfilled' && profRes.value)   setProfile(profRes.value);
       if (visitsRes.status === 'fulfilled') setVisits(visitsRes.value ?? []);
       if (parksRes.status  === 'fulfilled') setAllParks(parksRes.value ?? []);
-      if (badgesRes.status === 'fulfilled') {
-        const all = badgesRes.value?.badges ?? badgesRes.value ?? [];
-        setBadgeCount(all.filter((b: { earned: boolean }) => b.earned).length);
-        setTotalBadges(all.length);
+      if (badgesRes.status === 'fulfilled' && badgesRes.value?.stats?.parkScopes) {
+        setParkScopes(badgesRes.value.stats.parkScopes);
       }
     } catch (e) {
       console.error('Passport load:', e);
@@ -229,7 +232,11 @@ export default function PassportScreen() {
     return () => scrollY.removeListener(id);
   }, [coverH, insets.top, scrollY]);
 
-  // All parks: visited (chrono) first, then unvisited
+  // The stamp grid is National Parks only — the curated 63, not every park
+  // area the app tracks. The AREAS stat below covers everything.
+  const nationalParks = useMemo(() => allParks.filter(p => p.is_national_park), [allParks]);
+
+  // National parks: visited (chrono) first, then unvisited
   const allStampItems = useMemo((): StampItem[] => {
     const visitedMap = new Map<string, string>();
     visits.forEach(v => {
@@ -237,7 +244,7 @@ export default function PassportScreen() {
     });
     const visited: StampItem[] = [];
     const unvisited: StampItem[] = [];
-    allParks.forEach((p, idx) => {
+    nationalParks.forEach((p, idx) => {
       const date = visitedMap.get(p.park_code) ?? null;
       const entry: StampItem = {
         park_code: p.park_code, name: p.name, states: p.states,
@@ -249,19 +256,9 @@ export default function PassportScreen() {
     });
     visited.sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
     return [...visited, ...unvisited];
-  }, [allParks, visits]);
+  }, [nationalParks, visits]);
 
   const visitedCount = useMemo(() => allStampItems.filter(s => s.visited).length, [allStampItems]);
-  // Distinct from visitedCount — a park visited twice is one stamped park
-  // but two trips, so this counts visit log entries, not unique parks.
-  const tripsCount   = useMemo(() => visits.filter(v => !v.is_bucket_list && v.visited_date).length, [visits]);
-  // Total photos logged across real visits — reflects actual content the
-  // user contributed, unlike bucket-list count (trivially inflatable by
-  // just adding every park to the list) which this stat replaced.
-  const photoCount   = useMemo(
-    () => visits.reduce((n, v) => n + (v.is_bucket_list ? 0 : (v.photos?.length ?? 0)), 0),
-    [visits]
-  );
   const statesCount  = useMemo(() => {
     const s = new Set<string>();
     allStampItems.filter(si => si.visited).forEach(si => si.states.split(',').forEach(st => s.add(st.trim())));
@@ -305,7 +302,7 @@ export default function PassportScreen() {
     const parkName = (code: string) => allParks.find(p => p.park_code === code)?.name?.replace(/ National Park.*$/, '') ?? code;
     const dated = visits.filter(v => !v.is_bucket_list && v.visited_date);
     if (dated.length === 0) {
-      return { mostVisited: null, topRated: null, favSeason: null, busiestYear: null, exploring: null };
+      return { mostVisited: null, topRated: null, onTrailSince: null };
     }
 
     const counts = new Map<string, number>();
@@ -319,37 +316,15 @@ export default function PassportScreen() {
       (b.rating! - a.rating!) || (a.visited_date ?? '').localeCompare(b.visited_date ?? '')
     )[0] ?? null;
 
-    // Favorite season — which quarter of the wheel gets the most trips.
-    // Dec–Feb winter, Mar–May spring, Jun–Aug summer, Sep–Nov fall.
-    const SEASONS = ['Winter ❄️', 'Spring 🌸', 'Summer ☀️', 'Fall 🍂'];
-    const seasonIdx = (m: number) => (m === 11 || m < 2) ? 0 : m < 5 ? 1 : m < 8 ? 2 : 3;
-    const seasonCounts = [0, 0, 0, 0];
-    dated.forEach(v => { seasonCounts[seasonIdx(new Date(v.visited_date!).getMonth())]++; });
-    const favIdx = seasonCounts.indexOf(Math.max(...seasonCounts));
-
-    // Busiest year — most stamps logged; ties go to the most recent year
-    const yearCounts = new Map<number, number>();
-    dated.forEach(v => {
-      const y = new Date(v.visited_date!).getFullYear();
-      yearCounts.set(y, (yearCounts.get(y) ?? 0) + 1);
-    });
-    let byYear = 0, byCount = 0;
-    yearCounts.forEach((n, y) => {
-      if (n > byCount || (n === byCount && y > byYear)) { byYear = y; byCount = n; }
-    });
-
-    // Days on trail — how long this passport has been collecting stamps
+    // Date of this passport's oldest logged visit
     const firstDate = dated.map(v => v.visited_date!).sort()[0];
-    const days = Math.max(1, Math.floor((Date.now() - new Date(firstDate).getTime()) / 86_400_000));
-    const sinceStr = new Date(firstDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    const sinceStr = new Date(firstDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     return {
       // Only meaningful once some park has 2+ visits
       mostVisited: mvCode ? { name: parkName(mvCode), detail: `${mvCount} visits` } : null,
       topRated:    top ? { name: parkName(top.park_code), detail: `${'★'.repeat(Math.round(top.rating!))}` } : null,
-      favSeason:   { name: SEASONS[favIdx], detail: `${seasonCounts[favIdx]} ${seasonCounts[favIdx] === 1 ? 'trip' : 'trips'}` },
-      busiestYear: { name: String(byYear), detail: `${byCount} ${byCount === 1 ? 'stamp' : 'stamps'}` },
-      exploring:   { name: `${days.toLocaleString()} days`, detail: `since ${sinceStr}` },
+      onTrailSince: { name: sinceStr, detail: '' },
     };
   }, [visits, allParks]);
 
@@ -643,7 +618,12 @@ export default function PassportScreen() {
                     <View style={st.statsPlate}>
                       <View style={st.infoStats}>
                         {([
-                          { label: 'TRIPS',  icon: 'footsteps', value: loading ? '–' : String(tripsCount) },
+                          // Every park area regardless of designation — the broad stat.
+                          { label: 'AREAS', value: loading || !parkScopes ? '–' : String(parkScopes.all.visited), sub: loading || !parkScopes ? '' : `/${parkScopes.all.total}` },
+                          // National Parks only — same numbers as the "X of Y
+                          // parks stamped" progress line below, surfaced as a
+                          // quick-glance number too.
+                          { label: 'NP VISITED', value: loading ? '–' : String(visitedCount), sub: loading ? '' : `/${nationalParks.length}` },
                           // Has a real denominator worth showing — not all 50 US
                           // states have a national park, so a bare count reads
                           // as "only visited N states" when N/50 was never the
@@ -651,25 +631,18 @@ export default function PassportScreen() {
                           // but rendered small/muted (a "/of" suffix, not a
                           // second headline number) so it doesn't fight the
                           // actual stat for attention.
-                          { label: 'STATES', icon: 'map',       value: loading ? '–' : String(statesCount), sub: loading ? '' : `/${totalParkStates}` },
-                          // Photos, not bucket-list count — bucket list is
-                          // trivially inflatable (add every park) and already
-                          // reachable via the Map/Parks tab filters, so it
-                          // isn't a meaningful passport stat.
-                          { label: 'PHOTOS', icon: 'camera',    value: loading ? '–' : String(photoCount) },
-                          { label: 'BADGES', icon: 'ribbon',    value: loading ? '–' : String(badgeCount) },
+                          { label: 'STATES', value: loading ? '–' : String(statesCount), sub: loading ? '' : `/${totalParkStates}` },
                         ] as const).map((s, i) => {
                           return (
                             <View
                               key={s.label}
                               style={[st.infoStat, i > 0 && st.infoStatBorder]}
                             >
-                              <Ionicons name={s.icon} size={15} color={GOLD} style={st.infoStatIcon} />
+                              <Text style={st.infoStatLabel}>{s.label}</Text>
                               <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                                 <Text style={st.infoStatVal}>{s.value}</Text>
                                 {'sub' in s && s.sub ? <Text style={st.infoStatSub}>{s.sub}</Text> : null}
                               </Text>
-                              <Text style={st.infoStatLabel}>{s.label}</Text>
                             </View>
                           );
                         })}
@@ -679,16 +652,16 @@ export default function PassportScreen() {
                         {/* One line, never wraps: copy left, percent right */}
                         <View style={st.infoProgressRow}>
                           <Text style={st.infoProgressText} numberOfLines={1}>
-                            {loading ? 'Loading…' : `${visitedCount} of 63 parks stamped`}
+                            {loading ? 'Loading…' : `${visitedCount} of ${nationalParks.length} parks stamped`}
                           </Text>
                           {!loading && (
                             <Text style={st.infoProgressPct}>
-                              {Math.round((visitedCount / 63) * 100)}%
+                              {nationalParks.length > 0 ? Math.round((visitedCount / nationalParks.length) * 100) : 0}%
                             </Text>
                           )}
                         </View>
                         <View style={st.progressTrack}>
-                          <View style={[st.progressFill, { width: `${(visitedCount / 63) * 100}%` as `${number}%` }]} />
+                          <View style={[st.progressFill, { width: `${nationalParks.length > 0 ? (visitedCount / nationalParks.length) * 100 : 0}%` as `${number}%` }]} />
                         </View>
                       </View>
                     </View>
@@ -740,21 +713,19 @@ export default function PassportScreen() {
                       </View>
                     )}
 
-                    {/* Records — personal superlatives + fun facts pulled from the visit log */}
-                    {!loading && (records.mostVisited || records.topRated || records.favSeason) && (
-                      <View style={[st.statsPlate, { marginTop: 10 }]}>
+                    {/* Records — personal superlatives pulled from the visit log */}
+                    {!loading && (records.mostVisited || records.topRated || records.onTrailSince) && (
+                      <View style={[st.statsPlate, { marginTop: 18 }]}>
                         {([
-                          { label: 'MOST VISITED',  rec: records.mostVisited },
-                          { label: 'TOP RATED',     rec: records.topRated },
-                          { label: 'TRAIL SEASON',  rec: records.favSeason },
-                          { label: 'BUSIEST YEAR',  rec: records.busiestYear },
-                          { label: 'DAYS ON TRAIL', rec: records.exploring },
+                          { label: 'MOST VISITED',      rec: records.mostVisited },
+                          { label: 'TOP RATED',         rec: records.topRated },
+                          { label: 'ON THE TRAIL SINCE', rec: records.onTrailSince },
                         ] as const).filter(r => r.rec).map((r, i) => (
                           <View key={r.label} style={[st.recordRow, i > 0 && st.recordRowBorder]}>
                             <Text style={st.recordLabel}>{r.label}</Text>
                             <Text style={st.recordValue} numberOfLines={1}>
                               {r.rec!.name}
-                              <Text style={st.recordDetail}>  ·  {r.rec!.detail}</Text>
+                              {r.rec!.detail ? <Text style={st.recordDetail}>  ·  {r.rec!.detail}</Text> : null}
                             </Text>
                           </View>
                         ))}
@@ -941,7 +912,7 @@ const st = StyleSheet.create({
   stampChipRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 10,
+    marginTop: 16,
   },
   stampChip: {
     flex: 1,
@@ -973,18 +944,17 @@ const st = StyleSheet.create({
     // skeleton instead of sitting behind it.
     backgroundColor: 'rgba(8,16,12,0.55)',
   },
-  // Records rows — label/value superlatives inside a stats plate
+  // Records rows — label/value superlatives, rule-separated like statsPlate
   recordRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 9,
-    paddingHorizontal: 6,
+    paddingVertical: 13,
     gap: 12,
   },
   recordRowBorder: {
-    borderTopWidth: 0.5,
-    borderTopColor: 'rgba(201,169,74,0.18)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(240,197,80,0.18)',
   },
   recordLabel: {
     fontSize: 10,
@@ -1071,13 +1041,14 @@ const st = StyleSheet.create({
     letterSpacing: 2,
     color: 'rgba(201,169,74,0.16)',
   },
-  // Solid-ish backing so the stat digits stay legible over the guilloche
-  // pattern regardless of how that pattern's own opacity gets tuned.
+  // Thin gold rules bound the section, like a printed document's own rule
+  // lines — a flat semi-transparent fill here read as a dull gray box
+  // instead (both colors are dark, so the overlay just desaturates toward
+  // gray rather than reading as a deliberate panel).
   statsPlate: {
-    backgroundColor: 'rgba(8,16,12,0.42)',
-    borderRadius: 14,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(240,197,80,0.22)',
   },
 
   // ── Info page (paper — bio only, like a passport's own data page) ──
@@ -1100,31 +1071,27 @@ const st = StyleSheet.create({
   // profile page's own passport-card stats.
   infoStats: {
     flexDirection: 'row',
-    paddingVertical: 12,
-    marginBottom: 10,
+    paddingVertical: 18,
+    marginBottom: 16,
   },
   infoStat: {
     flex: 1,
     alignItems: 'center',
   },
   infoStatBorder: {
-    borderLeftWidth: 0.5,
-    borderLeftColor: 'rgba(201,169,74,0.3)',
-  },
-  infoStatIcon: {
-    opacity: 0.7,
-    marginBottom: 3,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: 'rgba(240,197,80,0.22)',
   },
   infoStatLabel: {
     fontSize: 9,
     fontWeight: '700',
     color: GOLD,
-    letterSpacing: 1.5,
-    opacity: 0.7,
-    marginTop: 2,
+    letterSpacing: 1.6,
+    opacity: 0.8,
+    marginBottom: 6,
   },
   infoStatVal: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
     color: GOLD,
     letterSpacing: -0.5,
@@ -1133,22 +1100,22 @@ const st = StyleSheet.create({
     textShadowRadius: 2,
   },
   infoStatSub: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     color: GOLD,
-    opacity: 0.55,
+    opacity: 0.4,
     letterSpacing: -0.2,
   },
   infoProgress: {
-    gap: 6,
-    paddingBottom: 12,
+    gap: 8,
+    paddingBottom: 18,
   },
-  // Lines up with progressTrack's own inset below, without touching the bar's width
+  // Flush with infoStats above — no extra inset, so the bar's edges line up
+  // exactly with the stat columns rather than reading as narrower/misaligned.
   infoProgressRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    marginHorizontal: 16,
     gap: 8,
   },
   infoProgressText: {
@@ -1168,7 +1135,6 @@ const st = StyleSheet.create({
   },
   progressTrack: {
     height: 3,
-    marginHorizontal: 16,
     backgroundColor: GOLD + '22',
     borderRadius: 2,
     overflow: 'hidden',

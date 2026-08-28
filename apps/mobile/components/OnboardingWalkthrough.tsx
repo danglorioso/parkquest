@@ -25,7 +25,7 @@ const STEPS: Step[] = [
   {
     icon: 'map-outline',
     title: 'Track every park',
-    body: 'The Map tab shows all 63 parks at a glance — tap a pin to check it out, mark it visited, or save it to your bucket list.',
+    body: 'The Map tab shows all 63 national parks at a glance — tap a pin to check it out, mark it visited, or save it to your bucket list.',
   },
   {
     icon: 'add-circle-outline',

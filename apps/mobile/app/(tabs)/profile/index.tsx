@@ -19,6 +19,7 @@ import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 import { ParkStamp } from '@/components/ParkStamp';
 import type { CustomStampGlyph } from '@parkquest/types';
 import { NotificationBell } from '@/components/NotificationCenter';
+import { SearchOverlay } from '@/components/SearchOverlay';
 import { EmptyState } from '@/components/EmptyState';
 import { HolographicShine } from '@/components/HolographicShine';
 import { AvatarLightbox } from '@/components/AvatarLightbox';
@@ -163,8 +164,14 @@ export default function ProfileScreen() {
   const isDark = useColorScheme() === 'dark';
 
   const [profile,      setProfile]      = useState<ProfileInfo | null>(null);
+  // National Parks only (the curated 63), deduped by park_code — sourced
+  // from /api/badges' stats.parkScopes.national_park, not computed from raw
+  // visits here, so this can't drift from the passport screen's own count.
   const [parksVisited, setParksVisited] = useState(0);
-  const [tripsCount,   setTripsCount]   = useState(0);
+  const [parksTotal,   setParksTotal]   = useState(0);
+  // Every park area regardless of designation — mirrors the passport
+  // screen's own AREAS stat (stats.parkScopes.all), not just the curated 63.
+  const [areasVisited, setAreasVisited] = useState(0);
   const [badgesEarned, setBadgesEarned] = useState(0);
   const [totalBadges,  setTotalBadges]  = useState(0);
   const [friendCount,  setFriendCount]  = useState(0);
@@ -173,6 +180,7 @@ export default function ProfileScreen() {
   const [sharingBadge, setSharingBadge] = useState<BadgeSummary | null>(null);
   const [selectedStamp, setSelectedStamp] = useState<StampPreview | null>(null);
   const [avatarLightbox, setAvatarLightbox] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [rawVisits, setRawVisits] = useState<any[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
@@ -200,7 +208,10 @@ export default function ProfileScreen() {
       const [profRes, visitsRes, badgesRes, friendsRes] = await Promise.allSettled([
         apiFetch<ProfileInfo>('/api/profile', tok),
         apiFetch<any[]>('/api/visits', tok),
-        apiFetch<{ badges: BadgeSummary[] }>('/api/badges', tok),
+        apiFetch<{ badges: BadgeSummary[]; stats?: { parkScopes?: {
+          national_park?: { visited: number; total: number };
+          all?: { visited: number; total: number };
+        } } }>('/api/badges', tok),
         apiFetch<any[]>(`/api/friends?userId=${user?.id}&type=friends`, tok),
       ]);
 
@@ -211,9 +222,6 @@ export default function ProfileScreen() {
       if (profRes.status === 'fulfilled')   setProfile(profRes.value);
       if (visitsRes.status === 'fulfilled') {
         const vs = visitsRes.value;
-        const visited = [...new Set(vs.filter((v: any) => !v.is_bucket_list && v.visited_date).map((v: any) => v.park_code))];
-        setParksVisited(visited.length);
-        setTripsCount(vs.filter((v: any) => !v.is_bucket_list && v.visited_date).length);
         setRawVisits(vs);
         setVisitsLoaded(true);
       }
@@ -225,6 +233,10 @@ export default function ProfileScreen() {
           .sort((a: any, b: any) => (b.earned_at ?? '').localeCompare(a.earned_at ?? ''));
         setBadgesEarned(earned.length);
         setTotalBadges(all.length);
+        const npScope = badgesRes.value.stats?.parkScopes?.national_park;
+        if (npScope) { setParksVisited(npScope.visited); setParksTotal(npScope.total); }
+        const allScope = badgesRes.value.stats?.parkScopes?.all;
+        if (allScope) setAreasVisited(allScope.visited);
         setEarnedBadges(earned.slice(0, 5));
         setBadgesLoaded(true);
       }
@@ -364,6 +376,14 @@ export default function ProfileScreen() {
   const topBarActions = (
     <View style={styles.topBarActions}>
       <NotificationBell style={styles.iconBtn} />
+      <TouchableOpacity
+        style={styles.iconBtn}
+        activeOpacity={0.8}
+        onPress={() => setSearchOpen(true)}
+      >
+        <GlassIconBg />
+        <Ionicons name="search" size={22} color={C.inkSoft} />
+      </TouchableOpacity>
       <TouchableOpacity
         style={styles.iconBtn}
         activeOpacity={0.8}
@@ -513,8 +533,8 @@ export default function ProfileScreen() {
 
           <View style={styles.passportStats}>
             {([
-              { label: 'VISITED', value: visitsLoaded ? `${parksVisited}/63` : '–', href: '/passport' },
-              { label: 'TRIPS',   value: visitsLoaded ? String(tripsCount) : '–', href: '/profile/journal' },
+              { label: 'NP VISITED', value: badgesLoaded ? `${parksVisited}/${parksTotal}` : '–', href: '/passport' },
+              { label: 'AREAS',   value: badgesLoaded ? String(areasVisited) : '–', href: '/passport' },
               { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–', href: '/profile/badges' },
               { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–', href: '/profile/friends' },
             ] as { label: string; value: string; href: string }[]).map(s => (
@@ -539,10 +559,10 @@ export default function ProfileScreen() {
           {/* Stamp count progress line — mirrors the passport page */}
           <View style={styles.passportProgress}>
             <Text style={styles.passportProgressText}>
-              {visitsLoaded ? `${parksVisited} of 63 parks stamped` : 'Loading…'}
+              {badgesLoaded ? `${parksVisited} of ${parksTotal} parks stamped` : 'Loading…'}
             </Text>
             <View style={styles.passportProgressTrack}>
-              <View style={[styles.passportProgressFill, { width: `${(parksVisited / 63) * 100}%` as `${number}%` }]} />
+              <View style={[styles.passportProgressFill, { width: `${parksTotal > 0 ? (parksVisited / parksTotal) * 100 : 0}%` as `${number}%` }]} />
             </View>
           </View>
 
@@ -895,6 +915,7 @@ export default function ProfileScreen() {
       ) : null}
 
       <AvatarLightbox visible={avatarLightbox} url={avatarUrl} onClose={() => setAvatarLightbox(false)} />
+      <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
     </View>
   );
 }
@@ -984,13 +1005,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.2)',
   },
   passportStatItem: {
-    width: '50%', marginBottom: 14,
+    width: '50%', marginBottom: 14, alignItems: 'center',
   },
   passportStatLabel: {
-    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.8)', letterSpacing: 1.2,
+    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.8)', letterSpacing: 1.2, textAlign: 'center',
   },
   passportStatVal: {
-    fontSize: 26, fontWeight: '800', color: GOLD, marginTop: 2, letterSpacing: -0.3,
+    fontSize: 26, fontWeight: '800', color: GOLD, marginTop: 2, letterSpacing: -0.3, textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
   passportProgress: {

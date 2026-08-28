@@ -15,6 +15,8 @@ import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { MenuView } from '@react-native-menu/menu';
+import { PARK_TYPES } from '@/lib/parkTypes';
+import { getDefaultParkTypes } from '@/lib/settings';
 import * as Location from 'expo-location';
 import { fullStateName } from '@/lib/stateNames';
 import { consumeParkFilterIntent } from '@/lib/parkFilterIntent';
@@ -44,6 +46,8 @@ interface Park {
   image_url: string | null;
   latitude: string | null;
   longitude: string | null;
+  is_national_park?: boolean;
+  designation?: string | null;
 }
 
 interface Visit {
@@ -156,6 +160,7 @@ function ParkCard({
   park, status, descLines = 2, onTitleLayout, distance, priority = 'high',
 }: { park: Park; status: ParkStatus; descLines?: number; onTitleLayout?: (lines: number) => void; distance?: number | null; priority?: 'high' | 'low' }) {
   const router = useRouter();
+  const { primary } = useColors();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
   const stateCode = park.states.split(',')[0].trim();
@@ -183,11 +188,11 @@ function ParkCard({
         <StatusBadge status={status} />
       </View>
       <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
+        {/* Long state names fall back to the two-letter code when the
+            distance shares the line — "New Hampshire" + "2333 mi" can't
+            both fit a half-width card. flex keeps them from ever
+            overlapping regardless. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-          {/* Long state names fall back to the two-letter code when the
-              distance shares the line — "New Hampshire" + "2333 mi" can't
-              both fit a half-width card. flex keeps them from ever
-              overlapping regardless. */}
           <Text style={[styles.cardState, { marginBottom: 0, flexShrink: 1 }]} numberOfLines={1}>
             {distance != null && stateName.length > 12 ? stateCode : stateName}
           </Text>
@@ -206,6 +211,18 @@ function ParkCard({
           <Text style={styles.cardDesc} numberOfLines={descLines}>{park.description}</Text>
         ) : null}
       </View>
+      {park.is_national_park && (
+        // One of the curated 63 — a primary-accent border, not just the
+        // usual neutral hairline, so they read as distinct at a glance.
+        // Rendered as a separate non-clipping overlay on top of the card's
+        // own content, not merged onto styles.card's borderWidth — a border
+        // living on the SAME view that clips a full-bleed photo (overflow:
+        // hidden + borderRadius + borderWidth all together) is the iOS
+        // rendering seam that left a thin gap/white line along the image's
+        // edges. This frame has no overflow:hidden and no clipped children
+        // of its own, so it can't trigger that.
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardAccentBorder, { borderColor: primary }]} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -251,6 +268,7 @@ function ParkListRow({
   park, status, visitCount, distance, priority = 'high',
 }: { park: Park; status: ParkStatus; visitCount: number; distance?: number | null; priority?: 'high' | 'low' }) {
   const router = useRouter();
+  const { primary } = useColors();
   const [imgFailed, setImgFailed] = useState(false);
   const [g1] = gradientColors(park.park_code);
   const stateCode = park.states.split(',')[0].trim();
@@ -301,6 +319,11 @@ function ParkListRow({
           <Text style={styles.cardDesc} numberOfLines={4}>{park.description}</Text>
         ) : null}
       </View>
+      {park.is_national_park && (
+        // See ParkCard's identical overlay for why this isn't merged onto
+        // styles.listCard's own borderWidth.
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardAccentBorder, { borderColor: primary }]} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -391,6 +414,7 @@ function FilterPanel({
   allActivities, allTopics, filtersLoading,
   hasFilter, onReset,
   sortBy, onSortChange,
+  enabledParkTypes, parkTypeCounts, onToggleParkType, onToggleAllParkTypes,
 }: {
   statusFilter: StatusFilter; onStatusFilter: (s: StatusFilter) => void;
   regionFilters: string[]; onRegionToggle: (r: string) => void; onClearRegions: () => void;
@@ -399,6 +423,8 @@ function FilterPanel({
   allActivities: string[]; allTopics: string[]; filtersLoading: boolean;
   hasFilter: boolean; onReset: () => void;
   sortBy: SortBy; onSortChange: (s: SortBy) => void;
+  enabledParkTypes: Set<string>; parkTypeCounts: Record<string, number>; onToggleParkType: (key: string) => void;
+  onToggleAllParkTypes: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [renderPanel, setRenderPanel] = useState(false);
@@ -523,6 +549,51 @@ function FilterPanel({
           </View>
         </MenuView>
       </View>
+
+      {/* Designation quick-access chips — same taxonomy/toggle semantics as
+          the map tab's chip row (see PARK_TYPES/onToggleParkType/
+          onToggleAllParkTypes). Replaced the old ribbon-icon dropdown that
+          used to sit in the toggle row above. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ marginTop: 8 }}
+        contentContainerStyle={styles.designationChipRow}
+      >
+        <TouchableOpacity
+          onPress={onToggleAllParkTypes}
+          activeOpacity={0.75}
+          style={[styles.designationChip, enabledParkTypes.size === PARK_TYPES.length && styles.designationChipActive]}
+        >
+          <Text
+            style={[
+              styles.designationChipText,
+              enabledParkTypes.size === PARK_TYPES.length && styles.designationChipTextActive,
+            ]}
+            numberOfLines={1}
+          >
+            All
+          </Text>
+        </TouchableOpacity>
+        {PARK_TYPES.map(t => {
+          const active = enabledParkTypes.has(t.key);
+          return (
+            <TouchableOpacity
+              key={t.key}
+              onPress={() => onToggleParkType(t.key)}
+              activeOpacity={0.75}
+              style={[styles.designationChip, active && styles.designationChipActive]}
+            >
+              <Text style={[styles.designationChipText, active && styles.designationChipTextActive]} numberOfLines={1}>
+                {t.label}
+              </Text>
+              <Text style={[styles.designationChipCount, active && styles.designationChipCountActive]}>
+                {parkTypeCounts[t.key] ?? 0}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       {/* Active filter chips — horizontally scrollable */}
       {activeCount > 0 && (
@@ -660,6 +731,11 @@ export default function ParksScreen() {
   const [query,   setQuery]   = useState('');
   const [statusFilter,  setStatusFilter]  = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('closest');
+  // Starts as every type shown, then swaps to whatever the user's set in
+  // Profile → Appearance once that async read resolves (same setting the
+  // map tab reads — see lib/settings' getDefaultParkTypes).
+  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(() => new Set(PARK_TYPES.map(t => t.key)));
+  useEffect(() => { getDefaultParkTypes().then(keys => setEnabledParkTypes(new Set(keys))); }, []);
   const [regionFilters, setRegionFilters] = useState<string[]>([]);
   const [activityFilters, setActivityFilters] = useState<string[]>([]);
   const [topicFilters,    setTopicFilters]    = useState<string[]>([]);
@@ -810,6 +886,7 @@ export default function ParksScreen() {
 
   const filtered = useMemo(() => {
     return parks.filter(p => {
+      if (!PARK_TYPES.some(t => enabledParkTypes.has(t.key) && t.match(p))) return false;
       const status = parkStatus(p.park_code, visits);
       if (statusFilter !== 'all' && status !== statusFilter) return false;
       if (regionFilters.length > 0) {
@@ -852,7 +929,12 @@ export default function ParksScreen() {
       // 'az', or 'closest' without a location fix yet
       return a.name.localeCompare(b.name);
     });
-  }, [parks, visits, query, statusFilter, regionFilters, activityFilters, topicFilters, activitiesMap, topicsMap, userLocation, sortBy]);
+  }, [parks, visits, query, statusFilter, regionFilters, activityFilters, topicFilters, activitiesMap, topicsMap, userLocation, sortBy, enabledParkTypes]);
+
+  const parkTypeCounts: Record<string, number> = useMemo(
+    () => Object.fromEntries(PARK_TYPES.map(t => [t.key, parks.filter(t.match).length])),
+    [parks]
+  );
 
   const hasFilter = statusFilter !== 'all' || regionFilters.length > 0
     || activityFilters.length > 0 || topicFilters.length > 0;
@@ -977,6 +1059,16 @@ export default function ParksScreen() {
         filtersLoading={filtersLoading}
         hasFilter={hasFilter} onReset={handleReset}
         sortBy={sortBy} onSortChange={handleSortChange}
+        enabledParkTypes={enabledParkTypes}
+        parkTypeCounts={parkTypeCounts}
+        onToggleParkType={key => setEnabledParkTypes(prev => {
+          const next = new Set(prev);
+          if (next.has(key)) next.delete(key); else next.add(key);
+          return next;
+        })}
+        onToggleAllParkTypes={() => setEnabledParkTypes(prev =>
+          prev.size === PARK_TYPES.length ? new Set() : new Set(PARK_TYPES.map(t => t.key))
+        )}
       />
 
       {/* Results count */}
@@ -1096,8 +1188,11 @@ const styles = StyleSheet.create({
     marginHorizontal: H_PAD,
     marginBottom: 12,
     backgroundColor: C.surface,
-    borderRadius: 12,
-    padding: 10,
+    // Overshoots on purpose — clamps to a full pill (iOS 26 search bar
+    // look, matches the map page's search bar) regardless of exact height.
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderWidth: 0.5,
     borderColor: C.hairline,
   },
@@ -1143,6 +1238,45 @@ const styles = StyleSheet.create({
   filterBadgeText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  designationChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  designationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    height: 32,
+  },
+  // Inverted ink/bg fill, not a hue — matches the map tab's same chip row
+  // (a colored chip here would read as a status color instead).
+  designationChipActive: {
+    backgroundColor: C.ink,
+    borderColor: C.ink,
+  },
+  designationChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.inkSoft,
+  },
+  designationChipTextActive: {
+    color: C.bg,
+  },
+  designationChipCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.inkMute,
+    fontVariant: ['tabular-nums'],
+  },
+  designationChipCountActive: {
+    color: C.bg,
+    opacity: 0.7,
   },
   filterPanel: {
     marginTop: 8,
@@ -1289,6 +1423,14 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
     overflow: 'hidden',
+  },
+  // National-park accent frame — a plain overlay, deliberately no
+  // overflow:hidden/clipped children of its own (see ParkCard/ParkListRow
+  // for why that combination left a seam along the photo's edges).
+  cardAccentBorder: {
+    borderRadius: 20,
+    borderCurve: 'continuous',
+    borderWidth: 1.5,
   },
   cardImg: {
     height: 120,

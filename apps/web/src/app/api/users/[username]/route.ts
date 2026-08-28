@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, count, and, or, isNotNull, sql, desc } from 'drizzle-orm';
+import { eq, count, countDistinct, and, or, isNotNull, sql, desc } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userProfiles, visits, friendships, parks, userBadges, posts } from '@/lib/db/schema';
 import { getBadgeDisplayMap } from '@/lib/badgeDefs';
@@ -39,6 +39,7 @@ export async function GET(
     // Run all queries in parallel
     const [
       [visitCountRow],
+      [parksTotalRow],
       [friendCountRow],
       allVisitsRaw,
       earnedBadges,
@@ -47,11 +48,19 @@ export async function GET(
       viewerFriends,
       targetFriends,
     ] = await Promise.all([
-      db.select({ count: count() }).from(visits).where(and(
-        eq(visits.clerk_user_id, targetId),
-        eq(visits.is_bucket_list, false),
-        isNotNull(visits.visited_date),
-      )),
+      // Distinct park_code, scoped to National Parks (the curated 63) — not
+      // a raw visit-log count, which double-counts repeat visits and would
+      // include every park designation with no distinction.
+      db.select({ count: countDistinct(visits.park_code) })
+        .from(visits)
+        .innerJoin(parks, eq(parks.park_code, visits.park_code))
+        .where(and(
+          eq(visits.clerk_user_id, targetId),
+          eq(visits.is_bucket_list, false),
+          isNotNull(visits.visited_date),
+          eq(parks.is_national_park, true),
+        )),
+      db.select({ count: count() }).from(parks).where(eq(parks.is_national_park, true)),
       db.select({ count: count() }).from(friendships).where(and(
         or(eq(friendships.requester_id, targetId), eq(friendships.recipient_id, targetId)),
         eq(friendships.status, 'accepted'),
@@ -277,6 +286,7 @@ export async function GET(
     return NextResponse.json({
       ...profile,
       parks_visited:     visitCountRow.count,
+      parks_total:       parksTotalRow.count,
       states_visited:    statesVisited.size,
       bucket_list_count: bucketList.length,
       friend_count:      friendCountRow.count,

@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated, DeviceEventEmitter, Dimensions, Keyboard, LayoutAnimation, Platform,
-  Pressable, StyleSheet, Switch,
+  Animated, DeviceEventEmitter, Dimensions, Keyboard, Platform,
+  Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View, useColorScheme,
-  type ColorValue, type StyleProp, type ViewStyle,
+  type ColorValue,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
-import Slider from '@react-native-community/slider';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
@@ -19,6 +18,9 @@ import { CompassSpinner } from '@/components/LoadingScreen';
 import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useIsOnline } from '@/lib/network';
+import { PARK_TYPES } from '@/lib/parkTypes';
+import { getDefaultParkTypes } from '@/lib/settings';
+import { MapDetailsSheet, type StatusOption } from '@/components/MapDetailsSheet';
 import { ParkProfileScreen } from '../park/[id]';
 
 // Not-yet-visited marker gray — map-only, not part of the shared palette
@@ -177,6 +179,8 @@ interface ParkForMap {
   title?: string | null;
   notes?: string | null;
   photos?: string[] | null;
+  is_national_park: boolean;
+  designation: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -211,29 +215,47 @@ function parkSheetProps(park: ParkForMap) {
   };
 }
 
+// Blends a hex color toward white — used to pastel-ify a national-park
+// dot's fill so the dark center star (see ParkMarker) has enough contrast
+// to read, without giving up the status hue entirely like a flat neutral
+// fill would.
+function lighten(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (channel: number) => Math.round(channel + (255 - channel) * amt);
+  const r = mix((n >> 16) & 255), g = mix((n >> 8) & 255), b = mix(n & 255);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
 // Concrete hex strings only — markers render into static bitmaps
 // (tracksViewChanges={false}), and a DynamicColorIOS resolves at whatever
 // theme was active when each marker happened to be snapshotted, leaving a
 // mix of light- and dark-resolved borders after a theme change.
-function markerConfig(status: ParkStatus, selected: boolean, dark: boolean) {
+// Every dot is the same size/opacity regardless of type — shrinking the
+// non-national ones made them too small to reliably see or tap. The
+// "special" signal for national parks is entirely the star badge riding
+// the dot's corner (see ParkMarker) now, not size or color.
+function markerConfig(status: ParkStatus, selected: boolean, dark: boolean, isNationalPark: boolean) {
   const color =
     status === 'visited'    ? (dark ? '#4FA76C' : '#2F7A4A') :
     status === 'bucketList' ? (dark ? '#D9A63E' : '#C48A20') : UNVISITED;
   const border = dark ? '#201D17' : '#FFFBF1';
-  const dotR  = selected ? 10 : status === 'visited' ? 7.5 : 6;
-  const haloR = selected ? 17 : status === 'visited' ? 13  : 10;
-  const haloOpacity = selected ? 0.24 : 0.15;
-  return { color, border, dotR, haloR, haloOpacity };
+  const dotR  = selected ? 11 : status === 'visited' ? 8 : 6.5;
+  const haloR = selected ? 18 : status === 'visited' ? 14 : 11;
+  const haloOpacity = selected ? 0.24 : 0.16;
+  const dotOpacity = 1;
+  const borderWidth = 2.5;
+  return { color, border, dotR, haloR, haloOpacity, dotOpacity, borderWidth };
 }
 
-// Strips the "National Park" designation for map labels, where space is tight —
-// "Grand Canyon National Park" → "Grand Canyon". Handles the "X National Park &
-// Preserve" / "National and State Parks" variants and the one park named
-// "National Park of American Samoa" (designation is a prefix, not a suffix).
+// Strips the designation suffix for map labels, where space is tight —
+// "Grand Canyon National Park" → "Grand Canyon", "Coltsville National
+// Historical Park" → "Coltsville". Handles the "X National Park & Preserve" /
+// "National and State Parks" variants and the one park named "National Park
+// of American Samoa" (designation is a prefix, not a suffix).
 function shortParkName(name: string): string {
   return name
     .replace(/^National Park of /i, '')
-    .replace(/ National (?:and State )?Parks?(?: (?:&|and) Preserve)?$/i, '')
+    .replace(/ National (?:Historical )?(?:and State )?Parks?(?: (?:&|and) Preserve)?$/i, '')
     .trim();
 }
 
@@ -243,7 +265,8 @@ function ParkMarker({ park, selected }: { park: ParkForMap; selected: boolean })
   // Android is pinned to the light theme app-wide (see palette.tsx), so only
   // iOS ever resolves dark marker colors.
   const dark = useColorScheme() === 'dark' && Platform.OS === 'ios';
-  const { color, border, dotR, haloR, haloOpacity } = markerConfig(park.status, selected, dark);
+  const { color, border, dotR, haloR, haloOpacity, dotOpacity, borderWidth } =
+    markerConfig(park.status, selected, dark, park.is_national_park);
   // Outer box is ALWAYS sized for the selected (largest) halo, never the
   // actual current haloR — when the marker's own declared size changes in
   // the same tick tracksViewChanges goes live (both happen together on
@@ -253,7 +276,7 @@ function ParkMarker({ park, selected }: { park: ParkForMap; selected: boolean })
   // map for a frame. A fixed outer box means selecting only changes what's
   // drawn INSIDE a view whose own size never moves, so there's nothing for
   // MapKit to re-anchor.
-  const maxSz = markerConfig(park.status, true, dark).haloR * 2;
+  const maxSz = markerConfig(park.status, true, dark, park.is_national_park).haloR * 2;
   return (
     <View style={{ width: maxSz, height: maxSz, alignItems: 'center', justifyContent: 'center' }}>
       <View style={{
@@ -261,12 +284,22 @@ function ParkMarker({ park, selected }: { park: ParkForMap; selected: boolean })
         width: haloR * 2, height: haloR * 2, borderRadius: haloR,
         backgroundColor: color, opacity: haloOpacity,
       }} />
-      <View style={{
-        width: dotR * 2, height: dotR * 2, borderRadius: dotR,
-        backgroundColor: color,
-        borderWidth: selected ? 2 : 1.5,
-        borderColor: border,
-      }} />
+      <View style={{ width: dotR * 2, height: dotR * 2, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{
+          width: dotR * 2, height: dotR * 2, borderRadius: dotR,
+          backgroundColor: park.is_national_park ? lighten(color, 0.55) : color,
+          opacity: dotOpacity,
+          borderWidth,
+          borderColor: border,
+        }} />
+        {park.is_national_park && (
+          // Stamped in the center of the dot itself, not a corner badge.
+          // Fixed dark fill (not `border`, which flips to near-white in
+          // light mode) — reads more clearly against the status colors
+          // than white did, and stays constant across themes.
+          <Ionicons name="star" size={dotR * 1.15} color="#1B1A16" style={{ position: 'absolute' }} />
+        )}
+      </View>
     </View>
   );
 }
@@ -364,13 +397,25 @@ function ParkLabelMarker({
       <View style={[styles.mapLabelRow, pillW === null && { opacity: 0 }]}>
         <View style={{ width: LABEL_GAP }} />
         <View
-          style={styles.mapLabelPill}
+          style={[
+            styles.mapLabelPill,
+            // Historical park labels stay smaller/lighter — same hierarchy
+            // as their dots, so National Parks read as primary content.
+            !park.is_national_park && { paddingHorizontal: 5, paddingVertical: 2, opacity: 0.75 },
+          ]}
           onLayout={e => {
             const w = Math.ceil(e.nativeEvent.layout.width);
             setPillW(prev => (prev === w ? prev : w));
           }}
         >
-          <Text style={[styles.mapLabelText, { fontSize }]} numberOfLines={1}>
+          <Text
+            style={[
+              styles.mapLabelText,
+              { fontSize: park.is_national_park ? fontSize : fontSize - 1.5 },
+              !park.is_national_park && { fontWeight: '600' },
+            ]}
+            numberOfLines={1}
+          >
             {shortParkName(park.name)}
           </Text>
         </View>
@@ -379,117 +424,12 @@ function ParkLabelMarker({
   );
 }
 
-// ── Menu dropdown ─────────────────────────────────────────────────────────────
-// System-menu-style presentation for the custom map dropdowns (filter pill +
-// labels menu). LayoutAnimation can't animate child mounts under Fabric, so
-// these snapped open; this mimics UIMenu instead — springs open scaling up
-// from the anchor corner, and shrinks/fades out quickly on close. Content
-// stays mounted until the close animation finishes.
-function MenuDropdown({
-  visible, style, origin = 'top left', children,
-}: {
-  visible: boolean;
-  style?: StyleProp<ViewStyle>;
-  origin?: 'top left' | 'top right';
-  children: React.ReactNode;
-}) {
-  const [render, setRender] = useState(visible);
-  const progress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      setRender(true);
-      Animated.spring(progress, {
-        toValue: 1, useNativeDriver: true,
-        damping: 24, stiffness: 350, mass: 0.8,
-      }).start();
-    } else {
-      Animated.timing(progress, {
-        toValue: 0, duration: 160, useNativeDriver: true,
-      }).start(({ finished }) => { if (finished) setRender(false); });
-    }
-  }, [visible, progress]);
-
-  if (!render) return null;
-  return (
-    <Animated.View
-      style={[style, {
-        transformOrigin: origin,
-        opacity: progress,
-        transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
-      }]}
-    >
-      {children}
-    </Animated.View>
-  );
-}
-
-// ── FilterPill ────────────────────────────────────────────────────────────────
-
 const FILTERS: Array<{ key: FilterStatus; dot: ColorValue; label: string }> = [
   { key: 'all',        dot: C.ink,       label: 'ALL'    },
   { key: 'visited',    dot: C.visited,   label: 'VISITED'},
   { key: 'bucketList', dot: C.bucket,    label: 'BUCKET' },
   { key: 'notVisited', dot: UNVISITED, label: 'TO GO'  },
 ];
-
-// Collapsed by default (a single chip showing the active filter) so it doesn't
-// permanently occupy the map — tapping it drops a menu of the four options
-// below the chip; picking one (even the already-active one, so tapping it is
-// also how you close without changing anything) closes the menu.
-function FilterPill({
-  active, counts, expanded, onToggle, onSelect,
-}: {
-  active: FilterStatus;
-  counts: Record<FilterStatus, number>;
-  expanded: boolean;
-  onToggle: () => void;
-  onSelect: (f: FilterStatus) => void;
-}) {
-  const activeFilter = FILTERS.find(f => f.key === active)!;
-
-  return (
-    <View>
-      <TouchableOpacity
-        onPress={onToggle}
-        activeOpacity={0.75}
-        style={styles.pillCollapsed}
-      >
-        <View style={[styles.pillDot, { backgroundColor: activeFilter.dot }]} />
-        <Text style={styles.pillCollapsedText} numberOfLines={1}>
-          {counts[active]} {activeFilter.label}
-        </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={12} color={C.inkMute} />
-      </TouchableOpacity>
-
-      <MenuDropdown visible={expanded} style={styles.pillDropdown}>
-          {FILTERS.map((f, i) => (
-            <TouchableOpacity
-              key={f.key}
-              onPress={() => onSelect(f.key)}
-              activeOpacity={0.7}
-              style={[
-                styles.pillDropdownRow,
-                i < FILTERS.length - 1 && styles.pillDropdownRowBorder,
-                active === f.key && styles.pillBtnActive,
-              ]}
-            >
-              <View style={[styles.pillDot, { backgroundColor: f.dot }]} />
-              <Text style={[styles.pillCount, active === f.key && styles.pillCountActive]}>
-                {counts[f.key]}
-              </Text>
-              <Text style={[styles.pillLabel, active === f.key && styles.pillLabelActive]}>
-                {f.label}
-              </Text>
-              {active === f.key && (
-                <Ionicons name="checkmark" size={14} color={C.ink} style={styles.pillDropdownCheck} />
-              )}
-            </TouchableOpacity>
-          ))}
-      </MenuDropdown>
-    </View>
-  );
-}
 
 // ── Search bar ────────────────────────────────────────────────────────────────
 
@@ -670,6 +610,7 @@ export default function MapScreen() {
     park_code: string; name: string; states: string;
     latitude: string | null; longitude: string | null;
     description: string | null; image_url: string | null;
+    is_national_park?: boolean; designation?: string | null;
   }>>([]);
   const currentRegionRef = useRef({ latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 });
   // Drives the label declutter recompute below — kept separate from
@@ -678,23 +619,76 @@ export default function MapScreen() {
   const [labelRegion, setLabelRegion] = useState(currentRegionRef.current);
   const [labelsEnabled, setLabelsEnabled] = useState(true);
   const [labelFontSize, setLabelFontSize] = useState(LABEL_FONT_DEFAULT);
-  const [labelMenuOpen, setLabelMenuOpen] = useState(false);
-  const [filterExpanded, setFilterExpanded] = useState(false);
+  // One consolidated "Map Details" sheet (status + park types + labels)
+  // instead of three separate floating pills — see MapDetailsSheet.
+  const [mapDetailsOpen, setMapDetailsOpen] = useState(false);
+  const isDarkScheme = useColorScheme() === 'dark';
+  // Starts as every type shown (matches the all-parks list's own default)
+  // then swaps to whatever the user's set in Profile → Appearance, once
+  // that async read resolves — see lib/settings' getDefaultParkTypes.
+  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(() => new Set(PARK_TYPES.map(t => t.key)));
+  useEffect(() => { getDefaultParkTypes().then(keys => setEnabledParkTypes(new Set(keys))); }, []);
   // Last declutter result — fed back in as the sticky set so still-fitting
   // labels survive font-size changes and region nudges.
   const prevVisibleLabelsRef = useRef<Set<string>>(new Set());
 
+  // Pins + status-filter counts respect the park-type filter; search
+  // deliberately doesn't — you can still find and log a visit to any park
+  // regardless of what the map is currently showing.
+  const visibleParks = parks.filter(p => PARK_TYPES.some(t => enabledParkTypes.has(t.key) && t.match(p)));
+  const parkTypeCounts: Record<string, number> = Object.fromEntries(
+    PARK_TYPES.map(t => [t.key, parks.filter(t.match).length])
+  );
+
+  // Shared by the Map Details sheet's checklist and the quick-access chip
+  // row below the search bar. Every chip's highlight is independent — tap
+  // always just flips that one, regardless of whether "All" happens to be
+  // active — no special-cased narrowing, which was the same gesture doing
+  // two different things depending on invisible prior state.
+  const toggleParkType = useCallback((key: string) => {
+    setEnabledParkTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+    setSelectedPark(null);
+  }, []);
+
+  // Tapping "All" while it's already active turns everything off, same as
+  // tapping an active individual chip removes just that one — "All" behaves
+  // like any other selectable option, not a one-way "reset" shortcut.
+  const toggleAllParkTypes = useCallback(() => {
+    setEnabledParkTypes(prev =>
+      prev.size === PARK_TYPES.length ? new Set() : new Set(PARK_TYPES.map(t => t.key))
+    );
+    setSelectedPark(null);
+  }, []);
+
   const counts: Record<FilterStatus, number> = {
-    all:        parks.length,
-    visited:    parks.filter(p => p.status === 'visited').length,
-    bucketList: parks.filter(p => p.status === 'bucketList').length,
-    notVisited: parks.filter(p => p.status === 'notVisited').length,
+    all:        visibleParks.length,
+    visited:    visibleParks.filter(p => p.status === 'visited').length,
+    bucketList: visibleParks.filter(p => p.status === 'bucketList').length,
+    notVisited: visibleParks.filter(p => p.status === 'notVisited').length,
   };
 
+  // Plain hex strings, not STATIC/dyn() DynamicColorIOS objects — these dots
+  // render inside a plain View here so either would actually work, but kept
+  // consistent with the same light/dark pairs used everywhere else.
+  const statusOptions: StatusOption[] = FILTERS.map(f => ({
+    key: f.key,
+    label: f.label,
+    count: counts[f.key],
+    dot:
+      f.key === 'all'        ? (isDarkScheme ? '#F0EAD9' : '#1B1A16') :
+      f.key === 'visited'    ? (isDarkScheme ? '#4FA76C' : '#2F7A4A') :
+      f.key === 'bucketList' ? (isDarkScheme ? '#D9A63E' : '#C48A20') :
+      UNVISITED,
+  }));
+
   const filteredParks =
-    filterStatus === 'all'        ? parks :
-    filterStatus === 'notVisited' ? parks.filter(p => p.status === 'notVisited' || p.status === 'bucketList') :
-    parks.filter(p => p.status === filterStatus);
+    filterStatus === 'all'        ? visibleParks :
+    filterStatus === 'notVisited' ? visibleParks.filter(p => p.status === 'notVisited' || p.status === 'bucketList') :
+    visibleParks.filter(p => p.status === filterStatus);
 
   const visibleLabelCodes = useMemo(
     () => {
@@ -753,6 +747,11 @@ export default function MapScreen() {
           description: p.description,
           image_url:   p.image_url,
           visits:      visitsPerPark[p.park_code] ?? [],
+          // Defaults false for a stale offline cache predating this field —
+          // self-heals on the next successful online fetch (which always
+          // saves a fresh cache), so this is a narrow, temporary edge case.
+          is_national_park: p.is_national_park ?? false,
+          designation: p.designation ?? null,
         };
       });
 
@@ -811,6 +810,7 @@ export default function MapScreen() {
           park_code: string; name: string; states: string;
           latitude: string | null; longitude: string | null;
           description: string | null; image_url: string | null;
+          is_national_park?: boolean; designation?: string | null;
         }>>('/api/parks', tok);
         setOfflineFetchedAt(null);
         hasLoadedRef.current = true;
@@ -1085,105 +1085,44 @@ export default function MapScreen() {
         </View>
       )}
 
-      {(filterExpanded || labelMenuOpen) && (
-        <Pressable
-          style={styles.filterBackdrop}
-          onPress={() => { setFilterExpanded(false); setLabelMenuOpen(false); }}
-        />
-      )}
-
-      <View
-        style={[styles.filterPillWrap, { top: insets.top + (offlineFetchedAt ? 96 : 60) }]}
-        pointerEvents="box-none"
-      >
-        <FilterPill
-          active={filterStatus}
-          counts={counts}
-          expanded={filterExpanded}
-          onToggle={() => {
-            setFilterExpanded(v => !v);
-            setLabelMenuOpen(false);
-          }}
-          onSelect={f => {
-            LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
-            setFilterStatus(f);
-            setSelectedPark(null);
-            setFilterExpanded(false);
-          }}
-        />
-
-        {/* Labels button — opens a menu with the visibility toggle + size options */}
-        <View>
-          <TouchableOpacity
-            style={styles.mapControlBtn}
-            onPress={() => {
-              setLabelMenuOpen(v => !v);
-              setFilterExpanded(false);
-            }}
-            activeOpacity={0.75}
-          >
-            <View style={styles.mapLabelToggleIcon}>
-              <Ionicons name="text" size={16} color={dyn('#4A4535', '#F0EAD9')} />
-              {!labelsEnabled && (
-                <View style={[styles.mapLabelToggleSlash, { backgroundColor: dyn('#4A4535', '#F0EAD9') }]} />
-              )}
-            </View>
-          </TouchableOpacity>
-
-          <MenuDropdown visible={labelMenuOpen} style={[styles.pillDropdown, { minWidth: 208, marginTop: 2 }]}>
-              <View style={[styles.pillDropdownRow, { paddingVertical: 6 }]}>
-                <Text style={[styles.pillLabel, styles.pillLabelActive]}>Show labels</Text>
-                <Switch
-                  value={labelsEnabled}
-                  onValueChange={setLabelsEnabled}
-                  trackColor={{ true: C.visited as string }}
-                  style={[styles.pillDropdownCheck, { transform: [{ scale: 0.75 }] }]}
-                />
-              </View>
-              {/* Text size — native UISlider; the small/large "A"s bracket it */}
-              <View style={[styles.pillDropdownRow, styles.pillDropdownRowBorder, !labelsEnabled && { opacity: 0.4 }]}>
-                <Text style={[styles.pillLabel, { fontSize: 10 }]}>A</Text>
-                <Slider
-                  style={{ flex: 1, height: 28 }}
-                  minimumValue={LABEL_FONT_MIN}
-                  maximumValue={LABEL_FONT_MAX}
-                  step={0.5}
-                  value={labelFontSize}
-                  onValueChange={setLabelFontSize}
-                  disabled={!labelsEnabled}
-                  minimumTrackTintColor={C.visited as string}
-                  maximumTrackTintColor={C.hairline as string}
-                />
-                <Text style={[styles.pillLabel, { fontSize: 16 }]}>A</Text>
-              </View>
-          </MenuDropdown>
-        </View>
-      </View>
-
       {showLoadingOverlay && (
         <Animated.View style={[styles.mapLoadingOverlay, { opacity: loadingOpacity }]} pointerEvents="none">
           <CompassSpinner size={36} dark />
         </Animated.View>
       )}
 
-      {/* Map controls — no sheet-aware repositioning needed; the sheet
-          (rendered last, below) always paints over these by plain JSX
-          order, same as it did back when it was a separate screen. */}
+      {/* Map controls — Apple Maps' own grouping: independent buttons (Map
+          Details, home) are circles, while the zoom pair share one rounded
+          capsule split by a hairline divider — two separately-tappable
+          halves, not two separate boxes. Single column, anchored by its
+          bottom edge, so adding/removing buttons just grows it upward. */}
       <View style={[styles.mapControls, { bottom: insets.bottom + 68 }]}>
-        <TouchableOpacity style={styles.mapControlBtn} onPress={zoomIn} activeOpacity={0.75}>
-          <Ionicons name="add" size={18} color={dyn('#4A4535', '#F0EAD9')} />
+        <TouchableOpacity style={styles.mapControlCircle} onPress={() => setMapDetailsOpen(true)} activeOpacity={0.75}>
+          <Ionicons name="options-outline" size={20} color={dyn('#4A4535', '#F0EAD9')} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.mapControlBtn} onPress={zoomOut} activeOpacity={0.75}>
-          <Ionicons name="remove" size={18} color={dyn('#4A4535', '#F0EAD9')} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.mapControlBtn} onPress={goHome} activeOpacity={0.75}>
-          <Ionicons name="home-outline" size={14} color={dyn('#4A4535', '#F0EAD9')} />
+
+        <View style={styles.zoomGroup}>
+          <TouchableOpacity style={styles.zoomBtn} onPress={zoomIn} activeOpacity={0.75}>
+            <Ionicons name="add" size={22} color={dyn('#4A4535', '#F0EAD9')} />
+          </TouchableOpacity>
+          <View style={styles.zoomDivider} />
+          <TouchableOpacity style={styles.zoomBtn} onPress={zoomOut} activeOpacity={0.75}>
+            <Ionicons name="remove" size={22} color={dyn('#4A4535', '#F0EAD9')} />
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={styles.mapControlCircle} onPress={goHome} activeOpacity={0.75}>
+          <Ionicons name="home-outline" size={17} color={dyn('#4A4535', '#F0EAD9')} />
         </TouchableOpacity>
       </View>
 
       {/* Search — rendered before the sheet so results overlay the map
-          chrome but not the other way around. */}
-      <View style={[styles.searchBarWrap, { top: insets.top + 12 }]}>
+          chrome but not the other way around. Same +36 offline-banner delta
+          filterPillWrap already uses below — this one was missing it, which
+          is why the banner sat behind the search bar (nearly the same top
+          offset) while filterPillWrap left a gap sized for a banner that
+          never actually pushed anything else down. */}
+      <View style={[styles.searchBarWrap, { top: insets.top + (offlineFetchedAt ? 48 : 12) }]}>
         <MapSearchBar
           token={token}
           parks={parks}
@@ -1191,6 +1130,50 @@ export default function MapScreen() {
           onSelectPark={handleSelectPark}
           onSelectUser={id => router.push(`/user/${id}` as never)}
         />
+      </View>
+
+      {/* Park-type quick-access chips — same toggleParkType/PARK_TYPES the
+          Map Details sheet's checklist uses, just surfaced as one-tap
+          shortcuts instead of buried in the sheet. PARK_TYPES is already
+          ordered most-common-first (national parks, then historical parks,
+          ...), so no separate sort here. */}
+      <View style={[styles.chipRowWrap, { top: insets.top + (offlineFetchedAt ? 98 : 62) }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+        >
+          <TouchableOpacity
+            onPress={toggleAllParkTypes}
+            activeOpacity={0.75}
+            style={[styles.chip, enabledParkTypes.size === PARK_TYPES.length && styles.chipActive]}
+          >
+            <Text
+              style={[styles.chipText, enabledParkTypes.size === PARK_TYPES.length && styles.chipTextActive]}
+              numberOfLines={1}
+            >
+              All
+            </Text>
+          </TouchableOpacity>
+          {PARK_TYPES.map(t => {
+            const active = enabledParkTypes.has(t.key);
+            return (
+              <TouchableOpacity
+                key={t.key}
+                onPress={() => toggleParkType(t.key)}
+                activeOpacity={0.75}
+                style={[styles.chip, active && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                  {t.label}
+                </Text>
+                <Text style={[styles.chipCount, active && styles.chipCountActive]}>
+                  {parkTypeCounts[t.key] ?? 0}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* The park sheet itself. Rendered last so it paints over everything
@@ -1220,6 +1203,25 @@ export default function MapScreen() {
           />
         </View>
       )}
+
+      {mapDetailsOpen && (
+        <MapDetailsSheet
+          onClose={() => setMapDetailsOpen(false)}
+          statusOptions={statusOptions}
+          activeStatus={filterStatus}
+          onSelectStatus={(key) => { setFilterStatus(key as FilterStatus); setSelectedPark(null); }}
+          enabledParkTypes={enabledParkTypes}
+          parkTypeCounts={parkTypeCounts}
+          onToggleParkType={toggleParkType}
+          onToggleAllParkTypes={toggleAllParkTypes}
+          labelsEnabled={labelsEnabled}
+          onLabelsEnabledChange={setLabelsEnabled}
+          labelFontSize={labelFontSize}
+          onLabelFontSizeChange={setLabelFontSize}
+          labelFontMin={LABEL_FONT_MIN}
+          labelFontMax={LABEL_FONT_MAX}
+        />
+      )}
     </View>
   );
 }
@@ -1248,6 +1250,59 @@ const styles = StyleSheet.create({
     zIndex: 40,
     elevation: 10,
   },
+  chipRowWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 39,
+    elevation: 9,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: dyn('rgba(255,251,241,0.93)', 'rgba(32,29,23,0.93)'),
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    height: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  // Inverted ink/bg fill, not a hue — a colored chip here would read as yet
+  // another status color (the map already uses green/amber/gray for
+  // visited/bucket/not-visited), same mistake the marker ring made earlier.
+  chipActive: {
+    backgroundColor: C.ink,
+    borderColor: C.ink,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.inkSoft,
+  },
+  chipTextActive: {
+    color: C.bg,
+  },
+  chipCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.inkMute,
+    fontVariant: ['tabular-nums'],
+  },
+  chipCountActive: {
+    color: C.bg,
+    opacity: 0.7,
+  },
   // Same input bar shape as the header's SearchOverlay (12pt radius, 10pt
   // vertical padding, 15pt text) — but filled with the warm translucent white
   // all the other floating map chrome (control buttons, filter pill) uses,
@@ -1259,8 +1314,11 @@ const styles = StyleSheet.create({
     backgroundColor: dyn('rgba(255,251,241,0.93)', 'rgba(32,29,23,0.93)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    // Overshoots on purpose — a value past half the bar's own height just
+    // clamps to a full pill (iOS 26's rounded search bar look) regardless
+    // of how tall paddingVertical ends up making it.
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1346,94 +1404,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: C.ink,
   },
-  mapLabelToggleIcon: {
-    width: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapLabelToggleSlash: {
-    position: 'absolute',
-    width: 20,
-    height: 1.5,
-    borderRadius: 1,
-    transform: [{ rotate: '-45deg' }],
-  },
-
-  // Filter pill row — left-aligned trigger chip + label toggle button side by
-  // side; the dropdown menu opens below the trigger chip (see pillDropdown).
-  filterPillWrap: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    zIndex: 20,
-  },
-  filterBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 19,
-  },
-  pillCollapsed: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: dyn('rgba(255,251,241,0.92)', 'rgba(32,29,23,0.92)'),
-    borderWidth: 0.5,
-    borderColor: C.hairline,
-    // Matches mapControlBtn (home/zoom buttons) exactly, including height —
-    // paddingVertical alone left it a few px shorter than the label button.
-    borderRadius: 9,
-    height: 36,
-    paddingHorizontal: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  pillCollapsedText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.ink,
-  },
-  pillDropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    marginTop: 6,
-    minWidth: 170,
-    backgroundColor: dyn('rgba(255,251,241,0.97)', 'rgba(32,29,23,0.97)'),
-    // No borderWidth — border + radius rendered as a broken bright edge in
-    // dark mode (same RN border-drawing artifact as the date sheet's band).
-    // 13pt radius + deep soft shadow — the UIMenu look
-    borderRadius: 13,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  pillDropdownRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  pillDropdownRowBorder: {
-    borderBottomWidth: 0.5,
-    borderBottomColor: C.hairline,
-  },
-  pillDropdownCheck: {
-    marginLeft: 'auto',
-  },
   mapControls: {
     position: 'absolute',
     right: 14,
@@ -1441,15 +1411,33 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     gap: 4,
   },
-  mapControlBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 9,
+  mapControlCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: dyn('rgba(255,251,241,0.93)', 'rgba(32,29,23,0.93)'),
     borderWidth: 0.5,
     borderColor: C.hairline,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  zoomGroup: {
+    width: 44,
+    borderRadius: 22,
+    backgroundColor: dyn('rgba(255,251,241,0.93)', 'rgba(32,29,23,0.93)'),
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    overflow: 'hidden',
+  },
+  zoomBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.hairline,
   },
   mapLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1457,33 +1445,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 20,
-  },
-  pillBtnActive: {
-    backgroundColor: dyn('rgba(31,61,46,0.10)', 'rgba(240,234,217,0.16)'),
-  },
-  pillDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  pillCount: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.ink,
-    minWidth: 12,
-    textAlign: 'center',
-  },
-  pillCountActive: {
-    color: C.ink,
-  },
-  pillLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.inkSoft,
-    letterSpacing: 0.2,
-    flexShrink: 0,
-  },
-  pillLabelActive: {
-    color: C.ink,
   },
 });

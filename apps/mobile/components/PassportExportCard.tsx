@@ -42,7 +42,9 @@ export interface PassportExportData {
   avatarUrl: string | null;
   joinDate: string | null;
   visitedCount: number;
-  tripsCount: number;
+  totalParks: number;
+  areasVisited: number;
+  areasTotal: number;
   statesCount: number;
   totalParkStates: number;
   badgeCount: number;
@@ -66,7 +68,7 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
   // STATES, whose "/total" is real information (not all 50 US states have
   // a park) but rendered small so it doesn't fight the headline number.
   const stats = [
-    { label: 'TRIPS',  value: String(data.tripsCount) },
+    { label: 'AREAS',  value: String(data.areasVisited), sub: `/${data.areasTotal}` },
     { label: 'STATES', value: String(data.statesCount), sub: `/${data.totalParkStates}` },
     { label: 'BADGES', value: String(data.badgeCount) },
   ];
@@ -127,9 +129,9 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
       {/* Hero line — the one number that matters most, same wording as the
           full passport screen's own progress row */}
       <View style={st.hero}>
-        <Text style={st.heroText} numberOfLines={1}>{data.visitedCount} of 63 parks stamped</Text>
+        <Text style={st.heroText} numberOfLines={1}>{data.visitedCount} of {data.totalParks} parks stamped</Text>
         <View style={st.progressTrack}>
-          <View style={[st.progressFill, { width: `${(data.visitedCount / 63) * 100}%` as `${number}%` }]} />
+          <View style={[st.progressFill, { width: `${data.totalParks > 0 ? (data.visitedCount / data.totalParks) * 100 : 0}%` as `${number}%` }]} />
         </View>
       </View>
 
@@ -297,10 +299,10 @@ const st = StyleSheet.create({
     textShadowRadius: 2,
   },
   statSub: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     color: GOLD,
-    opacity: 0.55,
+    opacity: 0.4,
     letterSpacing: -0.2,
   },
   progressTrack: {

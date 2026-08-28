@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import { fullStateName } from '@/lib/stateNames';
-import { STATIC as C, dyn, useColors } from '@/lib/palette';
+import { STATIC as C, dyn } from '@/lib/palette';
 
 const UNVISITED = '#A8A29A';
 
@@ -38,7 +38,6 @@ interface UserResult {
 }
 
 type ParkStatus = 'visited' | 'bucketList' | 'notVisited';
-type TabFilter = 'all' | 'visited' | 'bucketList' | 'notVisited';
 
 interface ParkWithStatus extends ParkLite {
   status: ParkStatus;
@@ -49,13 +48,6 @@ const STATUS_DOT: Record<ParkStatus, ColorValue> = {
   bucketList: C.bucket,
   notVisited: UNVISITED,
 };
-
-const TAB_DEFS: { id: TabFilter; label: string; color: ColorValue }[] = [
-  { id: 'all',        label: 'All',        color: C.ink },
-  { id: 'visited',    label: 'Visited',    color: C.visited },
-  { id: 'bucketList', label: 'Bucket',     color: C.bucket },
-  { id: 'notVisited', label: 'Not yet',    color: UNVISITED },
-];
 
 const MAX_LIST = 50;
 
@@ -85,10 +77,8 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
   const { getToken } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const T = useColors();
 
   const [query, setQuery]             = useState('');
-  const [tab, setTab]                 = useState<TabFilter>('all');
   const [parks, setParks]             = useState<ParkLite[]>([]);
   const [visits, setVisits]           = useState<Visit[]>([]);
   const [userResults, setUserResults] = useState<UserResult[]>([]);
@@ -197,7 +187,6 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
   const close = () => {
     if (timer.current) clearTimeout(timer.current);
     setQuery('');
-    setTab('all');
     setUserResults([]);
     setSearching(false);
     dismiss();
@@ -221,7 +210,6 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
   }));
 
   const filteredParks = parksWithStatus.filter(p => {
-    if (tab !== 'all' && p.status !== tab) return false;
     if (!trimmedQuery) return true;
     const stateStr = p.states.split(',').map(s => fullStateName(s.trim())).join(' ');
     return `${p.name} ${p.states} ${stateStr}`.toLowerCase().includes(trimmedQuery);
@@ -235,7 +223,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
       .reverse()[0] ?? '';
 
   const suggestions =
-    !trimmedQuery && tab === 'all'
+    !trimmedQuery
       ? {
           recent: parksWithStatus
             .filter(p => p.status === 'visited')
@@ -301,24 +289,6 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
-
-            {/* Filter tabs */}
-            <View style={styles.tabRow}>
-              {TAB_DEFS.map(f => {
-                const active = tab === f.id;
-                return (
-                  <TouchableOpacity
-                    key={f.id}
-                    style={[styles.tabChip, active && { backgroundColor: T.primary }]}
-                    onPress={() => setTab(f.id)}
-                    activeOpacity={0.7}
-                  >
-                    {!active && <View style={[styles.tabDot, { backgroundColor: f.color }]} />}
-                    <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{f.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
             </View>
 
             {/* Results */}
@@ -479,8 +449,10 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceAlt,
     borderWidth: 0.5,
     borderColor: C.hairline,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    // Overshoots on purpose — clamps to a full pill (iOS 26 search bar
+    // look, matches the map page's search bar) regardless of exact height.
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 10,
   },
   searchInput: {
@@ -488,38 +460,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: C.ink,
     padding: 0,
-  },
-
-  tabRow: {
-    flexDirection: 'row',
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingBottom: 10,
-  },
-  tabChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    borderRadius: 100,
-    backgroundColor: C.surfaceAlt,
-    borderWidth: 0.5,
-    borderColor: C.hairline,
-  },
-  tabDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  tabLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.inkSoft,
-  },
-  tabLabelActive: {
-    color: C.onPrimary,
-    fontWeight: '700',
   },
 
   resultsScroll: {

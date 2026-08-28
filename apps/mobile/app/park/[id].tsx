@@ -500,7 +500,9 @@ export function ParkProfileScreen({
   // drag) rather than interpolating smoothly — simpler, and the header
   // buttons only need to be roughly right until the sheet actually settles.
   const [sheetFull, setSheetFull] = useState(false);
-  const headerTop = inSheet ? (sheetFull ? insets.top + 8 : 32) : insets.top + 8;
+  // 20, not the old 32 — moved closer to the grab pill (top:10, 5px tall)
+  // to free up more of the hero image below the header row while peeked.
+  const headerTop = inSheet ? (sheetFull ? insets.top + 8 : 20) : insets.top + 8;
 
   const [park,         setPark]         = useState<Park | null>(() => hasSeed ? {
     park_code: id, name: seedName!, states: seedStates ?? '',
@@ -1110,8 +1112,10 @@ export function ParkProfileScreen({
   // conflict, so this reads straight off the native-driven sheetY — no
   // JS-mirrored value needed for this piece.
   const headerBaseTop = insets.top + 8;
+  // 20 here matches headerTop's own peek-state constant above — keep them
+  // in lockstep, this is just the continuously-animated version of it.
   const headerExtraTranslateY = inSheet
-    ? sheetY.interpolate({ inputRange: [0, SHEET_PEEK], outputRange: [0, 32 - headerBaseTop], extrapolate: 'clamp' })
+    ? sheetY.interpolate({ inputRange: [0, SHEET_PEEK], outputRange: [0, 20 - headerBaseTop], extrapolate: 'clamp' })
     : 0;
 
   // Fades out (not a hard show/hide) as the sheet nears the true top — by

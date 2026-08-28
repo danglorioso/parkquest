@@ -60,6 +60,7 @@ interface ProfileData {
   is_admin?: boolean;
   created_at: string | null;
   parks_visited: number;
+  parks_total: number;
   states_visited: number;
   bucket_list_count: number;
   friend_count: number;
@@ -945,7 +946,7 @@ export default function ProfilePage() {
         borderRadius: 14, overflow: "hidden", marginBottom: 28,
       }}>
         {[
-          { value: profile.parks_visited, sub: "/63", label: "PARKS VISITED" },
+          { value: profile.parks_visited, sub: `/${profile.parks_total}`, label: "PARKS VISITED" },
           { value: profile.states_visited, label: "STATES" },
           { value: profile.bucket_list_count, label: "BUCKET LIST" },
           { value: profile.badges.length, label: "BADGES EARNED" },
@@ -1006,7 +1007,7 @@ export default function ProfilePage() {
           <div style={{ borderTop: "0.5px dashed rgba(201,169,74,0.3)", paddingTop: 14, marginTop: 14 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {[
-                { label: "VISITED", value: `${profile.parks_visited}/63` },
+                { label: "VISITED", value: `${profile.parks_visited}/${profile.parks_total}` },
                 { label: "STATES", value: `${profile.states_visited}/50` },
                 { label: "BADGES", value: String(profile.badges.length) },
               ].map(({ label, value }) => (

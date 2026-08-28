@@ -17,6 +17,8 @@ export async function GET() {
         description: parks.description,
         image_url: parks.image_url,
         stamp_glyph: parks.stamp_glyph,
+        is_national_park: parks.is_national_park,
+        designation: parks.designation,
       })
       .from(parks)
       .where(
