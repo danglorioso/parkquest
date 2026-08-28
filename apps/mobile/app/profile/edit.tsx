@@ -24,6 +24,7 @@ import {
 } from '@/lib/offlineParks';
 import { relTime } from '@/lib/dates';
 import { useIsOnline } from '@/lib/network';
+import { clearLastAccount } from '@/lib/lastAccount';
 
 const ERROR = '#C04040';
 
@@ -454,6 +455,7 @@ export default function EditProfileScreen() {
       });
       if (!res.ok) throw new Error('Failed to delete account');
       setDeleteModal(false);
+      await clearLastAccount();
       await signOut();
       router.replace('/(auth)/sign-in' as never);
     } catch {

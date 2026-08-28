@@ -6,7 +6,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { MenuView } from '@react-native-menu/menu';
-import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -29,6 +28,10 @@ const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 // items already render in, so the leading SF Symbol matches instead of
 // staying the same ink tone as the non-destructive rows.
 const MENU_DESTRUCTIVE = '#FF3B30';
+// Not-yet-visited marker gray — same tone as the main map tab (map.tsx).
+const UNVISITED = '#A8A29A';
+// Whole-US region — same defaults as the main map tab's initial region.
+const FULL_US_REGION = { latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 };
 
 type FriendshipStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted';
 
@@ -203,8 +206,18 @@ export default function UserProfileScreen() {
   const [reportedUser, setReportedUser] = useState(false);
   const [postBlockReport, setPostBlockReport] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
+  const [allParks, setAllParks] = useState<{ park_code: string; latitude: string | null; longitude: string | null }[]>([]);
 
   const isOwnProfile = me?.id === id;
+
+  // Every park (visited or not) with coords, for the full-US map — fetched
+  // once, unauthenticated, same cached endpoint the main map tab uses.
+  useEffect(() => {
+    fetch(`${BASE}/api/parks`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setAllParks)
+      .catch(() => {});
+  }, []);
 
   // Unique visited parks with coords, for the mini map
   const mapParks = useMemo(() => {
@@ -224,19 +237,17 @@ export default function UserProfileScreen() {
       .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   }, [profile]);
 
-  const mapRegion = useMemo(() => {
-    if (mapParks.length === 0) return undefined;
-    const lats = mapParks.map(p => p.lat);
-    const lngs = mapParks.map(p => p.lng);
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-    return {
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLng + maxLng) / 2,
-      latitudeDelta: Math.max((maxLat - minLat) * 1.5, 4),
-      longitudeDelta: Math.max((maxLng - minLng) * 1.5, 4),
-    };
-  }, [mapParks]);
+  const visitedParkCodes = useMemo(() => new Set(mapParks.map(p => p.park_code)), [mapParks]);
+
+  const allMapParks = useMemo(() =>
+    allParks
+      .map(p => ({
+        park_code: p.park_code,
+        lat: p.latitude ? parseFloat(p.latitude) : NaN,
+        lng: p.longitude ? parseFloat(p.longitude) : NaN,
+      }))
+      .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng)),
+    [allParks]);
 
   // Unique visited parks, earliest visit first — colorIdx is the
   // chronological index so stamp colors match the passport screen.
@@ -451,8 +462,8 @@ export default function UserProfileScreen() {
   // only cover the single-button states.
   const friendButtonLabel = () => {
     switch (profile?.friendship_status) {
-      case 'accepted':       return 'Friends';
-      case 'pending_sent':   return 'Request sent';
+      case 'accepted':       return 'Friends with you';
+      case 'pending_sent':   return 'Pending';
       default:               return 'Add friend';
     }
   };
@@ -549,160 +560,193 @@ export default function UserProfileScreen() {
                 </View>
               ) : null}
 
+              {isFriend ? (
+                <View style={[styles.friendsWithYouPill, { backgroundColor: `${T.primary as string}18` }]}>
+                  <Ionicons name="people" size={12} color={T.primary as string} />
+                  <Text style={[styles.friendsWithYouText, { color: T.primary as string }]}>Friends with you</Text>
+                </View>
+              ) : null}
+
               {profile.bio ? (
                 <Text style={styles.bio}>{profile.bio}</Text>
               ) : null}
             </View>
 
-            {/* Stats strip */}
+            {/* Stats strip — NP VISITED / AREAS / BADGES, one line, same
+                label-above-value order as the passport hero card. Friend
+                count lives in the friend action row below instead, so it's
+                not duplicated here. Progress bar mirrors the passport
+                card's "X of 63 parks stamped" line. */}
             <View style={styles.statsStrip}>
-              <View style={styles.statCell}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 1 }}>
-                  <Text style={styles.statValue}>{profile.parks_visited}</Text>
-                  <Text style={styles.statSub}>/{profile.parks_total}</Text>
+              <View style={styles.statsRow}>
+                <View style={styles.statCell}>
+                  <Text style={styles.statLabel}>NP VISITED</Text>
+                  <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                    {profile.parks_visited}<Text style={styles.statSub}> / {profile.parks_total}</Text>
+                  </Text>
                 </View>
-                <Text style={styles.statLabel}>PARKS</Text>
+                <View style={styles.statDivider} />
+                <View style={styles.statCell}>
+                  <Text style={styles.statLabel}>AREAS</Text>
+                  <Text style={styles.statValue}>{stampItems.length}</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statCell}>
+                  <Text style={styles.statLabel}>BADGES</Text>
+                  <Text style={styles.statValue}>{profile.badges?.length ?? 0}</Text>
+                </View>
               </View>
-              <View style={styles.statDivider} />
-              <TouchableOpacity
-                style={styles.statCell}
-                onPress={() => setShowFriendsModal(true)}
-                activeOpacity={0.7}
-                disabled={profile.friend_count === 0}
-              >
-                <Text style={styles.statValue}>{profile.friend_count}</Text>
-                <Text style={styles.statLabel}>{profile.friend_count === 1 ? 'FRIEND' : 'FRIENDS'}</Text>
-              </TouchableOpacity>
+
+              <View style={styles.statsProgress}>
+                <View style={styles.statsProgressRow}>
+                  <Text style={styles.statsProgressText} numberOfLines={1}>
+                    {profile.parks_visited} of {profile.parks_total} parks stamped
+                  </Text>
+                  <Text style={styles.statsProgressPct}>
+                    {profile.parks_total > 0 ? Math.round((profile.parks_visited / profile.parks_total) * 100) : 0}%
+                  </Text>
+                </View>
+                <View style={styles.statsProgressTrack}>
+                  <View
+                    style={[
+                      styles.statsProgressFill,
+                      {
+                        width: `${profile.parks_total > 0 ? (profile.parks_visited / profile.parks_total) * 100 : 0}%` as `${number}%`,
+                        backgroundColor: T.primary,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
             </View>
 
-            {/* Friend action */}
+            {/* Friend action — friend count on the left, action button on
+                the right, sharing one card the same size/shape the old
+                full-width button used */}
             {!isOwnProfile ? (
               <View style={styles.section}>
-                {profile.friendship_status === 'pending_received' ? (
-                  /* Incoming request — inline accept/decline instead of a
-                     single "respond" button that bounced through an Alert
-                     and the friends screen. Distinct look from "Add friend"
-                     since it's a different state. */
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={styles.friendActionRow}>
+                  <TouchableOpacity
+                    style={styles.friendCountBtn}
+                    onPress={() => setShowFriendsModal(true)}
+                    activeOpacity={0.6}
+                    disabled={profile.friend_count === 0}
+                    hitSlop={6}
+                  >
+                    <Ionicons name="people-outline" size={16} color={C.inkMute} />
+                    <Text style={styles.friendCountText}>
+                      {profile.friend_count} {profile.friend_count === 1 ? 'Friend' : 'Friends'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {profile.friendship_status === 'pending_received' ? (
+                    /* Incoming request — inline accept/decline instead of a
+                       single "respond" button that bounced through an Alert
+                       and the friends screen. Distinct look from "Add friend"
+                       since it's a different state. */
+                    <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
+                      <TouchableOpacity
+                        style={[styles.friendButton, { backgroundColor: T.primary }, friendBusy && { opacity: 0.6 }]}
+                        onPress={handleAcceptRequest}
+                        disabled={friendBusy}
+                        activeOpacity={0.8}
+                      >
+                        {friendBusy ? (
+                          <ActivityIndicator size="small" color={C.onPrimary} />
+                        ) : (
+                          <>
+                            <Ionicons name="checkmark" size={15} color={C.onPrimary} style={{ marginRight: 5 }} />
+                            <Text style={styles.friendButtonText}>Accept</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.friendButton, styles.friendButtonOutline, { borderColor: C.hairline }, friendBusy && { opacity: 0.6 }]}
+                        onPress={handleDeclineRequest}
+                        disabled={friendBusy}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="close" size={15} color={C.inkMute} style={{ marginRight: 5 }} />
+                        <Text style={[styles.friendButtonText, { color: C.inkSoft }]}>Decline</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
                     <TouchableOpacity
-                      style={[styles.friendButton, { flex: 1, backgroundColor: T.primary }, friendBusy && { opacity: 0.6 }]}
-                      onPress={handleAcceptRequest}
+                      style={[
+                        styles.friendButton,
+                        isFriend
+                          ? styles.friendButtonSecondary
+                          : isPending
+                            ? [styles.friendButtonOutline, { borderColor: T.primary }]
+                            : { backgroundColor: T.primary },
+                        friendBusy && { opacity: 0.6 },
+                      ]}
+                      onPress={handleFriendAction}
                       disabled={friendBusy}
                       activeOpacity={0.8}
                     >
                       {friendBusy ? (
-                        <ActivityIndicator size="small" color={C.onPrimary} />
+                        <ActivityIndicator size="small" color={isFriend ? C.inkMute : isPending ? T.primary : C.onPrimary} />
                       ) : (
                         <>
-                          <Ionicons name="checkmark" size={16} color={C.onPrimary} style={{ marginRight: 7 }} />
-                          <Text style={styles.friendButtonText}>Accept request</Text>
+                          <Ionicons
+                            name={friendButtonIcon()}
+                            size={15}
+                            color={isFriend ? C.inkSoft : isPending ? T.primary : C.onPrimary}
+                            style={{ marginRight: 6 }}
+                          />
+                          <Text
+                            style={[
+                              styles.friendButtonText,
+                              isFriend && styles.friendButtonTextSecondary,
+                              isPending && { color: T.primary },
+                            ]}
+                          >
+                            {friendButtonLabel()}
+                          </Text>
                         </>
                       )}
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.friendButton, styles.friendButtonOutline, { flex: 1, borderColor: C.hairline }, friendBusy && { opacity: 0.6 }]}
-                      onPress={handleDeclineRequest}
-                      disabled={friendBusy}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="close" size={16} color={C.inkMute} style={{ marginRight: 7 }} />
-                      <Text style={[styles.friendButtonText, { color: C.inkSoft }]}>Decline</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={[
-                      styles.friendButton,
-                      isFriend
-                        ? styles.friendButtonSecondary
-                        : isPending
-                          ? [styles.friendButtonOutline, { borderColor: T.primary }]
-                          : { backgroundColor: T.primary },
-                      friendBusy && { opacity: 0.6 },
-                    ]}
-                    onPress={handleFriendAction}
-                    disabled={friendBusy}
-                    activeOpacity={0.8}
-                  >
-                    {friendBusy ? (
-                      <ActivityIndicator size="small" color={isFriend ? C.inkMute : isPending ? T.primary : C.onPrimary} />
-                    ) : (
-                      <>
-                        <Ionicons
-                          name={friendButtonIcon()}
-                          size={16}
-                          color={isFriend ? C.inkSoft : isPending ? T.primary : C.onPrimary}
-                          style={{ marginRight: 7 }}
-                        />
-                        <Text
-                          style={[
-                            styles.friendButtonText,
-                            isFriend && styles.friendButtonTextSecondary,
-                            isPending && { color: T.primary },
-                          ]}
-                        >
-                          {friendButtonLabel()}
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                )}
+                  )}
+                </View>
               </View>
             ) : null}
 
-            {/* Tab switcher — native UISegmentedControl */}
+            {/* Tab switcher — custom capsule pill, matching the app's own
+                card/pill language instead of the native UISegmentedControl's
+                flat square-cornered track */}
             <View style={styles.section}>
-              <SegmentedControl
-                values={['Overview', 'Stamps', 'Timeline']}
-                selectedIndex={tabIndex}
-                onChange={e => setTabIndex(e.nativeEvent.selectedSegmentIndex)}
-                backgroundColor={C.surface as string}
-                tintColor={T.primary as string}
-                fontStyle={{ color: C.inkSoft as string, fontWeight: '600' }}
-                activeFontStyle={{ color: C.onPrimary as string, fontWeight: '700' }}
-                style={styles.segmentedControl}
-              />
+              <View style={styles.tabSwitcher}>
+                {(['Overview', 'Stamps', 'Timeline'] as const).map((label, i) => {
+                  const active = tabIndex === i;
+                  return (
+                    <TouchableOpacity
+                      key={label}
+                      style={[styles.tabSwitcherItem, active && { backgroundColor: T.primary }]}
+                      onPress={() => setTabIndex(i)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.tabSwitcherText, active && styles.tabSwitcherTextActive]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
 
-            {/* Overview — stamps + badges carousels, then their full posts
-                as they appear on the feed (feed API already applies the
+            {/* Overview — badges carousel, then their full posts as they
+                appear on the feed (feed API already applies the
                 public/friends visibility rules for the viewer) */}
             {tabIndex === 0 ? (
-              stampItems.length === 0 && profile.badges?.length === 0 && posts.length === 0 ? (
-                <View style={styles.tabEmpty}>
-                  <Ionicons name="albums-outline" size={22} color={C.inkMute} />
-                  <Text style={styles.tabEmptyText}>Nothing here yet</Text>
-                </View>
+              profile.badges?.length === 0 && posts.length === 0 ? (
+                <EmptyState
+                  icon="albums-outline"
+                  title="Nothing here yet"
+                  subtitle={`No badges or posts from ${displayName} yet.`}
+                />
               ) : (
                 <>
-                  {stampItems.length > 0 ? (
-                    <View style={styles.section}>
-                      <SectionHeader icon="book-outline" title="STAMPS" />
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel}>
-                        {stampItems.map(s => (
-                          <TouchableOpacity
-                            key={s.park_code}
-                            onPress={() => router.push(`/park/${s.park_code}` as never)}
-                            activeOpacity={0.7}
-                            style={styles.badgePreviewItem}
-                          >
-                            <ParkStamp
-                              parkCode={s.park_code}
-                              name={s.name}
-                              states={s.states}
-                              colorIdx={s.colorIdx}
-                              size={56}
-                              idSuffix="-userprofile"
-                              customGlyph={s.stamp_glyph}
-                              dark={isDark}
-                            />
-                            <Text style={styles.badgeChipName} numberOfLines={2}>{s.name}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  ) : null}
-
                   {profile.badges?.length > 0 ? (
                     <View style={styles.section}>
                       <SectionHeader icon="ribbon-outline" title="BADGES EARNED" />
@@ -742,50 +786,80 @@ export default function UserProfileScreen() {
               )
             ) : null}
 
-            {/* Stamps — visited parks map, only when the API returns the
-                field, so a stale deployment doesn't show a misleading
-                empty state */}
+            {/* Stamps — passport-array grid of earned stamps, then a full-US
+                map with every park plotted (green = visited, gray = not) */}
             {tabIndex === 1 ? (
               profile.visited_parks ? (
-                <View style={styles.section}>
-                  <View style={styles.mapCard}>
-                    {mapParks.length > 0 ? (
-                      <MapView
-                        style={{ width: '100%', height: 220, borderRadius: 14 }}
-                        provider={PROVIDER_DEFAULT}
-                        initialRegion={mapRegion}
-                        rotateEnabled={false}
-                        pitchEnabled={false}
-                        scrollEnabled={false}
-                        zoomEnabled={false}
-                        toolbarEnabled={false}
-                        pointerEvents="none"
-                      >
-                        {mapParks.map(p => (
-                          <Marker
-                            key={p.park_code}
-                            coordinate={{ latitude: p.lat, longitude: p.lng }}
-                            title={p.name}
-                            tracksViewChanges={false}
-                            onCalloutPress={() => router.push(`/park/${p.park_code}` as never)}
+                <>
+                  {stampItems.length > 0 ? (
+                    <View style={styles.section}>
+                      <SectionHeader icon="book-outline" title="STAMPS" />
+                      <View style={styles.stampGrid}>
+                        {stampItems.map(s => (
+                          <TouchableOpacity
+                            key={s.park_code}
+                            onPress={() => router.push(`/park/${s.park_code}` as never)}
+                            activeOpacity={0.7}
+                            style={styles.stampGridItem}
                           >
-                            <View style={styles.markerDot} />
-                          </Marker>
+                            <ParkStamp
+                              parkCode={s.park_code}
+                              name={s.name}
+                              states={s.states}
+                              colorIdx={s.colorIdx}
+                              size={72}
+                              idSuffix="-userprofile"
+                              customGlyph={s.stamp_glyph}
+                              dark={isDark}
+                            />
+                            <Text style={styles.badgeChipName} numberOfLines={2}>{s.name}</Text>
+                          </TouchableOpacity>
                         ))}
-                      </MapView>
-                    ) : (
-                      <View style={styles.mapEmpty}>
-                        <Ionicons name="map-outline" size={22} color={C.inkMute} />
-                        <Text style={styles.mapEmptyText}>No park visits yet</Text>
                       </View>
-                    )}
+                    </View>
+                  ) : null}
+
+                  <View style={styles.section}>
+                    <View style={styles.mapCard}>
+                      {allMapParks.length > 0 ? (
+                        <MapView
+                          style={{ width: '100%', height: 220, borderRadius: 14 }}
+                          provider={PROVIDER_DEFAULT}
+                          initialRegion={FULL_US_REGION}
+                          rotateEnabled={false}
+                          pitchEnabled={false}
+                          scrollEnabled={false}
+                          zoomEnabled={false}
+                          toolbarEnabled={false}
+                          pointerEvents="none"
+                        >
+                          {allMapParks.map(p => (
+                            <Marker
+                              key={p.park_code}
+                              coordinate={{ latitude: p.lat, longitude: p.lng }}
+                              tracksViewChanges={false}
+                              onCalloutPress={() => router.push(`/park/${p.park_code}` as never)}
+                            >
+                              <View
+                                style={
+                                  visitedParkCodes.has(p.park_code)
+                                    ? styles.markerDot
+                                    : styles.markerDotUnvisited
+                                }
+                              />
+                            </Marker>
+                          ))}
+                        </MapView>
+                      ) : (
+                        <View style={styles.mapEmpty}>
+                          <ActivityIndicator color={T.primary} />
+                        </View>
+                      )}
+                    </View>
                   </View>
-                </View>
+                </>
               ) : (
-                <View style={styles.tabEmpty}>
-                  <Ionicons name="map-outline" size={22} color={C.inkMute} />
-                  <Text style={styles.tabEmptyText}>No park visits yet</Text>
-                </View>
+                <EmptyState icon="map-outline" title="No park visits yet" />
               )
             ) : null}
 
@@ -797,10 +871,11 @@ export default function UserProfileScreen() {
                   <JournalTimeline entries={profile.journal ?? []} badges={badgeTimelineEntries} />
                 </View>
               ) : (
-                <View style={styles.tabEmpty}>
-                  <Ionicons name="journal-outline" size={22} color={C.inkMute} />
-                  <Text style={styles.tabEmptyText}>Nothing here yet</Text>
-                </View>
+                <EmptyState
+                  icon="journal-outline"
+                  title="Nothing here yet"
+                  subtitle={`No visits or badges from ${displayName} yet.`}
+                />
               )
             ) : null}
 
@@ -887,6 +962,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: C.inkMute,
   },
+  friendsWithYouPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  friendsWithYouText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   bio: {
     fontSize: 13.5,
     color: C.inkSoft,
@@ -894,19 +982,68 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 12,
   },
+  // Label-above-value, one line — matches the passport hero card's stat row.
   statsStrip: {
-    flexDirection: 'row',
     backgroundColor: C.surface,
     marginHorizontal: 16,
     borderRadius: 14,
     borderWidth: 0.5,
     borderColor: C.hairline,
     paddingVertical: 16,
-    marginBottom: 16,
+    paddingHorizontal: 16,
+    marginBottom: 18,
+  },
+  statsRow: {
+    flexDirection: 'row',
+  },
+  statsProgress: {
+    gap: 6,
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 0.5,
+    borderTopColor: C.hairline,
+  },
+  statsProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statsProgressText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.inkMute,
+    letterSpacing: 0.3,
+  },
+  statsProgressPct: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.inkMute,
+  },
+  statsProgressTrack: {
+    height: 4,
+    backgroundColor: C.hairline,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  statsProgressFill: {
+    height: 4,
+    borderRadius: 2,
   },
   statCell: {
     flex: 1,
     alignItems: 'center',
+  },
+  statDivider: {
+    width: 0.5,
+    backgroundColor: C.hairline,
+    marginVertical: 4,
+  },
+  statLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.inkMute,
+    letterSpacing: 1.1,
+    marginBottom: 3,
   },
   statValue: {
     fontSize: 22,
@@ -919,26 +1056,41 @@ const styles = StyleSheet.create({
     color: C.inkMute,
     fontWeight: '600',
   },
-  statLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.inkMute,
-    letterSpacing: 1.1,
-    marginTop: 2,
-  },
-  statDivider: {
-    width: 0.5,
-    backgroundColor: C.hairline,
-    marginVertical: 4,
-  },
   section: {
     paddingHorizontal: 16,
-    marginBottom: 28,
+    marginBottom: 18,
+  },
+  // Card housing the friend count + action button — same overall size and
+  // shape (46 tall) the old full-width button used — 14 radius matches
+  // statsStrip/mapCard.
+  friendActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 46,
+    borderRadius: 14,
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 6,
+    backgroundColor: C.surface,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+  },
+  friendCountBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  friendCountText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.ink,
   },
   friendButton: {
-    borderRadius: 10,
-    paddingVertical: 13,
-    minHeight: 46,
+    marginLeft: 'auto',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -962,18 +1114,32 @@ const styles = StyleSheet.create({
   },
 
   // Tab switcher
-  segmentedControl: {
-    height: 34,
+  // Capsule tab track — fully rounded, no separate white card behind it,
+  // matching the iOS 26 segmented-control shape and the app's own pill
+  // buttons (friendButton etc.) instead of the native control's flat look.
+  tabSwitcher: {
+    flexDirection: 'row',
+    backgroundColor: C.surfaceAlt,
+    borderRadius: 999,
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    padding: 3,
   },
-  tabEmpty: {
+  tabSwitcherItem: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 40,
+    paddingVertical: 8,
+    borderRadius: 999,
   },
-  tabEmptyText: {
-    fontSize: 13,
-    color: C.inkMute,
+  tabSwitcherText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: C.inkSoft,
+  },
+  tabSwitcherTextActive: {
+    color: C.onPrimary,
+    fontWeight: '700',
   },
 
   // Section header
@@ -1018,6 +1184,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: C.onPrimary,
   },
+  markerDotUnvisited: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: UNVISITED,
+  },
 
   // Stamp/badge carousels
   carousel: {
@@ -1038,6 +1210,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 14,
     marginTop: 6,
+  },
+
+  // Passport-array-style stamp grid — 3 columns, like the passport book page.
+  stampGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  stampGridItem: {
+    width: '33.33%',
+    alignItems: 'center',
+    marginBottom: 18,
   },
 
   // Friends list bottom sheet
