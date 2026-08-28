@@ -1,6 +1,6 @@
 import {
   ActivityIndicator, Animated, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View, Alert,
+  Text, TouchableOpacity, View, Alert, useColorScheme,
 } from 'react-native';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,11 +11,13 @@ import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import type { BadgeColors } from '@/lib/badges';
-import { JournalTimeline, type JournalEntry } from '@/components/JournalTimeline';
+import type { CustomStampGlyph } from '@parkquest/types';
+import { JournalTimeline, type JournalEntry, type BadgeTimelineEntry } from '@/components/JournalTimeline';
 import { PostCard, ReportSheet, type FeedPost } from '@/components/PostCard';
 import { Avatar } from '@/components/Avatar';
 import { AdminStar } from '@/components/AdminStar';
 import { BadgeDetailModal, BadgePatch } from '@/components/BadgeDetailModal';
+import { ParkStamp } from '@/components/ParkStamp';
 import { EmptyState } from '@/components/EmptyState';
 import { AvatarLightbox } from '@/components/AvatarLightbox';
 import { STATIC as C, useColors } from '@/lib/palette';
@@ -45,6 +47,7 @@ interface VisitedPark {
   states: string;
   latitude: string | null;
   longitude: string | null;
+  stamp_glyph?: CustomStampGlyph | null;
   visited_date: string | null;
 }
 
@@ -183,6 +186,7 @@ export default function UserProfileScreen() {
   const { user: me } = useUser();
   const router = useRouter();
   const T = useColors();
+  const isDark = useColorScheme() === 'dark';
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -233,6 +237,33 @@ export default function UserProfileScreen() {
       longitudeDelta: Math.max((maxLng - minLng) * 1.5, 4),
     };
   }, [mapParks]);
+
+  // Unique visited parks, earliest visit first — colorIdx is the
+  // chronological index so stamp colors match the passport screen.
+  const stampItems = useMemo(() => {
+    const byPark = new Map<string, VisitedPark>();
+    (profile?.visited_parks ?? []).forEach(v => {
+      if (!v.visited_date) return;
+      const cur = byPark.get(v.park_code);
+      if (!cur || v.visited_date!.localeCompare(cur.visited_date!) < 0) byPark.set(v.park_code, v);
+    });
+    return [...byPark.values()]
+      .sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''))
+      .map((v, idx) => ({ ...v, colorIdx: idx }));
+  }, [profile]);
+
+  const badgeTimelineEntries = useMemo((): BadgeTimelineEntry[] =>
+    (profile?.badges ?? [])
+      .filter((b): b is ProfileBadge & { earned_at: string } => !!b.earned_at)
+      .map(b => ({
+        badge_id: b.badge_id,
+        earned_at: b.earned_at,
+        name: b.name,
+        emoji: b.emoji,
+        tier: b.tier,
+        colors: b.colors,
+      })),
+    [profile]);
 
   const loadProfile = useCallback(async () => {
     const tok = await getToken();
@@ -633,30 +664,81 @@ export default function UserProfileScreen() {
               />
             </View>
 
-            {/* Overview — badges earned */}
+            {/* Overview — stamps + badges carousels, then their full posts
+                as they appear on the feed (feed API already applies the
+                public/friends visibility rules for the viewer) */}
             {tabIndex === 0 ? (
-              profile.badges?.length > 0 ? (
-                <View style={styles.section}>
-                  <SectionHeader icon="ribbon-outline" title="BADGES EARNED" />
-                  <View style={styles.badgeWrap}>
-                    {profile.badges.map(b => (
-                      <TouchableOpacity
-                        key={b.badge_id}
-                        onPress={() => setSelectedBadge(b)}
-                        activeOpacity={0.7}
-                        style={styles.badgePreviewItem}
-                      >
-                        <BadgePatch emoji={b.emoji} tier={b.tier} colors={b.colors} size={56} earned />
-                        <Text style={styles.badgeChipName} numberOfLines={2}>{b.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+              stampItems.length === 0 && profile.badges?.length === 0 && posts.length === 0 ? (
+                <View style={styles.tabEmpty}>
+                  <Ionicons name="albums-outline" size={22} color={C.inkMute} />
+                  <Text style={styles.tabEmptyText}>Nothing here yet</Text>
                 </View>
               ) : (
-                <View style={styles.tabEmpty}>
-                  <Ionicons name="ribbon-outline" size={22} color={C.inkMute} />
-                  <Text style={styles.tabEmptyText}>No badges earned yet</Text>
-                </View>
+                <>
+                  {stampItems.length > 0 ? (
+                    <View style={styles.section}>
+                      <SectionHeader icon="book-outline" title="STAMPS" />
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel}>
+                        {stampItems.map(s => (
+                          <TouchableOpacity
+                            key={s.park_code}
+                            onPress={() => router.push(`/park/${s.park_code}` as never)}
+                            activeOpacity={0.7}
+                            style={styles.badgePreviewItem}
+                          >
+                            <ParkStamp
+                              parkCode={s.park_code}
+                              name={s.name}
+                              states={s.states}
+                              colorIdx={s.colorIdx}
+                              size={56}
+                              idSuffix="-userprofile"
+                              customGlyph={s.stamp_glyph}
+                              dark={isDark}
+                            />
+                            <Text style={styles.badgeChipName} numberOfLines={2}>{s.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  ) : null}
+
+                  {profile.badges?.length > 0 ? (
+                    <View style={styles.section}>
+                      <SectionHeader icon="ribbon-outline" title="BADGES EARNED" />
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel}>
+                        {profile.badges.map(b => (
+                          <TouchableOpacity
+                            key={b.badge_id}
+                            onPress={() => setSelectedBadge(b)}
+                            activeOpacity={0.7}
+                            style={styles.badgePreviewItem}
+                          >
+                            <BadgePatch emoji={b.emoji} tier={b.tier} colors={b.colors} size={56} earned />
+                            <Text style={styles.badgeChipName} numberOfLines={2}>{b.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  ) : null}
+
+                  {token && posts.length > 0 ? (
+                    <View style={styles.section}>
+                      <SectionHeader icon="newspaper-outline" title="POSTS" />
+                      {posts.map(p => (
+                        <PostCard
+                          key={p.id}
+                          post={p}
+                          myUserId={me?.id ?? ''}
+                          myAvatarUrl={me?.imageUrl}
+                          myName={me?.fullName ?? me?.username}
+                          onDelete={pid => setPosts(prev => prev.filter(x => x.id !== pid))}
+                          onParkPress={code => router.push(`/park/${code}` as never)}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                </>
               )
             ) : null}
 
@@ -707,37 +789,16 @@ export default function UserProfileScreen() {
               )
             ) : null}
 
-            {/* Timeline — recent posts (same cards as the feed) + journal */}
+            {/* Timeline — milestones: visits + badges earned, merged chronologically */}
             {tabIndex === 2 ? (
-              (token && posts.length > 0) || (profile.journal && profile.journal.length > 0) ? (
-                <>
-                  {token && posts.length > 0 ? (
-                    <View style={styles.section}>
-                      <SectionHeader icon="newspaper-outline" title="RECENT POSTS" />
-                      {posts.map(p => (
-                        <PostCard
-                          key={p.id}
-                          post={p}
-                          myUserId={me?.id ?? ''}
-                          myAvatarUrl={me?.imageUrl}
-                          myName={me?.fullName ?? me?.username}
-                          onDelete={pid => setPosts(prev => prev.filter(x => x.id !== pid))}
-                          onParkPress={code => router.push(`/park/${code}` as never)}
-                        />
-                      ))}
-                    </View>
-                  ) : null}
-
-                  {profile.journal && profile.journal.length > 0 ? (
-                    <View style={styles.section}>
-                      <SectionHeader icon="journal-outline" title="JOURNAL" />
-                      <JournalTimeline entries={profile.journal ?? []} />
-                    </View>
-                  ) : null}
-                </>
+              (profile.journal && profile.journal.length > 0) || badgeTimelineEntries.length > 0 ? (
+                <View style={styles.section}>
+                  <SectionHeader icon="journal-outline" title="JOURNAL" />
+                  <JournalTimeline entries={profile.journal ?? []} badges={badgeTimelineEntries} />
+                </View>
               ) : (
                 <View style={styles.tabEmpty}>
-                  <Ionicons name="newspaper-outline" size={22} color={C.inkMute} />
+                  <Ionicons name="journal-outline" size={22} color={C.inkMute} />
                   <Text style={styles.tabEmptyText}>Nothing here yet</Text>
                 </View>
               )
@@ -958,11 +1019,10 @@ const styles = StyleSheet.create({
     borderColor: C.onPrimary,
   },
 
-  // Badge chips
-  badgeWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  // Stamp/badge carousels
+  carousel: {
     gap: 12,
+    paddingBottom: 4,
   },
   // Matches the badge carousel/badge page's circular BadgePatch — was a flat
   // rectangular chip here, the only place in the app badges didn't look like

@@ -11,7 +11,7 @@ import {
   JetBrainsMono_600SemiBold,
   JetBrainsMono_700Bold,
 } from '@expo-google-fonts/jetbrains-mono';
-import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
+import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -22,6 +22,7 @@ import * as Sentry from '@sentry/react-native';
 import LoadingScreen from '../components/LoadingScreen';
 import { ToastHost } from '../lib/toast';
 import { useAuthBootstrapReady } from '../lib/network';
+import { syncLastAccountProfile, type AuthStrategy } from '../lib/lastAccount';
 
 // enableNative captures native crashes (e.g. uncaught worklet exceptions —
 // the SIGABRT class of crash that shows up with zero JS context in Apple's
@@ -62,6 +63,7 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
 function AuthSync() {
   const { isSignedIn, isLoaded, getToken } = useAuth();
+  const { user } = useUser();
   const segments = useSegments();
   const router = useRouter();
   const wasSignedIn = useRef(false);
@@ -74,6 +76,28 @@ function AuthSync() {
     if (isSignedIn && inAuth) router.replace('/(tabs)/feed');
     if (!isSignedIn && !inAuth && !wasSignedIn.current) router.replace('/(auth)/sign-in');
   }, [isLoaded, isSignedIn, segments]);
+
+  // Keeps the device's "quick sign back in" snapshot (landing screen) fresh
+  // whenever a live session is confirmed — self-heals if a sign-in call site
+  // didn't get to tag its strategy (e.g. app killed mid-flow).
+  useEffect(() => {
+    if (!isSignedIn || !user) return;
+    const fallbackStrategy: AuthStrategy = user.passwordEnabled
+      ? 'password'
+      : user.verifiedExternalAccounts?.some(a => a.provider === 'apple')
+      ? 'apple'
+      : user.verifiedExternalAccounts?.some(a => a.provider === 'google')
+      ? 'google'
+      : 'password';
+    syncLastAccountProfile({
+      userId: user.id,
+      name: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.username || null,
+      username: user.username ?? null,
+      email: user.primaryEmailAddress?.emailAddress ?? null,
+      avatarUrl: user.imageUrl ?? null,
+      fallbackStrategy,
+    });
+  }, [isSignedIn, user?.id]);
 
   useEffect(() => {
     if (!isSignedIn || pushRequested.current) return;

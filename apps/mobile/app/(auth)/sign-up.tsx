@@ -10,6 +10,7 @@ import {
   clerkMsg, ErrorBox, FField, MONO, NameField, PrimaryBtn, SecondaryBtn, TermsCheckbox,
 } from '@/components/AuthAtoms';
 import { STATIC as C, useColors } from '@/lib/palette';
+import { markLastAuthStrategy } from '@/lib/lastAccount';
 
 type Step = 'email' | 'password' | 'verify' | 'username';
 
@@ -86,6 +87,7 @@ export default function SignUpScreen() {
     try {
       const result = await signUp!.attemptEmailAddressVerification({ code });
       if (result.status === 'complete') {
+        markLastAuthStrategy('password', email);
         await setActive!({ session: result.createdSessionId });
         setStep('username');
       } else if (result.status === 'missing_requirements') {
@@ -101,6 +103,7 @@ export default function SignUpScreen() {
         // A previous tap already verified the email — move on instead of erroring.
         try {
           if (signUp?.status === 'complete' && signUp.createdSessionId) {
+            markLastAuthStrategy('password', email);
             await setActive!({ session: signUp.createdSessionId });
           }
         } catch { /* session activation retried implicitly on next step */ }
@@ -127,6 +130,7 @@ export default function SignUpScreen() {
           setError('Could not finish sign-up. Please try again.');
           return;
         }
+        markLastAuthStrategy('password', email);
         await setActive!({ session: result.createdSessionId });
       } else if (user) {
         await user.update({ username: uname, ...nameFields });

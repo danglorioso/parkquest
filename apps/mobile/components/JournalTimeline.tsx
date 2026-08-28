@@ -1,6 +1,8 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { STATIC as C } from '@/lib/palette';
+import type { BadgeColors } from '@/lib/badges';
+import { BadgePatch } from '@/components/BadgeDetailModal';
 
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
@@ -24,16 +26,28 @@ export interface JournalEntry {
   redacted: boolean;
 }
 
-function groupJournalByYearMonth(entries: JournalEntry[]) {
-  const map = new Map<number, Map<number, JournalEntry[]>>();
-  for (const e of entries) {
-    if (!e.visited_date) continue;
-    const d = new Date(e.visited_date);
+export interface BadgeTimelineEntry {
+  badge_id: string;
+  earned_at: string;
+  name: string;
+  emoji: string;
+  tier: string;
+  colors?: BadgeColors | null;
+}
+
+type TimelineItem =
+  | { kind: 'visit'; date: string; entry: JournalEntry }
+  | { kind: 'badge'; date: string; badge: BadgeTimelineEntry };
+
+function groupTimelineByYearMonth(items: TimelineItem[]) {
+  const map = new Map<number, Map<number, TimelineItem[]>>();
+  for (const it of items) {
+    const d = new Date(it.date);
     const y = d.getFullYear();
     const m = d.getMonth();
     if (!map.has(y)) map.set(y, new Map());
     if (!map.get(y)!.has(m)) map.get(y)!.set(m, []);
-    map.get(y)!.get(m)!.push(e);
+    map.get(y)!.get(m)!.push(it);
   }
   return Array.from(map.entries())
     .sort(([a], [b]) => b - a)
@@ -41,7 +55,10 @@ function groupJournalByYearMonth(entries: JournalEntry[]) {
       year,
       months: Array.from(months.entries())
         .sort(([a], [b]) => b - a)
-        .map(([month, items]) => ({ month, items })),
+        .map(([month, monthItems]) => ({
+          month,
+          items: monthItems.sort((a, b) => b.date.localeCompare(a.date)),
+        })),
     }));
 }
 
@@ -66,8 +83,13 @@ function StarRating({ n }: { n: number }) {
   );
 }
 
-export function JournalTimeline({ entries }: { entries: JournalEntry[] }) {
-  if (entries.length === 0) {
+export function JournalTimeline({ entries, badges }: { entries: JournalEntry[]; badges?: BadgeTimelineEntry[] }) {
+  const items: TimelineItem[] = [
+    ...entries.filter(e => e.visited_date).map((e): TimelineItem => ({ kind: 'visit', date: e.visited_date!, entry: e })),
+    ...(badges ?? []).map((b): TimelineItem => ({ kind: 'badge', date: b.earned_at, badge: b })),
+  ];
+
+  if (items.length === 0) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyText}>No journal entries visible.</Text>
@@ -75,14 +97,14 @@ export function JournalTimeline({ entries }: { entries: JournalEntry[] }) {
     );
   }
 
-  const groups = groupJournalByYearMonth(entries);
+  const groups = groupTimelineByYearMonth(items);
 
   return (
     <View>
       {groups.map(({ year, months }) => (
         <View key={year} style={styles.yearGroup}>
           <Text style={styles.yearLabel}>{year}</Text>
-          {months.map(({ month, items }) => (
+          {months.map(({ month, items: monthItems }) => (
             <View key={month} style={styles.monthGroup}>
               <View style={styles.monthHeader}>
                 <Text style={styles.monthLabel}>{MONTH_NAMES[month]}</Text>
@@ -90,14 +112,34 @@ export function JournalTimeline({ entries }: { entries: JournalEntry[] }) {
               </View>
               <View style={styles.entriesContainer}>
                 <View style={styles.verticalLine} />
-                {items.map((entry, idx) => {
-                  const d = new Date(entry.visited_date!);
+                {monthItems.map((item, idx) => {
+                  const d = new Date(item.date);
                   const day = d.getDate();
                   const mon = MONTH_SHORT[d.getMonth()];
+                  const key = item.kind === 'visit' ? `visit-${item.entry.visit_id}` : `badge-${item.badge.badge_id}`;
+                  const isLast = idx === monthItems.length - 1;
+
+                  if (item.kind === 'badge') {
+                    const { badge } = item;
+                    return (
+                      <View key={key} style={[styles.entryRow, !isLast && styles.entryRowGap]}>
+                        <View style={[styles.dot, styles.dotBadge]} />
+                        <View style={[styles.card, styles.badgeCard]}>
+                          <BadgePatch emoji={badge.emoji} tier={badge.tier} colors={badge.colors} size={34} earned />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.dateLabel}>{mon} {day}</Text>
+                            <Text style={styles.badgeEarnedText} numberOfLines={1}>Earned "{badge.name}"</Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  }
+
+                  const { entry } = item;
                   return (
                     <View
-                      key={entry.visit_id}
-                      style={[styles.entryRow, idx < items.length - 1 && styles.entryRowGap]}
+                      key={key}
+                      style={[styles.entryRow, !isLast && styles.entryRowGap]}
                     >
                       <View style={[styles.dot, { backgroundColor: entry.redacted ? C.hairline : C.visited }]} />
                       {entry.redacted ? (
@@ -225,6 +267,20 @@ const styles = StyleSheet.create({
   },
   cardDashed: {
     borderStyle: 'dashed',
+  },
+  dotBadge: {
+    backgroundColor: '#D4A93F',
+  },
+  badgeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  badgeEarnedText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.ink,
+    marginTop: 2,
   },
   cardTop: {
     flexDirection: 'row',

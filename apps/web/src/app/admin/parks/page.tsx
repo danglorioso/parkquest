@@ -66,7 +66,7 @@ export default async function AdminParksPage({
                   const isActive = sort === col.key;
                   return (
                     <th key={col.key} className="px-4 py-3">
-                      <Link href={`/admin/parks?sort=${col.key}&dir=${nextDir}`} className="inline-flex items-center gap-1 hover:text-ink">
+                      <Link href={`/admin/parks?sort=${col.key}&dir=${nextDir}`} scroll={false} className="inline-flex items-center gap-1 hover:text-ink">
                         {col.label}
                         {isActive && (dir === 'desc' ? <ArrowDown size={11} /> : <ArrowUp size={11} />)}
                       </Link>

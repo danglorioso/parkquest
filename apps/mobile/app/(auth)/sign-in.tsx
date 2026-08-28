@@ -10,7 +10,9 @@ import { useOAuth, useSignUp, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { AppleIcon, clerkMsg, ErrorBox, FField, GoogleG, MONO, NameField, PrimaryBtn, TermsCheckbox } from '@/components/AuthAtoms';
+import { Avatar } from '@/components/Avatar';
 import { STATIC as C, useColors } from '@/lib/palette';
+import { clearLastAccount, getLastAccount, markLastAuthStrategy, type LastAccount } from '@/lib/lastAccount';
 const WEB      = process.env.EXPO_PUBLIC_API_URL ?? 'https://www.parkquest.me';
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -293,13 +295,44 @@ export default function LandingScreen() {
   const [busy,      setBusy]      = useState(false);
   const [error,     setError]     = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [lastAccount, setLastAccount] = useState<LastAccount | null>(null);
   // Stores the OAuth sign-up object that needs a username to complete.
   const pendingOAuthSignUpRef = useRef<any>(null);
   const pendingSetActiveRef   = useRef<((params: any) => Promise<void>) | null>(null);
+  const pendingOAuthProviderRef = useRef<'google' | 'apple' | null>(null);
+
+  useEffect(() => {
+    getLastAccount().then(setLastAccount);
+  }, []);
 
   const toggleShowName = () => {
     animateReveal();
     setShowName(v => !v);
+  };
+
+  const handleNotYou = () => {
+    animateReveal();
+    setLastAccount(null);
+    clearLastAccount();
+  };
+
+  const lastAccountLabel = lastAccount
+    ? lastAccount.name || (lastAccount.username ? `@${lastAccount.username}` : lastAccount.email) || 'Your account'
+    : '';
+  const lastAccountBtnLabel = lastAccount?.strategy === 'apple'  ? 'Continue with Apple'
+    : lastAccount?.strategy === 'google' ? 'Continue with Google'
+    : 'Continue';
+  const lastAccountSub = lastAccount?.strategy === 'apple'  ? 'Last signed in with Apple'
+    : lastAccount?.strategy === 'google' ? 'Last signed in with Google'
+    : 'Last signed in with a password';
+
+  const handleContinueLastAccount = () => {
+    if (!lastAccount) return;
+    if (lastAccount.strategy === 'password') {
+      router.push({ pathname: '/(auth)/login', params: { email: lastAccount.email ?? '' } } as never);
+    } else {
+      handleOAuth(lastAccount.strategy);
+    }
   };
 
   const handleOAuth = async (provider: 'google' | 'apple') => {
@@ -309,6 +342,7 @@ export default function LandingScreen() {
       const flow = provider === 'google' ? googleFlow : appleFlow;
       const { createdSessionId, setActive: sa, signUp: oauthSU } = await flow();
       if (createdSessionId) {
+        markLastAuthStrategy(provider);
         // Use flow's setActive, fall back to the hook's setActive (Apple can omit it).
         await (sa ?? setActive)!({ session: createdSessionId });
         router.replace('/(tabs)/feed' as never);
@@ -316,6 +350,7 @@ export default function LandingScreen() {
         // Store the OAuth sign-up object — useSignUp()'s signUp may not reflect it.
         pendingOAuthSignUpRef.current = oauthSU;
         pendingSetActiveRef.current = (sa ?? setActive) as any;
+        pendingOAuthProviderRef.current = provider;
         setMode('username');
       }
       // else: user cancelled the OAuth sheet — do nothing, no error
@@ -350,8 +385,10 @@ export default function LandingScreen() {
           setError('Could not finish sign-up. Please try again.');
           return;
         }
+        markLastAuthStrategy(pendingOAuthProviderRef.current ?? 'google');
         await sa!({ session: result.createdSessionId });
       } else if (user) {
+        markLastAuthStrategy(pendingOAuthProviderRef.current ?? 'google');
         await user.update({ username: uname, ...nameFields });
       } else {
         setError('Account not ready yet. Please try again.');
@@ -405,8 +442,40 @@ export default function LandingScreen() {
                 <Text style={styles.headline}>Your parks await.</Text>
                 <Text style={styles.sub}>Track every visit, badge, and memory.</Text>
 
+                {lastAccount && (
+                  <View style={styles.lastAccountCard}>
+                    <View style={styles.lastAccountRow}>
+                      <Avatar url={lastAccount.avatarUrl} name={lastAccount.name} size={40} />
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={styles.lastAccountName} numberOfLines={1}>{lastAccountLabel}</Text>
+                        <Text style={styles.lastAccountSub}>{lastAccountSub}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.primaryContinueBtn, { backgroundColor: T.primary }, oauthBusy !== null && { opacity: 0.6 }]}
+                      onPress={handleContinueLastAccount}
+                      disabled={oauthBusy !== null}
+                      activeOpacity={0.85}
+                    >
+                      {oauthBusy !== null
+                        ? <ActivityIndicator size="small" color={C.onPrimary} />
+                        : <Text style={styles.primaryContinueBtnText}>{lastAccountBtnLabel}</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleNotYou} hitSlop={8}>
+                      <Text style={styles.notYouText}>Not you?</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {/* OAuth */}
-                <View style={{ marginTop: 24 }}>
+                <View style={{ marginTop: lastAccount ? 18 : 24 }}>
+                  {lastAccount && (
+                    <View style={styles.dividerRow}>
+                      <View style={styles.dividerLine} />
+                      <Text style={styles.dividerText}>OR USE ANOTHER ACCOUNT</Text>
+                      <View style={styles.dividerLine} />
+                    </View>
+                  )}
                   {(['apple', 'google'] as const).map(p => (
                     <TouchableOpacity
                       key={p}
@@ -487,6 +556,19 @@ const styles = StyleSheet.create({
   kicker: { fontFamily: MONO, fontSize: 13, letterSpacing: 2, color: C.inkMute, fontWeight: '600' },
   headline: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.8, marginTop: 8, lineHeight: 34 },
   sub: { fontSize: 14, color: C.inkMute, marginTop: 6 },
+
+  lastAccountCard: {
+    backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
+    borderRadius: 16, padding: 14, marginTop: 22,
+  },
+  lastAccountRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  lastAccountName: { fontSize: 15, fontWeight: '700', color: C.ink },
+  lastAccountSub: { fontSize: 12.5, color: C.inkMute, marginTop: 2 },
+  primaryContinueBtn: {
+    borderRadius: 12, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', minHeight: 46,
+  },
+  primaryContinueBtnText: { fontSize: 14, fontWeight: '700', color: C.onPrimary },
+  notYouText: { fontSize: 12.5, fontWeight: '600', color: C.inkMute, textAlign: 'center', marginTop: 10 },
 
   oauthBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

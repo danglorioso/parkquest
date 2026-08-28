@@ -5,12 +5,13 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSignIn } from '@clerk/clerk-expo';
-import { useNavigation, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   clerkMsg, ErrorBox, FField, InfoText, MONO, PrimaryBtn,
 } from '@/components/AuthAtoms';
 import { STATIC as C, useColors } from '@/lib/palette';
+import { markLastAuthStrategy } from '@/lib/lastAccount';
 
 type Step = 'form' | 'mfa' | 'forgot_email' | 'forgot_verify';
 
@@ -21,9 +22,10 @@ export default function LoginScreen() {
   const navigation = useNavigation();
   const T = useColors();
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { email: prefillEmail } = useLocalSearchParams<{ email?: string }>();
 
   const [step,      setStep]      = useState<Step>('form');
-  const [email,     setEmail]     = useState('');
+  const [email,     setEmail]     = useState(prefillEmail ?? '');
   const [password,  setPassword]  = useState('');
   const [showPw,    setShowPw]    = useState(false);
   const [mfaCode,   setMfaCode]   = useState('');
@@ -69,6 +71,7 @@ export default function LoginScreen() {
       const result = await signIn!.create({ identifier: email, password });
       if (!mounted.current) return;
       if (result.status === 'complete') {
+        markLastAuthStrategy('password', email);
         await setActive!({ session: result.createdSessionId });
         router.replace('/(tabs)/feed' as never);
       } else if (result.status === 'needs_second_factor') {
@@ -95,6 +98,7 @@ export default function LoginScreen() {
       const result = await signIn!.attemptSecondFactor({ strategy: 'email_code', code: mfaCode });
       if (!mounted.current) return;
       if (result.status === 'complete') {
+        markLastAuthStrategy('password', email);
         await setActive!({ session: result.createdSessionId });
         router.replace('/(tabs)/feed' as never);
       }
@@ -123,6 +127,7 @@ export default function LoginScreen() {
         code: fgCode, password: fgPw,
       });
       if (result.status === 'complete') {
+        markLastAuthStrategy('password', fgEmail);
         await setActive!({ session: result.createdSessionId });
         router.replace('/(tabs)/feed' as never);
       }
@@ -159,11 +164,11 @@ export default function LoginScreen() {
             </>}
 
             {step === 'form' && <>
-              <FField label="EMAIL OR USERNAME" value={email} onChange={setEmail} keyboard="email-address" />
+              <FField label="EMAIL OR USERNAME" value={email} onChange={setEmail} keyboard="email-address" autoFocus={!prefillEmail} />
               <FField
                 label="PASSWORD" value={password} onChange={setPassword}
                 secureText={!showPw} trailing={showPw ? 'Hide' : 'Show'}
-                onTrailing={() => setShowPw(v => !v)}
+                onTrailing={() => setShowPw(v => !v)} autoFocus={!!prefillEmail}
               />
               <TouchableOpacity
                 onPress={() => { setFgEmail(email); setStep('forgot_email'); setError(''); }}

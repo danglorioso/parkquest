@@ -62,6 +62,7 @@ function SortHeader({
     <th className="px-4 py-3">
       <Link
         href={`/admin/activity?sort=${col}&dir=${nextDir}&page=1`}
+        scroll={false}
         className={`flex items-center gap-1 hover:text-ink ${active ? 'text-ink' : ''}`}
       >
         {label} <Icon size={12} />

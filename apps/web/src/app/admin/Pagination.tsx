@@ -10,6 +10,7 @@ export function Pagination({
       <Link
         href={qs(Math.max(1, page - 1))}
         aria-disabled={page <= 1}
+        scroll={false}
         className={`flex items-center gap-1 text-sm font-semibold ${page <= 1 ? 'pointer-events-none text-ink-mute/40' : 'text-ink-soft hover:text-primary'}`}
       >
         <ChevronLeft size={15} /> Previous
@@ -18,6 +19,7 @@ export function Pagination({
       <Link
         href={qs(page + 1)}
         aria-disabled={!hasMore}
+        scroll={false}
         className={`flex items-center gap-1 text-sm font-semibold ${!hasMore ? 'pointer-events-none text-ink-mute/40' : 'text-ink-soft hover:text-primary'}`}
       >
         Next <ChevronRight size={15} />
