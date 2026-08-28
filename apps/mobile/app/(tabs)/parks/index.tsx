@@ -169,14 +169,7 @@ function ParkCard({
   return (
     <TouchableOpacity
       onPress={() => router.push(`/park/${park.park_code}` as never)}
-      style={[
-        styles.card,
-        { width: CARD_W },
-        // One of the curated 63 — a primary-accent border, not just the
-        // usual neutral hairline, so they read as distinct from the other
-        // designations at a glance.
-        park.is_national_park && { borderWidth: 1.5, borderColor: primary },
-      ]}
+      style={[styles.card, { width: CARD_W }]}
       activeOpacity={0.85}
     >
       <View style={[styles.cardImg, { backgroundColor: g1 }]}>
@@ -195,11 +188,11 @@ function ParkCard({
         <StatusBadge status={status} />
       </View>
       <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
+        {/* Long state names fall back to the two-letter code when the
+            distance shares the line — "New Hampshire" + "2333 mi" can't
+            both fit a half-width card. flex keeps them from ever
+            overlapping regardless. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-          {/* Long state names fall back to the two-letter code when the
-              distance shares the line — "New Hampshire" + "2333 mi" can't
-              both fit a half-width card. flex keeps them from ever
-              overlapping regardless. */}
           <Text style={[styles.cardState, { marginBottom: 0, flexShrink: 1 }]} numberOfLines={1}>
             {distance != null && stateName.length > 12 ? stateCode : stateName}
           </Text>
@@ -218,6 +211,18 @@ function ParkCard({
           <Text style={styles.cardDesc} numberOfLines={descLines}>{park.description}</Text>
         ) : null}
       </View>
+      {park.is_national_park && (
+        // One of the curated 63 — a primary-accent border, not just the
+        // usual neutral hairline, so they read as distinct at a glance.
+        // Rendered as a separate non-clipping overlay on top of the card's
+        // own content, not merged onto styles.card's borderWidth — a border
+        // living on the SAME view that clips a full-bleed photo (overflow:
+        // hidden + borderRadius + borderWidth all together) is the iOS
+        // rendering seam that left a thin gap/white line along the image's
+        // edges. This frame has no overflow:hidden and no clipped children
+        // of its own, so it can't trigger that.
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardAccentBorder, { borderColor: primary }]} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -282,10 +287,7 @@ function ParkListRow({
   return (
     <TouchableOpacity
       onPress={() => router.push(`/park/${park.park_code}` as never)}
-      style={[
-        styles.listCard,
-        park.is_national_park && { borderWidth: 1.5, borderColor: primary },
-      ]}
+      style={styles.listCard}
       activeOpacity={0.85}
     >
       <View style={[styles.listCardImg, { backgroundColor: g1 }]}>
@@ -317,6 +319,11 @@ function ParkListRow({
           <Text style={styles.cardDesc} numberOfLines={4}>{park.description}</Text>
         ) : null}
       </View>
+      {park.is_national_park && (
+        // See ParkCard's identical overlay for why this isn't merged onto
+        // styles.listCard's own borderWidth.
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cardAccentBorder, { borderColor: primary }]} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -1055,10 +1062,6 @@ export default function ParksScreen() {
         enabledParkTypes={enabledParkTypes}
         parkTypeCounts={parkTypeCounts}
         onToggleParkType={key => setEnabledParkTypes(prev => {
-          // Coming from "All" (every type enabled) — tapping one specific
-          // type narrows down to just that type, rather than removing it
-          // from the full set (matches the map tab's chip row behavior).
-          if (prev.size === PARK_TYPES.length) return new Set([key]);
           const next = new Set(prev);
           if (next.has(key)) next.delete(key); else next.add(key);
           return next;
@@ -1420,6 +1423,14 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: C.hairline,
     overflow: 'hidden',
+  },
+  // National-park accent frame — a plain overlay, deliberately no
+  // overflow:hidden/clipped children of its own (see ParkCard/ParkListRow
+  // for why that combination left a seam along the photo's edges).
+  cardAccentBorder: {
+    borderRadius: 20,
+    borderCurve: 'continuous',
+    borderWidth: 1.5,
   },
   cardImg: {
     height: 120,

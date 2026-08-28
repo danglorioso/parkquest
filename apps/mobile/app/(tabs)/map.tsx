@@ -641,14 +641,12 @@ export default function MapScreen() {
   );
 
   // Shared by the Map Details sheet's checklist and the quick-access chip
-  // row below the search bar.
+  // row below the search bar. Every chip's highlight is independent — tap
+  // always just flips that one, regardless of whether "All" happens to be
+  // active — no special-cased narrowing, which was the same gesture doing
+  // two different things depending on invisible prior state.
   const toggleParkType = useCallback((key: string) => {
     setEnabledParkTypes(prev => {
-      // Coming from "All" (every type enabled) — tapping one specific type
-      // narrows down to just that type, rather than removing it from the
-      // full set (which would hide the exact thing you just tapped and
-      // leave everything else showing instead).
-      if (prev.size === PARK_TYPES.length) return new Set([key]);
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;

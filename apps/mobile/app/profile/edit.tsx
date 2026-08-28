@@ -77,15 +77,8 @@ export default function EditProfileScreen() {
   const toggleDefaultParkType = (key: string) => {
     setDefaultParkTypesState(prev => {
       const cur = prev ?? new Set(PARK_TYPES.map(t => t.key));
-      // Coming from "All" — tapping one specific type narrows down to just
-      // that type (matches the map/parks-list chip rows' own behavior).
-      let next: Set<string>;
-      if (cur.size === PARK_TYPES.length) {
-        next = new Set([key]);
-      } else {
-        next = new Set(cur);
-        if (next.has(key)) next.delete(key); else next.add(key);
-      }
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key); else next.add(key);
       setDefaultParkTypes(Array.from(next));
       return next;
     });
