@@ -997,6 +997,11 @@ export default function MapScreen() {
       { latitude: 39.0, longitude: -98.5, latitudeDelta: 35, longitudeDelta: 55 },
       500
     );
+    // Matches the tab bar's own re-press reset (mapTabPress below) — the
+    // status filter is part of "the default first view" too, not just
+    // camera position. Doesn't touch enabledParkTypes/labels, same as
+    // mapTabPress — those aren't part of "home", just the status filter.
+    setFilterStatus('all');
   }, []);
 
   useEffect(() => {
