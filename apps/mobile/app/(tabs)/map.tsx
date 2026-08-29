@@ -796,14 +796,22 @@ export default function MapScreen() {
 
     // No token also covers Clerk still bootstrapping (e.g. offline at
     // startup) — fall back to cache same as being offline rather than hang.
+    //
+    // NOT gated behind `!hasLoadedRef.current` — it used to be, which meant
+    // a screen that had already loaded once while online (so hasLoadedRef
+    // was already true) got NOTHING here after connectivity later dropped:
+    // this whole block was skipped, parksData stayed null, and the function
+    // returned early below without ever calling setOfflineFetchedAt. The
+    // offline banner would just silently never appear for the rest of that
+    // session, even though the app really was offline — going online→
+    // offline mid-session (not just launching already offline) is exactly
+    // when this needs to run.
     if (!isOnline || !tok) {
-      if (!hasLoadedRef.current) {
-        cache ??= await loadOfflineParks();
-        if (!cache) { setLoading(false); return; }
-        parksData = cache.parks;
-        setOfflineFetchedAt(cache.fetchedAt);
-        hasLoadedRef.current = true;
-      }
+      cache ??= await loadOfflineParks();
+      if (!cache) { setLoading(false); return; }
+      parksData = cache.parks;
+      setOfflineFetchedAt(cache.fetchedAt);
+      hasLoadedRef.current = true;
     } else {
       try {
         parksData = await apiFetch<Array<{
@@ -1079,12 +1087,6 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      {offlineFetchedAt && (
-        <View style={{ position: 'absolute', top: insets.top + 8, left: 0, right: 0 }}>
-          <OfflineBanner fetchedAt={offlineFetchedAt} />
-        </View>
-      )}
-
       {showLoadingOverlay && (
         <Animated.View style={[styles.mapLoadingOverlay, { opacity: loadingOpacity }]} pointerEvents="none">
           <CompassSpinner size={36} dark />
@@ -1117,12 +1119,8 @@ export default function MapScreen() {
       </View>
 
       {/* Search — rendered before the sheet so results overlay the map
-          chrome but not the other way around. Same +36 offline-banner delta
-          filterPillWrap already uses below — this one was missing it, which
-          is why the banner sat behind the search bar (nearly the same top
-          offset) while filterPillWrap left a gap sized for a banner that
-          never actually pushed anything else down. */}
-      <View style={[styles.searchBarWrap, { top: insets.top + (offlineFetchedAt ? 48 : 12) }]}>
+          chrome but not the other way around. */}
+      <View style={[styles.searchBarWrap, { top: insets.top + 12 }]}>
         <MapSearchBar
           token={token}
           parks={parks}
@@ -1137,7 +1135,7 @@ export default function MapScreen() {
           shortcuts instead of buried in the sheet. PARK_TYPES is already
           ordered most-common-first (national parks, then historical parks,
           ...), so no separate sort here. */}
-      <View style={[styles.chipRowWrap, { top: insets.top + (offlineFetchedAt ? 98 : 62) }]}>
+      <View style={[styles.chipRowWrap, { top: insets.top + 62 }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1175,6 +1173,15 @@ export default function MapScreen() {
           })}
         </ScrollView>
       </View>
+
+      {offlineFetchedAt && (
+        // zIndex required, not optional — searchBarWrap(40)/chipRowWrap(39)/
+        // mapControls(31) all set one, and once ANY sibling does, plain JSX
+        // order stops deciding paint order for the rest of them too.
+        <View style={{ position: 'absolute', top: insets.top + 62 + 32 + 8, left: 0, right: 0, zIndex: 38 }}>
+          <OfflineBanner fetchedAt={offlineFetchedAt} solid />
+        </View>
+      )}
 
       {/* The park sheet itself. Rendered last so it paints over everything
           above BY DEFAULT, but several map overlays (searchBarWrap: 40,

@@ -1579,6 +1579,14 @@ export function ParkProfileScreen({
           }
         )}
       >
+        {/* First thing in the scrollable content, not after the photo strip —
+            in the half-sheet peek, the strip alone could push it below the
+            visible fold, reading as "the banner doesn't show" even though it
+            was rendering fine, just scrolled out of view. */}
+        {offlineFetchedAt && (
+          <OfflineBanner fetchedAt={offlineFetchedAt} noun="park details" style={{ marginTop: 12 }} />
+        )}
+
         {/* ── Photo strip ──────────────────────────────────────────────────── */}
         {/* Skeleton — reserves the strip's exact footprint (PHOTO_STRIP_HEIGHT,
             shared with the real ScrollView below) while nps is still in
@@ -1665,8 +1673,6 @@ export function ParkProfileScreen({
             })}
           </ScrollView>
         )}
-
-        {offlineFetchedAt && <OfflineBanner fetchedAt={offlineFetchedAt} noun="park details" />}
 
         {/* ── Quick stats ───────────────────────────────────────────────────── */}
         <View

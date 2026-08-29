@@ -9,7 +9,7 @@ import {
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScrollToTop } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
@@ -721,6 +721,14 @@ export default function ParksScreen() {
   const { getToken } = useAuth();
   const { primary, accent } = useColors();
   const tabBarSpace = useTabBarSpace();
+  // insets.top reads 0 for a frame (or more) before the safe-area context's
+  // real measurement lands — even with initialWindowMetrics seeding the
+  // provider, there's still a gap on some launches/navigations. Read here
+  // (a hook, so it must run unconditionally on every render — the actual
+  // "hold a blank frame instead of painting the header in the wrong spot"
+  // branch happens at the return statement below, AFTER every other hook
+  // in this component, not here).
+  const insets = useSafeAreaInsets();
   // Menu icon tint — see the imageColor note on the view-toggle MenuView.
   const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
 
@@ -772,16 +780,19 @@ export default function ParksScreen() {
 
     // No token also covers Clerk still bootstrapping (e.g. offline at
     // startup) — fall back to cache same as being offline rather than hang.
+    //
+    // NOT gated behind `!hasLoadedRef.current` — see map.tsx's identical
+    // fix for why: a screen already loaded once while online got nothing
+    // here after connectivity later dropped, so the offline banner would
+    // just silently never appear for the rest of that session.
     if (!isOnline || !tok) {
-      if (!hasLoadedRef.current) {
-        cache ??= await loadOfflineParks();
-        if (cache) {
-          setParks(cache.parks);
-          setOfflineFetchedAt(cache.fetchedAt);
-          hasLoadedRef.current = true;
-        } else {
-          setError(true);
-        }
+      cache ??= await loadOfflineParks();
+      if (cache) {
+        setParks(cache.parks);
+        setOfflineFetchedAt(cache.fetchedAt);
+        hasLoadedRef.current = true;
+      } else {
+        setError(true);
       }
     } else {
       try {
@@ -992,8 +1003,6 @@ export default function ParksScreen() {
 
   const ListHeader = (
     <View>
-      {offlineFetchedAt && <OfflineBanner fetchedAt={offlineFetchedAt} />}
-
       {/* Page header */}
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1075,6 +1084,10 @@ export default function ParksScreen() {
       {(hasFilter || !!query) && !loading && (
         <Text style={styles.resultsCount}>{filtered.length} RESULT{filtered.length !== 1 ? 'S' : ''}</Text>
       )}
+
+      {/* Last thing in the header — sits directly above the park cards,
+          below the toggle row/designation chips/filter panel above it. */}
+      {offlineFetchedAt && <OfflineBanner fetchedAt={offlineFetchedAt} />}
     </View>
   );
 
@@ -1101,6 +1114,15 @@ export default function ParksScreen() {
       </Text>
     </View>
   ) : null;
+
+  // Every hook above has already run — safe to branch on insets here. Holds
+  // a blank (already-correct bg) frame instead of painting the title under
+  // the notch/Dynamic Island for a frame, then visibly jumping down once
+  // the real inset lands. 0 is safe to treat as "not measured yet" — no
+  // modern iPhone has a true 0 top inset.
+  if (insets.top === 0) {
+    return <View style={{ flex: 1, backgroundColor: C.bg }} />;
+  }
 
   if (error) {
     return (

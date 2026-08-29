@@ -14,7 +14,7 @@ import {
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
@@ -269,7 +269,13 @@ function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <PaletteProvider>
-          <SafeAreaProvider>
+          {/* initialWindowMetrics seeds the provider synchronously (measured
+              natively before JS starts) instead of starting at insets=0 and
+              correcting a frame later — without it, any screen positioned
+              off insets.top on cold launch (e.g. the parks list title)
+              could render under the notch/Dynamic Island for a frame, then
+              visibly jump down once the real value arrives. */}
+          <SafeAreaProvider initialMetrics={initialWindowMetrics}>
             <StatusBar style="auto" />
             <SplashController onReady={() => setAppReady(true)} />
             {/* Not wrapped in <ClerkLoaded> — that would block RootStack behind
