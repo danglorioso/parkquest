@@ -452,6 +452,15 @@ export default function LandingScreen() {
                 <Text style={styles.headline}>Your parks await.</Text>
                 <Text style={styles.sub}>Track every visit, badge, and memory.</Text>
 
+                {/* Flexible spacers (this one and the one before `terms`
+                    below) split whatever room is actually left over between
+                    them, instead of one fixed margin that's cramped with
+                    the sign-back-in card's extra content and left as one
+                    big dead zone without it. minHeight is the floor for the
+                    cramped case; flex:1 is what lets both grow to fill
+                    empty space in the roomier one. */}
+                <View style={{ flex: 1, minHeight: lastAccount ? 10 : 16 }} />
+
                 {lastAccount && (
                   <View style={styles.lastAccountCard}>
                     <View style={styles.lastAccountRow}>
@@ -478,7 +487,7 @@ export default function LandingScreen() {
                 )}
 
                 {/* OAuth */}
-                <View style={{ marginTop: lastAccount ? 10 : 20 }}>
+                <View>
                   {lastAccount && (
                     <View style={styles.dividerRow}>
                       <View style={styles.dividerLine} />
@@ -525,6 +534,8 @@ export default function LandingScreen() {
                   <Text style={[styles.outlineBtnText, { color: T.primary }]}>Create Account</Text>
                 </TouchableOpacity>
 
+                <View style={{ flex: 1, minHeight: lastAccount ? 10 : 16 }} />
+
                 <Text style={styles.terms}>
                   By continuing, you agree to the{' '}
                   <Text style={{ color: T.primary, fontWeight: '600' }} onPress={() => Linking.openURL(`${WEB}/terms`)}>Terms</Text>
@@ -568,8 +579,8 @@ const styles = StyleSheet.create({
   // hiding any of those elements.
   panel: { backgroundColor: C.bg, paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 },
   kicker: { fontFamily: MONO, fontSize: 13, letterSpacing: 2, color: C.inkMute, fontWeight: '600' },
-  headline: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.8, marginTop: 4, lineHeight: 34 },
-  sub: { fontSize: 14, color: C.inkMute, marginTop: 4 },
+  headline: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.8, marginTop: 8, lineHeight: 34 },
+  sub: { fontSize: 14, color: C.inkMute, marginTop: 6 },
 
   lastAccountCard: {
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
@@ -603,10 +614,11 @@ const styles = StyleSheet.create({
   },
   outlineBtnText: { fontSize: 15, fontWeight: '700' },
 
-  // marginTop 'auto' (not a fixed value) pins this to the panel's bottom
-  // edge — the flexible gap that lets this no-longer-scrollable screen
-  // adapt to whatever vertical space is left under the fixed-height hero.
-  terms: { fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 'auto', paddingTop: 8, lineHeight: 17 },
+  // No marginTop:'auto' here — the flex:1 spacer rendered right before
+  // this (see the render site) is what pushes it down to fill whatever
+  // room is actually left, shared with the spacer above the OAuth
+  // buttons instead of dumping all the slack into one gap.
+  terms: { fontSize: 13, color: C.inkMute, textAlign: 'center', paddingTop: 8, lineHeight: 17 },
 
   helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
 
