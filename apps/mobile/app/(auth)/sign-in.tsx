@@ -267,9 +267,13 @@ function HeroSection() {
         <Text style={styles.wordmarkText}>Park<Text style={{ fontWeight: '400' }}>Quest</Text></Text>
       </View>
 
-      {/* Tagline */}
+      {/* Tagline — no kicker line above it anymore. 63 (official National
+          Parks) and this app's actual tracked-park count (127, and
+          growing as more designations get added) are different numbers,
+          so any single count here goes stale or is misleading — the
+          headline alone ("Every park.") already says everything true
+          regardless of which number is current. */}
       <View style={styles.heroBottom}>
-        <Text style={styles.heroKicker}>63 PARKS · ONE QUEST</Text>
         <Text style={styles.heroHeadline}>Every park.{'\n'}One journal.</Text>
       </View>
     </View>
@@ -438,7 +442,13 @@ export default function LandingScreen() {
               </>
             ) : (
               <>
-                <Text style={styles.kicker}>DIGITAL NATIONAL PARK JOURNAL</Text>
+                {/* Kicker dropped when the sign-back-in card is showing —
+                    it pushed the OAuth buttons (and, on shorter phones,
+                    the last-login card's own "Continue" button) below the
+                    fold. Headline + sub stay either way; full copy (kicker
+                    included) shows for a fresh sign-in with no remembered
+                    account. */}
+                {!lastAccount && <Text style={styles.kicker}>DIGITAL NATIONAL PARK JOURNAL</Text>}
                 <Text style={styles.headline}>Your parks await.</Text>
                 <Text style={styles.sub}>Track every visit, badge, and memory.</Text>
 
@@ -468,7 +478,7 @@ export default function LandingScreen() {
                 )}
 
                 {/* OAuth */}
-                <View style={{ marginTop: lastAccount ? 18 : 24 }}>
+                <View style={{ marginTop: lastAccount ? 10 : 20 }}>
                   {lastAccount && (
                     <View style={styles.dividerRow}>
                       <View style={styles.dividerLine} />
@@ -546,45 +556,49 @@ const styles = StyleSheet.create({
   },
   wordmarkText: { fontSize: 20, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.4 },
   heroBottom: { position: 'absolute', bottom: 58, left: 22, right: 22 },
-  heroKicker: {
-    fontFamily: MONO, fontSize: 13, letterSpacing: 2.5,
-    color: 'rgba(255,251,241,0.70)', fontWeight: '600', marginBottom: 8,
-  },
   heroHeadline: { fontSize: 32, fontWeight: '800', color: '#FFFBF1', letterSpacing: -0.8, lineHeight: 34 },
 
-  panel: { backgroundColor: C.bg, paddingHorizontal: 24, paddingTop: 28, paddingBottom: 44 },
+  // Condensed throughout (padding/margins/minHeights all trimmed from their
+  // original values) so the sign-back-in state — headline, sub, last-
+  // account card, both OAuth buttons, the second divider, Sign In, Create
+  // Account, and terms — has a shot at fitting without scrolling. This
+  // alone doesn't close the gap on every phone (the returning-user state
+  // is just a lot of stacked content), but it's the full amount spacing
+  // trims alone can reasonably reclaim without shrinking the hero or
+  // hiding any of those elements.
+  panel: { backgroundColor: C.bg, paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 },
   kicker: { fontFamily: MONO, fontSize: 13, letterSpacing: 2, color: C.inkMute, fontWeight: '600' },
-  headline: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.8, marginTop: 8, lineHeight: 34 },
-  sub: { fontSize: 14, color: C.inkMute, marginTop: 6 },
+  headline: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.8, marginTop: 4, lineHeight: 34 },
+  sub: { fontSize: 14, color: C.inkMute, marginTop: 4 },
 
   lastAccountCard: {
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 16, padding: 14, marginTop: 22,
+    borderRadius: 16, padding: 12, marginTop: 14,
   },
-  lastAccountRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  lastAccountRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   lastAccountName: { fontSize: 15, fontWeight: '700', color: C.ink },
   lastAccountSub: { fontSize: 12.5, color: C.inkMute, marginTop: 2 },
   primaryContinueBtn: {
-    borderRadius: 12, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', minHeight: 46,
+    borderRadius: 12, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', minHeight: 42,
   },
   primaryContinueBtnText: { fontSize: 14, fontWeight: '700', color: C.onPrimary },
-  notYouText: { fontSize: 12.5, fontWeight: '600', color: C.inkMute, textAlign: 'center', marginTop: 10 },
+  notYouText: { fontSize: 12.5, fontWeight: '600', color: C.inkMute, textAlign: 'center', marginTop: 6 },
 
   oauthBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, backgroundColor: C.surface,
     borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 12, paddingVertical: 13, marginBottom: 8, minHeight: 46,
+    borderRadius: 12, paddingVertical: 11, marginBottom: 6, minHeight: 42,
   },
   oauthBtnText: { fontSize: 13, fontWeight: '600', color: C.ink },
 
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 14 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 8 },
   dividerLine: { flex: 1, height: 0.5, backgroundColor: C.hairline },
   dividerText: { fontFamily: MONO, fontSize: 13, letterSpacing: 1.5, color: C.inkMute, fontWeight: '600' },
 
   outlineBtn: {
-    backgroundColor: 'transparent', borderRadius: 14, paddingVertical: 14,
-    alignItems: 'center', marginBottom: 10,
+    backgroundColor: 'transparent', borderRadius: 14, paddingVertical: 11,
+    alignItems: 'center', marginBottom: 8,
     borderWidth: 1.5,
   },
   outlineBtnText: { fontSize: 15, fontWeight: '700' },
@@ -592,7 +606,7 @@ const styles = StyleSheet.create({
   // marginTop 'auto' (not a fixed value) pins this to the panel's bottom
   // edge — the flexible gap that lets this no-longer-scrollable screen
   // adapt to whatever vertical space is left under the fixed-height hero.
-  terms: { fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 'auto', paddingTop: 12, lineHeight: 17 },
+  terms: { fontSize: 13, color: C.inkMute, textAlign: 'center', marginTop: 'auto', paddingTop: 8, lineHeight: 17 },
 
   helperText: { fontSize: 13, color: C.inkMute, marginBottom: 14 },
 

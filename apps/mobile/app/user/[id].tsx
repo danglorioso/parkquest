@@ -19,6 +19,7 @@ import { BadgeDetailModal, BadgePatch } from '@/components/BadgeDetailModal';
 import { ParkStamp } from '@/components/ParkStamp';
 import { EmptyState } from '@/components/EmptyState';
 import { AvatarLightbox } from '@/components/AvatarLightbox';
+import { GlassScrubTabs } from '@/components/GlassScrubTabs';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { emitUserBlocked } from '@/lib/blocking';
 import { showToast } from '@/lib/toast';
@@ -587,167 +588,164 @@ export default function UserProfileScreen() {
               ) : null}
             </View>
 
-            {/* Stats strip — NP VISITED / AREAS / BADGES, one line, same
-                label-above-value order as the passport hero card. Friend
-                count lives in the friend action row below instead, so it's
-                not duplicated here. Progress bar mirrors the passport
-                card's "X of 63 parks stamped" line. */}
+            {/* Stats strip (+ friend action row, same card) — NP VISITED /
+                AREAS / BADGES, one line, same label-above-value order as the
+                passport hero card, plus a progress bar mirroring the
+                passport card's "X of 63 parks stamped" line. One white
+                card, not two: the friend count + action button join it
+                below a thin internal divider instead of a second
+                rounded/bordered card with its own gap underneath — same
+                treatment as the park page's stats/mutuals card. */}
             <View style={styles.statsStrip}>
-              <View style={styles.statsRow}>
-                <View style={styles.statCell}>
-                  <Text style={styles.statLabel}>NP VISITED</Text>
-                  <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                    {profile.parks_visited}<Text style={styles.statSub}> / {profile.parks_total}</Text>
-                  </Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statCell}>
-                  <Text style={styles.statLabel}>AREAS</Text>
-                  <Text style={styles.statValue}>{stampItems.length}</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statCell}>
-                  <Text style={styles.statLabel}>BADGES</Text>
-                  <Text style={styles.statValue}>{profile.badges?.length ?? 0}</Text>
-                </View>
-              </View>
-
-              <View style={styles.statsProgress}>
-                <View style={styles.statsProgressRow}>
-                  <Text style={styles.statsProgressText} numberOfLines={1}>
-                    {profile.parks_visited} of {profile.parks_total} parks stamped
-                  </Text>
-                  <Text style={styles.statsProgressPct}>
-                    {profile.parks_total > 0 ? Math.round((profile.parks_visited / profile.parks_total) * 100) : 0}%
-                  </Text>
-                </View>
-                <View style={styles.statsProgressTrack}>
-                  <View
-                    style={[
-                      styles.statsProgressFill,
-                      {
-                        width: `${profile.parks_total > 0 ? (profile.parks_visited / profile.parks_total) * 100 : 0}%` as `${number}%`,
-                        backgroundColor: T.primary,
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-            </View>
-
-            {/* Friend action — friend count on the left, action button on
-                the right, sharing one card the same size/shape the old
-                full-width button used */}
-            {!isOwnProfile ? (
-              <View style={styles.section}>
-                <View style={styles.friendActionRow}>
-                  <TouchableOpacity
-                    style={styles.friendCountBtn}
-                    onPress={() => setShowFriendsModal(true)}
-                    activeOpacity={0.6}
-                    disabled={profile.friend_count === 0}
-                    hitSlop={6}
-                  >
-                    <Ionicons name="people-outline" size={16} color={C.inkMute} />
-                    <Text style={styles.friendCountText}>
-                      {profile.friend_count} {profile.friend_count === 1 ? 'Friend' : 'Friends'}
+              <View style={styles.statsStripInner}>
+                <View style={styles.statsRow}>
+                  <View style={styles.statCell}>
+                    <Text style={styles.statLabel}>NP VISITED</Text>
+                    <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                      {profile.parks_visited}<Text style={styles.statSub}> / {profile.parks_total}</Text>
                     </Text>
-                  </TouchableOpacity>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.statCell}>
+                    <Text style={styles.statLabel}>AREAS</Text>
+                    <Text style={styles.statValue}>{stampItems.length}</Text>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.statCell}>
+                    <Text style={styles.statLabel}>BADGES</Text>
+                    <Text style={styles.statValue}>{profile.badges?.length ?? 0}</Text>
+                  </View>
+                </View>
 
-                  {profile.friendship_status === 'pending_received' ? (
-                    /* Incoming request — inline accept/decline instead of a
-                       single "respond" button that bounced through an Alert
-                       and the friends screen. Distinct look from "Add friend"
-                       since it's a different state. */
-                    <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
+                <View style={styles.statsProgress}>
+                  <View style={styles.statsProgressRow}>
+                    <Text style={styles.statsProgressText} numberOfLines={1}>
+                      {profile.parks_visited} of {profile.parks_total} parks stamped
+                    </Text>
+                    <Text style={styles.statsProgressPct}>
+                      {profile.parks_total > 0 ? Math.round((profile.parks_visited / profile.parks_total) * 100) : 0}%
+                    </Text>
+                  </View>
+                  <View style={styles.statsProgressTrack}>
+                    <View
+                      style={[
+                        styles.statsProgressFill,
+                        {
+                          width: `${profile.parks_total > 0 ? (profile.parks_visited / profile.parks_total) * 100 : 0}%` as `${number}%`,
+                          backgroundColor: T.primary,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Friend action — friend count on the left, action button on
+                  the right. Own-profile view has no friend/action state at
+                  all, so this (and its divider) is skipped entirely there. */}
+              {!isOwnProfile ? (
+                <>
+                  <View style={styles.statsStripDivider} />
+                  <View style={styles.friendActionRow}>
+                    <TouchableOpacity
+                      style={styles.friendCountBtn}
+                      onPress={() => setShowFriendsModal(true)}
+                      activeOpacity={0.6}
+                      disabled={profile.friend_count === 0}
+                      hitSlop={6}
+                    >
+                      <Ionicons name="people-outline" size={16} color={C.inkMute} />
+                      <Text style={styles.friendCountText}>
+                        {profile.friend_count} {profile.friend_count === 1 ? 'Friend' : 'Friends'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {profile.friendship_status === 'pending_received' ? (
+                      /* Incoming request — inline accept/decline instead of a
+                         single "respond" button that bounced through an Alert
+                         and the friends screen. Distinct look from "Add friend"
+                         since it's a different state. */
+                      <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
+                        <TouchableOpacity
+                          style={[styles.friendButton, { backgroundColor: T.primary }, friendBusy && { opacity: 0.6 }]}
+                          onPress={handleAcceptRequest}
+                          disabled={friendBusy}
+                          activeOpacity={0.8}
+                        >
+                          {friendBusy ? (
+                            <ActivityIndicator size="small" color={C.onPrimary} />
+                          ) : (
+                            <>
+                              <Ionicons name="checkmark" size={15} color={C.onPrimary} style={{ marginRight: 5 }} />
+                              <Text style={styles.friendButtonText}>Accept</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.friendButton, styles.friendButtonOutline, { borderColor: C.hairline }, friendBusy && { opacity: 0.6 }]}
+                          onPress={handleDeclineRequest}
+                          disabled={friendBusy}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="close" size={15} color={C.inkMute} style={{ marginRight: 5 }} />
+                          <Text style={[styles.friendButtonText, { color: C.inkSoft }]}>Decline</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
                       <TouchableOpacity
-                        style={[styles.friendButton, { backgroundColor: T.primary }, friendBusy && { opacity: 0.6 }]}
-                        onPress={handleAcceptRequest}
+                        style={[
+                          styles.friendButton,
+                          isFriend
+                            ? styles.friendButtonSecondary
+                            : isPending
+                              ? [styles.friendButtonOutline, { borderColor: T.primary }]
+                              : { backgroundColor: T.primary },
+                          friendBusy && { opacity: 0.6 },
+                        ]}
+                        onPress={handleFriendAction}
                         disabled={friendBusy}
                         activeOpacity={0.8}
                       >
                         {friendBusy ? (
-                          <ActivityIndicator size="small" color={C.onPrimary} />
+                          <ActivityIndicator size="small" color={isFriend ? C.inkMute : isPending ? T.primary : C.onPrimary} />
                         ) : (
                           <>
-                            <Ionicons name="checkmark" size={15} color={C.onPrimary} style={{ marginRight: 5 }} />
-                            <Text style={styles.friendButtonText}>Accept</Text>
+                            <Ionicons
+                              name={friendButtonIcon()}
+                              size={15}
+                              color={isFriend ? C.inkSoft : isPending ? T.primary : C.onPrimary}
+                              style={{ marginRight: 6 }}
+                            />
+                            <Text
+                              style={[
+                                styles.friendButtonText,
+                                isFriend && styles.friendButtonTextSecondary,
+                                isPending && { color: T.primary },
+                              ]}
+                            >
+                              {friendButtonLabel()}
+                            </Text>
                           </>
                         )}
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.friendButton, styles.friendButtonOutline, { borderColor: C.hairline }, friendBusy && { opacity: 0.6 }]}
-                        onPress={handleDeclineRequest}
-                        disabled={friendBusy}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons name="close" size={15} color={C.inkMute} style={{ marginRight: 5 }} />
-                        <Text style={[styles.friendButtonText, { color: C.inkSoft }]}>Decline</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={[
-                        styles.friendButton,
-                        isFriend
-                          ? styles.friendButtonSecondary
-                          : isPending
-                            ? [styles.friendButtonOutline, { borderColor: T.primary }]
-                            : { backgroundColor: T.primary },
-                        friendBusy && { opacity: 0.6 },
-                      ]}
-                      onPress={handleFriendAction}
-                      disabled={friendBusy}
-                      activeOpacity={0.8}
-                    >
-                      {friendBusy ? (
-                        <ActivityIndicator size="small" color={isFriend ? C.inkMute : isPending ? T.primary : C.onPrimary} />
-                      ) : (
-                        <>
-                          <Ionicons
-                            name={friendButtonIcon()}
-                            size={15}
-                            color={isFriend ? C.inkSoft : isPending ? T.primary : C.onPrimary}
-                            style={{ marginRight: 6 }}
-                          />
-                          <Text
-                            style={[
-                              styles.friendButtonText,
-                              isFriend && styles.friendButtonTextSecondary,
-                              isPending && { color: T.primary },
-                            ]}
-                          >
-                            {friendButtonLabel()}
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            ) : null}
+                    )}
+                  </View>
+                </>
+              ) : null}
+            </View>
 
-            {/* Tab switcher — custom capsule pill, matching the app's own
-                card/pill language instead of the native UISegmentedControl's
-                flat square-cornered track */}
+            {/* Tab switcher — thin Liquid-Glass scrub control, same
+                component/feel as the park page's Info/Community switcher */}
             <View style={styles.section}>
-              <View style={styles.tabSwitcher}>
-                {(['Overview', 'Stamps', 'Timeline'] as const).map((label, i) => {
-                  const active = tabIndex === i;
-                  return (
-                    <TouchableOpacity
-                      key={label}
-                      style={[styles.tabSwitcherItem, active && { backgroundColor: T.primary }]}
-                      onPress={() => setTabIndex(i)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.tabSwitcherText, active && styles.tabSwitcherTextActive]}>
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <GlassScrubTabs
+                segments={[
+                  { key: 0, label: 'Overview' },
+                  { key: 1, label: 'Stamps' },
+                  { key: 2, label: 'Timeline' },
+                ]}
+                active={tabIndex}
+                onChange={setTabIndex}
+              />
             </View>
 
             {/* Overview — badges carousel, then their full posts as they
@@ -998,15 +996,28 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   // Label-above-value, one line — matches the passport hero card's stat row.
+  // Outer card — plain bg/border/radius only. Padding lives on
+  // statsStripInner and friendActionRow instead (each of the two sections
+  // this card can hold brings its own insets), same split as the park
+  // page's statsCard/statsRow/mutualsRow.
   statsStrip: {
     backgroundColor: C.surface,
     marginHorizontal: 16,
     borderRadius: 14,
     borderWidth: 0.5,
     borderColor: C.hairline,
+    overflow: 'hidden',
+    marginBottom: 18,
+  },
+  statsStripInner: {
     paddingVertical: 16,
     paddingHorizontal: 16,
-    marginBottom: 18,
+  },
+  // Thin internal separator between the stats and the friend action row —
+  // edge-to-edge, no horizontal inset (statsStrip itself has none either).
+  statsStripDivider: {
+    height: 0.5,
+    backgroundColor: C.hairline,
   },
   statsRow: {
     flexDirection: 'row',
@@ -1075,21 +1086,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 18,
   },
-  // Card housing the friend count + action button — same overall size and
-  // shape (46 tall) the old full-width button used — 14 radius matches
-  // statsStrip/mapCard.
+  // Friend count + action button row — same overall size the old full-width
+  // button used (46 tall). No card styling of its own; it's the second
+  // section inside statsStrip, below statsStripDivider.
   friendActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 46,
-    borderRadius: 14,
     paddingLeft: 14,
     paddingRight: 6,
     paddingVertical: 6,
-    backgroundColor: C.surface,
-    borderWidth: 0.5,
-    borderColor: C.hairline,
   },
   friendCountBtn: {
     flexDirection: 'row',
@@ -1128,34 +1135,6 @@ const styles = StyleSheet.create({
     color: C.inkSoft,
   },
 
-  // Tab switcher
-  // Capsule tab track — fully rounded, no separate white card behind it,
-  // matching the iOS 26 segmented-control shape and the app's own pill
-  // buttons (friendButton etc.) instead of the native control's flat look.
-  tabSwitcher: {
-    flexDirection: 'row',
-    backgroundColor: C.surfaceAlt,
-    borderRadius: 999,
-    borderWidth: 0.5,
-    borderColor: C.hairline,
-    padding: 3,
-  },
-  tabSwitcherItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  tabSwitcherText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: C.inkSoft,
-  },
-  tabSwitcherTextActive: {
-    color: C.onPrimary,
-    fontWeight: '700',
-  },
 
   // Section header
   sectionHeader: {

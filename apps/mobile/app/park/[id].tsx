@@ -26,6 +26,7 @@ import { GrowTouchable } from '@/components/GrowTouchable';
 import { liquidGlassAvailable } from '@/lib/glass';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors, colorStr } from '@/lib/palette';
+import { GlassScrubTabs } from '@/components/GlassScrubTabs';
 import { parkColor, parkGradient } from '@/lib/parkColors';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { FriendsVisitedSheet } from '@/components/FriendsVisitedSheet';
@@ -192,7 +193,7 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
 
-function Section({ title, children, remeasureKey }: { title: string; children: React.ReactNode; remeasureKey?: string | number }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const C = useColors();
   const [open, setOpen] = useState(true);
   // LayoutAnimation.configureNext (tried first) only reliably animates the
@@ -214,23 +215,6 @@ function Section({ title, children, remeasureKey }: { title: string; children: R
   // why); a ref alone can't drive that choice since changing it doesn't
   // trigger a re-render.
   const [transitioning, setTransitioning] = useState(false);
-  // Optional, for a caller whose children can swap to an entirely
-  // different subtree while genuinely open (Journal section's You/
-  // Community tabs). NOT what fixes content-clipping-while-open anymore —
-  // that turned out to have nothing to do with how fresh contentHeight
-  // is (see the clip container's own height style below: it doesn't clip
-  // AT ALL while settled open, regardless of contentHeight's accuracy).
-  // What this still does: keeps contentHeight reasonably close to
-  // whichever tab is actually showing, so that IF the user later
-  // collapses the section (taps the header), that close animation
-  // starts from close to the right height instead of a stale one from
-  // a tab that isn't even showing anymore — a smaller, cosmetic-only
-  // concern, not the source of the original bug.
-  const isFirstRemeasure = useRef(true);
-  useEffect(() => {
-    if (isFirstRemeasure.current) { isFirstRemeasure.current = false; return; }
-    setContentHeight(0);
-  }, [remeasureKey]);
   const toggle = () => {
     const next = !open;
     animating.current = true;
@@ -537,6 +521,10 @@ export function ParkProfileScreen({
   // underlying data changes (e.g. a background refresh shouldn't yank
   // them back to a different tab).
   const [journalTabOverride, setJournalTabOverride] = useState<'you' | 'community' | null>(null);
+  // Top-of-page Info/Community switcher — see GlassScrubTabs. Always
+  // opens on Info; the "Visits" stat cell below can jump straight to
+  // Community (see its onPress).
+  const [pageTab, setPageTab] = useState<'info' | 'community'>('info');
   const [token,        setToken]        = useState<string | null>(null);
   const [loading,      setLoading]      = useState(!hasSeed);
   const [lightbox,     setLightbox]     = useState<{ images: NpsImage[]; idx: number } | null>(null);
@@ -574,9 +562,6 @@ export function ParkProfileScreen({
   const npsRef = useRef<NpsData | null>(null);
   npsRef.current = nps;
   const scrollRef = useRef<ScrollView>(null);
-  // Content-relative y of the journal section, captured via onLayout so the
-  // "Visits" stat cell can jump straight to it.
-  const journalY = useRef(0);
   const scrollY = useRef(new Animated.Value(0)).current;
   // Plain-number mirror of scrollY's current position, for contentPan's
   // synchronous reads (PanResponder callbacks can't read an Animated.Value
@@ -1674,10 +1659,13 @@ export function ParkProfileScreen({
           </ScrollView>
         )}
 
-        {/* ── Quick stats ───────────────────────────────────────────────────── */}
+        {/* ── Quick stats (+ friends who've visited, same card) ───────────────
+            One white card, not two — a thin internal divider separates the
+            stat cells from the mutuals row instead of a second
+            rounded/bordered card with its own gap underneath. */}
         <View
           style={[
-            styles.statsRow,
+            styles.statsCard,
             // The strip OR its skeleton (both above, both styles.photoStrip)
             // already end in their own 12px bottom padding — matching that
             // same 12px is the hero-to-strip gap too, so no extra marginTop
@@ -1691,49 +1679,65 @@ export function ParkProfileScreen({
             { marginTop: (nps === null || stripImages.length > 0) ? 0 : 12 },
           ]}
         >
-          {/* Multi-state parks stack one state per line so a long list
-              ("California, Nevada") doesn't squeeze the other cells. */}
-          <StatCell label="State" value={fullStateName(park.states).split(', ').join('\n')} />
-          <View style={styles.statDivider} />
-          <StatCell
-            label="Status"
-            value={parkStatus === 'visited' ? 'Visited' : onBucket ? 'Bucket list' : 'Not yet'}
-            valueColor={parkStatus === 'visited' ? C.visited : onBucket ? C.bucket : C.inkMute}
-          />
-          <View style={styles.statDivider} />
-          <StatCell
-            label="Visits"
-            value={String(visits.length)}
-            onPress={() => scrollRef.current?.scrollTo({ y: journalY.current, animated: true })}
-          />
-          {distanceLabel && (
+          <View style={styles.statsRow}>
+            {/* Multi-state parks stack one state per line so a long list
+                ("California, Nevada") doesn't squeeze the other cells. */}
+            <StatCell label="State" value={fullStateName(park.states).split(', ').join('\n')} />
+            <View style={styles.statDivider} />
+            <StatCell
+              label="Status"
+              value={parkStatus === 'visited' ? 'Visited' : onBucket ? 'Bucket list' : 'Not yet'}
+              valueColor={parkStatus === 'visited' ? C.visited : onBucket ? C.bucket : C.inkMute}
+            />
+            <View style={styles.statDivider} />
+            <StatCell
+              label="Visits"
+              value={String(visits.length)}
+              onPress={() => { setPageTab('community'); setJournalTabOverride('you'); }}
+            />
+            {distanceLabel && (
+              <>
+                <View style={styles.statDivider} />
+                <StatCell label="Distance" value={distanceLabel} />
+              </>
+            )}
+          </View>
+
+          {/* Omitted entirely at zero (no offline-fallback text/spinner
+              needed — it's a nice-to-have, not core content) and while
+              offline, since this depends on the current user's live friends
+              list rather than anything cached for offline viewing. */}
+          {isOnline && visitors && (visitors.total > 0 || (visitors.others_total ?? 0) > 0) && (
             <>
-              <View style={styles.statDivider} />
-              <StatCell label="Distance" value={distanceLabel} />
+              <View style={styles.statsCardDivider} />
+              <FriendsVisitedRow
+                friends={visitors.friends} total={visitors.total}
+                others={visitors.others ?? []} othersTotal={visitors.others_total ?? 0}
+                onPress={() => setShowFriendsSheet(true)}
+              />
             </>
           )}
         </View>
 
-        {/* ── Friends who've visited ──────────────────────────────────────────
-            Omitted entirely at zero (no offline-fallback text/spinner needed —
-            it's a nice-to-have, not core content) and while offline, since this
-            depends on the current user's live friends list rather than anything
-            cached for offline viewing. */}
-        {isOnline && visitors && (visitors.total > 0 || (visitors.others_total ?? 0) > 0) && (
-          <FriendsVisitedRow
-            friends={visitors.friends} total={visitors.total}
-            others={visitors.others ?? []} othersTotal={visitors.others_total ?? 0}
-            onPress={() => setShowFriendsSheet(true)}
-          />
-        )}
-
-        {/* marginTop 0, not styles.divider's own 12 — whatever's directly
-            above (mutualsRow, or statsRow when mutuals is hidden) already
-            ends in its own marginBottom: 12, so the default would stack to
-            24 here, same double-margin issue statsRow's own top gap had
+        {/* marginTop 0, not styles.divider's own 12 — statsCard already ends
+            in its own marginBottom: 12, so the default would stack to 24
+            here, same double-margin issue statsCard's own top gap had
             against the photo strip above it. */}
         <View style={[styles.divider, { marginTop: 0 }]} />
 
+        <View style={styles.pageTabWrap}>
+          <GlassScrubTabs
+            segments={[
+              { key: 'info', label: 'Info' },
+              { key: 'community', label: communityParkPosts.length > 0 ? `Community (${communityParkPosts.length})` : 'Community' },
+            ]}
+            active={pageTab}
+            onChange={setPageTab}
+          />
+        </View>
+
+        {pageTab === 'info' && (
+        <>
         {/* ── About ─────────────────────────────────────────────────────────── */}
         {park.description ? (
           <Section title="About">
@@ -1959,68 +1963,6 @@ export function ParkProfileScreen({
           </Section>
         )}
 
-        <View
-          style={styles.divider}
-          onLayout={e => { journalY.current = e.nativeEvent.layout.y; }}
-        />
-
-        {/* ── Journal ───────────────────────────────────────────────────────── */}
-        <Section
-          title={journalTab === 'you' ? `Journal (${visits.length})` : `Community (${communityParkPosts.length})`}
-          remeasureKey={journalTab}
-        >
-          <View style={{ gap: 0 }}>
-            {/* Only offered when there's actually something to switch to —
-                friends' AND public strangers' posts about this park (see
-                communityParkPosts/is_friend_post in the fetch above).
-                Defaults to Community when you have no visits of your own
-                (see journalTab above); always switchable either way. */}
-            {hasCommunityPosts && (
-              <View style={styles.journalTabRow}>
-                <TouchableOpacity
-                  style={[styles.journalTabBtn, journalTab === 'you' && styles.journalTabBtnActive]}
-                  onPress={() => setJournalTabOverride('you')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.journalTabText, journalTab === 'you' && styles.journalTabTextActive]}>You</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.journalTabBtn, journalTab === 'community' && styles.journalTabBtnActive]}
-                  onPress={() => setJournalTabOverride('community')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.journalTabText, journalTab === 'community' && styles.journalTabTextActive]}>Community</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            {/* Plain instant swap, deliberately not animated. Five
-                different animated approaches here (opacity fade, slide,
-                delaying the fade's start a frame, a full dual-panel
-                crossfade with the incoming panel unfaded and in normal
-                flow, plus an earlier round of this exact remeasureKey
-                fix but tested only ALONGSIDE one of those animations,
-                never in isolation) all showed some version of the same
-                bug — Section's content briefly measuring wrong and
-                clipping the taller tab's content, eventually affecting
-                BOTH switch directions, for close to a full second, far
-                longer than any of those animations' own duration — and
-                it turned out to reproduce even with NO animation at all,
-                meaning animation timing was never actually the cause.
-                Section's remeasureKey (see its own comment) is the real
-                fix: a full subtree swap between two different sets of
-                PostCard instances is a fundamentally different React
-                reconciliation shape than the incremental children-count
-                change (chip grid's "show more") Section's default
-                onLayout-based remeasure already handles reliably.
-                LayoutAnimation isn't a fallback either, see Section's own
-                comment about it not reliably animating child-swap layout
-                shifts under Fabric. If a transition animation gets
-                revisited, layer it on top of THIS fix, not instead of
-                it. */}
-            {journalTab === 'you' ? renderJournalYou() : renderJournalCommunity()}
-          </View>
-        </Section>
-
         {/* ── Attribution ───────────────────────────────────────────────────── */}
         <View style={styles.attribution}>
           <Text style={styles.attributionText}>
@@ -2035,6 +1977,48 @@ export function ParkProfileScreen({
             . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details with official sources before your visit.
           </Text>
         </View>
+        </>
+        )}
+
+        {/* ── Community tab ─────────────────────────────────────────────────
+            Own/community posts, surfaced directly under the switcher instead
+            of behind a second, nested collapsible header — the switcher
+            itself is already that disclosure control. No animated clip
+            container here (unlike Section), so the You/Everyone swap is a
+            plain instant re-render — nothing to remeasure, nothing to clip
+            mid-transition. */}
+        {pageTab === 'community' && (
+          <View style={styles.section}>
+            {/* Only offered when there's actually something on BOTH sides to
+                switch between — community posts (friends' AND public
+                strangers', see communityParkPosts/is_friend_post in the
+                fetch above) AND your own visits. No visits of your own means
+                "You" would just be the empty "log a visit" invite (see
+                renderJournalYou), so there's nothing to toggle to; this
+                falls through to showing the community content directly
+                (journalTab already defaults to 'community' in that case —
+                see journalTab above). */}
+            {hasCommunityPosts && visits.length > 0 && (
+              <View style={styles.journalTabRow}>
+                <TouchableOpacity
+                  style={[styles.journalTabBtn, journalTab === 'you' && styles.journalTabBtnActive]}
+                  onPress={() => setJournalTabOverride('you')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.journalTabText, journalTab === 'you' && styles.journalTabTextActive]}>You</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.journalTabBtn, journalTab === 'community' && styles.journalTabBtnActive]}
+                  onPress={() => setJournalTabOverride('community')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.journalTabText, journalTab === 'community' && styles.journalTabTextActive]}>Everyone</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {journalTab === 'you' ? renderJournalYou() : renderJournalCommunity()}
+          </View>
+        )}
       </Animated.ScrollView>
       </Animated.View>
 
@@ -2654,9 +2638,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // Stats
-  statsRow: {
-    flexDirection: 'row',
+  // Stats (+ friends who've visited, sharing this same card — see the
+  // render site's comment)
+  statsCard: {
     marginHorizontal: 16,
     backgroundColor: C.surface,
     borderRadius: 10,
@@ -2667,6 +2651,16 @@ const styles = StyleSheet.create({
     // site, based on whether the photo strip is present. See the comment
     // there for why.
     marginBottom: 12,
+  },
+  // Thin internal separator between the stat cells and the mutuals row —
+  // edge-to-edge (no horizontal inset) since it's already inside
+  // statsCard's own padding-free bounds, unlike the page-level `divider`.
+  statsCardDivider: {
+    height: 0.5,
+    backgroundColor: C.hairline,
+  },
+  statsRow: {
+    flexDirection: 'row',
   },
   statCell: {
     // Content-based width: basis auto + grow shares only the leftover space.
@@ -2702,17 +2696,12 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
 
-  // Friends who've visited (mutuals)
+  // Friends who've visited (mutuals) — plain content now, no card of its
+  // own; it lives inside statsCard, below statsCardDivider.
   mutualsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    backgroundColor: C.surface,
-    borderRadius: 10,
-    borderWidth: 0.5,
-    borderColor: C.hairline,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -3023,8 +3012,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 13,
   },
-  // You / Community segmented control — standard iOS look, light track +
-  // a bordered "surface" pill for whichever side is active.
+  // Info / Community page switcher outer margin — the track/indicator
+  // styling itself lives in the shared GlassScrubTabs component.
+  pageTabWrap: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  // You / Everyone segmented control, inside the Community page tab —
+  // standard iOS look, light track + a bordered "surface" pill for
+  // whichever side is active.
   journalTabRow: {
     flexDirection: 'row',
     backgroundColor: C.surfaceAlt,
