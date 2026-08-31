@@ -1,5 +1,5 @@
 import {
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, ScrollView,
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -8,7 +8,7 @@ import { useSignIn } from '@clerk/clerk-expo';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  clerkMsg, ErrorBox, FField, InfoText, MONO, PrimaryBtn,
+  clerkMsg, ErrorBox, FField, InfoText, PrimaryBtn,
 } from '@/components/AuthAtoms';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { markLastAuthStrategy } from '@/lib/lastAccount';
@@ -150,9 +150,19 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={st.screen} edges={['bottom']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 36, paddingBottom: 44 }}>
-
-          <Text style={st.kicker}>SIGN IN</Text>
+        {/* Fields scroll independently of the footer below — on a short
+            screen with the keyboard up, the old single flex:1 column (no
+            ScrollView) could push the primary button entirely past the
+            visible/tappable area instead of reflowing, since a plain View
+            doesn't scroll when its content overflows a squeezed container.
+            The button now lives in a fixed footer sibling instead of in
+            this flow, so it stays pinned right above the keyboard
+            regardless of how tall the fields above are. */}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 36, paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={st.headline}>{headline}</Text>
           <Text style={st.sub}>{sub}</Text>
 
@@ -160,7 +170,6 @@ export default function LoginScreen() {
             {step === 'mfa' && <>
               <FField label="VERIFICATION CODE" value={mfaCode} onChange={setMfaCode} keyboard="number-pad" autoFocus />
               {error ? <ErrorBox msg={error} /> : null}
-              <PrimaryBtn label="Verify" onPress={handleMfa} loading={busy} />
             </>}
 
             {step === 'form' && <>
@@ -177,13 +186,11 @@ export default function LoginScreen() {
                 <Text style={[st.forgotText, { color: T.primary }]}>Forgot password?</Text>
               </TouchableOpacity>
               {error ? <ErrorBox msg={error} /> : null}
-              <PrimaryBtn label="Sign In" onPress={handleSignIn} loading={busy} />
             </>}
 
             {step === 'forgot_email' && <>
               <FField label="EMAIL" value={fgEmail} onChange={setFgEmail} keyboard="email-address" autoFocus />
               {error ? <ErrorBox msg={error} /> : null}
-              <PrimaryBtn label="Send Reset Code" onPress={handleForgotSend} loading={busy} disabled={!fgEmail} />
             </>}
 
             {step === 'forgot_verify' && <>
@@ -198,9 +205,17 @@ export default function LoginScreen() {
                 onTrailing={() => setFgShowPw(v => !v)}
               />
               {error ? <ErrorBox msg={error} /> : null}
-              <PrimaryBtn label="Reset Password" onPress={handleForgotReset} loading={busy} disabled={!fgCode || !fgPw} />
             </>}
           </View>
+        </ScrollView>
+
+        {/* Pinned footer — the step's primary action is always visible and
+            tappable above the keyboard, independent of scroll position. */}
+        <View style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 16 }}>
+          {step === 'mfa' && <PrimaryBtn label="Verify" onPress={handleMfa} loading={busy} />}
+          {step === 'form' && <PrimaryBtn label="Sign In" onPress={handleSignIn} loading={busy} />}
+          {step === 'forgot_email' && <PrimaryBtn label="Send Reset Code" onPress={handleForgotSend} loading={busy} disabled={!fgEmail} />}
+          {step === 'forgot_verify' && <PrimaryBtn label="Reset Password" onPress={handleForgotReset} loading={busy} disabled={!fgCode || !fgPw} />}
 
           {(step === 'form') && (
             <View style={st.switchRow}>
@@ -210,7 +225,6 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
           )}
-
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -222,16 +236,12 @@ export default function LoginScreen() {
 const st = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
-  kicker:   { fontFamily: MONO, fontSize: 13, letterSpacing: 2, color: C.inkMute, fontWeight: '600' },
   headline: { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.8, marginTop: 8, lineHeight: 34 },
   sub:      { fontSize: 14, color: C.inkMute, marginTop: 6 },
 
   forgotText: { fontSize: 13, fontWeight: '600' },
 
-  // 'auto' (not a fixed value) so it's pinned to the screen's bottom edge —
-  // the flexible gap that lets this no-longer-scrollable screen adapt to
-  // whatever vertical space the device actually has.
-  switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 'auto', paddingTop: 24 },
+  switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 14 },
   switchText: { fontSize: 13, color: C.inkMute },
   switchLink: { fontSize: 13, fontWeight: '700' },
 });

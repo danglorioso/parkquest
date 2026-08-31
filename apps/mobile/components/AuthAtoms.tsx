@@ -1,6 +1,7 @@
 import {
-  ActivityIndicator, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { useRef } from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { STATIC as C, useColors } from '@/lib/palette';
@@ -31,11 +32,21 @@ export function FField({
   autoCapitalize?: 'none' | 'words' | 'sentences' | 'characters';
 }) {
   const T = useColors();
+  const inputRef = useRef<TextInput>(null);
   return (
-    <View style={st.fField}>
+    // Pressable on the whole card, not just the TextInput itself — tapping
+    // the label or the surrounding padding used to do nothing, so only the
+    // TextInput's own tight bounds (just the typed text's line) actually
+    // opened the keyboard. No style feedback (no activeOpacity/pressed
+    // dimming) since this isn't really a button, just a bigger hit target
+    // for the input it wraps; the trailing Show/Hide TouchableOpacity below
+    // still claims its own taps first (RN's responder system resolves to
+    // the deepest touched view), so this doesn't fight it.
+    <Pressable style={st.fField} onPress={() => inputRef.current?.focus()}>
       <View style={{ flex: 1 }}>
         <Text style={st.fFieldLabel}>{label}</Text>
         <TextInput
+          ref={inputRef}
           style={st.fFieldInput}
           value={value} onChangeText={onChange}
           secureTextEntry={secureText}
@@ -49,7 +60,7 @@ export function FField({
           <Text style={[st.trailingText, { color: T.primary }]}>{trailing}</Text>
         </TouchableOpacity>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 
