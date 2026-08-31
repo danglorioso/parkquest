@@ -190,6 +190,16 @@ export default function UserProfileScreen() {
   const router = useRouter();
   const T = useColors();
   const isDark = useColorScheme() === 'dark';
+  // Opened via a push notification or a parkquest.me/u/username universal
+  // link, this screen can be the FIRST thing on the stack — no back-stack
+  // means Stack.Screen's default headerLeft (a native back arrow) silently
+  // renders nothing, since it only shows when canGoBack() is true, leaving
+  // no way off this screen at all. Explicit headerLeft below with the same
+  // canGoBack-or-fall-back-to-Feed pattern feed/post/[id].tsx already uses.
+  const goBack = useCallback(
+    () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/feed' as never)),
+    [router]
+  );
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -488,6 +498,11 @@ export default function UserProfileScreen() {
       <Stack.Screen
         options={{
           title: profile ? (profile.display_name ?? `@${profile.username}`) : 'Profile',
+          headerLeft: () => (
+            <TouchableOpacity onPress={goBack} hitSlop={10} style={{ paddingRight: 12, paddingVertical: 4 }}>
+              <Ionicons name="chevron-back" size={24} color={T.primary} />
+            </TouchableOpacity>
+          ),
           headerRight: (!isOwnProfile && profile) ? () => (
             <MenuView
               onOpenMenu={() => setShowProfileMenu(true)}
