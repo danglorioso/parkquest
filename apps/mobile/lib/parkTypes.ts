@@ -12,4 +12,5 @@ export interface ParkTypeOption {
 export const PARK_TYPES: ParkTypeOption[] = [
   { key: 'national_park',   label: 'National Parks',            match: p => !!p.is_national_park },
   { key: 'historical_park', label: 'National Historical Parks', match: p => p.designation === 'National Historical Park' },
+  { key: 'monument',        label: 'National Monuments',        match: p => p.designation === 'National Monument' },
 ];

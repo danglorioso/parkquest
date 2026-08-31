@@ -256,6 +256,7 @@ function shortParkName(name: string): string {
   return name
     .replace(/^National Park of /i, '')
     .replace(/ National (?:Historical )?(?:and State )?Parks?(?: (?:&|and) Preserve)?$/i, '')
+    .replace(/ National Monument$/i, '')
     .trim();
 }
 
