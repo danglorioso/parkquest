@@ -118,6 +118,8 @@ const ACTIVITY_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name
 };
 const CROWD_LABELS  = ['Empty', 'Quiet', 'Moderate', 'Busy', 'Packed'];
 const DIFF_LABELS   = ['Easy', 'Light', 'Moderate', 'Hard', 'Strenuous'];
+// Low-to-high tier colors shared by the crowd/difficulty scale bars.
+const TIER_COLORS = ['#4C9A5B', '#8FB14E', '#D4A93F', '#D97F3D', '#C0483F'];
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 // iOS system red — matches the native destructive text color these menu
@@ -644,6 +646,26 @@ function MetaChip({ icon, children }: { icon?: React.ComponentProps<typeof Ionic
   );
 }
 
+// ── TierScale ─────────────────────────────────────────────────────────────────
+
+function TierScale({ label, value, labels }: { label: string; value: number; labels: string[] }) {
+  const color = TIER_COLORS[value - 1];
+  return (
+    <View style={styles.tierRow}>
+      <Text style={styles.tierLabel}>{label}</Text>
+      <View style={styles.tierBar}>
+        {labels.map((_, i) => (
+          <View
+            key={i}
+            style={[styles.tierSegment, { backgroundColor: i < value ? color : C.hairline }]}
+          />
+        ))}
+      </View>
+      <Text style={[styles.tierValue, { color }]}>{labels[value - 1]}</Text>
+    </View>
+  );
+}
+
 // ── VisitMeta ─────────────────────────────────────────────────────────────────
 
 function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: boolean }) {
@@ -655,7 +677,6 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
     post.visit_date || post.visit_rating ||
     (post.visit_activities?.length ?? 0) > 0 ||
     (post.visit_weather?.length ?? 0) > 0 ||
-    post.visit_crowd || post.visit_difficulty ||
     (post.visit_companion_count ?? 0) > 0 ||
     post.visit_highlight || post.visit_title ||
     post.visit_notes || post.visit_would_return || hasHikeStats;
@@ -674,7 +695,10 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
         <Text style={styles.visitTitle}>{post.visit_title}</Text>
       )}
       {post.visit_highlight && (
-        <Text style={styles.visitHighlight}>"{post.visit_highlight}"</Text>
+        <Text style={styles.visitHighlight}>
+          <Text style={styles.metaLabelInline}>Highlight: </Text>
+          {post.visit_highlight}
+        </Text>
       )}
       <View style={styles.chipRow}>
         {post.visit_rating ? (
@@ -695,12 +719,6 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
             <Text style={styles.chipText}>{WEATHER_LABELS[w] ?? w}</Text>
           </MetaChip>
         ))}
-        {post.visit_crowd ? (
-          <MetaChip icon="people-outline"><Text style={styles.chipText}>{CROWD_LABELS[post.visit_crowd - 1]}</Text></MetaChip>
-        ) : null}
-        {post.visit_difficulty ? (
-          <MetaChip icon="trail-sign-outline"><Text style={styles.chipText}>{DIFF_LABELS[post.visit_difficulty - 1]}</Text></MetaChip>
-        ) : null}
         {post.visit_would_return ? (
           <MetaChip icon={WOULD_RETURN_ICONS[post.visit_would_return] ?? 'repeat-outline'}>
             <Text style={styles.chipText}>{WOULD_RETURN_LABELS[post.visit_would_return] ?? post.visit_would_return}</Text>
@@ -748,10 +766,10 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
         })()}
       </View>
       {post.visit_notes && (
-        <View style={styles.notesBlock}>
-          <Text style={styles.notesLabel}>Notes</Text>
-          <Text style={styles.notesText}>{post.visit_notes}</Text>
-        </View>
+        <Text style={styles.notesText}>
+          <Text style={styles.metaLabelInline}>Notes: </Text>
+          {post.visit_notes}
+        </Text>
       )}
       {hasHikeStats && (
         <View style={{ marginTop: 10 }}>
@@ -1491,6 +1509,14 @@ function PostCardImpl({
       {/* Photo carousel */}
       {!isBadge && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
 
+      {/* Crowd / difficulty scales */}
+      {!isBadge && (post.visit_crowd || post.visit_difficulty) && (
+        <View style={styles.tierBlock}>
+          {post.visit_crowd ? <TierScale label="Crowd" value={post.visit_crowd} labels={CROWD_LABELS} /> : null}
+          {post.visit_difficulty ? <TierScale label="Difficulty" value={post.visit_difficulty} labels={DIFF_LABELS} /> : null}
+        </View>
+      )}
+
       {/* Action row — extra bottom padding when it's the last row in the card */}
       <View style={[styles.actionRow, commentCount === 0 && { paddingBottom: 12 }]}>
         <TouchableOpacity
@@ -1772,15 +1798,25 @@ const styles = StyleSheet.create({
     fontSize: 15, fontWeight: '700', color: C.ink,
   },
   visitHighlight: {
-    fontSize: 13, color: C.inkSoft, fontStyle: 'italic', lineHeight: 19,
-  },
-  notesBlock: { gap: 3 },
-  notesLabel: {
-    fontSize: 11, fontWeight: '700', color: C.inkMute, textTransform: 'uppercase', letterSpacing: 0.4,
+    fontSize: 13, color: C.inkSoft, lineHeight: 19,
   },
   notesText: {
     fontSize: 13, color: C.inkSoft, lineHeight: 19,
   },
+  metaLabelInline: {
+    fontWeight: '700', color: C.ink,
+  },
+
+  // Crowd / difficulty tier scales
+  tierBlock: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 2, gap: 8 },
+  tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tierLabel: {
+    fontSize: 11, fontWeight: '700', color: C.inkMute,
+    textTransform: 'uppercase', letterSpacing: 0.4, width: 64,
+  },
+  tierBar: { flex: 1, flexDirection: 'row', gap: 3 },
+  tierSegment: { flex: 1, height: 5, borderRadius: 3 },
+  tierValue: { fontSize: 12, fontWeight: '600', minWidth: 62, textAlign: 'right' },
 
   // Comments
   previewPanel: {

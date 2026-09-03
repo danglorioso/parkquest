@@ -1033,6 +1033,8 @@ const WEATHER_LABELS: Record<string, string> = {
 const CROWD_LABELS  = ["Empty", "Quiet", "Moderate", "Busy", "Packed"];
 const DIFF_LABELS   = ["Easy", "Light", "Moderate", "Hard", "Strenuous"];
 const WOULD_RETURN_LABELS: Record<string, string> = { yes: "Definitely", maybe: "Maybe", no: "Probably not" };
+// Low-to-high tier colors shared by the crowd/difficulty scale bars.
+const TIER_COLORS = ["#4C9A5B", "#8FB14E", "#D4A93F", "#D97F3D", "#C0483F"];
 
 function StarRating({ rating }: { rating: number }) {
   return (
@@ -1128,9 +1130,34 @@ function MetaChip({ children }: { children: React.ReactNode }) {
   );
 }
 
+function TierScale({ label, value, labels }: { label: string; value: number; labels: string[] }) {
+  const color = TIER_COLORS[value - 1];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{
+        fontSize: 11, fontWeight: 700, color: "var(--ink-mute)",
+        textTransform: "uppercase", letterSpacing: "0.4px", width: 64, flexShrink: 0,
+      }}>
+        {label}
+      </span>
+      <div style={{ display: "flex", gap: 3, flex: 1 }}>
+        {labels.map((_, i) => (
+          <div key={i} style={{
+            flex: 1, height: 5, borderRadius: 3,
+            background: i < value ? color : "var(--hairline)",
+          }} />
+        ))}
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 600, color, minWidth: 62, textAlign: "right" }}>
+        {labels[value - 1]}
+      </span>
+    </div>
+  );
+}
+
 function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: boolean }) {
   const hasAny = post.visit_date || post.visit_rating || (post.visit_activities?.length ?? 0) > 0
-    || (post.visit_weather?.length ?? 0) > 0 || post.visit_crowd || post.visit_difficulty
+    || (post.visit_weather?.length ?? 0) > 0
     || (post.visit_companion_count ?? 0) > 0 || post.visit_highlight || post.visit_title
     || post.visit_notes || post.visit_would_return;
 
@@ -1151,8 +1178,9 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
 
       {/* Highlight */}
       {post.visit_highlight && (
-        <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45, fontStyle: "italic" }}>
-          "{post.visit_highlight}"
+        <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>
+          <span style={{ fontWeight: 700, color: "var(--ink)" }}>Highlight: </span>
+          {post.visit_highlight}
         </div>
       )}
 
@@ -1175,8 +1203,6 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
             <span style={{ marginLeft: 4 }}>{WEATHER_LABELS[w] ?? w}</span>
           </MetaChip>
         ))}
-        {post.visit_crowd ? <MetaChip>{CROWD_LABELS[post.visit_crowd - 1]} crowd</MetaChip> : null}
-        {post.visit_difficulty ? <MetaChip>{DIFF_LABELS[post.visit_difficulty - 1]}</MetaChip> : null}
         {post.visit_would_return ? (
           <MetaChip>{WOULD_RETURN_LABELS[post.visit_would_return] ?? post.visit_would_return}</MetaChip>
         ) : null}
@@ -1212,13 +1238,9 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
 
       {/* Notes */}
       {post.visit_notes && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-mute)", textTransform: "uppercase", letterSpacing: "0.4px" }}>
-            Notes
-          </div>
-          <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-            {post.visit_notes}
-          </div>
+        <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>
+          <span style={{ fontWeight: 700, color: "var(--ink)" }}>Notes: </span>
+          {post.visit_notes}
         </div>
       )}
     </div>
@@ -1701,6 +1723,14 @@ export function PostCard({
 
       {/* Photo carousel */}
       {!isBadgePost && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
+
+      {/* Crowd / difficulty scales */}
+      {!isBadgePost && (post.visit_crowd || post.visit_difficulty) && (
+        <div style={{ padding: "10px 18px 2px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {post.visit_crowd ? <TierScale label="Crowd" value={post.visit_crowd} labels={CROWD_LABELS} /> : null}
+          {post.visit_difficulty ? <TierScale label="Difficulty" value={post.visit_difficulty} labels={DIFF_LABELS} /> : null}
+        </div>
+      )}
 
       {/* Action row */}
       <div style={{
