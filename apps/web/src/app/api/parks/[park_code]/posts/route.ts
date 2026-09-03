@@ -72,6 +72,8 @@ export async function GET(
         park_code: posts.park_code,
         park_name: parks.name,
         park_image_url: parks.image_url,
+        park_states: parks.states,
+        is_national_park: sql<boolean>`COALESCE(${parks.is_national_park}, false)`,
         visit_id: posts.visit_id,
         quoted_post_id: posts.quoted_post_id,
         badge_id: posts.badge_id,

@@ -21,7 +21,8 @@ import { blockUser } from '@/lib/api';
 import { emitUserBlocked } from '@/lib/blocking';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { relTime } from '@/lib/dates';
-import { parkColor } from '@/lib/parkColors';
+import { parkColor, parkGradientIndex } from '@/lib/parkColors';
+import { ParkStamp } from '@/components/ParkStamp';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ReportTargetType, ReportReason } from '@parkquest/types';
 
@@ -38,6 +39,8 @@ export interface FeedPost {
   clerk_user_id: string;
   park_name: string | null;
   park_image_url: string | null;
+  park_states?: string | null;
+  is_national_park?: boolean | null;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
@@ -1294,6 +1297,7 @@ function PostCardImpl({
   };
 
   const isFirstVisit = !isBadge && !!post.visit_id && Number(post.visit_ordinal) === 1;
+  const isNationalParkFirstVisit = isFirstVisit && !!post.is_national_park;
   // Only the body (park chip / photos / caption / actions) opens the post on tap —
   // the header can't be inside this Pressable. MenuView is a native context-menu
   // view, not a JS Touchable; its gesture recognizer doesn't participate in RN's
@@ -1301,7 +1305,7 @@ function PostCardImpl({
   const CardBody = openOnPress ? Pressable : View;
 
   return (
-    <View style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}>
+    <View style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isNationalParkFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}>
       {/* Badge banner */}
       {isBadge && (
         <View style={[styles.badgeBanner, { borderBottomColor: C.primary + '60' }]}>
@@ -1310,10 +1314,18 @@ function PostCardImpl({
         </View>
       )}
 
-      {/* First visit banner */}
-      {isFirstVisit && (
-        <View style={[styles.badgeBanner, { backgroundColor: C.accent + '1A', borderBottomColor: C.accent + '60' }]}>
-          <Ionicons name="star" size={14} color={C.accent} />
+      {/* First visit banner — reserved for the classic 63 National Parks;
+          every other designation gets no banner */}
+      {isNationalParkFirstVisit && (
+        <View style={[styles.badgeBanner, { backgroundColor: C.accent + '1A', borderBottomColor: C.accent + '60', gap: 8, paddingVertical: 5 }]}>
+          <ParkStamp
+            parkCode={post.park_code ?? ''}
+            name={post.park_name ?? ''}
+            states={post.park_states ?? ''}
+            colorIdx={parkGradientIndex(post.park_code ?? 'xx')}
+            size={30}
+            idSuffix={`-fv-${post.id}`}
+          />
           <Text style={[styles.badgeBannerText, { color: C.accent }]}>FIRST VISIT</Text>
         </View>
       )}

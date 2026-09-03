@@ -55,6 +55,8 @@ export async function GET(request: Request) {
         clerk_user_id: posts.clerk_user_id,
         park_name: parks.name,
         park_image_url: parks.image_url,
+        park_states: parks.states,
+        is_national_park: sql<boolean>`COALESCE(${parks.is_national_park}, false)`,
         username: userProfiles.username,
         display_name: userProfiles.display_name,
         avatar_url: userProfiles.avatar_url,

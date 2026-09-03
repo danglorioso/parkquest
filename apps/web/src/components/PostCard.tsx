@@ -6,13 +6,21 @@ import { createPortal } from "react-dom";
 import {
   Heart, MessageCircle, Share2,
   MoreHorizontal, MapPin, ChevronLeft, ChevronRight,
-  Award, Send, X, Maximize2, Star,
+  Award, Send, X, Maximize2,
   Globe, Users, Lock,
 } from "lucide-react";
 import Link from "next/link";
 import { parkGradient } from "@/lib/parkGradient";
+import { ParkStamp } from "@/components/desktop/ParkStamp";
 import { useToast } from "@/components/ToastProvider";
 import { AdminStar } from "@/components/AdminStar";
+
+// Deterministic 0-4 index into the stamp ink palette, hashed from park_code —
+// mirrors parkGradient's hash so a given park's stamp color stays stable
+// without needing a list-position colorIdx (there's no list here, just one post).
+function parkStampColorIdx(code: string): number {
+  return code.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 5;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,6 +60,8 @@ export interface FeedPost {
   // null = API didn't return the field (stale deployment); hide the icon.
   visibility?: string | null;
   park_image_url?: string | null;
+  park_states?: string | null;
+  is_national_park?: boolean | null;
   // visit metadata (only present on visit posts)
   visit_date: string | null;
   visit_rating: number | null;
@@ -1329,6 +1339,7 @@ export function PostCard({
   const name = post.display_name ?? post.username ?? "Explorer";
   const commentCount = post.comment_count + commentDelta;
   const isFirstVisit = !isBadgePost && !!post.visit_id && Number(post.visit_ordinal) === 1;
+  const isNationalParkFirstVisit = isFirstVisit && !!post.is_national_park;
 
   useEffect(() => {
     if (!showMenu) return;
@@ -1431,7 +1442,7 @@ export function PostCard({
       background: "var(--surface)", borderRadius: 16,
       border: isBadgePost
         ? "1px solid color-mix(in srgb, var(--primary) 38%, transparent)"
-        : isFirstVisit
+        : isNationalParkFirstVisit
           ? "1px solid color-mix(in srgb, var(--accent) 38%, transparent)"
           : "0.5px solid var(--hairline)",
       overflow: "hidden",
@@ -1453,15 +1464,23 @@ export function PostCard({
         </div>
       )}
 
-      {/* First visit banner */}
-      {isFirstVisit && (
+      {/* First visit banner — reserved for the classic 63 National Parks;
+          every other designation gets no banner */}
+      {isNationalParkFirstVisit && (
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
-          padding: "10px 18px",
+          padding: "5px 18px",
           background: "color-mix(in srgb, var(--accent) 10%, transparent)",
           borderBottom: "0.5px solid color-mix(in srgb, var(--accent) 38%, transparent)",
         }}>
-          <Star size={14} strokeWidth={2} fill="var(--accent)" style={{ color: "var(--accent)", flexShrink: 0 }} />
+          <ParkStamp
+            parkCode={post.park_code ?? ""}
+            name={post.park_name ?? ""}
+            states={post.park_states ?? ""}
+            colorIdx={parkStampColorIdx(post.park_code ?? "xx")}
+            size={30}
+            idSuffix={`-fv-${post.id}`}
+          />
           <span style={{
             fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.2px",
             color: "var(--accent)", fontWeight: 700,
