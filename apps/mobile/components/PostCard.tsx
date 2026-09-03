@@ -23,6 +23,7 @@ import { STATIC as C, useColors } from '@/lib/palette';
 import { relTime } from '@/lib/dates';
 import { parkColor, parkGradientIndex } from '@/lib/parkColors';
 import { ParkStamp } from '@/components/ParkStamp';
+import { showToast } from '@/lib/toast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ReportTargetType, ReportReason } from '@parkquest/types';
 
@@ -41,6 +42,9 @@ export interface FeedPost {
   park_image_url: string | null;
   park_states?: string | null;
   is_national_park?: boolean | null;
+  // Viewer's own relationship to this post's park — not the author's.
+  viewer_visited?: boolean | null;
+  viewer_bucket_listed?: boolean | null;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
@@ -1210,6 +1214,7 @@ function PostCardImpl({
   const handleToggleBucketList = useCallback(async () => {
     if (!post.park_code || bucketBusy) return;
     const next = !bucketListed;
+    Haptics.impactAsync(next ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
     setBucketListed(next);
     setBucketBusy(true);
     try {
@@ -1221,8 +1226,10 @@ function PostCardImpl({
       } else {
         await apiReq(`/api/visits?park_code=${post.park_code}`, freshToken, { method: 'DELETE' });
       }
+      showToast(next ? 'Added to bucket list' : 'Removed from bucket list');
     } catch {
       setBucketListed(!next);
+      showToast('Could not update bucket list', 'error');
     } finally {
       setBucketBusy(false);
     }
@@ -1955,9 +1962,12 @@ const styles = StyleSheet.create({
   menuBtnActive: {
     borderRadius: 6,
   },
+  parkChipRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+    paddingHorizontal: 18, paddingBottom: 10,
+  },
   parkChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 18, paddingBottom: 10,
   },
   parkChipText: {
     fontSize: 13, fontWeight: '700', letterSpacing: 0.4,
