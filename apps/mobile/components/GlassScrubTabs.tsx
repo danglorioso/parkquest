@@ -85,13 +85,28 @@ export function GlassScrubTabs<T extends string | number>({
       }
     });
 
+  // Plain tap on the inactive side — Pan requires real movement to activate,
+  // so a tap with no drag never reaches its onUpdate; this gesture picks up
+  // whatever Pan fails to claim (Exclusive gives Pan first refusal) and jumps
+  // straight to the tapped segment with the same spring used on drag release.
+  const tap = Gesture.Tap().onEnd(e => {
+    if (segWidth === 0) return;
+    const idx = Math.min(segments.length - 1, Math.max(0, Math.floor((e.x - PAD) / segWidth)));
+    if (idx !== slotIndex.value) {
+      slotIndex.value = idx;
+      runOnJS(tick)();
+      runOnJS(notify)(segments[idx].key);
+    }
+    indicatorX.value = withSpring(idx * segWidth, SPRING);
+  });
+
   const indicatorStyle = useAnimatedStyle(() => ({
     width: segWidth,
     transform: [{ translateX: indicatorX.value }],
   }));
 
   return (
-    <GestureDetector gesture={pan}>
+    <GestureDetector gesture={Gesture.Exclusive(pan, tap)}>
       <View
         style={styles.track}
         onLayout={e => setInnerWidth(e.nativeEvent.layout.width - PAD * 2)}
