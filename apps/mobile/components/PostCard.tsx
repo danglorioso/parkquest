@@ -1204,6 +1204,29 @@ function PostCardImpl({
   // null = API didn't return the field (stale deployment) — hide the icon
   const [visibility, setVisibility] = useState<string | null>(post.visibility ?? null);
   const [visDraft, setVisDraft] = useState(post.visibility ?? 'public');
+  const [bucketListed, setBucketListed] = useState(!!post.viewer_bucket_listed);
+  const [bucketBusy, setBucketBusy] = useState(false);
+
+  const handleToggleBucketList = useCallback(async () => {
+    if (!post.park_code || bucketBusy) return;
+    const next = !bucketListed;
+    setBucketListed(next);
+    setBucketBusy(true);
+    try {
+      if (next) {
+        await apiReq('/api/visits', freshToken, {
+          method: 'POST',
+          body: JSON.stringify({ park_code: post.park_code, is_bucket_list: true }),
+        });
+      } else {
+        await apiReq(`/api/visits?park_code=${post.park_code}`, freshToken, { method: 'DELETE' });
+      }
+    } catch {
+      setBucketListed(!next);
+    } finally {
+      setBucketBusy(false);
+    }
+  }, [post.park_code, bucketListed, bucketBusy, freshToken]);
 
   // Feed refetches on focus (e.g. after editing a visit) — keep the locally
   // edited caption in sync with the fresh server value
@@ -1424,17 +1447,35 @@ function PostCardImpl({
       <CardBody {...(openOnPress ? { onPress: () => router.push(`/(tabs)/feed/post/${post.id}` as never) } : {})}>
       {/* Park chip */}
       {post.park_name && !isBadge && !(!hasPhotos && post.visit_id) && (
-        <TouchableOpacity
-          style={styles.parkChip}
-          onPress={() =>
-            onParkPress
-              ? onParkPress(post.park_code!)
-              : router.push(`/park/${post.park_code}` as never)
-          }
-        >
-          <Ionicons name="location-sharp" size={11} color={C.primary} />
-          <Text style={[styles.parkChipText, { color: C.primary }]}>{post.park_name.toUpperCase()}</Text>
-        </TouchableOpacity>
+        <View style={styles.parkChipRow}>
+          <TouchableOpacity
+            style={styles.parkChip}
+            onPress={() =>
+              onParkPress
+                ? onParkPress(post.park_code!)
+                : router.push(`/park/${post.park_code}` as never)
+            }
+          >
+            <Ionicons name="location-sharp" size={11} color={C.primary} />
+            <Text style={[styles.parkChipText, { color: C.primary }]}>{post.park_name.toUpperCase()}</Text>
+          </TouchableOpacity>
+          {/* Already-visited parks can't be bucket-listed — POST /api/visits
+              would wipe the dated visit's visited_date */}
+          {!isOwnPost && !post.viewer_visited && (
+            <TouchableOpacity
+              onPress={handleToggleBucketList}
+              disabled={bucketBusy}
+              hitSlop={8}
+              style={{ padding: 4, opacity: bucketBusy ? 0.5 : 1 }}
+            >
+              <Ionicons
+                name={bucketListed ? 'bookmark' : 'bookmark-outline'}
+                size={16}
+                color={C.primary}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* Caption */}

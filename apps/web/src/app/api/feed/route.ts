@@ -57,6 +57,9 @@ export async function GET(request: Request) {
         park_image_url: parks.image_url,
         park_states: parks.states,
         is_national_park: sql<boolean>`COALESCE(${parks.is_national_park}, false)`,
+        // Viewer's own relationship to this post's park — not the author's.
+        viewer_visited: sql<boolean>`EXISTS(SELECT 1 FROM visits vv WHERE vv.clerk_user_id = ${userId} AND vv.park_code = ${posts.park_code} AND vv.visited_date IS NOT NULL)`,
+        viewer_bucket_listed: sql<boolean>`EXISTS(SELECT 1 FROM visits vv WHERE vv.clerk_user_id = ${userId} AND vv.park_code = ${posts.park_code} AND vv.is_bucket_list = true)`,
         username: userProfiles.username,
         display_name: userProfiles.display_name,
         avatar_url: userProfiles.avatar_url,

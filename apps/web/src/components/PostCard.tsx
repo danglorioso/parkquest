@@ -7,7 +7,7 @@ import {
   Heart, MessageCircle, Share2,
   MoreHorizontal, MapPin, ChevronLeft, ChevronRight,
   Award, Send, X, Maximize2,
-  Globe, Users, Lock,
+  Globe, Users, Lock, Bookmark,
 } from "lucide-react";
 import Link from "next/link";
 import { parkGradient } from "@/lib/parkGradient";
@@ -62,6 +62,9 @@ export interface FeedPost {
   park_image_url?: string | null;
   park_states?: string | null;
   is_national_park?: boolean | null;
+  // Viewer's own relationship to this post's park — not the author's.
+  viewer_visited?: boolean | null;
+  viewer_bucket_listed?: boolean | null;
   // visit metadata (only present on visit posts)
   visit_date: string | null;
   visit_rating: number | null;
@@ -1351,6 +1354,8 @@ export function PostCard({
   // Full comment list, preloaded so the inline preview can render and the
   // panel opens without a spinner.
   const [allComments, setAllComments] = useState<CommentRow[] | null>(null);
+  const [bucketListed, setBucketListed] = useState(!!post.viewer_bucket_listed);
+  const [bucketBusy, setBucketBusy] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { user } = useUser();
   const { toast } = useToast();
@@ -1362,6 +1367,29 @@ export function PostCard({
   const commentCount = post.comment_count + commentDelta;
   const isFirstVisit = !isBadgePost && !!post.visit_id && Number(post.visit_ordinal) === 1;
   const isNationalParkFirstVisit = isFirstVisit && !!post.is_national_park;
+
+  async function handleToggleBucketList() {
+    if (!post.park_code || bucketBusy) return;
+    const next = !bucketListed;
+    setBucketListed(next);
+    setBucketBusy(true);
+    try {
+      const res = next
+        ? await fetch("/api/visits", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ park_code: post.park_code, is_bucket_list: true }),
+          })
+        : await fetch(`/api/visits?park_code=${post.park_code}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast(next ? "Added to bucket list" : "Removed from bucket list");
+    } catch {
+      setBucketListed(!next);
+      toast("Could not update bucket list", "error");
+    } finally {
+      setBucketBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!showMenu) return;
@@ -1630,7 +1658,7 @@ export function PostCard({
 
       {/* Park location — hidden on photoless visit posts; the hero banner carries it */}
       {post.park_name && !isBadgePost && !(!hasPhotos && post.visit_id) && (
-        <div style={{ padding: "0 18px 10px" }}>
+        <div style={{ padding: "0 18px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <Link href={`/parks/${post.park_code}`} style={{ textDecoration: "none" }}>
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 4,
@@ -1641,6 +1669,28 @@ export function PostCard({
               {post.park_name.toUpperCase()}
             </div>
           </Link>
+          {/* Already-visited parks can't be bucket-listed — POST /api/visits
+              would wipe the dated visit's visited_date */}
+          {!isOwnPost && !post.viewer_visited && (
+            <button
+              onClick={handleToggleBucketList}
+              disabled={bucketBusy}
+              title={bucketListed ? "Remove from bucket list" : "Add to bucket list"}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 24, height: 24, padding: 0, borderRadius: 6,
+                background: "transparent", border: "none",
+                cursor: bucketBusy ? "default" : "pointer",
+                opacity: bucketBusy ? 0.5 : 1, flexShrink: 0,
+              }}
+            >
+              <Bookmark
+                size={15} strokeWidth={2.2}
+                fill={bucketListed ? "var(--primary)" : "none"}
+                style={{ color: "var(--primary)" }}
+              />
+            </button>
+          )}
         </div>
       )}
 
