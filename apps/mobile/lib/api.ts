@@ -1,4 +1,4 @@
-import type { EnrichedPost, EnrichedComment, PublicProfile, UserProfile, ParkWithStatus, BadgesResponse, Friend, FriendRequest, BlockedUser, ReportTargetType, ReportReason, EnrichedReport, Report } from '@parkquest/types';
+import type { EnrichedPost, EnrichedComment, PublicProfile, UserProfile, ParkWithStatus, BadgesResponse, Friend, FriendRequest, BlockedUser, ReportTargetType, ReportReason, EnrichedReport, Report, FeedbackCategory } from '@parkquest/types';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -273,6 +273,13 @@ export const getAdminParks = (token: string, sort = 'visit_count', dir: 'asc' | 
 
 export const getMyReports = (token: string) =>
   req<Report[]>('/api/reports', token);
+
+// ── Feedback ───────────────────────────────────────────────────────────────────
+
+export const submitFeedback = (
+  token: string,
+  body: { category: FeedbackCategory; page?: string; message: string; contactName?: string; contactEmail?: string },
+) => req('/api/feedback', token, { method: 'POST', body: JSON.stringify(body) });
 
 // ── Parks ──────────────────────────────────────────────────────────────────────
 

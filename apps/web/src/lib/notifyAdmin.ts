@@ -37,6 +37,37 @@ export async function notifyAdmin(alert: AdminAlert) {
   });
 }
 
+interface FeedbackAlert {
+  feedbackId: number;
+  userId: string;
+  category: string;
+  page: string | null;
+  message: string;
+  contactName: string | null;
+  contactEmail: string | null;
+}
+
+export async function notifyAdminFeedback(alert: FeedbackAlert) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+
+  const resend = new Resend(apiKey);
+  await resend.emails.send({
+    from: 'ParkQuest Feedback <feedback@parkquest.me>',
+    to: REPORTS_EMAIL,
+    subject: `ParkQuest feedback: ${alert.category}${alert.page ? ` — ${alert.page}` : ''}`,
+    text: [
+      `Feedback #${alert.feedbackId}`,
+      `Category: ${alert.category}`,
+      alert.page ? `Page: ${alert.page}` : null,
+      `From: ${alert.contactName ?? '(anonymous)'}${alert.contactEmail ? ` <${alert.contactEmail}>` : ''}`,
+      `User ID: ${alert.userId}`,
+      '',
+      alert.message,
+    ].filter(Boolean).join('\n'),
+  });
+}
+
 interface NewUserAlert {
   clerkUserId: string;
   username: string;

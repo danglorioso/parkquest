@@ -117,6 +117,20 @@ export interface Report {
   created_at: Date | null;
 }
 
+export type FeedbackCategory = 'bug' | 'suggestion' | 'question' | 'other';
+
+export interface Feedback {
+  id: number;
+  user_id: string;
+  category: FeedbackCategory;
+  page: string | null;
+  message: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  status: 'open' | 'read' | 'resolved';
+  created_at: Date | null;
+}
+
 export interface EnrichedReport extends Report {
   reporter_username: string | null;
   target_user_id: string | null; // clerk id of the reported user / content author

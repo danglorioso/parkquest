@@ -23,6 +23,7 @@ import { SearchOverlay } from '@/components/SearchOverlay';
 import { EmptyState } from '@/components/EmptyState';
 import { HolographicShine } from '@/components/HolographicShine';
 import { AvatarLightbox } from '@/components/AvatarLightbox';
+import { FeedbackSheet } from '@/components/FeedbackSheet';
 import { STATIC as C, dyn, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import Svg, { Circle, Text as SvgText } from 'react-native-svg';
@@ -181,6 +182,7 @@ export default function ProfileScreen() {
   const [selectedStamp, setSelectedStamp] = useState<StampPreview | null>(null);
   const [avatarLightbox, setAvatarLightbox] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [rawVisits, setRawVisits] = useState<any[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
@@ -816,11 +818,11 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── Invite a friend ──────────────────────────────────────────────── */}
+        {/* ── Support ───────────────────────────────────────────────────────── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="share-social-outline" size={13} color={C.inkMute} />
-            <Text style={styles.sectionKicker}>SPREAD THE WORD</Text>
+            <Ionicons name="heart-outline" size={13} color={C.inkMute} />
+            <Text style={styles.sectionKicker}>SUPPORT PARKQUEST</Text>
           </View>
           <View style={styles.card}>
             <NavRow
@@ -828,6 +830,12 @@ export default function ProfileScreen() {
               label="Invite a friend"
               subtitle="Share the ParkQuest download link"
               onPress={handleInviteFriend}
+            />
+            <View style={styles.rowDivider} />
+            <NavRow
+              icon="chatbox-ellipses-outline"
+              label="Send feedback"
+              onPress={() => setFeedbackOpen(true)}
             />
           </View>
         </View>
@@ -916,6 +924,10 @@ export default function ProfileScreen() {
 
       <AvatarLightbox visible={avatarLightbox} url={avatarUrl} onClose={() => setAvatarLightbox(false)} />
       <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
+
+      {feedbackOpen ? (
+        <FeedbackSheet onClose={() => setFeedbackOpen(false)} />
+      ) : null}
     </View>
   );
 }

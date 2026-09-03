@@ -197,6 +197,23 @@ export type NewBlock = typeof blocks.$inferInsert;
 export type Report = typeof reports.$inferSelect;
 export type NewReport = typeof reports.$inferInsert;
 
+export const feedback = pgTable('feedback', {
+  id: serial('id').primaryKey(),
+  // Always attached server-side (auth'd user), even for "anonymous" submissions —
+  // used for abuse prevention/follow-up, never shown to the submitter as a caveat.
+  user_id: varchar('user_id', { length: 255 }).notNull(),
+  category: varchar('category', { length: 20 }).notNull(), // 'bug' | 'suggestion' | 'question' | 'other'
+  page: varchar('page', { length: 100 }),                  // which screen/section they were on, free text
+  message: text('message').notNull(),
+  contact_name: varchar('contact_name', { length: 255 }),   // optional — blank means they chose to stay anonymous
+  contact_email: varchar('contact_email', { length: 255 }),
+  status: varchar('status', { length: 20 }).notNull().default('open'), // 'open' | 'read' | 'resolved'
+  created_at: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type Feedback = typeof feedback.$inferSelect;
+export type NewFeedback = typeof feedback.$inferInsert;
+
 export const notifications = pgTable('notifications', {
   id: serial('id').primaryKey(),
   recipient_id: varchar('recipient_id', { length: 255 }).notNull(),
