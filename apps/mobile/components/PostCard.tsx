@@ -418,6 +418,12 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onScrollBeginDrag={showChromeBriefly}
+        onScroll={e => {
+          const x = e.nativeEvent.contentOffset.x;
+          const next = Math.max(0, Math.min(n - 1, Math.round(x / boxW)));
+          setActiveIdx(prev => (prev === next ? prev : next));
+        }}
+        scrollEventThrottle={16}
         onMomentumScrollEnd={e => {
           const x = e.nativeEvent.contentOffset.x;
           setActiveIdx(Math.round(x / boxW));
@@ -447,7 +453,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
       {/* Counter badge — fades after a few seconds of inactivity */}
       {n > 1 && (
         <Animated.View style={[styles.carouselCounter, { opacity: chromeOpacity }]} pointerEvents="none">
-          <Text style={styles.carouselCounterText}>{activeIdx + 1} / {n}</Text>
+          <Text style={styles.carouselCounterText}>{activeIdx + 1}/{n}</Text>
         </Animated.View>
       )}
 
@@ -1515,6 +1521,8 @@ function PostCardImpl({
             )}
           </Animated.View>
         </TouchableOpacity>
+
+        <View style={{ flex: 1 }} />
 
         <TouchableOpacity
           onPress={async () => {
