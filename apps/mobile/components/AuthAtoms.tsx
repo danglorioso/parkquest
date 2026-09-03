@@ -1,5 +1,6 @@
 import {
   ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  type TextInputProps,
 } from 'react-native';
 import { useRef } from 'react';
 import Svg, { Path } from 'react-native-svg';
@@ -24,12 +25,18 @@ export function clerkMsg(e: unknown): string {
 export function FField({
   label, value, onChange, secureText = false,
   keyboard, trailing, onTrailing, autoFocus = false,
-  autoCapitalize = 'none',
+  autoCapitalize = 'none', textContentType,
 }: {
   label: string; value: string; onChange: (v: string) => void;
   secureText?: boolean; keyboard?: 'email-address' | 'number-pad' | 'default';
   trailing?: string; onTrailing?: () => void; autoFocus?: boolean;
   autoCapitalize?: 'none' | 'words' | 'sentences' | 'characters';
+  // Without this, iOS Keychain falls back to "nearest text field above the
+  // password field" to guess the username — on the reset-password screen
+  // that's the verification-code field, so it got saved as the username.
+  // Explicit typing (username / oneTimeCode / password / newPassword) tells
+  // Keychain which field is actually which.
+  textContentType?: TextInputProps['textContentType'];
 }) {
   const T = useColors();
   const inputRef = useRef<TextInput>(null);
@@ -53,6 +60,7 @@ export function FField({
           keyboardType={keyboard ?? 'default'}
           autoCapitalize={autoCapitalize} autoCorrect={false}
           autoFocus={autoFocus}
+          textContentType={textContentType}
         />
       </View>
       {trailing ? (

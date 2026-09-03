@@ -168,16 +168,17 @@ export default function LoginScreen() {
 
           <View style={{ marginTop: 28 }}>
             {step === 'mfa' && <>
-              <FField label="VERIFICATION CODE" value={mfaCode} onChange={setMfaCode} keyboard="number-pad" autoFocus />
+              <FField label="VERIFICATION CODE" value={mfaCode} onChange={setMfaCode} keyboard="number-pad" autoFocus textContentType="oneTimeCode" />
               {error ? <ErrorBox msg={error} /> : null}
             </>}
 
             {step === 'form' && <>
-              <FField label="EMAIL OR USERNAME" value={email} onChange={setEmail} keyboard="email-address" autoFocus={!prefillEmail} />
+              <FField label="EMAIL OR USERNAME" value={email} onChange={setEmail} keyboard="email-address" autoFocus={!prefillEmail} textContentType="username" />
               <FField
                 label="PASSWORD" value={password} onChange={setPassword}
                 secureText={!showPw} trailing={showPw ? 'Hide' : 'Show'}
                 onTrailing={() => setShowPw(v => !v)} autoFocus={!!prefillEmail}
+                textContentType="password"
               />
               <TouchableOpacity
                 onPress={() => { setFgEmail(email); setStep('forgot_email'); setError(''); }}
@@ -189,7 +190,7 @@ export default function LoginScreen() {
             </>}
 
             {step === 'forgot_email' && <>
-              <FField label="EMAIL" value={fgEmail} onChange={setFgEmail} keyboard="email-address" autoFocus />
+              <FField label="EMAIL" value={fgEmail} onChange={setFgEmail} keyboard="email-address" autoFocus textContentType="username" />
               {error ? <ErrorBox msg={error} /> : null}
             </>}
 
@@ -198,11 +199,12 @@ export default function LoginScreen() {
                 We sent a reset code to <Text style={{ color: C.ink, fontWeight: '700' }}>{fgEmail}</Text>.
                 {' '}Enter it with your new password.
               </InfoText>
-              <FField label="RESET CODE" value={fgCode} onChange={setFgCode} autoFocus />
+              <FField label="RESET CODE" value={fgCode} onChange={setFgCode} autoFocus textContentType="oneTimeCode" />
               <FField
                 label="NEW PASSWORD" value={fgPw} onChange={setFgPw}
                 secureText={!fgShowPw} trailing={fgShowPw ? 'Hide' : 'Show'}
                 onTrailing={() => setFgShowPw(v => !v)}
+                textContentType="newPassword"
               />
               {error ? <ErrorBox msg={error} /> : null}
             </>}

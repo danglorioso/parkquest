@@ -166,7 +166,7 @@ export default function SignUpScreen() {
 
           <View style={{ marginTop: 28 }}>
             {step === 'email' && <>
-              <FField label="EMAIL" value={email} onChange={setEmail} keyboard="email-address" autoFocus />
+              <FField label="EMAIL" value={email} onChange={setEmail} keyboard="email-address" autoFocus textContentType="username" />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Continue" onPress={handleEmailContinue} disabled={!email.trim()} />
             </>}
@@ -176,6 +176,7 @@ export default function SignUpScreen() {
                 label="PASSWORD" value={password} onChange={setPassword}
                 secureText={!showPw} trailing={showPw ? 'Hide' : 'Show'}
                 onTrailing={() => setShowPw(v => !v)} autoFocus
+                textContentType="newPassword"
               />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Create Account" onPress={handleCreateAccount} loading={busy} disabled={!password} />
@@ -183,7 +184,7 @@ export default function SignUpScreen() {
             </>}
 
             {step === 'verify' && <>
-              <FField label="VERIFICATION CODE" value={code} onChange={setCode} keyboard="number-pad" autoFocus />
+              <FField label="VERIFICATION CODE" value={code} onChange={setCode} keyboard="number-pad" autoFocus textContentType="oneTimeCode" />
               {error ? <ErrorBox msg={error} /> : null}
               <PrimaryBtn label="Verify Email" onPress={handleVerify} loading={busy} disabled={!code} />
               <SecondaryBtn icon="chevron-back" onPress={() => { setStep('password'); setError(''); setCode(''); }} />
