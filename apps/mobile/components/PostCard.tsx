@@ -381,7 +381,7 @@ const SCREEN_H = Dimensions.get('window').height;
 // enough to leave a sliver of the next/prev photo visible after a swipe.
 const CARD_W_FALLBACK = SCREEN_W - 32;
 
-const CAROUSEL_CHROME_FADE_DELAY = 2500;
+const CAROUSEL_CHROME_FADE_DELAY = 1200;
 
 function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: string | null }) {
   const [activeIdx, setActiveIdx] = useState(0);
