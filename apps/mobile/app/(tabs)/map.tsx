@@ -655,6 +655,37 @@ export default function MapScreen() {
     setSelectedPark(null);
   }, []);
 
+  // Turns everything off except the one type — the chip row's own
+  // double-tap gesture (see chipLastTapRef below), not exposed anywhere
+  // else. Each single tap still runs its normal toggleParkType first; this
+  // just overrides the result once a second tap on the same chip lands
+  // inside the double-tap window.
+  const isolateParkType = useCallback((key: string) => {
+    setEnabledParkTypes(new Set([key]));
+    setSelectedPark(null);
+  }, []);
+
+  // Manual double-tap detection for the chip row — RN has no built-in
+  // onDoubleTap, and a real delay-then-decide gesture would make every
+  // single tap feel laggy (waiting to see if a second tap follows). Instead
+  // each tap fires its normal single-tap action immediately; this only
+  // tracks timing to detect when a second tap on the SAME chip lands within
+  // the window, and isolates on top of whatever the two individual toggles
+  // just did.
+  const chipLastTapRef = useRef<{ key: string; time: number } | null>(null);
+  const DOUBLE_TAP_MS = 300;
+  const handleChipPress = useCallback((key: string) => {
+    const now = Date.now();
+    const last = chipLastTapRef.current;
+    toggleParkType(key);
+    if (last && last.key === key && now - last.time < DOUBLE_TAP_MS) {
+      isolateParkType(key);
+      chipLastTapRef.current = null;
+    } else {
+      chipLastTapRef.current = { key, time: now };
+    }
+  }, [toggleParkType, isolateParkType]);
+
   // Tapping "All" while it's already active turns everything off, same as
   // tapping an active individual chip removes just that one — "All" behaves
   // like any other selectable option, not a one-way "reset" shortcut.
@@ -1164,7 +1195,7 @@ export default function MapScreen() {
             return (
               <TouchableOpacity
                 key={t.key}
-                onPress={() => toggleParkType(t.key)}
+                onPress={() => handleChipPress(t.key)}
                 activeOpacity={0.75}
                 style={[styles.chip, active && styles.chipActive]}
               >
