@@ -23,7 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, dyn, useColors, useReassertThemeOnUnmount } from '@/lib/palette';
 import { GlassIconBg } from '@/components/GlassIconBg';
-import { ImageLightbox } from '@/components/ImageLightbox';
+import { openImageLightbox } from '@/lib/imageLightbox';
 import { showToast } from '@/lib/toast';
 import { loadRawDrafts, upsertRawDraft, deleteRawDraft, type SavedDraft as SharedSavedDraft } from '@/lib/drafts';
 import { PostCard, type FeedPost } from '@/components/PostCard';
@@ -1121,7 +1121,6 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder, onDragActive
   const uploading = uploadProgress.total > 0;
   const [cropQueue, setCropQueue] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [cropDone, setCropDone] = useState<{ uri: string; mimeType?: string; fileName?: string }[]>([]);
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const activeIndex = useSharedValue(-1);
   const overIndex = useSharedValue(-1);
   // Matches the step content's horizontal padding (20 on each side) so the grid's
@@ -1207,14 +1206,6 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder, onDragActive
         onCancel={cancelCrops}
         onDone={advanceCrop}
       />
-      {lightboxIndex !== null && (
-        <ImageLightbox
-          images={photos.map(url => ({ url }))}
-          initialIndex={lightboxIndex}
-          loop={false}
-          onClose={() => setLightboxIndex(null)}
-        />
-      )}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: PHOTO_GAP }}>
         {photos.map((url, idx) => (
           <DraggablePhotoThumb
@@ -1224,7 +1215,12 @@ function PhotoStrip({ getToken, photos, onAdd, onRemove, onReorder, onDragActive
             activeIndex={activeIndex} overIndex={overIndex}
             onDragStart={() => onDragActiveChange(true)}
             onDragEnd={handleReorder}
-            onPress={() => setLightboxIndex(idx)}
+            onPress={() => openImageLightbox({
+              images: photos.map(u => ({ url: u })),
+              initialIndex: idx,
+              loop: false,
+              onClose: () => {},
+            })}
             onRemove={() => onRemove(url)}
           />
         ))}

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Dimensions, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View,
+  Animated, Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, withTiming,
@@ -208,7 +208,19 @@ function LightboxPage({
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
-export function ImageLightbox({
+// Rendered ONLY by lib/imageLightbox's ImageLightboxHost (mounted once at
+// the app root, see _layout.tsx) — never call this directly from a screen.
+// Use openImageLightbox() instead. This used to be a self-contained
+// component any screen rendered inline via a real RN <Modal>, but multi-
+// touch gestures (pinch) don't reliably register inside a Modal on iOS —
+// confirmed by two failed attempts to force it to work there (missing
+// registration, then a nested GestureHandlerRootView that flashed the
+// whole screen black and crashed). Hosting this at the true app root
+// instead — same architecture as lib/pinchZoom's PinchZoomHost — sidesteps
+// the Modal problem entirely and, as a side effect, also isn't clipped by
+// whatever overflow:hidden ancestor the triggering screen happens to have
+// (e.g. PostCard's own card wrapper).
+export function ImageLightboxView({
   images, initialIndex = 0, onClose, loop = true,
 }: {
   images: LightboxImage[];
@@ -292,21 +304,8 @@ export function ImageLightbox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
 
-  // animationType="none", not "fade" — RN's Modal plays its own native
-  // dismiss transition on unmount regardless of what triggered the close
-  // (swipe past threshold, tap outside — both just call onRequestClose
-  // directly, no extra delay in this file), which read as sluggish on top
-  // of the swipe's own drag-follow motion.
   return (
-    <Modal visible transparent animationType="none" onRequestClose={handleClose}>
-      {/* RN's core Modal renders into its own native window, outside the
-          app root's GestureHandlerRootView — multi-touch gestures (pinch
-          especially) silently fail to register inside a Modal without
-          their own nested root here. backgroundColor explicitly set —
-          without it this root's default (opaque, not "inherit
-          transparent") painted the whole screen solid black the instant a
-          real multi-touch gesture (pinch) handed off to RNGH's native view. */}
-      <GestureHandlerRootView style={{ flex: 1, backgroundColor: 'transparent' }}>
+    <View style={[StyleSheet.absoluteFillObject, { zIndex: 300 }]}>
       <View style={styles.bg}>
         {/* Fullscreen pager — swipe anywhere to change image, wraps at the ends.
             Disabled while zoomed in so a pan-to-inspect never also flips pages.
@@ -420,8 +419,7 @@ export function ImageLightbox({
           </Animated.View>
         )}
       </View>
-      </GestureHandlerRootView>
-    </Modal>
+    </View>
   );
 }
 

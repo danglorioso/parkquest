@@ -6,7 +6,7 @@ import {
   InteractionManager,
 } from 'react-native';
 import { MenuView } from '@react-native-menu/menu';
-import { ImageLightbox } from '@/components/ImageLightbox';
+import { openImageLightbox } from '@/lib/imageLightbox';
 import { PinchZoomPhoto } from '@/components/PinchZoomPhoto';
 import { Avatar } from '@/components/Avatar';
 import { AdminStar } from '@/components/AdminStar';
@@ -386,7 +386,6 @@ const CAROUSEL_CHROME_FADE_DELAY = 1200;
 
 function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: string | null }) {
   const [activeIdx, setActiveIdx] = useState(0);
-  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   // Measured from the carousel's own layout rather than assumed from screen
   // width — square, so this doubles as both the paging width and photo height.
   const [boxW, setBoxW] = useState(CARD_W_FALLBACK);
@@ -449,7 +448,15 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
             uri={src || null}
             size={boxW}
             fallbackColor={fallbackColor}
-            onPress={() => setLightboxIdx(k)}
+            onPress={() => openImageLightbox({
+              images: photos.filter(Boolean).map(url => ({ url })),
+              initialIndex: k,
+              loop: false,
+              onClose: finalIndex => {
+                setActiveIdx(finalIndex);
+                scrollRef.current?.scrollTo({ x: finalIndex * boxW, animated: false });
+              },
+            })}
             onZoomChange={setZooming}
           />
         ))}
@@ -509,18 +516,6 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         </View>
       )}
 
-      {lightboxIdx !== null && (
-        <ImageLightbox
-          images={photos.filter(Boolean).map(url => ({ url }))}
-          initialIndex={lightboxIdx}
-          loop={false}
-          onClose={finalIndex => {
-            setLightboxIdx(null);
-            setActiveIdx(finalIndex);
-            scrollRef.current?.scrollTo({ x: finalIndex * boxW, animated: false });
-          }}
-        />
-      )}
     </View>
   );
 }
@@ -648,20 +643,23 @@ function MetaChip({ icon, children }: { icon?: React.ComponentProps<typeof Ionic
 
 // ── TierScale ─────────────────────────────────────────────────────────────────
 
-function TierScale({ label, value, labels }: { label: string; value: number; labels: string[] }) {
-  const color = TIER_COLORS[value - 1];
+function TierScale({ label, value, labels, valueColor, valueText }: {
+  label: string; value: number; labels?: string[]; valueColor?: string; valueText?: string;
+}) {
+  const filled = Math.round(value);
+  const color = valueColor ?? TIER_COLORS[filled - 1];
   return (
     <View style={styles.tierRow}>
-      <Text style={styles.tierLabel}>{label}</Text>
+      <Text style={styles.tierLabel} numberOfLines={1}>{label}</Text>
       <View style={styles.tierBar}>
-        {labels.map((_, i) => (
+        {Array.from({ length: 5 }, (_, i) => (
           <View
             key={i}
-            style={[styles.tierSegment, { backgroundColor: i < value ? color : C.hairline }]}
+            style={[styles.tierSegment, { backgroundColor: i < filled ? color : C.hairline }]}
           />
         ))}
       </View>
-      <Text style={[styles.tierValue, { color }]}>{labels[value - 1]}</Text>
+      <Text style={[styles.tierValue, { color }]}>{valueText ?? labels?.[value - 1]}</Text>
     </View>
   );
 }
@@ -674,7 +672,7 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
   const hasHikeStats = !!post.visit_external_source && post.visit_distance_meters != null;
 
   const hasAny =
-    post.visit_date || post.visit_rating ||
+    post.visit_date ||
     (post.visit_activities?.length ?? 0) > 0 ||
     (post.visit_weather?.length ?? 0) > 0 ||
     (post.visit_companion_count ?? 0) > 0 ||
@@ -701,16 +699,6 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
         </Text>
       )}
       <View style={styles.chipRow}>
-        {post.visit_rating ? (
-          <MetaChip>
-            <Text style={styles.chipText}>
-              <Text style={{ color: '#C49A28' }}>★ </Text>
-              {post.visit_rating % 1 === 0
-                ? post.visit_rating.toFixed(0)
-                : post.visit_rating.toFixed(1)}
-            </Text>
-          </MetaChip>
-        ) : null}
         {dateLabel && !heroDate ? (
           <MetaChip icon="calendar-outline"><Text style={styles.chipText}>{dateLabel}</Text></MetaChip>
         ) : null}
@@ -1553,9 +1541,17 @@ function PostCardImpl({
       {/* Photo carousel */}
       {!isBadge && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
 
-      {/* Crowd / difficulty scales */}
-      {!isBadge && (post.visit_crowd || post.visit_difficulty) && (
+      {/* Rating / crowd / difficulty scales */}
+      {!isBadge && (post.visit_rating || post.visit_crowd || post.visit_difficulty) && (
         <View style={styles.tierBlock}>
+          {post.visit_rating ? (
+            <TierScale
+              label="Rating"
+              value={post.visit_rating}
+              valueColor="#C49A28"
+              valueText={post.visit_rating % 1 === 0 ? post.visit_rating.toFixed(0) : post.visit_rating.toFixed(1)}
+            />
+          ) : null}
           {post.visit_crowd ? <TierScale label="Crowd" value={post.visit_crowd} labels={CROWD_LABELS} /> : null}
           {post.visit_difficulty ? <TierScale label="Difficulty" value={post.visit_difficulty} labels={DIFF_LABELS} /> : null}
         </View>
@@ -1856,7 +1852,7 @@ const styles = StyleSheet.create({
   tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tierLabel: {
     fontSize: 11, fontWeight: '700', color: C.inkMute,
-    textTransform: 'uppercase', letterSpacing: 0.4, width: 64,
+    textTransform: 'uppercase', letterSpacing: 0.4, width: 78,
   },
   tierBar: { flex: 1, flexDirection: 'row', gap: 3 },
   tierSegment: { flex: 1, height: 5, borderRadius: 3 },

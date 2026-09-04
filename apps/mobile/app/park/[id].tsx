@@ -28,7 +28,7 @@ import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors, colorStr } from '@/lib/palette';
 import { GlassScrubTabs } from '@/components/GlassScrubTabs';
 import { parkColor, parkGradient } from '@/lib/parkColors';
-import { ImageLightbox } from '@/components/ImageLightbox';
+import { openImageLightbox } from '@/lib/imageLightbox';
 import { FriendsVisitedSheet } from '@/components/FriendsVisitedSheet';
 import { VisitPickerSheet } from '@/components/VisitPickerSheet';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -527,7 +527,6 @@ export function ParkProfileScreen({
   const [pageTab, setPageTab] = useState<'info' | 'community'>('info');
   const [token,        setToken]        = useState<string | null>(null);
   const [loading,      setLoading]      = useState(!hasSeed);
-  const [lightbox,     setLightbox]     = useState<{ images: NpsImage[]; idx: number } | null>(null);
   // Seeded from the map's own last-known status (see parkSheetProps in
   // map.tsx) so the bucket icon doesn't pop on mount for a seeded nav —
   // reconciled by the real fetch below exactly like `visits`/`parkStatus`.
@@ -1622,7 +1621,7 @@ export function ParkProfileScreen({
               return (
                 <TouchableOpacity
                   key={slotIdx}
-                  onPress={() => setLightbox({ images: nps!.images, idx: actualIdx })}
+                  onPress={() => openImageLightbox({ images: nps!.images, initialIndex: actualIdx, onClose: () => {} })}
                   activeOpacity={0.85}
                   style={styles.photoStripItem}
                 >
@@ -2022,14 +2021,6 @@ export function ParkProfileScreen({
       </Animated.ScrollView>
       </Animated.View>
 
-      {lightbox && (
-        <ImageLightbox
-          images={lightbox.images}
-          initialIndex={lightbox.idx}
-          onClose={() => setLightbox(null)}
-        />
-      )}
-
       {showFriendsSheet && visitors && (
         <FriendsVisitedSheet
           friends={visitors.friends}
@@ -2090,7 +2081,7 @@ export function ParkProfileScreen({
               style={StyleSheet.absoluteFill}
               activeOpacity={0.95}
               disabled={!nps?.images?.length}
-              onPress={() => nps?.images?.length && setLightbox({ images: nps.images, idx: heroIdx })}
+              onPress={() => nps?.images?.length && openImageLightbox({ images: nps.images, initialIndex: heroIdx, onClose: () => {} })}
             >
               <ExpoImage
                 key={heroImage}
