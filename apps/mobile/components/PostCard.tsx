@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { MenuView } from '@react-native-menu/menu';
 import { ImageLightbox } from '@/components/ImageLightbox';
+import { PinchZoomPhoto } from '@/components/PinchZoomPhoto';
 import { Avatar } from '@/components/Avatar';
 import { AdminStar } from '@/components/AdminStar';
 import { HikeStatsCard } from '@/components/HikeStatsCard';
@@ -389,6 +390,9 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
   // Measured from the carousel's own layout rather than assumed from screen
   // width — square, so this doubles as both the paging width and photo height.
   const [boxW, setBoxW] = useState(CARD_W_FALLBACK);
+  // Disables the pager mid-pinch so a two-finger zoom can't also drag the
+  // carousel to the next photo underneath it.
+  const [zooming, setZooming] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const n = photos.length;
   const fallbackColor = parkColor(parkCode ?? 'xx');
@@ -425,6 +429,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         ref={scrollRef}
         horizontal
         pagingEnabled
+        scrollEnabled={!zooming}
         showsHorizontalScrollIndicator={false}
         onScrollBeginDrag={showChromeBriefly}
         onScroll={e => {
@@ -439,23 +444,14 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         }}
       >
         {photos.map((src, k) => (
-          <TouchableOpacity
+          <PinchZoomPhoto
             key={k}
-            activeOpacity={0.92}
+            uri={src || null}
+            size={boxW}
+            fallbackColor={fallbackColor}
             onPress={() => setLightboxIdx(k)}
-            style={{ width: boxW, height: boxW }}
-          >
-            {src ? (
-              <Image
-                source={{ uri: src }}
-                style={{ width: boxW, height: boxW }}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-              />
-            ) : (
-              <View style={{ width: boxW, height: boxW, backgroundColor: fallbackColor }} />
-            )}
-          </TouchableOpacity>
+            onZoomChange={setZooming}
+          />
         ))}
       </ScrollView>
 

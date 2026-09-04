@@ -21,6 +21,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Sentry from '@sentry/react-native';
 import LoadingScreen from '../components/LoadingScreen';
 import { ToastHost } from '../lib/toast';
+import { PinchZoomHost } from '../lib/pinchZoom';
 import { useAuthBootstrapReady } from '../lib/network';
 import { syncLastAccountProfile, type AuthStrategy } from '../lib/lastAccount';
 
@@ -287,6 +288,7 @@ function RootLayout() {
             <RootStack />
             <LoadingScreen visible={!appReady} />
             <ToastHost />
+            <PinchZoomHost />
           </SafeAreaProvider>
           </PaletteProvider>
         </GestureHandlerRootView>
