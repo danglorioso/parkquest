@@ -9,6 +9,7 @@ import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { BadgeColors } from '@/lib/badges';
 import { BadgeDetailModal, BadgePatch } from '@/components/BadgeDetailModal';
 import { BadgeShareSheet } from '@/components/BadgeShareSheet';
@@ -402,6 +403,16 @@ export default function ProfileScreen() {
       {barGlass && GlassView && GlassContainer ? (
         <GlassContainer style={StyleSheet.absoluteFill}>
           <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={isDark ? '#171511' : '#F2EBDB'} />
+          {/* Fades the glass tint to fully transparent by the bar's own
+              bottom edge — same height, no hard cutoff */}
+          <LinearGradient
+            pointerEvents="none"
+            colors={isDark
+              ? ['rgba(23,21,17,0.5)', 'rgba(23,21,17,0.22)', 'rgba(23,21,17,0)']
+              : ['rgba(242,235,219,0.5)', 'rgba(242,235,219,0.22)', 'rgba(242,235,219,0)']}
+            locations={[0, 0.55, 1]}
+            style={StyleSheet.absoluteFill}
+          />
           <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
             <View style={{ height: 44, justifyContent: 'center' }}>
               <Wordmark onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} />
@@ -413,13 +424,31 @@ export default function ProfileScreen() {
         <>
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             {Platform.OS === 'ios' && (
-              <BlurView
-                intensity={90}
-                tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-                style={StyleSheet.absoluteFill}
-              />
+              <>
+                {/* Top-anchored, taller/stronger blur stacked over a full-height
+                    softer one — a crude but effective step-down in blur strength
+                    toward the bottom edge, since BlurView has no gradient mask */}
+                <BlurView
+                  intensity={90}
+                  tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: TOP_BAR_H * 0.6 }}
+                />
+                <BlurView
+                  intensity={40}
+                  tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
+                  style={StyleSheet.absoluteFill}
+                />
+              </>
             )}
-            <View style={[StyleSheet.absoluteFill, styles.topBarFallbackFill]} />
+            {/* Fades the tint color to fully transparent by the bar's own
+                bottom edge — same height, no hard cutoff */}
+            <LinearGradient
+              colors={isDark
+                ? ['rgba(23,21,17,0.72)', 'rgba(23,21,17,0.4)', 'rgba(23,21,17,0)']
+                : ['rgba(242,235,219,0.72)', 'rgba(242,235,219,0.4)', 'rgba(242,235,219,0)']}
+              locations={[0, 0.55, 1]}
+              style={StyleSheet.absoluteFill}
+            />
           </View>
           <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
             <View style={{ height: 44, justifyContent: 'center' }}>
@@ -429,7 +458,6 @@ export default function ProfileScreen() {
           </View>
         </>
       )}
-      <View style={styles.topBarHairline} />
     </View>
   );
 
@@ -1176,9 +1204,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
     overflow: 'hidden',
   },
-  topBarFallbackFill: {
-    backgroundColor: dyn('rgba(242,235,219,0.88)', 'rgba(23,21,17,0.88)'),
-  },
   topBarInner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1186,14 +1211,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 6,
     paddingBottom: 8,
-  },
-  topBarHairline: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 0.5,
-    backgroundColor: C.hairline,
   },
   topBarActions: {
     flexDirection: 'row',

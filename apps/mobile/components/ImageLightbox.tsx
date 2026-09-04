@@ -5,7 +5,7 @@ import {
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, withTiming,
@@ -121,20 +121,21 @@ function LightboxPage({
       savedTranslateY.value = translateY.value;
     });
 
-  // Swipe down (only while un-zoomed) closes the lightbox. The image follows
+  // Swipe up OR down (only while un-zoomed) closes the lightbox — either
+  // direction reads as "pull this away", not just down. The image follows
   // the finger so the dismissal reads as a drag, then snaps back if the pull
   // wasn't decisive. activeOffsetY/failOffsetX keep horizontal swipes flowing
   // to the pager FlatList untouched.
   const dismissPan = Gesture.Pan()
     .enabled(!zoomed)
-    .activeOffsetY(20)
+    .activeOffsetY([-20, 20])
     .failOffsetX([-15, 15])
     .runOnJS(true)
     .onUpdate(e => {
-      translateY.value = Math.max(e.translationY, 0);
+      translateY.value = e.translationY;
     })
     .onEnd(e => {
-      if (e.translationY > 120 || e.velocityY > 800) {
+      if (Math.abs(e.translationY) > 120 || Math.abs(e.velocityY) > 800) {
         onRequestClose();
       } else {
         translateY.value = withTiming(0);
@@ -291,8 +292,18 @@ export function ImageLightbox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
 
+  // animationType="none", not "fade" — RN's Modal plays its own native
+  // dismiss transition on unmount regardless of what triggered the close
+  // (swipe past threshold, tap outside — both just call onRequestClose
+  // directly, no extra delay in this file), which read as sluggish on top
+  // of the swipe's own drag-follow motion.
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={handleClose}>
+    <Modal visible transparent animationType="none" onRequestClose={handleClose}>
+      {/* RN's core Modal renders into its own native window, outside the
+          app root's GestureHandlerRootView — multi-touch gestures (pinch
+          especially) silently fail to register inside a Modal without
+          their own nested root here. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.bg}>
         {/* Fullscreen pager — swipe anywhere to change image, wraps at the ends.
             Disabled while zoomed in so a pan-to-inspect never also flips pages.
@@ -406,6 +417,7 @@ export function ImageLightbox({
           </Animated.View>
         )}
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

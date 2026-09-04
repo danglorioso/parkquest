@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -18,7 +19,7 @@ import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { STATIC as C, dyn, useColors } from '@/lib/palette';
+import { STATIC as C, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { useIsOnline } from '@/lib/network';
 import { loadOfflineFeed, saveOfflineFeed } from '@/lib/offlineFeed';
@@ -456,6 +457,16 @@ export default function FeedScreen() {
         {barGlass && GlassView && GlassContainer ? (
           <GlassContainer style={StyleSheet.absoluteFill}>
             <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={isDark ? '#171511' : '#F2EBDB'} />
+            {/* Fades the glass tint to fully transparent by the bar's own
+                bottom edge — same height, no hard cutoff */}
+            <LinearGradient
+              pointerEvents="none"
+              colors={isDark
+                ? ['rgba(23,21,17,0.5)', 'rgba(23,21,17,0.22)', 'rgba(23,21,17,0)']
+                : ['rgba(242,235,219,0.5)', 'rgba(242,235,219,0.22)', 'rgba(242,235,219,0)']}
+              locations={[0, 0.55, 1]}
+              style={StyleSheet.absoluteFill}
+            />
             <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
               {/* Explicit 44px box (matching iconBtn) instead of trusting
                   flex alignItems:center to match cross-axis centers — the
@@ -491,13 +502,31 @@ export default function FeedScreen() {
           <>
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
               {Platform.OS === 'ios' && (
-                <BlurView
-                  intensity={90}
-                  tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-                  style={StyleSheet.absoluteFill}
-                />
+                <>
+                  {/* Top-anchored, taller/stronger blur stacked over a full-height
+                      softer one — a crude but effective step-down in blur strength
+                      toward the bottom edge, since BlurView has no gradient mask */}
+                  <BlurView
+                    intensity={90}
+                    tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
+                    style={{ position: 'absolute', top: 0, left: 0, right: 0, height: TOP_BAR_H * 0.6 }}
+                  />
+                  <BlurView
+                    intensity={40}
+                    tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </>
               )}
-              <View style={[StyleSheet.absoluteFill, styles.topBarFallbackFill]} />
+              {/* Fades the tint color to fully transparent by the bar's own
+                  bottom edge — same height, no hard cutoff */}
+              <LinearGradient
+                colors={isDark
+                  ? ['rgba(23,21,17,0.72)', 'rgba(23,21,17,0.4)', 'rgba(23,21,17,0)']
+                  : ['rgba(242,235,219,0.72)', 'rgba(242,235,219,0.4)', 'rgba(242,235,219,0)']}
+                locations={[0, 0.55, 1]}
+                style={StyleSheet.absoluteFill}
+              />
             </View>
             <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
               {/* Explicit 44px box (matching iconBtn) instead of trusting
@@ -531,7 +560,6 @@ export default function FeedScreen() {
             </View>
           </>
         )}
-        <View style={styles.topBarHairline} />
       </View>
 
       <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
@@ -559,9 +587,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
     overflow: 'hidden',
   },
-  topBarFallbackFill: {
-    backgroundColor: dyn('rgba(242,235,219,0.88)', 'rgba(23,21,17,0.88)'),
-  },
   topBarInner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -570,21 +595,10 @@ const styles = StyleSheet.create({
     // Asymmetric on purpose: paddingTop pairs with the marginTop pull-up
     // (insets.top - 8, set where this style is used) to land the buttons a
     // fixed distance under the safe area — left untouched so that gap never
-    // moves. paddingBottom is the matching gap to the hairline below (see
+    // moves. paddingBottom is the matching gap to the bar's bottom edge (see
     // TOP_BAR_H, which now wraps this row with no extra slack).
     paddingTop: 6,
     paddingBottom: 8,
-  },
-  topBarHairline: {
-    // Pinned to the bar's bottom edge — as an in-flow child it lands
-    // mid-bar in the glass branch, where the content is absolutely
-    // positioned and takes no layout space.
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 0.5,
-    backgroundColor: C.hairline,
   },
   topBarActions: {
     flexDirection: 'row',
