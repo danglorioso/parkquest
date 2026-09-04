@@ -302,8 +302,11 @@ export function ImageLightbox({
       {/* RN's core Modal renders into its own native window, outside the
           app root's GestureHandlerRootView — multi-touch gestures (pinch
           especially) silently fail to register inside a Modal without
-          their own nested root here. */}
-      <GestureHandlerRootView style={{ flex: 1 }}>
+          their own nested root here. backgroundColor explicitly set —
+          without it this root's default (opaque, not "inherit
+          transparent") painted the whole screen solid black the instant a
+          real multi-touch gesture (pinch) handed off to RNGH's native view. */}
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: 'transparent' }}>
       <View style={styles.bg}>
         {/* Fullscreen pager — swipe anywhere to change image, wraps at the ends.
             Disabled while zoomed in so a pan-to-inspect never also flips pages.
