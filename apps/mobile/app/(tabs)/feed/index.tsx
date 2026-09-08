@@ -22,6 +22,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { useIsOnline } from '@/lib/network';
+import { useFeedColumns } from '@/lib/responsive';
 import { loadOfflineFeed, saveOfflineFeed } from '@/lib/offlineFeed';
 import { onUserBlocked } from '@/lib/blocking';
 
@@ -101,6 +102,9 @@ export default function FeedScreen() {
 
   const flatListRef = useRef<FlatList<FeedPost>>(null);
   useScrollToTop(flatListRef);
+  // 2-up at iPad width — a single post's photo filling the whole iPad
+  // screen made it impossible to see a full post without scrolling.
+  const columns = useFeedColumns();
   const scrollOffsetRef = useRef(0);
   // Clerk tokens expire in ~60s — never stash getToken itself in a dep array
   // (unstable identity has caused runaway re-invocation before), always call
@@ -280,16 +284,22 @@ export default function FeedScreen() {
   // changed, which is exactly what defeats PostCard's memoization below.
   const renderPost = useCallback(({ item }: { item: FeedPost }) =>
     token ? (
-      <PostCard
-        post={item}
-        myUserId={user?.id ?? ''}
-        myAvatarUrl={user?.imageUrl}
-        myName={user?.fullName ?? user?.username}
-        onDelete={handleDelete}
-        onParkPress={handleParkPress}
-      />
+      // Fixed '48%' (not flex:1) so a trailing lone post in an odd-count,
+      // 2-column grid stays column-width instead of stretching full-row —
+      // columnWrapperStyle's justifyContent:'space-between' below is what
+      // actually produces the gap between the two columns from that.
+      <View style={columns === 2 ? { width: '48%' } : undefined}>
+        <PostCard
+          post={item}
+          myUserId={user?.id ?? ''}
+          myAvatarUrl={user?.imageUrl}
+          myName={user?.fullName ?? user?.username}
+          onDelete={handleDelete}
+          onParkPress={handleParkPress}
+        />
+      </View>
     ) : null,
-  [token, user, handleDelete, handleParkPress]);
+  [token, user, handleDelete, handleParkPress, columns]);
 
   // Blocking a user should hide their posts from the feed instantly, without
   // waiting on a refetch.
@@ -415,10 +425,17 @@ export default function FeedScreen() {
   return (
     <View style={styles.screen}>
       <FlatList<FeedPost>
+        // FlatList throws if numColumns changes on an already-mounted
+        // instance ("Changing numColumns on the fly is not supported") —
+        // keying on it forces a clean remount instead, which matters here
+        // since useFeedColumns is width-reactive (iPad Split View resize).
+        key={`feed-cols-${columns}`}
         ref={flatListRef}
         data={loading ? [] : filtered}
         keyExtractor={item => String(item.id)}
         renderItem={renderPost}
+        numColumns={columns}
+        columnWrapperStyle={columns === 2 ? styles.gridRow : undefined}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         ListEmptyComponent={ListEmpty}
@@ -577,6 +594,11 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 16,
     paddingBottom: 32,
+  },
+  // iPad 2-column grid row — '48%'-wide cards (see renderPost) plus
+  // space-between is what actually produces the gap between them.
+  gridRow: {
+    justifyContent: 'space-between',
   },
 
   topBar: {

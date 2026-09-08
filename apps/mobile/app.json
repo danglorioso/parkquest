@@ -14,7 +14,7 @@
       "backgroundColor": "#F2EBDB"
     },
     "ios": {
-      "supportsTablet": false,
+      "supportsTablet": true,
       "bundleIdentifier": "com.danglorioso.parkquest",
       "buildNumber": "58",
       "developmentTeam": "U8AK9PG243",

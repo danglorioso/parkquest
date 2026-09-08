@@ -24,6 +24,7 @@ import { distanceMiles } from '@/lib/location';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import { GrowTouchable } from '@/components/GrowTouchable';
 import { liquidGlassAvailable } from '@/lib/glass';
+import { useFeedColumns } from '@/lib/responsive';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, useColors, colorStr } from '@/lib/palette';
 import { GlassScrubTabs } from '@/components/GlassScrubTabs';
@@ -521,6 +522,8 @@ export function ParkProfileScreen({
   // underlying data changes (e.g. a background refresh shouldn't yank
   // them back to a different tab).
   const [journalTabOverride, setJournalTabOverride] = useState<'you' | 'community' | null>(null);
+  // 2-up at iPad width — see renderJournalYou/renderJournalCommunity below.
+  const columns = useFeedColumns();
   // Top-of-page Info/Community switcher — see GlassScrubTabs. Always
   // opens on Info; the "Visits" stat cell below can jump straight to
   // Community (see its onPress).
@@ -1236,16 +1239,24 @@ export function ParkProfileScreen({
   ) : (
     <>
       {token && myParkPosts.length > 0
-        ? myParkPosts.map(post => (
-            <PostCard
-              key={post.id}
-              post={post}
-              myUserId={user?.id ?? ''}
-              myAvatarUrl={user?.imageUrl}
-              myName={user?.fullName ?? user?.username}
-              onDelete={deletedId => setMyParkPosts(prev => prev.filter(p => p.id !== deletedId))}
-            />
-          ))
+        ? (
+            // 2 columns at iPad width — see the POSTS grid note on
+            // renderJournalCommunity below for why flexWrap needs no
+            // manual row-chunking.
+            <View style={columns === 2 ? styles.postsGrid : undefined}>
+              {myParkPosts.map(post => (
+                <View key={post.id} style={columns === 2 ? styles.postsGridItem : undefined}>
+                  <PostCard
+                    post={post}
+                    myUserId={user?.id ?? ''}
+                    myAvatarUrl={user?.imageUrl}
+                    myName={user?.fullName ?? user?.username}
+                    onDelete={deletedId => setMyParkPosts(prev => prev.filter(p => p.id !== deletedId))}
+                  />
+                </View>
+              ))}
+            </View>
+          )
         : visits.map(v => (
             <View key={v.id} style={[styles.visitCard, { marginBottom: 12 }]}>
               <Text style={styles.visitDate}>
@@ -1269,19 +1280,27 @@ export function ParkProfileScreen({
     </>
   );
 
+  // 2 columns at iPad width — flexWrap lays children out left-to-right,
+  // top-to-bottom in array order on its own (communityParkPosts is already
+  // feed/recency order, no sort applied), so no manual row-chunking is
+  // needed. A lone trailing post in an odd-count grid naturally lands at
+  // the row's start (flexbox justify-content on a wrapped line applies
+  // per-line, and "space between" one item has nothing to space against) —
+  // column-width, not stretched full-row.
   const renderJournalCommunity = () => (
-    <>
+    <View style={columns === 2 ? styles.postsGrid : undefined}>
       {communityParkPosts.map(post => (
-        <PostCard
-          key={post.id}
-          post={post}
-          myUserId={user?.id ?? ''}
-          myAvatarUrl={user?.imageUrl}
-          myName={user?.fullName ?? user?.username}
-          onDelete={deletedId => setCommunityParkPosts(prev => prev.filter(p => p.id !== deletedId))}
-        />
+        <View key={post.id} style={columns === 2 ? styles.postsGridItem : undefined}>
+          <PostCard
+            post={post}
+            myUserId={user?.id ?? ''}
+            myAvatarUrl={user?.imageUrl}
+            myName={user?.fullName ?? user?.username}
+            onDelete={deletedId => setCommunityParkPosts(prev => prev.filter(p => p.id !== deletedId))}
+          />
+        </View>
       ))}
-    </>
+    </View>
   );
 
   const stateName = fullStateName(park.states);
@@ -2807,6 +2826,15 @@ const styles = StyleSheet.create({
   section: {
     paddingHorizontal: 16,
     paddingVertical: 16,
+  },
+  // iPad 2-column posts grid — see renderJournalYou/renderJournalCommunity.
+  postsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  postsGridItem: {
+    width: '48%',
   },
   sectionHeader: {
     flexDirection: 'row',

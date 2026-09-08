@@ -23,6 +23,7 @@ import { GlassScrubTabs } from '@/components/GlassScrubTabs';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { emitUserBlocked } from '@/lib/blocking';
 import { showToast } from '@/lib/toast';
+import { useFeedColumns } from '@/lib/responsive';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 // iOS system red — matches the native destructive text color these menu
@@ -217,6 +218,8 @@ export default function UserProfileScreen() {
   const [reportedUser, setReportedUser] = useState(false);
   const [postBlockReport, setPostBlockReport] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
+  // 2-up at iPad width — see the POSTS section below.
+  const columns = useFeedColumns();
   const [allParks, setAllParks] = useState<{ park_code: string; latitude: string | null; longitude: string | null }[]>([]);
 
   const isOwnProfile = me?.id === id;
@@ -782,17 +785,29 @@ export default function UserProfileScreen() {
                   {token && posts.length > 0 ? (
                     <View style={styles.section}>
                       <SectionHeader icon="newspaper-outline" title="POSTS" />
-                      {posts.map(p => (
-                        <PostCard
-                          key={p.id}
-                          post={p}
-                          myUserId={me?.id ?? ''}
-                          myAvatarUrl={me?.imageUrl}
-                          myName={me?.fullName ?? me?.username}
-                          onDelete={pid => setPosts(prev => prev.filter(x => x.id !== pid))}
-                          onParkPress={code => router.push(`/park/${code}` as never)}
-                        />
-                      ))}
+                      {/* 2 columns at iPad width — flexWrap lays children out
+                          left-to-right, top-to-bottom in array order on its
+                          own (posts is already feed/recency order, no sort
+                          applied), so no manual row-chunking is needed. A
+                          lone trailing post in an odd-count grid naturally
+                          lands at the row's start (flexbox justify-content
+                          on a wrapped line applies per-line, and "space
+                          between" one item has nothing to space against) —
+                          column-width, not stretched full-row. */}
+                      <View style={columns === 2 ? styles.postsGrid : undefined}>
+                        {posts.map(p => (
+                          <View key={p.id} style={columns === 2 ? styles.postsGridItem : undefined}>
+                            <PostCard
+                              post={p}
+                              myUserId={me?.id ?? ''}
+                              myAvatarUrl={me?.imageUrl}
+                              myName={me?.fullName ?? me?.username}
+                              onDelete={pid => setPosts(prev => prev.filter(x => x.id !== pid))}
+                              onParkPress={code => router.push(`/park/${code}` as never)}
+                            />
+                          </View>
+                        ))}
+                      </View>
                     </View>
                   ) : null}
                 </>
@@ -1085,6 +1100,15 @@ const styles = StyleSheet.create({
   section: {
     paddingHorizontal: 16,
     marginBottom: 18,
+  },
+  // iPad 2-column posts grid — see the POSTS section above.
+  postsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  postsGridItem: {
+    width: '48%',
   },
   // Friend count + action button row — same overall size the old full-width
   // button used (46 tall). No card styling of its own; it's the second
