@@ -1,6 +1,6 @@
 import {
   KeyboardAvoidingView, LayoutAnimation, Platform,
-  StyleSheet, Text, TouchableOpacity, UIManager, View,
+  StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useLayoutEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,11 +13,6 @@ import { STATIC as C, useColors } from '@/lib/palette';
 import { markLastAuthStrategy } from '@/lib/lastAccount';
 
 type Step = 'email' | 'password' | 'verify' | 'username';
-
-// LayoutAnimation needs an explicit opt-in on Android's old architecture
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 const animateReveal = () =>
   LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));

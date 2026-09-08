@@ -1,7 +1,7 @@
 import {
   ActivityIndicator, Animated, Dimensions, Easing, KeyboardAvoidingView,
   LayoutAnimation, Linking, Platform, StyleSheet, Text,
-  TouchableOpacity, UIManager, View,
+  TouchableOpacity, View,
 } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -44,11 +44,6 @@ const SHOOTS: [number, number, number, number, number][] = [
 // Topo watermark — same swirling contour lines as the web hero, tiled 420px
 const TOPO_TILE = 420;
 const TOPO_ROWS = [60, 110, 160, 210, 260, 310, 360, 410];
-
-// LayoutAnimation needs an explicit opt-in on Android's old architecture
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 const animateReveal = () =>
   LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
