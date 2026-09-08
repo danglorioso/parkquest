@@ -664,6 +664,30 @@ function TierScale({ label, value, labels, valueColor, valueText }: {
   );
 }
 
+// Rating gets actual stars, not the same segment-bar shape Crowd/Difficulty
+// use — same tierRow/tierLabel/tierValue columns for alignment, but a
+// visually distinct middle column so the headline rating doesn't read as
+// just another tier scale. Half-star aware (Math.round alone loses .5s).
+function RatingRow({ value }: { value: number }) {
+  const valueText = value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
+  return (
+    <View style={styles.tierRow}>
+      <Text style={styles.tierLabel} numberOfLines={1}>Rating</Text>
+      <View style={styles.tierStars}>
+        {Array.from({ length: 5 }, (_, i) => (
+          <Ionicons
+            key={i}
+            name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
+            size={14}
+            color="#C49A28"
+          />
+        ))}
+      </View>
+      <Text style={[styles.tierValue, { color: '#C49A28' }]}>{valueText}</Text>
+    </View>
+  );
+}
+
 // ── VisitMeta ─────────────────────────────────────────────────────────────────
 
 function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: boolean }) {
@@ -1544,14 +1568,7 @@ function PostCardImpl({
       {/* Rating / crowd / difficulty scales */}
       {!isBadge && (post.visit_rating || post.visit_crowd || post.visit_difficulty) && (
         <View style={styles.tierBlock}>
-          {post.visit_rating ? (
-            <TierScale
-              label="Rating"
-              value={post.visit_rating}
-              valueColor="#C49A28"
-              valueText={post.visit_rating % 1 === 0 ? post.visit_rating.toFixed(0) : post.visit_rating.toFixed(1)}
-            />
-          ) : null}
+          {post.visit_rating ? <RatingRow value={post.visit_rating} /> : null}
           {post.visit_crowd ? <TierScale label="Crowd" value={post.visit_crowd} labels={CROWD_LABELS} /> : null}
           {post.visit_difficulty ? <TierScale label="Difficulty" value={post.visit_difficulty} labels={DIFF_LABELS} /> : null}
         </View>
@@ -1855,6 +1872,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.4, width: 78,
   },
   tierBar: { flex: 1, flexDirection: 'row', gap: 3 },
+  tierStars: { flex: 1, flexDirection: 'row', gap: 3 },
   tierSegment: { flex: 1, height: 5, borderRadius: 3 },
   tierValue: { fontSize: 12, fontWeight: '600', minWidth: 62, textAlign: 'right' },
 

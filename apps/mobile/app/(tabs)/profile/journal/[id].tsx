@@ -119,7 +119,7 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
   return (
     <View style={{ flexDirection: 'row', gap: 2 }}>
       {Array.from({ length: 5 }).map((_, i) => (
-        <Ionicons key={i} name={i < Math.round(value) ? 'star' : 'star-outline'} size={size} color={T.accent} />
+        <Ionicons key={i} name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'} size={size} color={T.accent} />
       ))}
     </View>
   );

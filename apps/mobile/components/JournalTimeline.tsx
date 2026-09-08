@@ -75,11 +75,16 @@ function VisibilityPill({ vis }: { vis: string | null }) {
 
 function StarRating({ n }: { n: number }) {
   return (
-    <Text>
+    <View style={{ flexDirection: 'row', gap: 1 }}>
       {Array.from({ length: 5 }, (_, i) => (
-        <Text key={i} style={{ fontSize: 13, color: i < n ? '#C49A28' : C.hairline }}>★</Text>
+        <Ionicons
+          key={i}
+          name={n >= i + 1 ? 'star' : n >= i + 0.5 ? 'star-half' : 'star-outline'}
+          size={13}
+          color={n >= i + 0.5 ? '#C49A28' : C.hairline}
+        />
       ))}
-    </Text>
+    </View>
   );
 }
 

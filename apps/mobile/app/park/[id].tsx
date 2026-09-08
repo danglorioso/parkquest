@@ -364,7 +364,7 @@ function VisitCard({ visit }: { visit: Visit }) {
           <View style={{ flexDirection: 'row', gap: 1 }}>
             {Array.from({ length: 5 }).map((_, i) => (
               <Ionicons
-                key={i} name={i < Math.round(visit.rating!) ? 'star' : 'star-outline'}
+                key={i} name={visit.rating! >= i + 1 ? 'star' : visit.rating! >= i + 0.5 ? 'star-half' : 'star-outline'}
                 size={11} color={C.accent}
               />
             ))}
