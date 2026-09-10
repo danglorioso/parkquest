@@ -3,13 +3,13 @@ import { ImageLightboxView, type LightboxImage } from '@/components/ImageLightbo
 
 export type { LightboxImage };
 
-// Mounted ONCE at the app root (see _layout.tsx, same spot as PinchZoomHost/
-// ToastHost) so the lightbox always renders above every screen and is never
-// clipped by whatever overflow:hidden card/container happened to trigger it
-// (e.g. PostCard's own card wrapper) — and, critically, never lives inside
-// an RN <Modal>, where multi-touch gestures (pinch) don't reliably register.
+// Mounted ONCE at the app root (see _layout.tsx, same spot as ToastHost) so
+// the lightbox always renders above every screen and is never clipped by
+// whatever overflow:hidden card/container happened to trigger it (e.g.
+// PostCard's own card wrapper) — and, critically, never lives inside an RN
+// <Modal>, where multi-touch gestures (pinch) don't reliably register.
 // Screens call openImageLightbox() imperatively instead of rendering the
-// lightbox inline, same calling convention as lib/pinchZoom's store.
+// lightbox inline.
 
 interface LightboxRequest {
   images: LightboxImage[];

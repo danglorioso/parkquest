@@ -389,9 +389,6 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
   // Measured from the carousel's own layout rather than assumed from screen
   // width — square, so this doubles as both the paging width and photo height.
   const [boxW, setBoxW] = useState(CARD_W_FALLBACK);
-  // Disables the pager mid-pinch so a two-finger zoom can't also drag the
-  // carousel to the next photo underneath it.
-  const [zooming, setZooming] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const n = photos.length;
   const fallbackColor = parkColor(parkCode ?? 'xx');
@@ -428,7 +425,6 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         ref={scrollRef}
         horizontal
         pagingEnabled
-        scrollEnabled={!zooming}
         showsHorizontalScrollIndicator={false}
         onScrollBeginDrag={showChromeBriefly}
         onScroll={e => {
@@ -457,7 +453,6 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
                 scrollRef.current?.scrollTo({ x: finalIndex * boxW, animated: false });
               },
             })}
-            onZoomChange={setZooming}
           />
         ))}
       </ScrollView>

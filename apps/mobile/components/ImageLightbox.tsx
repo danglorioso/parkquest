@@ -216,10 +216,9 @@ function LightboxPage({
 // confirmed by two failed attempts to force it to work there (missing
 // registration, then a nested GestureHandlerRootView that flashed the
 // whole screen black and crashed). Hosting this at the true app root
-// instead — same architecture as lib/pinchZoom's PinchZoomHost — sidesteps
-// the Modal problem entirely and, as a side effect, also isn't clipped by
-// whatever overflow:hidden ancestor the triggering screen happens to have
-// (e.g. PostCard's own card wrapper).
+// instead sidesteps the Modal problem entirely and, as a side effect, also
+// isn't clipped by whatever overflow:hidden ancestor the triggering screen
+// happens to have (e.g. PostCard's own card wrapper).
 export function ImageLightboxView({
   images, initialIndex = 0, onClose, loop = true,
 }: {
