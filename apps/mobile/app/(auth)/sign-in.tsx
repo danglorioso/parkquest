@@ -484,7 +484,7 @@ export default function LandingScreen() {
                 {/* OAuth */}
                 <View>
                   {lastAccount && (
-                    <View style={styles.dividerRow}>
+                    <View style={[styles.dividerRow, { marginTop: 12 }]}>
                       <View style={styles.dividerLine} />
                       <Text style={styles.dividerText}>OR USE ANOTHER ACCOUNT</Text>
                       <View style={styles.dividerLine} />
@@ -581,7 +581,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
     borderRadius: 16, padding: 12, marginTop: 14,
   },
-  lastAccountRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  lastAccountRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   lastAccountName: { fontSize: 15, fontWeight: '700', color: C.ink },
   lastAccountSub: { fontSize: 12.5, color: C.inkMute, marginTop: 2 },
   primaryContinueBtn: {
