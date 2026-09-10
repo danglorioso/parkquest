@@ -9,7 +9,7 @@
     "android": "expo run:android",
     "build:ios": "eas build --platform ios",
     "lint": "eslint .",
-    "eas-build-post-install": "cd ios && pod install"
+    "eas-build-post-install": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then cd ios && pod install; fi"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.7.2",
@@ -30,6 +30,7 @@
     "expo-blur": "~15.0.8",
     "expo-constants": "~18.0.13",
     "expo-crypto": "~15.0.9",
+    "expo-dev-client": "~6.0.21",
     "expo-document-picker": "~14.0.8",
     "expo-font": "~14.0.12",
     "expo-glass-effect": "~0.1.10",
