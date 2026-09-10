@@ -6,3 +6,10 @@ expo-env.d.ts
 # @end expo-cli
 .env.local
 ios/sentry.properties
+
+# Contains a live Firebase API key — was committed and leaked (GitHub
+# secret scanning alert, history purged via filter-repo). Not currently
+# referenced by any build pipeline (no android profile in eas.json), so
+# keep it local-only going forward; re-supply via EAS secrets if/when an
+# Android build gets set up.
+google-services.json
