@@ -1,12 +1,13 @@
 import {
-  ActivityIndicator, Animated, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Animated, PanResponder, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { AdminMenu } from '@/components/AdminMenu';
 import { STATIC as C } from '@/lib/palette';
-import { getAdminStats, getAdminUsage, type AdminStats, type AdminUsage } from '@/lib/api';
+import { getAdminStats, getAdminUsage, type AdminStats, type AdminStatsRange, type AdminUsage } from '@/lib/api';
 
 // Mirrors the desktop admin dashboard: live-presence pulse card, stat tiles
 // with 24h deltas, DAU + App Store charts, the acquisition panel, activity
@@ -122,24 +123,65 @@ function StatTile({
 }
 
 // ── Bar chart — plain Views, null-aware (blank slot, no fake zero bar) ────────
+// Scrubbable: press-and-drag across the bars to read the exact value out of a
+// reserved label row above the chart (no absolute positioning, so nothing can
+// clip against a card's edges).
+
+const defaultAxisLabel = (bucket: string) => bucket.slice(5).replace('-', '/');
 
 function BarChart({
-  data, height = 96, color = C.visited,
-}: { data: { day: string; value: number | null }[]; height?: number; color?: import('react-native').ColorValue }) {
+  data, height = 96, color = C.visited, formatAxis = defaultAxisLabel, formatValue,
+}: {
+  data: { day: string; value: number | null }[]; height?: number; color?: import('react-native').ColorValue;
+  formatAxis?: (bucket: string) => string; formatValue?: (bucket: string, value: number | null) => string;
+}) {
   const values = data.map(d => d.value).filter((v): v is number => v != null);
   const max = Math.max(...values, 1);
-  const first = data[0]?.day.slice(5).replace('-', '/');
-  const last  = data[data.length - 1]?.day.slice(5).replace('-', '/');
+  const first = data[0] ? formatAxis(data[0].day) : '';
+  const last  = data.length ? formatAxis(data[data.length - 1].day) : '';
+
+  const [width, setWidth] = useState(0);
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+
+  const updateScrub = useCallback((x: number) => {
+    if (width <= 0 || data.length === 0) return;
+    setScrubIndex(Math.min(data.length - 1, Math.max(0, Math.floor((x / width) * data.length))));
+  }, [width, data.length]);
+
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: e => updateScrub(e.nativeEvent.locationX),
+      onPanResponderMove: e => updateScrub(e.nativeEvent.locationX),
+      onPanResponderRelease: () => setScrubIndex(null),
+      onPanResponderTerminate: () => setScrubIndex(null),
+    }),
+  ).current;
+
+  const active = scrubIndex != null ? data[scrubIndex] : null;
+  const activeLabel = active
+    ? (formatValue ? formatValue(active.day, active.value) : `${active.value?.toLocaleString() ?? '—'} · ${formatAxis(active.day)}`)
+    : null;
+
   return (
     <View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height }}>
-        {data.map(d => (
+      <View style={{ height: 16, marginBottom: 4, justifyContent: 'center' }}>
+        {activeLabel && <Text style={st.scrubLabel}>{activeLabel}</Text>}
+      </View>
+      <View
+        onLayout={e => setWidth(e.nativeEvent.layout.width)}
+        style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height }}
+        {...responder.panHandlers}
+      >
+        {data.map((d, i) => (
           <View key={d.day} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
             {d.value != null && (
               <View style={{
                 height: Math.max((d.value / max) * height, d.value > 0 ? 3 : 1),
                 borderRadius: 2,
                 backgroundColor: d.value > 0 ? color : C.hairlineSoft,
+                opacity: scrubIndex != null && scrubIndex !== i ? 0.4 : 1,
               }} />
             )}
           </View>
@@ -256,17 +298,58 @@ function MiniHeatmap({ data }: { data: { day: string; count: number }[] }) {
 
 // ── Hourly activity (ET) ──────────────────────────────────────────────────────
 
+function hourLabel(h: number): string {
+  const period = h < 12 ? 'am' : 'pm';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${period}`;
+}
+
 function HourlyChart({ data }: { data: AdminStats['hourly_activity'] }) {
   const max = Math.max(...data.map(h => h.active_users), 1);
+  const height = 72;
+
+  const [width, setWidth] = useState(0);
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+
+  const updateScrub = useCallback((x: number) => {
+    if (width <= 0 || data.length === 0) return;
+    setScrubIndex(Math.min(data.length - 1, Math.max(0, Math.floor((x / width) * data.length))));
+  }, [width, data.length]);
+
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: e => updateScrub(e.nativeEvent.locationX),
+      onPanResponderMove: e => updateScrub(e.nativeEvent.locationX),
+      onPanResponderRelease: () => setScrubIndex(null),
+      onPanResponderTerminate: () => setScrubIndex(null),
+    }),
+  ).current;
+
+  const active = scrubIndex != null ? data[scrubIndex] : null;
+
   return (
     <View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 72 }}>
-        {data.map(h => (
+      <View style={{ height: 16, marginBottom: 4, justifyContent: 'center' }}>
+        {active && (
+          <Text style={st.scrubLabel}>
+            {active.active_users.toLocaleString()} active · {active.posts} posts · {active.likes} likes · {active.comments} comments at {hourLabel(active.hour)} ET
+          </Text>
+        )}
+      </View>
+      <View
+        onLayout={e => setWidth(e.nativeEvent.layout.width)}
+        style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height }}
+        {...responder.panHandlers}
+      >
+        {data.map((h, i) => (
           <View key={h.hour} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
             <View style={{
-              height: Math.max((h.active_users / max) * 72, h.active_users > 0 ? 3 : 1),
+              height: Math.max((h.active_users / max) * height, h.active_users > 0 ? 3 : 1),
               borderRadius: 2,
               backgroundColor: h.active_users > 0 ? C.visited : C.hairlineSoft,
+              opacity: scrubIndex != null && scrubIndex !== i ? 0.4 : 1,
             }} />
           </View>
         ))}
@@ -354,72 +437,111 @@ function Section({ title, hint, link, onLink, children }: {
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
+const RANGE_OPTIONS: { key: AdminStatsRange; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: '7d', label: '7D' },
+  { key: '30d', label: '30D' },
+  { key: 'year', label: 'Year' },
+];
+const RANGE_LABEL: Record<AdminStatsRange, string> = {
+  today: 'today', '7d': '7 days', '30d': '30 days', year: '12 months',
+};
+
+function formatBucketAxis(range: AdminStatsRange, bucket: string): string {
+  if (range === 'today') return bucket;
+  if (range === 'year') {
+    const [y, m] = bucket.split('-');
+    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-US', { month: 'short' });
+  }
+  return bucket.slice(5).replace('-', '/');
+}
+
+function formatBucketFull(range: AdminStatsRange, bucket: string): string {
+  if (range === 'today') return `${bucket} ET`;
+  if (range === 'year') {
+    const [y, m] = bucket.split('-');
+    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+  return new Date(`${bucket}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function RangePicker({ value, onChange }: { value: AdminStatsRange; onChange: (r: AdminStatsRange) => void }) {
+  return (
+    <View style={st.rangeRow}>
+      {RANGE_OPTIONS.map(opt => (
+        <TouchableOpacity
+          key={opt.key}
+          onPress={() => onChange(opt.key)}
+          activeOpacity={0.75}
+          style={[st.rangeChip, value === opt.key && st.rangeChipActive]}
+        >
+          <Text style={[st.rangeChipText, value === opt.key && st.rangeChipTextActive]}>{opt.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 export default function AdminDashboardScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [usage, setUsage] = useState<AdminUsage | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [range, setRange] = useState<AdminStatsRange>('7d');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (r: AdminStatsRange) => {
     const tok = await getToken();
     if (!tok) return;
-    getAdminStats(tok).then(setStats).catch(() => {});
+    getAdminStats(tok, r).then(setStats).catch(() => {});
     // R2 usage lists the whole bucket — slower, so it loads independently.
     getAdminUsage(tok).then(setUsage).catch(() => {});
   }, [getToken]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(range); }, [load, range]));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    await load(range);
     setRefreshing(false);
-  }, [load]);
+  }, [load, range]);
 
   if (!stats) {
     return (
-      <View style={[st.screen, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator color={C.inkMute} />
-      </View>
+      <>
+        <Stack.Screen options={{ headerRight: () => <AdminMenu /> }} />
+        <View style={[st.screen, { alignItems: 'center', justifyContent: 'center' }]}>
+          <ActivityIndicator color={C.inkMute} />
+        </View>
+      </>
     );
   }
 
-  const d = stats.deltas_24h;
   const openReports = stats.reports_by_status.open;
 
-  const pctChange = (curr: number, prev: number) =>
-    Math.round(((curr - prev) / Math.max(prev, 1)) * 100);
-  const signupsPct = pctChange(
-    stats.signups_by_day.at(-1)?.count ?? 0,
-    stats.signups_by_day.at(-2)?.count ?? 0,
-  );
-  // Apple's reports lag ~48h — compare the two most recent days that have data.
-  const reportedUnits = stats.app_store_by_day.map(x => x.units).filter((u): u is number => u != null);
-  const downloadsPct = reportedUnits.length >= 2
-    ? pctChange(reportedUnits.at(-1)!, reportedUnits.at(-2)!)
-    : undefined;
-  const signups30 = stats.signups_by_day.reduce((sum, x) => sum + x.count, 0);
-
   return (
-    <ScrollView
+    <>
+      <Stack.Screen options={{ headerRight: () => <AdminMenu /> }} />
+      <ScrollView
       style={st.screen}
       contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <PulseCard stats={stats} />
 
+      <RangePicker value={range} onChange={setRange} />
+
       <View style={st.grid}>
-        <StatTile icon="people-outline" label="Total users" value={stats.total_users} delta={{ kind: 'count', value: d.users }} onPress={() => router.push('/admin/users' as never)} />
-        <StatTile icon="person-add-outline" label="Signups (30d)" value={signups30} delta={{ kind: 'percent', value: signupsPct }} onPress={() => router.push('/admin/users' as never)} />
-        <StatTile icon="download-outline" label="Downloads (30d)" value={stats.app_store_units_30d} delta={downloadsPct !== undefined ? { kind: 'percent', value: downloadsPct } : undefined} onPress={() => router.push('/admin/visits' as never)} />
-        <StatTile icon="flag-outline" label="Open reports" value={openReports} accent={openReports > 0} delta={{ kind: 'count', value: d.reports }} onPress={() => router.push('/admin/reports' as never)} />
-        <StatTile icon="image-outline" label="Total posts" value={stats.total_posts} delta={{ kind: 'count', value: d.posts }} onPress={() => router.push('/admin/posts' as never)} />
-        <StatTile icon="map-outline" label="Total visits" value={stats.total_visits} delta={{ kind: 'count', value: d.visits }} onPress={() => router.push('/admin/visits' as never)} />
-        <StatTile icon="heart-outline" label="Likes" value={stats.total_likes} delta={{ kind: 'count', value: d.likes }} onPress={() => router.push('/admin/posts' as never)} />
-        <StatTile icon="chatbubble-outline" label="Comments" value={stats.total_comments} delta={{ kind: 'count', value: d.comments }} onPress={() => router.push('/admin/posts' as never)} />
-        <StatTile icon="ribbon-outline" label="Badges earned" value={stats.total_badges} delta={{ kind: 'count', value: d.badges }} onPress={() => router.push('/admin/badges' as never)} />
-        <StatTile icon="people-circle-outline" label="Friendships" value={stats.total_friendships} delta={{ kind: 'count', value: d.friendships }} onPress={() => router.push('/admin/users' as never)} />
+        <StatTile icon="people-outline" label="Total users" value={stats.total_users} delta={{ kind: 'count', value: stats.range_totals.users }} onPress={() => router.push('/admin/users' as never)} />
+        <StatTile icon="person-add-outline" label={`Signups (${RANGE_LABEL[range]})`} value={stats.range_totals.users} delta={{ kind: 'percent', value: stats.range_deltas.users }} onPress={() => router.push('/admin/users' as never)} />
+        <StatTile icon="download-outline" label={`Downloads (${RANGE_LABEL[range]})`} value={stats.range_totals.app_store_units} delta={{ kind: 'percent', value: stats.range_deltas.app_store_units }} onPress={() => router.push('/admin/visits' as never)} />
+        <StatTile icon="flag-outline" label="Open reports" value={openReports} accent={openReports > 0} delta={{ kind: 'count', value: stats.range_totals.reports }} onPress={() => router.push('/admin/reports' as never)} />
+        <StatTile icon="image-outline" label="Total posts" value={stats.total_posts} delta={{ kind: 'count', value: stats.range_totals.posts }} onPress={() => router.push('/admin/posts' as never)} />
+        <StatTile icon="map-outline" label="Total visits" value={stats.total_visits} delta={{ kind: 'count', value: stats.range_totals.visits }} onPress={() => router.push('/admin/visits' as never)} />
+        <StatTile icon="heart-outline" label="Likes" value={stats.total_likes} delta={{ kind: 'count', value: stats.range_totals.likes }} onPress={() => router.push('/admin/posts' as never)} />
+        <StatTile icon="chatbubble-outline" label="Comments" value={stats.total_comments} delta={{ kind: 'count', value: stats.range_totals.comments }} onPress={() => router.push('/admin/posts' as never)} />
+        <StatTile icon="ribbon-outline" label="Badges earned" value={stats.total_badges} delta={{ kind: 'count', value: stats.range_totals.badges }} onPress={() => router.push('/admin/badges' as never)} />
+        <StatTile icon="people-circle-outline" label="Friendships" value={stats.total_friendships} delta={{ kind: 'count', value: stats.range_totals.friendships }} onPress={() => router.push('/admin/users' as never)} />
       </View>
 
       <TouchableOpacity style={st.reportsBanner} onPress={() => router.push('/admin/reports' as never)} activeOpacity={0.75}>
@@ -430,21 +552,29 @@ export default function AdminDashboardScreen() {
         <Ionicons name="chevron-forward" size={14} color={C.inkMute} />
       </TouchableOpacity>
 
-      <Section title="ACTIVE USERS — LAST 30 DAYS">
+      <Section title={`ACTIVE USERS — ${RANGE_LABEL[range].toUpperCase()}`}>
         <View style={st.card}>
-          <BarChart data={stats.dau_30d.map(x => ({ day: x.day, value: x.count }))} />
+          <BarChart
+            data={stats.range_series.map(x => ({ day: x.bucket, value: x.active_users }))}
+            formatAxis={b => formatBucketAxis(range, b)}
+            formatValue={(b, v) => `${v?.toLocaleString() ?? '—'} active · ${formatBucketFull(range, b)}`}
+          />
         </View>
       </Section>
 
       <Section
         title="APP STORE DOWNLOADS"
-        hint={`${stats.app_store_units_30d.toLocaleString()} units in the last 30 days`}
+        hint={`${stats.range_totals.app_store_units.toLocaleString()} units — ${RANGE_LABEL[range]}`}
       >
         <View style={st.card}>
-          {stats.app_store_units_30d > 0 ? (
-            <BarChart data={stats.app_store_by_day.map(x => ({ day: x.day, value: x.units }))} />
+          {stats.range_totals.app_store_units > 0 ? (
+            <BarChart
+              data={stats.range_series.map(x => ({ day: x.bucket, value: x.app_store_units }))}
+              formatAxis={b => formatBucketAxis(range, b)}
+              formatValue={(b, v) => `${v?.toLocaleString() ?? '—'} units · ${formatBucketFull(range, b)}`}
+            />
           ) : (
-            <Text style={st.emptyText}>No data yet — the daily cron backfills this once App Store Connect publishes a report.</Text>
+            <Text style={st.emptyText}>No data yet — App Store Connect publishes reports ~48h behind, so a narrow range often has none.</Text>
           )}
         </View>
       </Section>
@@ -468,9 +598,14 @@ export default function AdminDashboardScreen() {
         </View>
       </Section>
 
-      <Section title="SIGNUPS — LAST 30 DAYS">
+      <Section title={`SIGNUPS — ${RANGE_LABEL[range].toUpperCase()}`}>
         <View style={st.card}>
-          <BarChart data={stats.signups_by_day.map(x => ({ day: x.day, value: x.count }))} height={72} />
+          <BarChart
+            data={stats.range_series.map(x => ({ day: x.bucket, value: x.signups }))}
+            height={72}
+            formatAxis={b => formatBucketAxis(range, b)}
+            formatValue={(b, v) => `${v?.toLocaleString() ?? '—'} signups · ${formatBucketFull(range, b)}`}
+          />
         </View>
       </Section>
 
@@ -519,7 +654,8 @@ export default function AdminDashboardScreen() {
           )}
         </View>
       </Section>
-    </ScrollView>
+      </ScrollView>
+    </>
   );
 }
 
@@ -534,6 +670,17 @@ const st = StyleSheet.create({
   cardHint: { fontSize: 12, color: C.inkMute, lineHeight: 16 },
   emptyText: { fontSize: 13, color: C.inkMute, lineHeight: 18 },
   axisLabel: { fontSize: 10, color: C.inkMute },
+  scrubLabel: { fontSize: 11.5, fontWeight: '700', color: C.ink },
+
+  // Range picker
+  rangeRow: { flexDirection: 'row', gap: 6, marginTop: 14 },
+  rangeChip: {
+    flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 8,
+    borderWidth: 0.5, borderColor: C.hairline, backgroundColor: C.surface,
+  },
+  rangeChipActive: { backgroundColor: C.ink, borderColor: C.ink },
+  rangeChipText: { fontSize: 12.5, fontWeight: '700', color: C.inkSoft },
+  rangeChipTextActive: { color: C.surface },
 
   // Pulse card
   pulseBig: { fontSize: 38, fontWeight: '800', color: C.ink, letterSpacing: -1, marginTop: 6, lineHeight: 42 },

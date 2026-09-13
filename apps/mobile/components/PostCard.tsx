@@ -675,12 +675,13 @@ function RatingRow({ value }: { value: number }) {
       <Text style={styles.tierLabel} numberOfLines={1}>Rating</Text>
       <View style={styles.tierStars}>
         {Array.from({ length: 5 }, (_, i) => (
-          <Ionicons
-            key={i}
-            name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
-            size={14}
-            color="#C49A28"
-          />
+          <View key={i} style={styles.tierStarSlot}>
+            <Ionicons
+              name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
+              size={14}
+              color="#C49A28"
+            />
+          </View>
         ))}
       </View>
       <Text style={[styles.tierValue, { color: '#C49A28' }]}>{valueText}</Text>
@@ -1536,6 +1537,9 @@ function PostCardImpl({
         </View>
       )}
 
+      {/* Visit metadata */}
+      {!isBadge && <VisitMeta post={post} heroDate={!hasPhotos && !!post.visit_id} />}
+
       {/* Park hero banner — visit posts with no photos */}
       {!isBadge && !hasPhotos && post.visit_id && (
         <View style={styles.padH}>
@@ -1549,9 +1553,6 @@ function PostCardImpl({
           />
         </View>
       )}
-
-      {/* Visit metadata */}
-      {!isBadge && <VisitMeta post={post} heroDate={!hasPhotos && !!post.visit_id} />}
 
       {/* Photo carousel */}
       {!isBadge && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
@@ -1856,7 +1857,7 @@ const styles = StyleSheet.create({
   },
 
   // Crowd / difficulty tier scales
-  tierBlock: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 2, gap: 8 },
+  tierBlock: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 14, gap: 8 },
   tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tierLabel: {
     fontSize: 11, fontWeight: '700', color: C.inkMute,
@@ -1864,6 +1865,7 @@ const styles = StyleSheet.create({
   },
   tierBar: { flex: 1, flexDirection: 'row', gap: 3 },
   tierStars: { flex: 1, flexDirection: 'row', gap: 3 },
+  tierStarSlot: { flex: 1, alignItems: 'center' },
   tierSegment: { flex: 1, height: 5, borderRadius: 3 },
   tierValue: { fontSize: 12, fontWeight: '600', minWidth: 62, textAlign: 'right' },
 

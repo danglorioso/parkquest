@@ -23,6 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
 import { STATIC as C, dyn, useColors, useReassertThemeOnUnmount } from '@/lib/palette';
 import { GlassIconBg } from '@/components/GlassIconBg';
+import { MonthYearWheel } from '@/components/MonthYearWheel';
 import { openImageLightbox } from '@/lib/imageLightbox';
 import { showToast } from '@/lib/toast';
 import { loadRawDrafts, upsertRawDraft, deleteRawDraft, type SavedDraft as SharedSavedDraft } from '@/lib/drafts';
@@ -41,6 +42,9 @@ interface Draft {
   parkCode: string;
   startDate: Date | null;
   endDate:   Date | null;
+  // false = only a month/year was entered (day is a placeholder, always 1)
+  startDateExact: boolean;
+  endDateExact:   boolean;
   title:     string;
   rating:    number;
   crowd:     number;
@@ -71,6 +75,8 @@ interface VisitDetail {
   park_code: string;
   visited_date: string | null;
   end_date: string | null;
+  visited_date_exact: boolean | null;
+  end_date_exact: boolean | null;
   rating: number | null;
   crowd: number | null;
   difficulty: number | null;
@@ -127,7 +133,7 @@ const DIFF_EMOJI   = ['🌱', '🚶', '⛰️', '🥵', '💀'];
 
 function makeBlank(): Draft {
   return {
-    parkCode: '', startDate: null, endDate: null, title: '',
+    parkCode: '', startDate: null, endDate: null, startDateExact: true, endDateExact: true, title: '',
     rating: 0, crowd: 0, difficulty: 0, weather: [], wouldReturn: null,
     highlight: '', notes: '', activities: [], companions: [], companionObjs: [],
     photos: [], visibility: 'Friends', caption: '',
@@ -181,8 +187,10 @@ function draftAge(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function fmtDate(d: Date): string {
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+function fmtDate(d: Date, exact = true): string {
+  return exact
+    ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
 function dayCount(start: Date | null, end: Date | null): number {
@@ -1410,13 +1418,14 @@ function stripTime(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, onClose }: {
+function DateSheet({ visible, title, value, exact, minimumDate, maximumDate, onPick, onClose }: {
   visible: boolean;
   title: string;
   value: Date;
+  exact: boolean;
   minimumDate?: Date;
   maximumDate: Date;
-  onPick: (d: Date) => void;
+  onPick: (d: Date, exact: boolean) => void;
   onClose: () => void;
 }) {
   const C = useColors();
@@ -1432,11 +1441,13 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   // a day was actually chosen. Track the picker's live value here instead and
   // only hand it to the parent (and close) on an explicit Done/backdrop tap.
   const [pending, setPending] = useState(value);
+  const [unknownDay, setUnknownDay] = useState(!exact);
 
   useEffect(() => {
     if (visible) {
       closing.current = false;
       setPending(value);
+      setUnknownDay(!exact);
       slide.setValue(400);
       backdropOpacity.setValue(0);
       Animated.parallel([
@@ -1447,7 +1458,7 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
         Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
     }
-  }, [visible, slide, backdropOpacity]);
+  }, [visible, exact, slide, backdropOpacity]);
 
   // Mirror of the entrance: slide the sheet down + fade the backdrop, THEN
   // tell the parent to unmount — a bare onClose() would pop it off mid-frame.
@@ -1464,9 +1475,9 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
   // both Done and the outside-tap, so a day picked via the wheel isn't lost
   // just because the sheet was dismissed by tapping the backdrop.
   const confirm = useCallback(() => {
-    onPick(pending);
+    onPick(pending, !unknownDay);
     dismiss();
-  }, [pending, onPick, dismiss]);
+  }, [pending, unknownDay, onPick, dismiss]);
 
   // Plain in-screen overlay, deliberately NOT an RN <Modal>: modal windows
   // render the sheet's bottom strip semi-transparent (some compositor quirk
@@ -1498,31 +1509,43 @@ function DateSheet({ visible, title, value, minimumDate, maximumDate, onPick, on
           </TouchableOpacity>
         </View>
         <View style={{ paddingHorizontal: 12, paddingTop: 4, alignItems: 'center' }}>
-          {/* Explicit fixed width, not alignSelf:'stretch' — full-width stretch let
-              UIDatePicker's own Auto Layout decide the grid's internal position,
-              which isn't always centered in a frame wider than its intrinsic size.
-              A fixed width (clamped above the 280pt minimum UIKit warns about below)
-              plus alignItems:'center' on the wrapper pins it dead center every time. */}
-          <DateTimePicker
-            value={pending}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            minimumDate={minimumDate}
-            maximumDate={maximumDate}
-            accentColor={C.primary}
-            themeVariant={isDark ? 'dark' : 'light'}
-            style={{ width: Math.max(320, Math.min(winW - 24, 380)) }}
-            onChange={(_, d) => {
-              // Just track the live value here — paging the month/year wheel
-              // re-fires onChange with the same day-of-month too, and closing
-              // on every fire (the old behavior) could dismiss the sheet
-              // while the user was still spinning to a different month/year,
-              // never landing on the day they meant to tap.
-              if (!d) return;
-              Haptics.selectionAsync();
-              setPending(d);
-            }}
-          />
+          {unknownDay ? (
+            <MonthYearWheel
+              value={pending}
+              minimumDate={minimumDate}
+              maximumDate={maximumDate}
+              onChange={d => { Haptics.selectionAsync(); setPending(d); }}
+              accentColor={C.primary}
+              ink={C.ink}
+              inkMute={C.inkMute}
+            />
+          ) : (
+            // Explicit fixed width, not alignSelf:'stretch' — full-width stretch let
+            // UIDatePicker's own Auto Layout decide the grid's internal position,
+            // which isn't always centered in a frame wider than its intrinsic size.
+            // A fixed width (clamped above the 280pt minimum UIKit warns about below)
+            // plus alignItems:'center' on the wrapper pins it dead center every time.
+            <DateTimePicker
+              value={pending}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              minimumDate={minimumDate}
+              maximumDate={maximumDate}
+              accentColor={C.primary}
+              themeVariant={isDark ? 'dark' : 'light'}
+              style={{ width: Math.max(320, Math.min(winW - 24, 380)) }}
+              onChange={(_, d) => {
+                // Just track the live value here — paging the month/year wheel
+                // re-fires onChange with the same day-of-month too, and closing
+                // on every fire (the old behavior) could dismiss the sheet
+                // while the user was still spinning to a different month/year,
+                // never landing on the day they meant to tap.
+                if (!d) return;
+                Haptics.selectionAsync();
+                setPending(d);
+              }}
+            />
+          )}
         </View>
       </Animated.View>
     </View>
@@ -1771,7 +1794,7 @@ function StepWhere({
               <View style={{ flex: 1 }}>
                 <Text style={styles.dateLabel}>Start *</Text>
                 <Text style={[styles.dateValue, { color: draft.startDate ? C.ink : C.inkMute }]}>
-                  {draft.startDate ? fmtDate(draft.startDate) : 'Select'}
+                  {draft.startDate ? fmtDate(draft.startDate, draft.startDateExact) : 'Select'}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={14} color={C.inkMute} />
@@ -1788,7 +1811,7 @@ function StepWhere({
               <View style={{ flex: 1 }}>
                 <Text style={styles.dateLabel}>End</Text>
                 <Text style={[styles.dateValue, { color: draft.endDate ? C.ink : C.inkMute }]}>
-                  {draft.endDate ? fmtDate(draft.endDate) : 'Optional'}
+                  {draft.endDate ? fmtDate(draft.endDate, draft.endDateExact) : 'Optional'}
                 </Text>
               </View>
               {draft.endDate
@@ -2505,6 +2528,8 @@ export default function LogVisitModal() {
           parkCode:   v.park_code,
           startDate:  v.visited_date ? new Date(v.visited_date) : null,
           endDate:    v.end_date ? new Date(v.end_date) : null,
+          startDateExact: v.visited_date_exact ?? true,
+          endDateExact:   v.end_date_exact ?? true,
           title:      v.title ?? '',
           rating:     v.rating ?? 0,
           crowd:      v.crowd ?? 0,
@@ -2592,6 +2617,8 @@ export default function LogVisitModal() {
             park_code:          draft.parkCode,
             visited_date:       draft.startDate.toISOString(),
             end_date:           draft.endDate?.toISOString() ?? null,
+            visited_date_exact: draft.startDateExact,
+            end_date_exact:     draft.endDate ? draft.endDateExact : true,
             rating:             draft.rating  > 0 ? draft.rating  : null,
             crowd:              draft.crowd   > 0 ? draft.crowd   : null,
             difficulty:         draft.difficulty > 0 ? draft.difficulty : null,
@@ -2647,6 +2674,8 @@ export default function LogVisitModal() {
           park_code:          draft.parkCode,
           visited_date:       draft.startDate.toISOString(),
           end_date:           draft.endDate?.toISOString() ?? null,
+          visited_date_exact: draft.startDateExact,
+          end_date_exact:     draft.endDate ? draft.endDateExact : true,
           rating:             draft.rating  > 0 ? draft.rating  : null,
           crowd:              draft.crowd   > 0 ? draft.crowd   : null,
           difficulty:         draft.difficulty > 0 ? draft.difficulty : null,
@@ -2941,13 +2970,16 @@ export default function LogVisitModal() {
         value={openPicker === 'end'
           ? (draft.endDate ?? draft.startDate ?? new Date())
           : (draft.startDate ?? new Date())}
+        exact={openPicker === 'end' ? draft.endDateExact : draft.startDateExact}
         minimumDate={openPicker === 'end' ? (draft.startDate ?? undefined) : undefined}
         maximumDate={new Date()}
-        onPick={d => {
+        onPick={(d, exact) => {
           if (openPicker === 'end') {
             set('endDate', d);
+            set('endDateExact', exact);
           } else {
             set('startDate', d);
+            set('startDateExact', exact);
             // Keep the range valid — an end date before the new start is stale
             if (draft.endDate && stripTime(draft.endDate) < stripTime(d)) set('endDate', null);
           }

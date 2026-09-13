@@ -172,10 +172,25 @@ export interface AdminStats {
     users: number; posts: number; visits: number;
     badges: number; likes: number; comments: number; friendships: number; reports: number;
   };
+  // Date-range-scoped fields — recomputed server-side for whichever range the
+  // dashboard's picker is set to (defaults to '7d'). range_deltas are percent
+  // change vs. the prior equivalent period (e.g. this 7d vs. the previous 7d).
+  range: AdminStatsRange;
+  range_totals: {
+    users: number; posts: number; visits: number; badges: number; likes: number; comments: number;
+    friendships: number; reports: number; active_users: number; app_store_units: number;
+  };
+  range_deltas: {
+    users: number; posts: number; visits: number; badges: number; likes: number; comments: number;
+    friendships: number; reports: number; active_users: number; app_store_units: number;
+  };
+  range_series: { bucket: string; signups: number; active_users: number; app_store_units: number | null }[];
 }
 
-export const getAdminStats = (token: string) =>
-  req<AdminStats>('/api/admin/stats', token);
+export type AdminStatsRange = 'today' | '7d' | '30d' | 'year';
+
+export const getAdminStats = (token: string, range: AdminStatsRange = '7d') =>
+  req<AdminStats>(`/api/admin/stats?range=${range}`, token);
 
 export interface AdminUsage {
   database: { used_bytes: number; limit_bytes: number; approximate: boolean };

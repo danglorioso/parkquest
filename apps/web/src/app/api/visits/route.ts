@@ -50,6 +50,8 @@ export async function GET() {
         stamp_glyph: parks.stamp_glyph,
         visited_date: visits.visited_date,
         end_date: visits.end_date,
+        visited_date_exact: visits.visited_date_exact,
+        end_date_exact: visits.end_date_exact,
         is_bucket_list: visits.is_bucket_list,
         rating: visits.rating,
         crowd: visits.crowd,
@@ -95,7 +97,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const {
-      park_code, is_bucket_list, visited_date, end_date,
+      park_code, is_bucket_list, visited_date, end_date, visited_date_exact, end_date_exact,
       rating, crowd, difficulty, weather_conditions, activities,
       companions, would_return, highlight, title, notes, photos, cover_photo, visibility,
       distance_meters, duration_seconds, elevation_gain_meters,
@@ -109,6 +111,8 @@ export async function POST(request: Request) {
     const isBucketList = is_bucket_list === true;
     const visitDate = visited_date ? new Date(visited_date) : (isBucketList ? null : new Date());
     const endDate = end_date ? new Date(end_date) : null;
+    const visitDateExact = visited_date_exact !== false;
+    const endDateExact = end_date_exact !== false;
     const visitVisibility = visibility || 'private';
 
     const existingVisit = await db
@@ -122,7 +126,11 @@ export async function POST(request: Request) {
       if (isBucketList && !existing.is_bucket_list) {
         const updated = await db
           .update(visits)
-          .set({ is_bucket_list: true, visited_date: null as unknown as Date, end_date: null as unknown as Date })
+          .set({
+            is_bucket_list: true,
+            visited_date: null as unknown as Date, end_date: null as unknown as Date,
+            visited_date_exact: true, end_date_exact: true,
+          })
           .where(eq(visits.id, existing.id))
           .returning();
         return NextResponse.json({ message: 'Park added to bucket list', visit: updated[0] });
@@ -134,6 +142,8 @@ export async function POST(request: Request) {
             is_bucket_list: false,
             visited_date: visitDate as Date,
             end_date: endDate as Date,
+            visited_date_exact: visitDateExact,
+            end_date_exact: endDateExact,
             rating: rating !== undefined ? rating : existing.rating,
             crowd: crowd !== undefined ? crowd : existing.crowd,
             difficulty: difficulty !== undefined ? difficulty : existing.difficulty,
@@ -176,6 +186,8 @@ export async function POST(request: Request) {
         park_code,
         visited_date: visitDate as any,
         end_date: endDate as Date | null,
+        visited_date_exact: visitDateExact,
+        end_date_exact: endDateExact,
         is_bucket_list: isBucketList,
         rating: rating || null,
         crowd: crowd || null,

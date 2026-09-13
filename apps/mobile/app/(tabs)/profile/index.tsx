@@ -27,6 +27,7 @@ import { AvatarLightbox } from '@/components/AvatarLightbox';
 import { FeedbackSheet } from '@/components/FeedbackSheet';
 import { STATIC as C, dyn, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
+import { openPassportExpand } from '@/lib/passportExpand';
 import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
@@ -178,6 +179,9 @@ export default function ProfileScreen() {
   const [totalBadges,  setTotalBadges]  = useState(0);
   const [friendCount,  setFriendCount]  = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<BadgeSummary[]>([]);
+  // Full earned list (not the 5-item preview slice) — handed to the passport
+  // expand overlay's badges section so it needs no fetch of its own.
+  const [allEarnedBadges, setAllEarnedBadges] = useState<BadgeSummary[]>([]);
   const [selectedBadge, setSelectedBadge] = useState<BadgeSummary | null>(null);
   const [sharingBadge, setSharingBadge] = useState<BadgeSummary | null>(null);
   const [selectedStamp, setSelectedStamp] = useState<StampPreview | null>(null);
@@ -201,6 +205,10 @@ export default function ProfileScreen() {
   // Re-pressing the Profile tab while already on it scrolls back to the top.
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
+
+  // Measured on tap so the passport expand overlay can grow from this
+  // exact on-screen frame — see openPassport below.
+  const passportCardRef = useRef<View>(null);
 
   const loadData = useCallback(async () => {
     const tok = await getTokenRef.current();
@@ -241,6 +249,7 @@ export default function ProfileScreen() {
         const allScope = badgesRes.value.stats?.parkScopes?.all;
         if (allScope) setAreasVisited(allScope.visited);
         setEarnedBadges(earned.slice(0, 5));
+        setAllEarnedBadges(earned);
         setBadgesLoaded(true);
       }
       if (friendsRes.status === 'fulfilled') {
@@ -373,6 +382,39 @@ export default function ProfileScreen() {
     return raw.padEnd(44, '<').slice(0, 44);
   })();
 
+  // Tapping the passport card (or any of its "see more" affordances) no
+  // longer navigates to a separate screen — it measures the card's current
+  // on-screen frame and hands it to the expand overlay (mounted at the app
+  // root, see lib/passportExpand.tsx) so the card itself visually grows to
+  // fill the screen instead of a new page sliding/modaling in.
+  const openPassport = useCallback(() => {
+    const node = passportCardRef.current;
+    if (!node) return;
+    node.measureInWindow((x, y, width, height) => {
+      openPassportExpand({
+        originRect: { x, y, width, height },
+        getToken,
+        rawVisits,
+        earnedBadges: allEarnedBadges,
+        profile: {
+          avatarUrl,
+          name: realName,
+          username,
+          joinDate,
+          bio: profile?.bio ?? null,
+        },
+        stats: { parksVisited, parksTotal, areasVisited, badgesEarned, friendCount },
+        mrzLine1,
+        mrzLine2,
+        isDark,
+      });
+    });
+  }, [
+    getToken, rawVisits, allEarnedBadges, avatarUrl, realName, username, joinDate,
+    profile?.bio, parksVisited, parksTotal, areasVisited, badgesEarned, friendCount,
+    mrzLine1, mrzLine2, isDark,
+  ]);
+
   // Floating glass top bar — duplicated from the feed screen's header
   // (same wordmark + notification/search/settings actions, same
   // blur/glass fill and safe-area math) so both tabs match exactly.
@@ -501,8 +543,9 @@ export default function ProfileScreen() {
 
         {/* ── Passport hero card ───────────────────────────────────────────── */}
         <TouchableOpacity
+          ref={passportCardRef}
           style={[styles.passportCard, { backgroundColor: C.primaryDeep, shadowColor: C.primaryDeep }]}
-          onPress={() => router.push('/passport' as never)}
+          onPress={openPassport}
           activeOpacity={0.88}
         >
           {/* Guilloche background — same shared component as the full
@@ -564,7 +607,7 @@ export default function ProfileScreen() {
           <View style={styles.passportStats}>
             {([
               { label: 'NP VISITED', value: badgesLoaded ? `${parksVisited}/${parksTotal}` : '–', href: '/passport' },
-              { label: 'AREAS',   value: badgesLoaded ? String(areasVisited) : '–', href: '/passport' },
+              { label: 'NPS AREAS', value: badgesLoaded ? String(areasVisited) : '–', href: '/passport' },
               { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–', href: '/profile/badges' },
               { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–', href: '/profile/friends' },
             ] as { label: string; value: string; href: string }[]).map(s => (
@@ -576,7 +619,7 @@ export default function ProfileScreen() {
                 style={styles.passportStatItem}
                 activeOpacity={0.6}
                 hitSlop={6}
-                onPress={() => router.push(s.href as never)}
+                onPress={() => s.href === '/passport' ? openPassport() : router.push(s.href as never)}
               >
                 <Text style={styles.passportStatLabel}>{s.label}</Text>
                 <Text style={styles.passportStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
@@ -607,7 +650,7 @@ export default function ProfileScreen() {
         {(!visitsLoaded || recentStamps.length > 0) && (
           <View style={styles.badgesPreview}>
             <TouchableOpacity
-              onPress={() => router.push('/passport' as never)}
+              onPress={openPassport}
               hitSlop={10}
               style={styles.sectionHeader}
               activeOpacity={0.6}
@@ -643,7 +686,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               ))}
               <TouchableOpacity
-                onPress={() => router.push('/passport' as never)}
+                onPress={openPassport}
                 style={styles.badgePreviewItem}
                 activeOpacity={0.7}
               >
@@ -833,7 +876,7 @@ export default function ProfileScreen() {
               label="Passport"
               subtitle="Stamps from every visit"
               count={parksVisited > 0 ? parksVisited : undefined}
-              onPress={() => router.push('/passport' as never)}
+              onPress={openPassport}
             />
             <View style={styles.rowDivider} />
             <NavRow

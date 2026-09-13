@@ -23,6 +23,8 @@ export async function GET(
         park_name: parks.name,
         visited_date: visits.visited_date,
         end_date: visits.end_date,
+        visited_date_exact: visits.visited_date_exact,
+        end_date_exact: visits.end_date_exact,
         rating: visits.rating,
         crowd: visits.crowd,
         difficulty: visits.difficulty,
@@ -87,6 +89,8 @@ export async function PATCH(
     }
     if (body.visited_date !== undefined) set.visited_date = body.visited_date ? new Date(body.visited_date) : null;
     if (body.end_date !== undefined) set.end_date = body.end_date ? new Date(body.end_date) : null;
+    if (body.visited_date_exact !== undefined) set.visited_date_exact = body.visited_date_exact;
+    if (body.end_date_exact !== undefined) set.end_date_exact = body.end_date_exact;
     if (body.rating !== undefined) set.rating = body.rating;
     if (body.crowd !== undefined) set.crowd = body.crowd;
     if (body.difficulty !== undefined) set.difficulty = body.difficulty;

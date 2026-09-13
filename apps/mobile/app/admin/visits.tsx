@@ -1,7 +1,8 @@
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
+import { AdminMenu } from '@/components/AdminMenu';
 import { STATIC as C } from '@/lib/palette';
 import { getAdminVisits, type AdminVisitRow } from '@/lib/api';
 
@@ -18,26 +19,29 @@ export default function AdminVisitsScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   return (
-    <View style={st.screen}>
-      <FlatList
-        data={visits ?? []}
-        keyExtractor={v => String(v.id)}
-        contentContainerStyle={{ padding: 16 }}
-        ListEmptyComponent={visits === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
-        renderItem={({ item: v }) => (
-          <View style={st.row}>
-            <Text style={st.name}>{v.username ? `@${v.username}` : v.display_name ?? '—'}</Text>
-            <Text style={st.meta}>
-              {v.park_name ?? '—'} · {v.is_bucket_list ? 'Bucket list' : 'Visit'}
-              {v.visited_date ? ` · ${new Date(v.visited_date).toLocaleDateString()}` : ''}
-            </Text>
-            <Text style={st.meta}>
-              Rating: {v.rating ?? '—'} · {v.visibility}
-            </Text>
-          </View>
-        )}
-      />
-    </View>
+    <>
+      <Stack.Screen options={{ headerRight: () => <AdminMenu /> }} />
+      <View style={st.screen}>
+        <FlatList
+          data={visits ?? []}
+          keyExtractor={v => String(v.id)}
+          contentContainerStyle={{ padding: 16 }}
+          ListEmptyComponent={visits === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
+          renderItem={({ item: v }) => (
+            <View style={st.row}>
+              <Text style={st.name}>{v.username ? `@${v.username}` : v.display_name ?? '—'}</Text>
+              <Text style={st.meta}>
+                {v.park_name ?? '—'} · {v.is_bucket_list ? 'Bucket list' : 'Visit'}
+                {v.visited_date ? ` · ${new Date(v.visited_date).toLocaleDateString()}` : ''}
+              </Text>
+              <Text style={st.meta}>
+                Rating: {v.rating ?? '—'} · {v.visibility}
+              </Text>
+            </View>
+          )}
+        />
+      </View>
+    </>
   );
 }
 

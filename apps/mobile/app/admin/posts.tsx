@@ -1,7 +1,8 @@
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useCallback, useState } from 'react';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
+import { AdminMenu } from '@/components/AdminMenu';
 import { STATIC as C } from '@/lib/palette';
 import { getAdminPosts, type AdminPostRow } from '@/lib/api';
 
@@ -19,23 +20,26 @@ export default function AdminPostsScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   return (
-    <View style={st.screen}>
-      <FlatList
-        data={posts ?? []}
-        keyExtractor={p => String(p.id)}
-        contentContainerStyle={{ padding: 16 }}
-        ListEmptyComponent={posts === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
-        renderItem={({ item: p }) => (
-          <TouchableOpacity style={st.row} onPress={() => router.push(`/p/${p.id}` as never)}>
-            <Text style={st.name}>{p.username ? `@${p.username}` : p.display_name ?? '—'}</Text>
-            {p.caption ? <Text style={st.caption} numberOfLines={2}>{p.caption}</Text> : null}
-            <Text style={st.meta}>
-              {p.park_name ?? 'No park'} · {p.created_at ? new Date(p.created_at).toLocaleDateString() : ''}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
-    </View>
+    <>
+      <Stack.Screen options={{ headerRight: () => <AdminMenu /> }} />
+      <View style={st.screen}>
+        <FlatList
+          data={posts ?? []}
+          keyExtractor={p => String(p.id)}
+          contentContainerStyle={{ padding: 16 }}
+          ListEmptyComponent={posts === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
+          renderItem={({ item: p }) => (
+            <TouchableOpacity style={st.row} onPress={() => router.push(`/p/${p.id}` as never)}>
+              <Text style={st.name}>{p.username ? `@${p.username}` : p.display_name ?? '—'}</Text>
+              {p.caption ? <Text style={st.caption} numberOfLines={2}>{p.caption}</Text> : null}
+              <Text style={st.meta}>
+                {p.park_name ?? 'No park'} · {p.created_at ? new Date(p.created_at).toLocaleDateString() : ''}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+    </>
   );
 }
 

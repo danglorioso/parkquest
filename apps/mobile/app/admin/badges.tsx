@@ -1,7 +1,8 @@
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
+import { AdminMenu } from '@/components/AdminMenu';
 import { STATIC as C } from '@/lib/palette';
 import { getAdminBadges, type AdminBadgeRow } from '@/lib/api';
 
@@ -21,34 +22,37 @@ export default function AdminBadgesScreen() {
   const max = Math.max(...(badges ?? []).map(b => b.count), 1);
 
   return (
-    <View style={st.screen}>
-      <FlatList
-        data={badges ?? []}
-        keyExtractor={b => b.id}
-        contentContainerStyle={{ padding: 16 }}
-        ListHeaderComponent={
-          badges && badges.length > 0 ? (
-            <Text style={st.header}>% of the {activeUsers.toLocaleString()} active users who've earned each badge</Text>
-          ) : null
-        }
-        ListEmptyComponent={badges === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
-        renderItem={({ item: b }) => (
-          <View style={st.row}>
-            <Text style={st.emoji}>{b.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={st.name}>{b.name}</Text>
-              <View style={st.barTrack}>
-                <View style={[st.barFill, { width: `${(b.count / max) * 100}%` }]} />
+    <>
+      <Stack.Screen options={{ headerRight: () => <AdminMenu /> }} />
+      <View style={st.screen}>
+        <FlatList
+          data={badges ?? []}
+          keyExtractor={b => b.id}
+          contentContainerStyle={{ padding: 16 }}
+          ListHeaderComponent={
+            badges && badges.length > 0 ? (
+              <Text style={st.header}>% of the {activeUsers.toLocaleString()} active users who've earned each badge</Text>
+            ) : null
+          }
+          ListEmptyComponent={badges === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
+          renderItem={({ item: b }) => (
+            <View style={st.row}>
+              <Text style={st.emoji}>{b.emoji}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={st.name}>{b.name}</Text>
+                <View style={st.barTrack}>
+                  <View style={[st.barFill, { width: `${(b.count / max) * 100}%` }]} />
+                </View>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={st.pct}>{b.pct_of_active}%</Text>
+                <Text style={st.count}>{b.count}</Text>
               </View>
             </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={st.pct}>{b.pct_of_active}%</Text>
-              <Text style={st.count}>{b.count}</Text>
-            </View>
-          </View>
-        )}
-      />
-    </View>
+          )}
+        />
+      </View>
+    </>
   );
 }
 

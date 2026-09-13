@@ -65,6 +65,10 @@ export const visits = pgTable('visits', {
   park_code: varchar('park_code', { length: 10 }).notNull().references(() => parks.park_code),
   visited_date: timestamp('visited_date'), // null = bucket list item
   end_date: timestamp('end_date'),         // null = single-day visit
+  // false = user only entered a month/year (day is a placeholder, always 1) —
+  // display code should format these as "March 2026", not "March 1, 2026"
+  visited_date_exact: boolean('visited_date_exact').notNull().default(true),
+  end_date_exact: boolean('end_date_exact').notNull().default(true),
   rating: real('rating'),
   crowd: integer('crowd'),                 // 1-5 scale
   difficulty: integer('difficulty'),       // 1-5 scale

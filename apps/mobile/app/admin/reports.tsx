@@ -2,9 +2,10 @@ import {
   ActivityIndicator, FlatList, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { EmptyState } from '@/components/EmptyState';
+import { AdminMenu } from '@/components/AdminMenu';
 import { STATIC as C } from '@/lib/palette';
 import { getAdminReports, actOnReport } from '@/lib/api';
 import type { EnrichedReport } from '@parkquest/types';
@@ -56,7 +57,9 @@ export default function AdminReportsScreen() {
   const loading = reports === null;
 
   return (
-    <View style={st.screen}>
+    <>
+      <Stack.Screen options={{ headerRight: () => <AdminMenu /> }} />
+      <View style={st.screen}>
       <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 }}>
         {TABS.map(t => (
           <TouchableOpacity
@@ -136,7 +139,8 @@ export default function AdminReportsScreen() {
           </View>
         )}
       />
-    </View>
+      </View>
+    </>
   );
 }
 

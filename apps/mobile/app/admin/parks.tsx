@@ -2,8 +2,9 @@ import {
   ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
+import { AdminMenu } from '@/components/AdminMenu';
 import { STATIC as C } from '@/lib/palette';
 import { getAdminParks, type AdminParkRow } from '@/lib/api';
 
@@ -30,36 +31,39 @@ export default function AdminParksScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   return (
-    <View style={st.screen}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.sortRow} contentContainerStyle={{ gap: 6, paddingHorizontal: 16 }}>
-        {SORT_OPTIONS.map(opt => (
-          <TouchableOpacity
-            key={opt.key}
-            onPress={() => setSort(opt.key)}
-            style={[st.chip, sort === opt.key && { backgroundColor: C.visited, borderColor: C.visited }]}
-          >
-            <Text style={[st.chipText, sort === opt.key && { color: '#fff' }]}>{opt.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-      <FlatList
-        data={parks ?? []}
-        keyExtractor={p => p.park_code}
-        contentContainerStyle={{ padding: 16 }}
-        ListEmptyComponent={parks === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
-        renderItem={({ item: p }) => (
-          <View style={st.row}>
-            <Text style={st.name}>{p.name}</Text>
-            <Text style={st.meta}>
-              {p.visit_count} visits · {p.post_count} posts
-            </Text>
-            <Text style={st.meta}>
-              Rating {p.avg_rating ?? '—'} · Crowd {p.avg_crowd ?? '—'} · Difficulty {p.avg_difficulty ?? '—'} · Would return {p.pct_would_return != null ? `${p.pct_would_return}%` : '—'}
-            </Text>
-          </View>
-        )}
-      />
-    </View>
+    <>
+      <Stack.Screen options={{ headerRight: () => <AdminMenu /> }} />
+      <View style={st.screen}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.sortRow} contentContainerStyle={{ gap: 6, paddingHorizontal: 16 }}>
+          {SORT_OPTIONS.map(opt => (
+            <TouchableOpacity
+              key={opt.key}
+              onPress={() => setSort(opt.key)}
+              style={[st.chip, sort === opt.key && { backgroundColor: C.visited, borderColor: C.visited }]}
+            >
+              <Text style={[st.chipText, sort === opt.key && { color: '#fff' }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <FlatList
+          data={parks ?? []}
+          keyExtractor={p => p.park_code}
+          contentContainerStyle={{ padding: 16 }}
+          ListEmptyComponent={parks === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
+          renderItem={({ item: p }) => (
+            <View style={st.row}>
+              <Text style={st.name}>{p.name}</Text>
+              <Text style={st.meta}>
+                {p.visit_count} visits · {p.post_count} posts
+              </Text>
+              <Text style={st.meta}>
+                Rating {p.avg_rating ?? '—'} · Crowd {p.avg_crowd ?? '—'} · Difficulty {p.avg_difficulty ?? '—'} · Would return {p.pct_would_return != null ? `${p.pct_would_return}%` : '—'}
+              </Text>
+            </View>
+          )}
+        />
+      </View>
+    </>
   );
 }
 

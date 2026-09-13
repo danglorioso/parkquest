@@ -27,9 +27,185 @@ const ACTIVE_EVENTS = sql.raw(`
   UNION ALL SELECT clerk_user_id, last_seen_at FROM user_activity_days
 `);
 
-export async function GET() {
+// ── Range-scoped stats (mobile date-range picker) ─────────────────────────────
+// Desktop always calls this route with no `range` param and only reads the
+// fixed-window fields above, so everything below is additive — it must never
+// change the shape/values of the unparented fields those callers depend on.
+
+type RangeKey = 'today' | '7d' | '30d' | 'year';
+const RANGE_DAYS: Record<Exclude<RangeKey, 'today'>, number> = { '7d': 7, '30d': 30, year: 365 };
+
+// `col`/`range` are always internal literals (never request-derived strings
+// spliced in directly) — `range` only selects which of these fixed fragments
+// to use, so this is not building SQL out of user input.
+function curCond(range: RangeKey, col: string): string {
+  if (range === 'today') {
+    return `(${col} AT TIME ZONE 'UTC' AT TIME ZONE '${ET}')::date = (NOW() AT TIME ZONE '${ET}')::date`;
+  }
+  return `${col} > NOW() - INTERVAL '${RANGE_DAYS[range]} days'`;
+}
+function prevCond(range: RangeKey, col: string): string {
+  if (range === 'today') {
+    return `(${col} AT TIME ZONE 'UTC' AT TIME ZONE '${ET}')::date = (NOW() AT TIME ZONE '${ET}')::date - 1`;
+  }
+  const days = RANGE_DAYS[range];
+  return `${col} <= NOW() - INTERVAL '${days} days' AND ${col} > NOW() - INTERVAL '${days * 2} days'`;
+}
+function curDateCond(range: RangeKey): string {
+  if (range === 'today') return `report_date = (NOW() AT TIME ZONE '${ET}')::date`;
+  return `report_date > CURRENT_DATE - INTERVAL '${RANGE_DAYS[range]} days'`;
+}
+function prevDateCond(range: RangeKey): string {
+  if (range === 'today') return `report_date = (NOW() AT TIME ZONE '${ET}')::date - 1`;
+  const days = RANGE_DAYS[range];
+  return `report_date <= CURRENT_DATE - INTERVAL '${days} days' AND report_date > CURRENT_DATE - INTERVAL '${days * 2} days'`;
+}
+
+function bucketDef(range: RangeKey) {
+  switch (range) {
+    case 'today':
+      return {
+        unit: 'hour', step: '1 hour', fmt: 'HH24:00',
+        startExpr: `date_trunc('day', NOW() AT TIME ZONE '${ET}')`,
+        endExpr: `date_trunc('day', NOW() AT TIME ZONE '${ET}') + INTERVAL '23 hours'`,
+      };
+    case '7d':
+      return {
+        unit: 'day', step: '1 day', fmt: 'YYYY-MM-DD',
+        startExpr: `date_trunc('day', NOW() AT TIME ZONE '${ET}') - INTERVAL '6 days'`,
+        endExpr: `date_trunc('day', NOW() AT TIME ZONE '${ET}')`,
+      };
+    case '30d':
+      return {
+        unit: 'day', step: '1 day', fmt: 'YYYY-MM-DD',
+        startExpr: `date_trunc('day', NOW() AT TIME ZONE '${ET}') - INTERVAL '29 days'`,
+        endExpr: `date_trunc('day', NOW() AT TIME ZONE '${ET}')`,
+      };
+    case 'year':
+      return {
+        unit: 'month', step: '1 month', fmt: 'YYYY-MM',
+        startExpr: `date_trunc('month', NOW() AT TIME ZONE '${ET}') - INTERVAL '11 months'`,
+        endExpr: `date_trunc('month', NOW() AT TIME ZONE '${ET}')`,
+      };
+  }
+}
+
+function pctDelta(cur: number, prev: number): number {
+  if (prev > 0) return Math.round(((cur - prev) / prev) * 100);
+  return cur > 0 ? 100 : 0;
+}
+
+async function getRangeStats(range: RangeKey) {
+  const bucket = bucketDef(range);
+
+  const [[periods], series] = await Promise.all([
+    db.execute(sql`
+      WITH cur AS (
+        SELECT
+          (SELECT COUNT(*)::int FROM user_profiles WHERE ${sql.raw(curCond(range, 'created_at'))}) AS users,
+          (SELECT COUNT(*)::int FROM posts WHERE ${sql.raw(curCond(range, 'created_at'))}) AS posts,
+          (SELECT COUNT(*)::int FROM visits WHERE ${sql.raw(curCond(range, 'created_at'))}) AS visits,
+          (SELECT COUNT(*)::int FROM user_badges WHERE ${sql.raw(curCond(range, 'earned_at'))}) AS badges,
+          (SELECT COUNT(*)::int FROM likes WHERE ${sql.raw(curCond(range, 'created_at'))}) AS likes,
+          (SELECT COUNT(*)::int FROM comments WHERE ${sql.raw(curCond(range, 'created_at'))}) AS comments,
+          (SELECT COUNT(*)::int FROM friendships WHERE status = 'accepted' AND ${sql.raw(curCond(range, 'updated_at'))}) AS friendships,
+          (SELECT COUNT(*)::int FROM reports WHERE ${sql.raw(curCond(range, 'created_at'))}) AS reports,
+          (SELECT COUNT(DISTINCT user_id)::int FROM (${ACTIVE_EVENTS}) e WHERE ${sql.raw(curCond(range, 'created_at'))}) AS active_users,
+          (SELECT COALESCE(SUM(units), 0)::int FROM app_store_daily_stats WHERE ${sql.raw(curDateCond(range))}) AS app_store_units
+      ),
+      prev AS (
+        SELECT
+          (SELECT COUNT(*)::int FROM user_profiles WHERE ${sql.raw(prevCond(range, 'created_at'))}) AS users,
+          (SELECT COUNT(*)::int FROM posts WHERE ${sql.raw(prevCond(range, 'created_at'))}) AS posts,
+          (SELECT COUNT(*)::int FROM visits WHERE ${sql.raw(prevCond(range, 'created_at'))}) AS visits,
+          (SELECT COUNT(*)::int FROM user_badges WHERE ${sql.raw(prevCond(range, 'earned_at'))}) AS badges,
+          (SELECT COUNT(*)::int FROM likes WHERE ${sql.raw(prevCond(range, 'created_at'))}) AS likes,
+          (SELECT COUNT(*)::int FROM comments WHERE ${sql.raw(prevCond(range, 'created_at'))}) AS comments,
+          (SELECT COUNT(*)::int FROM friendships WHERE status = 'accepted' AND ${sql.raw(prevCond(range, 'updated_at'))}) AS friendships,
+          (SELECT COUNT(*)::int FROM reports WHERE ${sql.raw(prevCond(range, 'created_at'))}) AS reports,
+          (SELECT COUNT(DISTINCT user_id)::int FROM (${ACTIVE_EVENTS}) e WHERE ${sql.raw(prevCond(range, 'created_at'))}) AS active_users,
+          (SELECT COALESCE(SUM(units), 0)::int FROM app_store_daily_stats WHERE ${sql.raw(prevDateCond(range))}) AS app_store_units
+      )
+      SELECT
+        cur.users, cur.posts, cur.visits, cur.badges, cur.likes, cur.comments,
+        cur.friendships, cur.reports, cur.active_users, cur.app_store_units,
+        prev.users AS prev_users, prev.posts AS prev_posts, prev.visits AS prev_visits,
+        prev.badges AS prev_badges, prev.likes AS prev_likes, prev.comments AS prev_comments,
+        prev.friendships AS prev_friendships, prev.reports AS prev_reports,
+        prev.active_users AS prev_active_users, prev.app_store_units AS prev_app_store_units
+      FROM cur, prev
+    `).then(r => r.rows as {
+      users: number; posts: number; visits: number; badges: number; likes: number; comments: number;
+      friendships: number; reports: number; active_users: number; app_store_units: number;
+      prev_users: number; prev_posts: number; prev_visits: number; prev_badges: number; prev_likes: number;
+      prev_comments: number; prev_friendships: number; prev_reports: number; prev_active_users: number;
+      prev_app_store_units: number;
+    }[]),
+    db.execute(sql`
+      WITH buckets AS (
+        SELECT generate_series(${sql.raw(bucket.startExpr)}, ${sql.raw(bucket.endExpr)}, INTERVAL '${sql.raw(bucket.step)}') AS bucket
+      ),
+      signups AS (
+        SELECT date_trunc('${sql.raw(bucket.unit)}', created_at AT TIME ZONE 'UTC' AT TIME ZONE '${sql.raw(ET)}') AS bucket, COUNT(*)::int AS count
+        FROM user_profiles
+        WHERE ${sql.raw(curCond(range, 'created_at'))}
+        GROUP BY 1
+      ),
+      active AS (
+        SELECT date_trunc('${sql.raw(bucket.unit)}', created_at AT TIME ZONE 'UTC' AT TIME ZONE '${sql.raw(ET)}') AS bucket, COUNT(DISTINCT user_id)::int AS count
+        FROM (${ACTIVE_EVENTS}) e
+        WHERE ${sql.raw(curCond(range, 'created_at'))}
+        GROUP BY 1
+      ),
+      appstore AS (
+        SELECT date_trunc('${sql.raw(bucket.unit)}', report_date::timestamp) AS bucket, SUM(units)::int AS units
+        FROM app_store_daily_stats
+        WHERE ${sql.raw(curDateCond(range))}
+        GROUP BY 1
+      )
+      SELECT to_char(b.bucket, '${sql.raw(bucket.fmt)}') AS bucket,
+             COALESCE(s.count, 0)::int AS signups,
+             COALESCE(a.count, 0)::int AS active_users,
+             aps.units AS app_store_units
+      FROM buckets b
+      LEFT JOIN signups s ON s.bucket = b.bucket
+      LEFT JOIN active a ON a.bucket = b.bucket
+      LEFT JOIN appstore aps ON aps.bucket = b.bucket
+      ORDER BY b.bucket
+    `).then(r => r.rows as { bucket: string; signups: number; active_users: number; app_store_units: number | null }[]),
+  ]);
+
+  return {
+    range,
+    range_totals: {
+      users: periods.users, posts: periods.posts, visits: periods.visits, badges: periods.badges,
+      likes: periods.likes, comments: periods.comments, friendships: periods.friendships,
+      reports: periods.reports, active_users: periods.active_users, app_store_units: periods.app_store_units,
+    },
+    range_deltas: {
+      users: pctDelta(periods.users, periods.prev_users),
+      posts: pctDelta(periods.posts, periods.prev_posts),
+      visits: pctDelta(periods.visits, periods.prev_visits),
+      badges: pctDelta(periods.badges, periods.prev_badges),
+      likes: pctDelta(periods.likes, periods.prev_likes),
+      comments: pctDelta(periods.comments, periods.prev_comments),
+      friendships: pctDelta(periods.friendships, periods.prev_friendships),
+      reports: pctDelta(periods.reports, periods.prev_reports),
+      active_users: pctDelta(periods.active_users, periods.prev_active_users),
+      app_store_units: pctDelta(periods.app_store_units, periods.prev_app_store_units),
+    },
+    range_series: series,
+  };
+}
+
+export async function GET(request: Request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+
+  const rangeParam = new URL(request.url).searchParams.get('range');
+  const range: RangeKey = (['today', '7d', '30d', 'year'] as const).includes(rangeParam as RangeKey)
+    ? (rangeParam as RangeKey)
+    : '7d';
 
   const [
     [totals],
@@ -44,6 +220,7 @@ export async function GET() {
     [appStoreTotals],
     appStoreDevices,
     [deltas24h],
+    rangeStats,
   ] = await Promise.all([
     db.execute(sql`
       SELECT
@@ -226,12 +403,14 @@ export async function GET() {
       users: number; posts: number; visits: number;
       badges: number; likes: number; comments: number; friendships: number; reports: number;
     }[]),
+    getRangeStats(range),
   ]);
 
   const reportsStatusMap = { open: 0, actioned: 0, dismissed: 0 } as Record<string, number>;
   for (const r of reportsByStatus) reportsStatusMap[r.status] = r.count;
 
   return NextResponse.json({
+    ...rangeStats,
     total_users: totals.total_users,
     total_posts: totals.total_posts,
     total_visits: totals.total_visits,

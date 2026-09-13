@@ -2,9 +2,10 @@ import {
   ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useCallback, useState } from 'react';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import { AdminMenu } from '@/components/AdminMenu';
 import { STATIC as C } from '@/lib/palette';
 import { getAdminUsers, setUserBanned, type AdminUserRow, type AdminUserSort } from '@/lib/api';
 
@@ -50,7 +51,9 @@ export default function AdminUsersScreen() {
   };
 
   return (
-    <View style={st.screen}>
+    <>
+      <Stack.Screen options={{ headerRight: () => <AdminMenu /> }} />
+      <View style={st.screen}>
       {/* Sort chips — the active-window filter (from the dashboard's Active
           tiles) sorts by recency on the server and ignores these. */}
       {!activeWindow && (
@@ -103,7 +106,8 @@ export default function AdminUsersScreen() {
           </View>
         )}
       />
-    </View>
+      </View>
+    </>
   );
 }
 
