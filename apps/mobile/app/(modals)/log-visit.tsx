@@ -160,6 +160,12 @@ async function loadDrafts(): Promise<SavedDraft[]> {
       ...sd.draft,
       startDate: sd.draft.startDate ? new Date(sd.draft.startDate as unknown as string) : null,
       endDate:   sd.draft.endDate   ? new Date(sd.draft.endDate   as unknown as string) : null,
+      // Drafts saved before the exact-day feature shipped won't have these
+      // keys at all — undefined must default to true (exact), not be treated
+      // as false, or resuming an old draft silently reopens the date picker
+      // in month/year mode and drops the day.
+      startDateExact: sd.draft.startDateExact ?? true,
+      endDateExact:   sd.draft.endDateExact   ?? true,
     },
   }));
 }
@@ -1515,7 +1521,11 @@ function DateSheet({ visible, title, value, exact, minimumDate, maximumDate, onP
               minimumDate={minimumDate}
               maximumDate={maximumDate}
               onChange={d => { Haptics.selectionAsync(); setPending(d); }}
-              accentColor={C.primary}
+              // The native wheel's selection pill isn't a flat color — it's UIKit's
+              // translucent "systemFill" gray laid over whatever's underneath, which
+              // is why it reads as neutral gray regardless of the cream sheet behind
+              // it. An opaque hex here was always going to be a losing guessing game.
+              highlightColor={dyn('rgba(120,120,128,0.18)', 'rgba(120,120,128,0.36)')}
               ink={C.ink}
               inkMute={C.inkMute}
             />
@@ -1547,6 +1557,22 @@ function DateSheet({ visible, title, value, exact, minimumDate, maximumDate, onP
             />
           )}
         </View>
+
+        <TouchableOpacity
+          onPress={() => {
+            Haptics.selectionAsync();
+            setUnknownDay(u => {
+              const next = !u;
+              if (next) setPending(d => new Date(d.getFullYear(), d.getMonth(), 1));
+              return next;
+            });
+          }}
+          style={{ alignItems: 'center', paddingTop: 10 }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '600', color: C.primary, textDecorationLine: 'underline' }}>
+            {unknownDay ? 'I know the exact date' : 'I don’t know the exact date'}
+          </Text>
+        </TouchableOpacity>
       </Animated.View>
     </View>
   );
@@ -2970,7 +2996,7 @@ export default function LogVisitModal() {
         value={openPicker === 'end'
           ? (draft.endDate ?? draft.startDate ?? new Date())
           : (draft.startDate ?? new Date())}
-        exact={openPicker === 'end' ? draft.endDateExact : draft.startDateExact}
+        exact={(openPicker === 'end' ? draft.endDateExact : draft.startDateExact) ?? true}
         minimumDate={openPicker === 'end' ? (draft.startDate ?? undefined) : undefined}
         maximumDate={new Date()}
         onPick={(d, exact) => {
