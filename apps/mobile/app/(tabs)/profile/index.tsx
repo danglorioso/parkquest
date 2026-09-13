@@ -611,21 +611,22 @@ export default function ProfileScreen() {
               { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–', href: '/profile/badges' },
               { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–', href: '/profile/friends' },
             ] as { label: string; value: string; href: string }[]).map(s => (
-              // Nested TouchableOpacity — RN's responder system hands the touch
-              // to this inner one, not the passportCard TouchableOpacity behind
-              // it, so tapping a stat doesn't also fire the card's own onPress.
-              <TouchableOpacity
-                key={s.label}
-                style={styles.passportStatItem}
-                activeOpacity={0.6}
-                hitSlop={6}
-                onPress={() => s.href === '/passport' ? openPassport() : router.push(s.href as never)}
-              >
-                <Text style={styles.passportStatLabel}>{s.label}</Text>
-                <Text style={styles.passportStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                  {s.value}
-                </Text>
-              </TouchableOpacity>
+              // The 50%-wide cell itself is a plain View, not touchable — only
+              // the inner TouchableOpacity (sized to the label+value text) is a
+              // link, so the empty space around each stat falls through to the
+              // passportCard TouchableOpacity behind it instead of stealing tap
+              // area from the card-wide "open passport" gesture.
+              <View key={s.label} style={styles.passportStatItem}>
+                <TouchableOpacity
+                  activeOpacity={0.6}
+                  onPress={() => s.href === '/passport' ? openPassport() : router.push(s.href as never)}
+                >
+                  <Text style={styles.passportStatLabel}>{s.label}</Text>
+                  <Text style={styles.passportStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                    {s.value}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             ))}
           </View>
 

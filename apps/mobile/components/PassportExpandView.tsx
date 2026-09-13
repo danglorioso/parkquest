@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Dimensions, ScrollView, StyleSheet,
+  ActivityIndicator, Animated, Dimensions, Easing as RNEasing, Image, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
-import Reanimated, {
-  Easing, Extrapolation, FadeInDown, interpolate, runOnJS,
-  useAnimatedStyle, useSharedValue, withSpring, withTiming,
-} from 'react-native-reanimated';
-import Svg, { Defs, Pattern, Line, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Reanimated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { HolographicShine } from '@/components/HolographicShine';
+import { GrowTouchable } from '@/components/GrowTouchable';
 import { ParkStamp } from '@/components/ParkStamp';
 import { StampDetailModal } from '@/components/StampDetailModal';
 import {
@@ -112,41 +110,6 @@ export interface PassportExpandRequest {
 
 interface Props extends PassportExpandRequest {
   onClose: () => void;
-}
-
-// ── Cover pattern ─────────────────────────────────────────────────────────────
-// Deliberately its own thing rather than the profile card's HolographicShine:
-// that component's guilloche waves/seal are positioned as fractions of its
-// own width/height, so a small (card-sized) and large (full-cover-sized)
-// render are literally different geometry, not the same art zoomed out —
-// revealing one via a growing clip window reads as the pattern itself
-// morphing/stretching. An SVG <Pattern> tile is genuinely size-independent
-// (userSpaceOnUse units repeat identically no matter how big the containing
-// rect is), so a small and large render of THIS share pixel-identical
-// geometry wherever they overlap — the growing box only ever uncovers more
-// of the exact same fixed tile, never redraws it.
-function CoverPattern({ w, h }: { w: number; h: number }) {
-  return (
-    <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Defs>
-        <Pattern id="passportCoverGrid" patternUnits="userSpaceOnUse" width={46} height={46} patternTransform="rotate(30)">
-          <Line x1={0} y1={0} x2={0} y2={46} stroke="rgba(201,169,74,0.11)" strokeWidth={1} />
-          <Line x1={23} y1={0} x2={23} y2={46} stroke="rgba(201,169,74,0.05)" strokeWidth={1} />
-        </Pattern>
-        <RadialGradient id="passportCoverVig" cx="16%" cy="0%" r="90%">
-          <Stop offset="0" stopColor="#fff8e6" stopOpacity={0.14} />
-          <Stop offset="1" stopColor="#fff8e6" stopOpacity={0} />
-        </RadialGradient>
-        <RadialGradient id="passportCoverShadow" cx="92%" cy="100%" r="80%">
-          <Stop offset="0" stopColor="#000000" stopOpacity={0.22} />
-          <Stop offset="1" stopColor="#000000" stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      <Rect x={0} y={0} width={w} height={h} fill="url(#passportCoverGrid)" />
-      <Rect x={0} y={0} width={w} height={h} fill="url(#passportCoverVig)" />
-      <Rect x={0} y={0} width={w} height={h} fill="url(#passportCoverShadow)" />
-    </Svg>
-  );
 }
 
 // ── Stamp cell ────────────────────────────────────────────────────────────────
@@ -269,61 +232,76 @@ export function PassportExpandView({
   }, [allStampItems]);
 
   // ── Animation choreography ──
-  // Phase A (grow): card rect → full screen, edge to edge, a light haptic
-  // marking the moment it "takes over" the screen. Phase B (settle): the
-  // full-screen flash relaxes down into a fixed header, height only, while
-  // stamps/badges reveal underneath. Both phases share one card→full→header
-  // height timeline so there's never a visible seam between them.
-  const growProgress   = useSharedValue(0);
-  const settleProgress = useSharedValue(0);
+  // One Animated.Value drives everything in two chained phases sharing a
+  // single [0,1,2] range: 0→1 is the card rect growing to fill the screen
+  // (a spring, with a light haptic marking the moment it "takes over"), 1→2
+  // is that full-screen flash relaxing down into the fixed header height.
+  // This is the classic (JS-driven) Animated API, not Reanimated, for the
+  // hero's own top/left/width/height/borderRadius: Reanimated animating
+  // those directly on a view with a nested react-native-svg child
+  // (HolographicShine) visibly distorted the pattern mid-animation on
+  // device even though its own geometry was fixed and never recalculated —
+  // routing the same layout-prop animation through the standard RN bridge
+  // instead doesn't have that problem. (Reanimated is still used below for
+  // the plain mount-triggered entrance animations on stamp rows/badges,
+  // which don't involve an animated-size ancestor and aren't affected.)
+  const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    growProgress.value = withSpring(1, { damping: 20, stiffness: 160, mass: 0.9 }, finished => {
-      if (finished) {
-        settleProgress.value = withTiming(1, { duration: 340, easing: Easing.out(Easing.cubic) });
-        runOnJS(setShowContent)(true);
-      }
+    Animated.spring(progress, {
+      toValue: 1, useNativeDriver: false, damping: 20, stiffness: 160, mass: 0.9,
+    }).start(({ finished }) => {
+      if (!finished) return;
+      setShowContent(true);
+      Animated.timing(progress, {
+        toValue: 2, duration: 340, easing: RNEasing.out(RNEasing.cubic), useNativeDriver: false,
+      }).start();
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleClose = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setShowContent(false);
-    settleProgress.value = withTiming(0, { duration: 220, easing: Easing.in(Easing.cubic) }, finished => {
-      if (finished) {
-        growProgress.value = withTiming(0, { duration: 340, easing: Easing.in(Easing.cubic) }, done => {
-          if (done) runOnJS(onClose)();
-        });
-      }
+    Animated.timing(progress, {
+      toValue: 1, duration: 220, easing: RNEasing.in(RNEasing.cubic), useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (!finished) return;
+      Animated.timing(progress, {
+        toValue: 0, duration: 340, easing: RNEasing.in(RNEasing.cubic), useNativeDriver: false,
+      }).start(({ finished: done }) => {
+        if (done) onClose();
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
 
-  const heroStyle = useAnimatedStyle(() => {
-    const g = growProgress.value;
-    const s = settleProgress.value;
-    const fullH = SCREEN_H + insets.top;
-    const growH = interpolate(g, [0, 1], [originRect.height, fullH], Extrapolation.CLAMP);
-    return {
-      top: interpolate(g, [0, 1], [originRect.y, -insets.top], Extrapolation.CLAMP),
-      left: interpolate(g, [0, 1], [originRect.x, 0], Extrapolation.CLAMP),
-      width: interpolate(g, [0, 1], [originRect.width, SCREEN_W], Extrapolation.CLAMP),
-      height: interpolate(s, [0, 1], [growH, HEADER_H + insets.top], Extrapolation.CLAMP),
-      borderRadius: interpolate(g, [0, 1], [CARD_RADIUS, 0], Extrapolation.CLAMP),
-    };
-  });
+  const heroStyle = {
+    top: progress.interpolate({ inputRange: [0, 1, 2], outputRange: [originRect.y, -insets.top, -insets.top] }),
+    left: progress.interpolate({ inputRange: [0, 1, 2], outputRange: [originRect.x, 0, 0] }),
+    width: progress.interpolate({ inputRange: [0, 1, 2], outputRange: [originRect.width, SCREEN_W, SCREEN_W] }),
+    height: progress.interpolate({
+      inputRange: [0, 1, 2],
+      outputRange: [originRect.height, SCREEN_H + insets.top, HEADER_H + insets.top],
+    }),
+    borderRadius: progress.interpolate({ inputRange: [0, 1, 2], outputRange: [CARD_RADIUS, 0, 0] }),
+  };
 
-  // The identity block's leading offset: matches the card's own ~20px
-  // padding at t=0 (so nothing jumps the instant the overlay takes over),
-  // and grows just enough to clear the status bar/notch once the cover has
-  // pulled all the way up under it. A single smoothly-interpolated number
-  // on a plain text block is cheap and reads as the card settling into
-  // place — unlike animating the SVG pattern's own bounds, this is safe.
-  const heroInnerStyle = useAnimatedStyle(() => ({
-    paddingTop: interpolate(growProgress.value, [0, 1], [20, insets.top + 28], Extrapolation.CLAMP),
-  }));
+  // Tracks the same progress value as the hero itself, so the identity
+  // block's clearance grows in lockstep with the box — matches the card's
+  // own ~20px padding at t=0 (no jump the instant the overlay takes over)
+  // and reaches a notch-clearing value by the time the hero has pulled all
+  // the way up under the status bar. The hero bleeds to `top: -insets.top`
+  // once grown, so clearing the actual notch from this padding (measured
+  // from that now-negative top edge) needs 2×insets.top, not 1× — a single
+  // insets.top left the avatar sitting right under the status bar/Dynamic
+  // Island instead of below it.
+  const heroInnerStyle = {
+    paddingTop: progress.interpolate({
+      inputRange: [0, 1, 2],
+      outputRange: [20, insets.top * 2 + 12, insets.top * 2 + 12],
+    }),
+  };
 
   const name = profile.name ?? 'Explorer';
 
@@ -333,24 +311,28 @@ export function PassportExpandView({
 
       {/* ── Cover — grows from the card's rect to fill the screen, then
           settles down to a fixed header height, bleeding edge-to-edge under
-          the status bar the whole time. The pattern is mounted once, fixed
-          at its own true size, pinned to the hero's own top-left corner —
-          the hero's overflow:hidden bounds growing/shrinking just reveals
-          more or less of that one fixed tile; it never moves or redraws.
-          The content block below (avatar → MRZ) is intrinsically sized
-          (never stretched to fill the box) so it's fully visible from the
-          first frame — only its leading padding eases to clear the notch
-          once the cover pulls up under it. */}
-      <Reanimated.View style={[st.hero, heroStyle, { backgroundColor: T.primaryDeep }]}>
-        <View style={{ position: 'absolute', top: 0, left: 0, width: SCREEN_W, height: SCREEN_H + insets.top }}>
-          <CoverPattern w={SCREEN_W} h={SCREEN_H + insets.top} />
+          the status bar the whole time. HolographicShine is mounted once,
+          immediately, fixed at the cover's full settled size (edge to edge,
+          reaching the status bar), pinned to the hero's own top-left corner
+          — it never resizes or hides for the rest of this view's lifetime,
+          so it reads as one continuous pattern rather than something that
+          pops in or rescales partway through. The content block below
+          (avatar → MRZ) is likewise intrinsically sized (never stretched to
+          fill the box) so it's fully visible from the first frame — only
+          its leading padding clears the notch once the cover pulls up
+          under it. */}
+      <Animated.View style={[st.hero, heroStyle, { backgroundColor: T.primaryDeep }]}>
+        <View style={{ position: 'absolute', top: 0, left: 0, width: SCREEN_W, height: HEADER_H }}>
+          <HolographicShine staticSize={{ w: SCREEN_W, h: HEADER_H }} wavesAboveSeal />
         </View>
-        <Reanimated.View style={[st.heroInner, heroInnerStyle]}>
-          <View style={st.avatarWrap}>
+        <Animated.View style={[st.heroInner, heroInnerStyle]}>
+          <View style={[st.avatarWrap, { borderColor: T.hairline, backgroundColor: T.surface }]}>
             {profile.avatarUrl ? (
-              <Reanimated.Image source={{ uri: profile.avatarUrl }} style={st.avatarImg} />
+              <Image source={{ uri: profile.avatarUrl }} style={st.avatarInner} />
             ) : (
-              <Text style={st.avatarInitial}>{name[0]?.toUpperCase() ?? '?'}</Text>
+              <View style={[st.avatarInner, st.avatarFallback, { backgroundColor: T.primary }]}>
+                <Text style={st.avatarInitial}>{name[0]?.toUpperCase() ?? '?'}</Text>
+              </View>
             )}
           </View>
           <Text style={st.name} numberOfLines={1} adjustsFontSizeToFit>{name}</Text>
@@ -386,24 +368,27 @@ export function PassportExpandView({
             <Text style={st.mrzText} numberOfLines={1}>{mrzLine1}</Text>
             <Text style={st.mrzText} numberOfLines={1}>{mrzLine2}</Text>
           </View>
-        </Reanimated.View>
-      </Reanimated.View>
+        </Animated.View>
+      </Animated.View>
 
       {/* ── Floating top bar — close / share only, no title. Always fully
           opaque (never wrapped in an animated-opacity ancestor) — a
           GlassView loses its real Liquid Glass material and silently falls
           back to a flat fill for as long as any ancestor sits below full
           opacity, so fading this in would have quietly broken the glass
-          look these buttons are meant to match everywhere else in the app. ── */}
+          look these buttons are meant to match everywhere else in the app.
+          GrowTouchable (not TouchableOpacity) for the same reason — it
+          swells on press instead of dimming, since dimming an ancestor of a
+          GlassView is exactly the alpha<1 case that disables the glass. ── */}
       <View style={[st.topBar, { top: insets.top + 4 }]} pointerEvents="box-none">
-        <TouchableOpacity onPress={handleClose} hitSlop={8} style={st.topBarBtn}>
+        <GrowTouchable onPress={handleClose} hitSlop={8} style={st.topBarBtn}>
           <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
           <Ionicons name="close" size={22} color={GOLD} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.push('/passport-share' as never)} hitSlop={8} style={st.topBarBtn}>
+        </GrowTouchable>
+        <GrowTouchable onPress={() => router.push('/passport-share' as never)} hitSlop={8} style={st.topBarBtn}>
           <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
           <Ionicons name="share-outline" size={20} color={GOLD} />
-        </TouchableOpacity>
+        </GrowTouchable>
       </View>
 
       {/* ── Stamps + badges — scrolls independently underneath the fixed
@@ -435,7 +420,7 @@ export function PassportExpandView({
                     </View>
                   )}
                   <Reanimated.View
-                    entering={FadeInDown.delay(Math.min(ri, 8) * 35).duration(360)}
+                    entering={FadeInUp.delay(Math.min(ri, 8) * 35).duration(360)}
                     style={st.stampRow}
                   >
                     {row.items.map(item => item.visited ? (
@@ -532,15 +517,22 @@ const st = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
   },
+  // Same ring treatment as the profile card's own avatar (padded border +
+  // shadow around the image, not a border directly on it) — see
+  // app/(tabs)/profile/index.tsx's own avatarWrap/avatar styles.
   avatarWrap: {
-    width: 84, height: 84, borderRadius: 42,
-    borderWidth: 2, borderColor: GOLD + '66',
     alignSelf: 'center',
-    alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.18)',
+    padding: 1.5,
+    borderRadius: 50,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  avatarImg: { width: '100%', height: '100%' },
+  avatarInner: { width: 84, height: 84, borderRadius: 42, overflow: 'hidden' },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { fontSize: 30, fontWeight: '900', color: GOLD },
   name: {
     marginTop: 12, fontSize: 26, fontWeight: '800', color: GOLD, textAlign: 'center', letterSpacing: -0.4,

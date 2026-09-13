@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { Apple, Chrome, Mail } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Pagination } from '../Pagination';
-import { BanButton } from './BanButton';
+import { UserActionsMenu } from './UserActionsMenu';
 
 interface UserRow {
   clerk_user_id: string;
@@ -136,7 +136,7 @@ export default async function AdminUsersPage({
                     </td>
                     <td className="px-4 py-3">
                       {/* No Clerk user left to ban */}
-                      {!u.deleted && <BanButton userId={u.clerk_user_id} banned={u.banned} />}
+                      {!u.deleted && <UserActionsMenu userId={u.clerk_user_id} username={u.username} banned={u.banned} />}
                     </td>
                   </tr>
                 );
