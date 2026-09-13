@@ -41,6 +41,7 @@ export interface ParkOption { park_code: string; name: string }
 export const SCOPE_LABELS: Record<BadgeParkScope, string> = {
   national_park: 'National Parks',
   historic_park: 'National Historical Parks',
+  monument: 'National Monuments',
   all: 'any park area',
 };
 

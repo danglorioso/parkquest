@@ -51,7 +51,7 @@ interface ProfileInfo {
 // Mirrors apps/web's ParkScopeStats/BadgeParkScope (apps/web/src/lib/badges.ts,
 // packages/types) — kept local since mobile can't import from the web app.
 interface ParkScopeStat { visited: number; total: number }
-type ParkScopes = { national_park: ParkScopeStat; historic_park: ParkScopeStat; all: ParkScopeStat };
+type ParkScopes = { national_park: ParkScopeStat; historic_park: ParkScopeStat; monument: ParkScopeStat; all: ParkScopeStat };
 
 interface Park {
   park_code: string;

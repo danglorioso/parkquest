@@ -21,8 +21,8 @@ export interface ParkScopeStats {
 
 export interface UserStats {
   // Visited/total pairs per BadgeParkScope — 'national_park' is the curated
-  // 63, 'historic_park' matches designation exactly, 'all' is every row.
-  // See computeStats for how each is derived.
+  // 63, 'historic_park'/'monument' match designation exactly, 'all' is every
+  // row. See computeStats for how each is derived.
   parkScopes: Record<BadgeParkScope, ParkScopeStats>;
   statesVisited: number;
   bucketListCount: number;
@@ -147,6 +147,7 @@ export function conditionsProgress(conditions: BadgeCondition[], stats: UserStat
 // description already uses, so nothing already written changes.
 function scopeNoun(scope: BadgeParkScope | undefined, plural: boolean): string {
   if (scope === 'historic_park') return plural ? 'National Historical Parks' : 'National Historical Park';
+  if (scope === 'monument') return plural ? 'National Monuments' : 'National Monument';
   if (scope === 'all') return plural ? 'park areas' : 'park area';
   return plural ? 'parks' : 'park';
 }
@@ -188,12 +189,14 @@ export function computeStats(
   const visitedCodes = new Set(actualVisits.map(v => v.park_code));
 
   // parks_visited/all_parks_visited need a visited/total pair per scope —
-  // 'historic_park' matches the designation exactly (a single clean NPS
-  // string, unlike "National Park" which spans several variant spellings —
-  // see is_national_park for why that one's a curated flag, not a match).
+  // 'historic_park'/'monument' match the designation exactly (single clean
+  // NPS strings, unlike "National Park" which spans several variant
+  // spellings — see is_national_park for why that one's a curated flag,
+  // not a match).
   const scopeCodeSets: Record<BadgeParkScope, Set<string>> = {
     national_park: new Set(allParks.filter(p => p.is_national_park).map(p => p.park_code)),
     historic_park: new Set(allParks.filter(p => p.designation === 'National Historical Park').map(p => p.park_code)),
+    monument: new Set(allParks.filter(p => p.designation === 'National Monument').map(p => p.park_code)),
     all: new Set(allParks.map(p => p.park_code)),
   };
   const parkScopes = Object.fromEntries(

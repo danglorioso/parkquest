@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Dimensions, Easing, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Ellipse, G, Line, Path } from 'react-native-svg';
+import Svg, { Circle, Defs, Ellipse, G, Line, Path, RadialGradient, Stop } from 'react-native-svg';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -169,41 +169,71 @@ function CloudLayer2() {
 }
 
 function SunGlow() {
-  const anim = useRef(new Animated.Value(0.55)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 0.85, duration: 4000, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0.55, duration: 4000, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 4000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 4000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])
     );
     loop.start();
     return () => loop.stop();
   }, []);
 
+  const haloOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0.8] });
+  const haloScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
+
+  const box = 160;
+  const halo = 300;
+  const haloOffset = (box - halo) / 2;
+
   return (
-    <Animated.View
-      style={{
-        position: 'absolute',
-        right: W * 0.12,
-        top: H * 0.14,
-        width: 160,
-        height: 160,
-        borderRadius: 80,
-        backgroundColor: '#D89A3A',
-        opacity: anim,
-      }}
-      // Soft glow via nested layers
-    >
-      <View style={{
-        position: 'absolute',
-        inset: 0,
-        borderRadius: 80,
-        backgroundColor: 'rgba(216,154,58,0.5)',
-        transform: [{ scale: 1.4 }],
-      }} />
-    </Animated.View>
+    <View style={{ position: 'absolute', right: W * 0.12, top: H * 0.14, width: box, height: box }}>
+      {/* Soft ambient halo — breathes independently of the disc */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          left: haloOffset,
+          top: haloOffset,
+          width: halo,
+          height: halo,
+          opacity: haloOpacity,
+          transform: [{ scale: haloScale }],
+        }}
+      >
+        <Svg width={halo} height={halo} viewBox={`0 0 ${halo} ${halo}`}>
+          <Defs>
+            <RadialGradient id="sunHalo" cx="50%" cy="50%" r="50%">
+              <Stop offset="0%" stopColor="#F2C572" stopOpacity="0.5" />
+              <Stop offset="40%" stopColor="#D89A3A" stopOpacity="0.22" />
+              <Stop offset="100%" stopColor="#D89A3A" stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={halo / 2} cy={halo / 2} r={halo / 2} fill="url(#sunHalo)" />
+        </Svg>
+      </Animated.View>
+
+      {/* Disc — limb-darkened gradient (bright hotspot off-center, deeper
+          amber toward the edge) plus a thin bright rim, instead of a flat fill */}
+      <Svg width={box} height={box} viewBox={`0 0 ${box} ${box}`}>
+        <Defs>
+          <RadialGradient id="sunCore" cx="38%" cy="35%" r="70%">
+            <Stop offset="0%" stopColor="#FFEEC2" stopOpacity="1" />
+            <Stop offset="50%" stopColor="#F2B44A" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#C77F2A" stopOpacity="1" />
+          </RadialGradient>
+          <RadialGradient id="sunRim" cx="50%" cy="50%" r="50%">
+            <Stop offset="86%" stopColor="#FFFFFF" stopOpacity="0" />
+            <Stop offset="96%" stopColor="#FFE9B8" stopOpacity="0.4" />
+            <Stop offset="100%" stopColor="#FFE9B8" stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Circle cx={box / 2} cy={box / 2} r={box / 2} fill="url(#sunCore)" />
+        <Circle cx={box / 2} cy={box / 2} r={box / 2} fill="url(#sunRim)" />
+      </Svg>
+    </View>
   );
 }
 
