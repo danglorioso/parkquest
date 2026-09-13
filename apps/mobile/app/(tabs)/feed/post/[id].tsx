@@ -76,7 +76,6 @@ export default function PostDetailScreen() {
             myName={me?.fullName ?? me?.username}
             onDelete={() => router.replace('/(tabs)/feed' as never)}
             onParkPress={code => router.push(`/park/${code}` as never)}
-            openOnPress={false}
             autoOpenComments={open !== 'likes' && post.comment_count > 0}
             autoOpenLikers={open === 'likes'}
           />

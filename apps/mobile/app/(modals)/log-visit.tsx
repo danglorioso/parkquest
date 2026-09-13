@@ -2077,7 +2077,7 @@ function VisitPreview({ draft, park, userName, username, avatarUrl }: {
 
   return (
     <View pointerEvents="none">
-      <PostCard post={previewPost} myUserId="preview" openOnPress={false} />
+      <PostCard post={previewPost} myUserId="preview" />
     </View>
   );
 }

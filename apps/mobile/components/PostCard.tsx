@@ -389,6 +389,9 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
   // Measured from the carousel's own layout rather than assumed from screen
   // width — square, so this doubles as both the paging width and photo height.
   const [boxW, setBoxW] = useState(CARD_W_FALLBACK);
+  // Disables the pager mid-pinch so a two-finger zoom can't also drag the
+  // carousel to the next photo underneath it.
+  const [zooming, setZooming] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const n = photos.length;
   const fallbackColor = parkColor(parkCode ?? 'xx');
@@ -425,6 +428,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         ref={scrollRef}
         horizontal
         pagingEnabled
+        scrollEnabled={!zooming}
         showsHorizontalScrollIndicator={false}
         onScrollBeginDrag={showChromeBriefly}
         onScroll={e => {
@@ -453,6 +457,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
                 scrollRef.current?.scrollTo({ x: finalIndex * boxW, animated: false });
               },
             })}
+            onZoomChange={setZooming}
           />
         ))}
       </ScrollView>
@@ -1134,7 +1139,6 @@ function PostCardImpl({
   myName,
   onDelete,
   onParkPress,
-  openOnPress = true,
   autoOpenComments = false,
   autoOpenLikers = false,
 }: {
@@ -1144,9 +1148,6 @@ function PostCardImpl({
   myName?: string | null;
   onDelete?: (id: number) => void;
   onParkPress?: (parkCode: string) => void;
-  // Tapping anywhere on the card (outside links/buttons) opens the post's
-  // dedicated focus view. Disabled when the card is already rendered there.
-  openOnPress?: boolean;
   autoOpenComments?: boolean;
   autoOpenLikers?: boolean;
 }) {
@@ -1349,11 +1350,6 @@ function PostCardImpl({
 
   const isFirstVisit = !isBadge && !!post.visit_id && Number(post.visit_ordinal) === 1;
   const isNationalParkFirstVisit = isFirstVisit && !!post.is_national_park;
-  // Only the body (park chip / photos / caption / actions) opens the post on tap —
-  // the header can't be inside this Pressable. MenuView is a native context-menu
-  // view, not a JS Touchable; its gesture recognizer doesn't participate in RN's
-  // responder negotiation, so an ancestor Pressable's onPress fires right through it.
-  const CardBody = openOnPress ? Pressable : View;
 
   return (
     <View style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isNationalParkFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}>
@@ -1454,7 +1450,7 @@ function PostCardImpl({
         </View>
       </View>
 
-      <CardBody {...(openOnPress ? { onPress: () => router.push(`/(tabs)/feed/post/${post.id}` as never) } : {})}>
+      <View>
       {/* Park chip */}
       {post.park_name && !isBadge && !(!hasPhotos && post.visit_id) && (
         <View style={styles.parkChipRow}>
@@ -1711,7 +1707,7 @@ function PostCardImpl({
           }}
         />
       )}
-      </CardBody>
+      </View>
     </View>
   );
 }
