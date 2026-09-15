@@ -435,6 +435,15 @@ export default function ProfileScreen() {
 
   const openPassport = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    // The zoom's pivot (pageZoomStyle, below) is a FIXED content-local Y —
+    // where the hole sits at scroll 0 — not a screen position, so it only
+    // lines up with the actual on-screen hole when this page is scrolled to
+    // the top. "Passport" under My Collection sits well below the fold, so
+    // opening it (this was the broken link) zoomed from a pivot that was
+    // off-screen above the viewport: the transition looked like a jump-cut
+    // instead of the card growing open. Scroll home first, same fix
+    // PassportBackdrop's own requestClose uses for the reverse case.
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
     setPassportOpen(true);
     Animated.timing(passportForeground, {
       toValue: 1, duration: 380, easing: Easing.in(Easing.cubic), useNativeDriver: true,

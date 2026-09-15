@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, Dimensions, ScrollView, StyleSheet,
+  ActivityIndicator, Animated, Dimensions, Easing, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
   type NativeScrollEvent, type NativeSyntheticEvent,
 } from 'react-native';
@@ -309,18 +309,12 @@ export function PassportBackdrop({
   const COLLAPSE_RANGE = Math.max(1, HERO_REST - COLLAPSED_H);
   // Two copies of the scroll offset: a native-driven one for the cover's
   // pin transform (runs on the UI thread, so the cover never swims a frame
-  // behind the list), and a JS mirror for everything that's a layout prop
-  // (the cover's height, the block's top, the face's collapsing sections)
-  // — those can't ride the native driver at all.
+  // behind the list), and a JS mirror used only to detect the collapse
+  // threshold below (layout-affecting values can't ride the native driver,
+  // which is why the collapse itself is a separate Animated.Value — see
+  // collapseAnim).
   const scrollYNative = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
-  const handleScroll = useMemo(() => Animated.event(
-    [{ nativeEvent: { contentOffset: { y: scrollYNative } } }],
-    {
-      useNativeDriver: true,
-      listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => scrollY.setValue(e.nativeEvent.contentOffset.y),
-    },
-  ), [scrollYNative, scrollY]);
   const scrollRef = useRef<ScrollView>(null);
   // Cover pin: the cover lives INSIDE the scroll content, so translating it
   // by +scrollY holds it at the top of the screen while the list moves.
@@ -328,12 +322,94 @@ export function PassportBackdrop({
   // cancelled — the cover rides down with the rubber band, the whole
   // passport dragging like a sheet, and a deep enough pull dismisses it.
   const pinY = scrollYNative.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolateLeft: 'clamp' });
-  const collapseShrink = scrollY.interpolate({
-    inputRange: [0, COLLAPSE_RANGE], outputRange: [0, COLLAPSE_RANGE], extrapolate: 'clamp',
-  });
-  const collapseFrac = scrollY.interpolate({
-    inputRange: [0, COLLAPSE_RANGE], outputRange: [0, 1], extrapolate: 'clamp',
-  });
+
+  // The collapse itself: a binary snap, not a scrub. This used to be
+  // `scrollY.interpolate(...)` directly — the cover tracked the raw scroll
+  // offset 1:1, so it partially collapsed by exactly however far the user's
+  // finger happened to have dragged, and reversed just as readily if they
+  // let up or scrolled back a few pixels. That read as fighting the user's
+  // own touch rather than responding to it. collapseAnim instead only ever
+  // plays ONE clean timing animation, from wherever it currently sits to a
+  // full 0 or 1, fired once by the threshold crossing in handleScroll below
+  // — further scrolling in the same direction while it plays (or after)
+  // does nothing more; only crossing back the other way fires the reverse.
+  const collapseAnim = useRef(new Animated.Value(0)).current;
+  const collapsedRef = useRef(false);
+  // True for the duration of a snap animation (both directions) — cleared
+  // only once it finishes uninterrupted. cardBlock's onLayout below checks
+  // this before trusting anything it measures: while this is true, the
+  // block's own height is mid-flight (its collapsing sections are still
+  // growing/shrinking every frame), and capturing that into state fed a
+  // real feedback loop — a fast flick to the top reaches scroll-rest well
+  // before this 280ms animation finishes, so every one of its remaining
+  // animation frames got captured as "the" resting height, each slightly
+  // different, each re-triggering the container that height itself feeds
+  // (HERO_REST → heroHeight). That loop, once started, kept running — and
+  // since this whole component stays mounted behind the profile screen even
+  // once closed, the still-oscillating height kept visibly flashing through
+  // the profile's hole after leaving the passport, not just while on it.
+  const snapInFlightRef = useRef(false);
+  // Two thresholds with a dead zone between them, not one — a single
+  // crossing point retriggered the snap on every pixel of natural finger
+  // wobble right around it (a real drag rarely holds still at an exact
+  // offset), each retrigger interrupting the in-flight one and reversing
+  // direction, which is what read as the stats flashing. Collapsing needs
+  // a deliberate scroll past 60%; returning to open needs back past 35%;
+  // nothing in between changes anything.
+  const COLLAPSE_ON  = COLLAPSE_RANGE * 0.6;
+  const COLLAPSE_OFF = COLLAPSE_RANGE * 0.35;
+  const collapseShrink = collapseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, COLLAPSE_RANGE] });
+  const collapseFrac = collapseAnim;
+
+  // Read fresh every render (cardH isn't known until the block's first
+  // at-rest measurement, so these start tiny and correct themselves a
+  // render or two after mount) without going through handleScroll's own
+  // deps — see below.
+  const thresholdsRef = useRef({ on: COLLAPSE_ON, off: COLLAPSE_OFF });
+  thresholdsRef.current = { on: COLLAPSE_ON, off: COLLAPSE_OFF };
+
+  // Created exactly once (deps are all stable refs, never anything
+  // render-derived like the thresholds) and never again — an
+  // Animated.event bound with useNativeDriver: true is registered with the
+  // native side, and re-creating it mid-lifetime (which an earlier version
+  // of this did, by depending on COLLAPSE_ON/COLLAPSE_OFF, both of which
+  // legitimately change once cardH gets its real measurement) re-registers
+  // that native listener while the ScrollView is live. That's what was
+  // actually behind the collapsed state flashing and sometimes never
+  // returning to expanded — not the threshold values themselves, which
+  // this component already re-reads live via thresholdsRef on every event.
+  const handleScroll = useMemo(() => Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollYNative } } }],
+    {
+      useNativeDriver: true,
+      listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const y = e.nativeEvent.contentOffset.y;
+        scrollY.setValue(y);
+        const { on, off } = thresholdsRef.current;
+        const snap = (toValue: 0 | 1) => {
+          collapsedRef.current = toValue === 1;
+          snapInFlightRef.current = true;
+          // Slower than the first pass at this (280ms) — PassportFace's own
+          // fade/weave choreography is deliberately timed in FRACTIONS of
+          // this duration (the avatar/bio section is fully gone by the
+          // halfway point, specifically so the rising stat items never
+          // cross through still-visible text — see its own comment).
+          // Scaling the total duration up keeps that relative timing intact
+          // while giving each phase more real time to read as a transition
+          // rather than a cut; 280ms compressed a fair amount of motion
+          // (fade + reflow + a rising row) into a ~140ms first half, which
+          // is what was reading as a flash even once the animation itself
+          // was firing correctly and exactly once.
+          Animated.timing(collapseAnim, {
+            toValue, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: false,
+          }).start(({ finished }) => { if (finished) snapInFlightRef.current = false; });
+        };
+        if (!collapsedRef.current && y > on) snap(1);
+        else if (collapsedRef.current && y < off) snap(0);
+      },
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [scrollYNative, scrollY, collapseAnim]);
   // Compact identity row + the cover's watermark strip trade places over
   // the last stretch of the collapse.
   const compactOpacity = collapseFrac.interpolate({ inputRange: [0.6, 1], outputRange: [0, 1], extrapolate: 'clamp' });
@@ -529,10 +605,26 @@ export function PassportBackdrop({
               onLayout={e => {
                 // The block shrinks as it collapses (its sections go to zero
                 // height) — only its at-rest height is the hole's height.
-                if (!listAtRestRef.current) return;
+                // Both checks matter: scroll can reach the top well before
+                // the (independently-timed) snap animation finishes growing
+                // this block back to its resting height, and capturing one
+                // of those still-mid-flight measurements is what fed the
+                // feedback loop described at snapInFlightRef above.
+                if (!listAtRestRef.current || snapInFlightRef.current) return;
                 const h = e.nativeEvent.layout.height;
+                // cardH is used locally (HERO_REST etc.) the whole time the
+                // passport is open and must keep tracking. onCardHeight only
+                // feeds the PROFILE screen's hole cutout, which is only
+                // ever seen while CLOSED — while open, that foreground is
+                // scaled 3x and pushed off-screen (see profile's own
+                // pageZoomStyle), so re-firing it here served no visible
+                // purpose. It fired anyway every time this block returned
+                // to its at-rest layout, including scrolling the passport's
+                // OWN list back to the top mid-session — a spurious update
+                // to the still-mounted foreground tree that visibly flashed
+                // its cream frame on top of the open passport for a frame.
                 setCardH(h);
-                onCardHeight(h);
+                if (!active) onCardHeight(h);
               }}
             >
               <Animated.View style={watermarkStyle} pointerEvents="none">
