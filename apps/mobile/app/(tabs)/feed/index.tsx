@@ -441,8 +441,11 @@ export default function FeedScreen() {
         ListEmptyComponent={ListEmpty}
         onEndReached={loadMoreFeed}
         onEndReachedThreshold={0.6}
-        style={{ marginTop: TOP_BAR_H }}
-        contentContainerStyle={[styles.listContent, { paddingTop: 8, paddingBottom: tabBarSpace + 8 }]}
+        // The list itself runs the full screen height (no marginTop) and
+        // carries the top bar's height as content padding instead, so posts
+        // scroll up underneath the bar's blur the same way the profile page's
+        // content does, rather than being clipped at its bottom edge.
+        contentContainerStyle={[styles.listContent, { paddingTop: TOP_BAR_H + 8, paddingBottom: tabBarSpace + 8 }]}
         showsVerticalScrollIndicator={false}
         onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
         scrollEventThrottle={16}
@@ -451,6 +454,9 @@ export default function FeedScreen() {
             refreshing={refreshing}
             onRefresh={() => loadFeed(true)}
             tintColor={palette.primary}
+            // Spinner would otherwise sit at the scroll view's very top,
+            // hidden behind the bar now that the list extends under it.
+            progressViewOffset={TOP_BAR_H}
           />
         }
         removeClippedSubviews

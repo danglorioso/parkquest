@@ -50,12 +50,13 @@ function frameHolePath(frameH: number, holeTop: number, holeH: number) {
   const x = PASSPORT_CARD_INSET, y = holeTop, w = PASSPORT_CARD_W, h = holeH, r = PASSPORT_CARD_RADIUS;
   // Before the backdrop has reported its card block's height there's no
   // hole to cut yet — a degenerate rounded rect would draw garbage arcs.
-  if (h < r * 2) return { frame: `M0 0 H${SCREEN_W} V${frameH} H0 Z`, hole: null };
+  // The rect runs 1pt past frameH — see the Svg it's drawn into.
+  if (h < r * 2) return { frame: `M0 0 H${SCREEN_W} V${frameH + 1} H0 Z`, hole: null };
   const hole =
     `M${x + r} ${y} H${x + w - r} A${r} ${r} 0 0 1 ${x + w} ${y + r} V${y + h - r} ` +
     `A${r} ${r} 0 0 1 ${x + w - r} ${y + h} H${x + r} A${r} ${r} 0 0 1 ${x} ${y + h - r} ` +
     `V${y + r} A${r} ${r} 0 0 1 ${x + r} ${y} Z`;
-  return { frame: `M0 0 H${SCREEN_W} V${frameH} H0 Z ${hole}`, hole };
+  return { frame: `M0 0 H${SCREEN_W} V${frameH + 1} H0 Z ${hole}`, hole };
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -569,7 +570,12 @@ export default function ProfileScreen() {
   // section below carrying that gap as paddingTop) so the hole's bottom
   // edge never sits on a view boundary — with a fractional holeH, that
   // seam let a hairline of the dark backdrop show under the card.
-  const FRAME_H = HOLE_TOP + holeH + HOLE_TOP_PAD;
+  // Ceiled: holeH is a measured (fractional) height, and a fractional
+  // FRAME_H put the frame's bottom edge on a sub-pixel boundary — the SVG
+  // rect anti-aliased its last row to partial alpha while the cream section
+  // below snapped to the pixel grid, leaving a 1px dark seam of backdrop
+  // showing through as a full-width black line under the card.
+  const FRAME_H = Math.ceil(HOLE_TOP + holeH + HOLE_TOP_PAD);
   const framePaths = frameHolePath(FRAME_H, HOLE_TOP, holeH);
 
   return (
@@ -620,7 +626,11 @@ export default function ProfileScreen() {
             behind the bar's blur there's cream, not the backdrop) down to
             the hole's bottom edge; the section below continues the cream. */}
         <View style={{ height: FRAME_H }} pointerEvents="box-none">
-          <Svg width={SCREEN_W} height={FRAME_H} style={StyleSheet.absoluteFill} pointerEvents="none">
+          {/* Drawn 1pt taller than its box so the frame overlaps under the
+              opaque section below (a later sibling, so it paints on top) —
+              no exposed edge row between the two for the backdrop to bleed
+              through, whatever the pixel rounding does. */}
+          <Svg width={SCREEN_W} height={FRAME_H + 1} style={{ position: 'absolute', top: 0, left: 0 }} pointerEvents="none">
             <Path d={framePaths.frame} fill={colorStr(C.bg)} fillRule="evenodd" />
             {framePaths.hole && (
               <Path d={framePaths.hole} fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth={0.5} />
