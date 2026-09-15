@@ -4,7 +4,8 @@ import {
   Text, TouchableOpacity, View,
   type NativeScrollEvent, type NativeSyntheticEvent,
 } from 'react-native';
-import Reanimated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Reanimated, { FadeInDown, FadeInUp, runOnJS } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -379,15 +380,51 @@ export function PassportBackdrop({
   const thresholdsRef = useRef({ on: heroH * 0.55, off: heroH * 0.35 });
   thresholdsRef.current = { on: heroH * 0.55, off: heroH * 0.35 };
 
+  const onRequestCloseRef = useRef(onRequestClose);
+  onRequestCloseRef.current = onRequestClose;
+  // Every close goes through here: the list scrolls back to the top so the
+  // cover (not whatever's scrolled to) is what's glued to the profile's
+  // hole by the time the close animation lands.
+  const requestClose = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    onRequestCloseRef.current();
+  }, []);
+
+  // How far past the top a pull has to go before it dismisses — as small
+  // as tolerable. This fires LIVE, mid-drag (inside the same scroll
+  // listener that drives the compact bar below), not on release: waiting
+  // for onScrollEndDrag meant the user had to pull however far AND let go
+  // before anything happened, which both let the rubber-band overscroll
+  // reveal the plain backdrop above the hero (the "white space") and never
+  // read as "instant." There's still necessarily ONE scroll event's worth
+  // of real overscroll travel before this can react and close things —
+  // dismissing is a JS-side state change (this whole layer un-mounting
+  // back to the profile screen), so there's no way to make that happen on
+  // the same native frame as the touch with zero JS round-trip at all; a
+  // small threshold plus the color-matched bleed behind the ScrollView
+  // (below) is what keeps that unavoidable sliver from reading as a glitch.
+  const DISMISS_PULL = 14;
+  // PassportBackdrop stays mounted for the app's whole lifetime (see the
+  // file-top comment) — closing never unmounts it, so a ref set once and
+  // left set would stay set forever, silently eating every dismiss after
+  // the first. Re-armed on every reopen instead of ever being reset by the
+  // dismiss path itself, which only runs once per genuine pull.
+  const dismissingRef = useRef(false);
+  useEffect(() => { if (active) dismissingRef.current = false; }, [active]);
   // Plain callback, not Animated.event — nothing here needs to read scroll
   // position on the native thread (there's no style left that tracks it),
   // so there's no native-driver handler to accidentally re-register mid-
   // session. useCallback with empty deps: created once, stays once,
   // reasoning entirely through refs/setState — no room for the stale- or
   // re-bound-handler class of bug the first version of this had.
-  const DISMISS_PULL = 80;
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
+    if (y < -DISMISS_PULL) {
+      if (dismissingRef.current) return;
+      dismissingRef.current = true;
+      requestClose();
+      return;
+    }
     const { on, off } = thresholdsRef.current;
     if (!compactShownRef.current && y > on) {
       compactShownRef.current = true;
@@ -401,18 +438,24 @@ export function PassportBackdrop({
         toValue: 0, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true,
       }).start(({ finished }) => { if (finished) setCompactVisible(false); });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [requestClose]);
 
-  const onRequestCloseRef = useRef(onRequestClose);
-  onRequestCloseRef.current = onRequestClose;
-  // Every close goes through here: the list scrolls back to the top so the
-  // cover (not whatever's scrolled to) is what's glued to the profile's
-  // hole by the time the close animation lands.
-  const requestClose = useCallback(() => {
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
-    onRequestCloseRef.current();
-  }, []);
+  // Edge-swipe to close, like iOS's own interactive-pop gesture — this
+  // screen isn't a real navigation route (it's a permanently-mounted
+  // overlay, not pushed on the Stack), so there's no native swipe-back to
+  // inherit; this reproduces the gesture by hand. Confined to a narrow
+  // strip right at the left edge (below) rather than the whole screen, so
+  // it never competes with ordinary drags on the stamps/cover — activation
+  // itself also requires a clearly horizontal motion (activeOffsetX) and
+  // bails out to whatever's underneath on a vertical one (failOffsetY), so
+  // even a touch that starts in the strip but turns into a scroll doesn't
+  // get eaten. requestClose isn't a worklet, so it's called via runOnJS.
+  const edgeSwipe = Gesture.Pan()
+    .activeOffsetX(15)
+    .failOffsetY([-15, 15])
+    .onEnd(e => {
+      if (e.translationX > 60 || e.velocityX > 600) runOnJS(requestClose)();
+    });
 
   const go = useCallback((path: string) => { requestClose(); router.push(path as never); }, [requestClose, router]);
 
@@ -448,13 +491,20 @@ export function PassportBackdrop({
       style={[StyleSheet.absoluteFillObject, { transform: [{ translateY: shiftY }] }]}
       pointerEvents={active ? 'auto' : 'none'}
     >
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: paper }]} />
+      {/* Paper backdrop, with a strip of the hero's own color bled across
+          its top — an overscroll bounce at the top reveals whatever's back
+          here for the instant before handleScroll's live check (below)
+          fires requestClose, and the plain cream/dark paper was that "white
+          space" showing through above the dark cover for that instant.
+          150px comfortably covers any pull the guard lets through. */}
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: paper }]}>
+        <View style={{ height: 150, backgroundColor: T.primaryDeep }} />
+      </View>
 
       <ScrollView
         ref={scrollRef}
         style={StyleSheet.absoluteFill}
         onScroll={handleScroll}
-        onScrollEndDrag={e => { if (e.nativeEvent.contentOffset.y < -DISMISS_PULL) requestClose(); }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
@@ -582,6 +632,13 @@ export function PassportBackdrop({
         </View>
       </ScrollView>
 
+      {/* Left-edge swipe-to-close hot zone — see edgeSwipe above. Sits on
+          top (after the ScrollView in paint order) but is only as wide as
+          the edge itself, so it never shadows real content underneath. */}
+      <GestureDetector gesture={edgeSwipe}>
+        <View style={st.edgeSwipeZone} />
+      </GestureDetector>
+
       {/* Compact bar — a completely separate, statically-laid-out overlay,
           not a collapsed version of the cover above. Only its own opacity
           is ever animated. */}
@@ -659,6 +716,9 @@ const st = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 2.2,
     color: 'rgba(201,169,74,0.28)',
+  },
+  edgeSwipeZone: {
+    position: 'absolute', top: 0, bottom: 0, left: 0, width: 24, zIndex: 15,
   },
   compactBar: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
