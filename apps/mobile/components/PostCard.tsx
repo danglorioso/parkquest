@@ -1384,6 +1384,22 @@ function PostCardImpl({
                 case 'edit-visit':
                   router.push(`/(modals)/log-visit?visitId=${post.visit_id}&postId=${post.id}` as never);
                   break;
+                case 'log-visit':
+                  // A NEW visit to this same park — not the one this post is
+                  // already about. Same park/name/states/image handoff
+                  // park/[id].tsx's own logVisitParams uses, so the modal's
+                  // "Where" step renders filled in immediately instead of
+                  // waiting on its own parks fetch.
+                  router.push({
+                    pathname: '/(modals)/log-visit',
+                    params: {
+                      parkCode: post.park_code ?? '',
+                      parkName: post.park_name ?? '',
+                      parkStates: post.park_states ?? '',
+                      parkImageUrl: post.park_image_url ?? '',
+                    },
+                  } as never);
+                  break;
                 case 'edit-caption':
                   setCaptionDraft(currentCaption ?? '');
                   setVisDraft(visibility ?? 'public');
@@ -1405,6 +1421,10 @@ function PostCardImpl({
             }}
             actions={isOwnPost ? [
               ...(post.visit_id != null ? [{ id: 'edit-visit', title: 'Edit visit', image: 'pencil', imageColor: menuInk }] : []),
+              // A separate, NEW visit to this park — distinct from editing
+              // the one above. Own posts can be about a park you'd happily
+              // log again (e.g. a badge post, or a return trip).
+              ...(post.park_code ? [{ id: 'log-visit', title: 'Log a visit', image: 'calendar.badge.plus', imageColor: menuInk }] : []),
               { id: 'edit-caption', title: 'Edit caption', image: 'text.bubble', imageColor: menuInk },
               { id: 'delete', title: 'Delete post', image: 'trash', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
             ] : [
@@ -1419,6 +1439,7 @@ function PostCardImpl({
                 imageColor: menuInk,
                 attributes: { disabled: bucketBusy },
               }] : []),
+              ...(post.park_code ? [{ id: 'log-visit', title: 'Log a visit', image: 'calendar.badge.plus', imageColor: menuInk }] : []),
               { id: 'report', title: reported ? 'Reported' : 'Report post', image: 'flag', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true, disabled: reported } },
               { id: 'block', title: 'Block user', image: 'person.crop.circle.badge.xmark', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
             ]}
@@ -1455,14 +1476,16 @@ function PostCardImpl({
           wraps to a second line before it ever truncates. */}
       {showPark && (
         <View style={styles.parkLine}>
-          <Text
-            style={[styles.parkText, { color: C.primary }]}
-            numberOfLines={2}
-            onPress={goPark}
-            suppressHighlighting
-          >
-            {post.park_name}
-          </Text>
+          <TouchableOpacity style={styles.parkLineTap} activeOpacity={0.7} onPress={goPark}>
+            {/* flex-start, not center — with a wrapped 2-line name, centering
+                the icon against the whole block floats it at mid-height;
+                flex-start plus a small nudge sits it beside the first line's
+                cap height instead, where a leading pin belongs. */}
+            <Ionicons name="location" size={14} color={C.primary} style={styles.parkPin} />
+            <Text style={[styles.parkText, { color: C.primary }]} numberOfLines={2}>
+              {post.park_name}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -1918,7 +1941,9 @@ const styles = StyleSheet.create({
   // Pulled up a touch toward the header it belongs to; the first-visit
   // row / story below keep their own spacing.
   parkLine: { paddingHorizontal: 18, marginTop: -4, paddingBottom: 12 },
-  parkText: { fontSize: 15, fontWeight: '600', lineHeight: 20, letterSpacing: -0.1 },
+  parkLineTap: { flexDirection: 'row', alignItems: 'flex-start', gap: 5 },
+  parkPin: { marginTop: 3 },
+  parkText: { flex: 1, fontSize: 15, fontWeight: '600', lineHeight: 20, letterSpacing: -0.1 },
   firstVisitStamp: {
     position: 'absolute', top: -22, right: -26,
     transform: [{ rotate: '-14deg' }],
