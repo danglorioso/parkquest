@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/lib/palette';
@@ -132,20 +132,41 @@ export function PassportFace({
   const statValSize = collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [26, 16] });
 
   const statsRowStyle = {
-    transform: [{ translateY: collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [0, bio ? -55 : 0] }) }],
     marginTop: collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [14, 12] }),
     paddingTop: collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [12, 8] }),
     height: collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [STAT_ROW_H * 2, STAT_ROW_H * 0.7] }),
   };
-  // Bio / progress bar / MRZ footer — none of them fit once collapsed, so
-  // they fade out (on top of getting clipped away regardless, since the
-  // stat grid slides up past them as it collapses).
-  const fadeAwayStyle = { opacity: collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) };
+  // Everything above the stat grid (avatar, name, handle, joined, bio) and
+  // everything below it (progress bar, MRZ footer) collapses to zero
+  // height while fading, so the collapsed cover is the single stat row and
+  // nothing else — the cover draws its own compact avatar + name row up on
+  // the top-bar line. Natural heights are measured off an inner wrapper
+  // (whose own layout never changes) and animated on the outer one; until
+  // measured, height stays auto. Fades finish by the halfway point, before
+  // the row-1 stats rise (riseLate), so the rise never crosses live text.
+  // (Before this the sections only faded: the avatar/name block still held
+  // its ~200pt of layout, pushing the stat row down past the collapsed
+  // hero's clipped bottom edge — the "collapsed header" was invisible and
+  // the handle sat right on the clip line.)
+  const [topH, setTopH] = useState(0);
+  const [bottomH, setBottomH] = useState(0);
+  const collapseSection = (h: number) => ({
+    height: h > 0 ? collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [h, 0] }) : undefined,
+    opacity: collapseFrac.interpolate({ inputRange: [0, 0.5], outputRange: [1, 0], extrapolate: 'clamp' as const }),
+    overflow: 'hidden' as const,
+  });
 
   const statItemStyle = (i: number) => {
     const row = Math.floor(i / 2);
     const expandedX = Animated.multiply(halfW, i % 2);
-    const collapsedX = Animated.multiply(quarterW, i);
+    // Weave, not shove: the collapsed row reads NP · BADGES · AREAS ·
+    // FRIENDS — each row-1 stat rises into the slot right beside the stat
+    // that was above it (row-0 col c → col 2c, row-1 col c → col 2c+1).
+    // Row-0 stats barely move and row-1 stats travel a quarter width, then
+    // straight up into an already-vacated slot, instead of both row-1 stats
+    // sliding all the way over to the right half.
+    const collapsedCol = (i % 2) * 2 + row;
+    const collapsedX = Animated.multiply(quarterW, collapsedCol);
     const translateX = Animated.add(expandedX, Animated.multiply(Animated.subtract(collapsedX, expandedX), settleEarly));
     const translateY = row === 0 ? 0 : Animated.multiply(STAT_ROW_H, Animated.subtract(1, riseLate));
     return { width: itemWidth, transform: [{ translateX }, { translateY }] };
@@ -172,26 +193,30 @@ export function PassportFace({
         reportStats();
       } : undefined}
     >
-      {onAvatarPress ? (
-        <TouchableOpacity
-          style={[st.avatarWrap, { borderColor: T.hairline, backgroundColor: T.surface }]}
-          activeOpacity={avatarUrl ? 0.85 : 1}
-          disabled={!avatarUrl}
-          onPress={onAvatarPress}
-        >
-          {avatarContent}
-        </TouchableOpacity>
-      ) : (
-        <View style={[st.avatarWrap, { borderColor: T.hairline, backgroundColor: T.surface }]}>
-          {avatarContent}
+      <Animated.View style={[st.section, collapseSection(topH)]}>
+        <View style={st.sectionInner} onLayout={e => setTopH(e.nativeEvent.layout.height)}>
+          {onAvatarPress ? (
+            <TouchableOpacity
+              style={[st.avatarWrap, { borderColor: T.hairline, backgroundColor: T.surface }]}
+              activeOpacity={avatarUrl ? 0.85 : 1}
+              disabled={!avatarUrl}
+              onPress={onAvatarPress}
+            >
+              {avatarContent}
+            </TouchableOpacity>
+          ) : (
+            <View style={[st.avatarWrap, { borderColor: T.hairline, backgroundColor: T.surface }]}>
+              {avatarContent}
+            </View>
+          )}
+
+          <Text style={st.name} numberOfLines={1} adjustsFontSizeToFit>{name ?? 'Explorer'}</Text>
+          {username ? <Text style={st.handle}>@{username}</Text> : null}
+          {joinDate ? <Text style={st.joined}>Joined {joinDate}</Text> : null}
+
+          {bio ? <Text style={st.bio}>{bio}</Text> : null}
         </View>
-      )}
-
-      <Text style={st.name} numberOfLines={1} adjustsFontSizeToFit>{name ?? 'Explorer'}</Text>
-      {username ? <Text style={st.handle}>@{username}</Text> : null}
-      {joinDate ? <Text style={st.joined}>Joined {joinDate}</Text> : null}
-
-      {bio ? <Animated.Text style={[st.bio, fadeAwayStyle]}>{bio}</Animated.Text> : null}
+      </Animated.View>
 
       <Animated.View
         style={[st.statsRow, statsRowStyle]}
@@ -241,17 +266,19 @@ export function PassportFace({
         })}
       </Animated.View>
 
-      <Animated.View style={[fadeAwayStyle, { width: '100%' }]}>
-        <View style={st.progressWrap}>
-          <Text style={st.progressText}>{progressLabel}</Text>
-          <View style={st.progressTrack}>
-            <View style={[st.progressFill, { width: `${progressPct}%` as `${number}%` }]} />
+      <Animated.View style={[st.section, collapseSection(bottomH)]}>
+        <View style={st.sectionInner} onLayout={e => setBottomH(e.nativeEvent.layout.height)}>
+          <View style={st.progressWrap}>
+            <Text style={st.progressText}>{progressLabel}</Text>
+            <View style={st.progressTrack}>
+              <View style={[st.progressFill, { width: `${progressPct}%` as `${number}%` }]} />
+            </View>
           </View>
-        </View>
 
-        <View style={st.footer}>
-          <Text style={st.mrzText} numberOfLines={1}>{mrzLine1}</Text>
-          <Text style={st.mrzText} numberOfLines={1}>{mrzLine2}</Text>
+          <View style={st.footer}>
+            <Text style={st.mrzText} numberOfLines={1}>{mrzLine1}</Text>
+            <Text style={st.mrzText} numberOfLines={1}>{mrzLine2}</Text>
+          </View>
         </View>
       </Animated.View>
     </View>
@@ -259,6 +286,8 @@ export function PassportFace({
 }
 
 const st = StyleSheet.create({
+  section: { alignSelf: 'stretch' },
+  sectionInner: { alignSelf: 'stretch', alignItems: 'center' },
   avatarWrap: {
     padding: 1.5,
     borderRadius: 50,
@@ -290,11 +319,15 @@ const st = StyleSheet.create({
     fontSize: 26, fontWeight: '800', color: GOLD, marginTop: 2, letterSpacing: -0.3, textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
-  progressWrap: { gap: 6, marginTop: 18, marginBottom: 10 },
+  // alignSelf stretch: these sit inside a centering wrapper (sectionInner)
+  // — without it the block shrink-wraps to the label's text width and the
+  // bar under "N of 63 parks stamped" ends where the words do instead of
+  // running the full card width.
+  progressWrap: { alignSelf: 'stretch', gap: 6, marginTop: 18, marginBottom: 10 },
   progressText: { fontSize: 11, fontWeight: '600', color: GOLD, opacity: 0.7, letterSpacing: 0.5 },
   progressTrack: { height: 3, backgroundColor: GOLD + '22', borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: 3, backgroundColor: GOLD, borderRadius: 2, opacity: 0.85 },
-  footer: { marginTop: 2, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.15)' },
+  footer: { alignSelf: 'stretch', marginTop: 2, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.15)' },
   mrzText: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 9, color: 'rgba(201,169,74,0.35)', letterSpacing: 1.5, lineHeight: 14,

@@ -33,6 +33,12 @@ export default clerkMiddleware(async (auth, req) => {
   if (req.nextUrl.pathname.startsWith('/api/')) {
     return NextResponse.next();
   }
+
+  // Link-preview image routes must be publicly reachable — crawlers (iMessage,
+  // Slack, etc.) fetch these signed-out; a redirect-to-/ here breaks the preview
+  if (req.nextUrl.pathname.startsWith('/opengraph-image') || req.nextUrl.pathname.startsWith('/twitter-image')) {
+    return NextResponse.next();
+  }
   
   // Allow auth pages — page components handle their own redirect logic
   if (req.nextUrl.pathname.startsWith('/sign-in') || req.nextUrl.pathname.startsWith('/sign-up')) {

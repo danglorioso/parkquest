@@ -56,6 +56,7 @@ export async function GET(request: Request) {
         park_name: parks.name,
         park_image_url: parks.image_url,
         park_states: parks.states,
+        park_stamp_glyph: parks.stamp_glyph,
         is_national_park: sql<boolean>`COALESCE(${parks.is_national_park}, false)`,
         // Viewer's own relationship to this post's park — not the author's.
         viewer_visited: sql<boolean>`EXISTS(SELECT 1 FROM visits vv WHERE vv.clerk_user_id = ${userId} AND vv.park_code = ${posts.park_code} AND vv.visited_date IS NOT NULL)`,

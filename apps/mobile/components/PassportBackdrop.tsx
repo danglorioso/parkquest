@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, Dimensions, StyleSheet,
+  ActivityIndicator, Animated, Dimensions, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
+  type NativeScrollEvent, type NativeSyntheticEvent,
 } from 'react-native';
 import Reanimated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { HolographicShine } from '@/components/HolographicShine';
 import { PassportFace, type PassportFaceStatItem, type PassportStatsRect } from '@/components/PassportFace';
 import { GrowTouchable } from '@/components/GrowTouchable';
+import { Avatar } from '@/components/Avatar';
 import { ParkStamp } from '@/components/ParkStamp';
 import { StampDetailModal } from '@/components/StampDetailModal';
 import {
@@ -297,21 +299,66 @@ export function PassportBackdrop({
 
   // ── Collapse-on-scroll ── (unrelated to `active` — this is purely about
   // the stamps/badges list scrolling underneath the cover once revealed)
-  const COLLAPSED_H = insets.top * 2 + 190;
+  // Collapsed cover (screen coords): the compact avatar + name row on the
+  // top bar's line (insets.top + 4, 44 tall), the single stat row under it
+  // at ~insets.top + 74, and 20pt of air below that. Hero coords add one
+  // more insets.top since the hero starts at -insets.top.
+  const COLLAPSED_H = insets.top * 2 + 124;
   // inputRange must be strictly increasing — guard the one frame before
   // the block has reported its height.
   const COLLAPSE_RANGE = Math.max(1, HERO_REST - COLLAPSED_H);
+  // Two copies of the scroll offset: a native-driven one for the cover's
+  // pin transform (runs on the UI thread, so the cover never swims a frame
+  // behind the list), and a JS mirror for everything that's a layout prop
+  // (the cover's height, the block's top, the face's collapsing sections)
+  // — those can't ride the native driver at all.
+  const scrollYNative = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
-  const handleScroll = Animated.event(
-    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-    { useNativeDriver: false },
-  );
+  const handleScroll = useMemo(() => Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollYNative } } }],
+    {
+      useNativeDriver: true,
+      listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => scrollY.setValue(e.nativeEvent.contentOffset.y),
+    },
+  ), [scrollYNative, scrollY]);
+  const scrollRef = useRef<ScrollView>(null);
+  // Cover pin: the cover lives INSIDE the scroll content, so translating it
+  // by +scrollY holds it at the top of the screen while the list moves.
+  // Clamped at 0 so an overscroll pull-down (negative offset) is NOT
+  // cancelled — the cover rides down with the rubber band, the whole
+  // passport dragging like a sheet, and a deep enough pull dismisses it.
+  const pinY = scrollYNative.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolateLeft: 'clamp' });
   const collapseShrink = scrollY.interpolate({
     inputRange: [0, COLLAPSE_RANGE], outputRange: [0, COLLAPSE_RANGE], extrapolate: 'clamp',
   });
   const collapseFrac = scrollY.interpolate({
     inputRange: [0, COLLAPSE_RANGE], outputRange: [0, 1], extrapolate: 'clamp',
   });
+  // Compact identity row + the cover's watermark strip trade places over
+  // the last stretch of the collapse.
+  const compactOpacity = collapseFrac.interpolate({ inputRange: [0.6, 1], outputRange: [0, 1], extrapolate: 'clamp' });
+  const [wmH, setWmH] = useState(0);
+  const watermarkStyle = {
+    marginTop: -8,
+    marginBottom: collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }),
+    height: wmH > 0 ? collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [wmH, 0] }) : undefined,
+    opacity: collapseFrac.interpolate({ inputRange: [0, 0.5], outputRange: [1, 0], extrapolate: 'clamp' }),
+    overflow: 'hidden' as const,
+  };
+
+  const onRequestCloseRef = useRef(onRequestClose);
+  onRequestCloseRef.current = onRequestClose;
+  // Every close goes through here: the list scrolls back to the top so the
+  // cover is expanded and glued to the profile's hole by the time the
+  // close animation lands — a collapsed cover showing through the hole
+  // would read as a broken card.
+  const requestClose = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    onRequestCloseRef.current();
+  }, []);
+  // Pull-to-dismiss: releasing an overscroll deeper than this closes the
+  // passport (sheet-like); anything shorter just rubber-bands back.
+  const DISMISS_PULL = 80;
   // The face re-reports its stat grid on every layout pass, including each
   // frame of the collapse (the row's height/padding are layout props driven
   // off scrollY) — only the at-rest geometry is any use to the profile
@@ -330,15 +377,17 @@ export function PassportBackdrop({
   }, []);
 
   const heroHeight = Animated.subtract(HERO_REST, collapseShrink);
-  const contentTop = Animated.add(-insets.top, heroHeight);
-  // The block sits at the hole at rest and rides up to just under the
-  // status bar as the cover collapses on scroll.
+  // The block sits at the hole at rest and rides up under the compact
+  // identity row as the cover collapses on scroll — by then its only
+  // remaining content is the single stat row (its watermark and the face's
+  // other sections have collapsed to zero height), which lands at about
+  // insets.top + 74 on screen.
   const blockTop = collapseFrac.interpolate({
-    inputRange: [0, 1], outputRange: [blockTopRest, insets.top * 2 + 12],
+    inputRange: [0, 1], outputRange: [blockTopRest, insets.top * 2 + 44],
   });
   const containerWidthAnim = useRef(new Animated.Value(PASSPORT_CARD_W)).current;
 
-  const go = (path: string) => { onRequestClose(); router.push(path as never); };
+  const go = (path: string) => { requestClose(); router.push(path as never); };
   const statItems: PassportFaceStatItem[] = [
     { label: 'NP VISITED', value: badgesLoaded ? `${stats.parksVisited}/${stats.parksTotal}` : '–' },
     { label: 'NPS AREAS', value: badgesLoaded ? String(stats.areasVisited) : '–' },
@@ -368,64 +417,31 @@ export function PassportBackdrop({
         <View style={{ height: HERO_REST - insets.top, backgroundColor: T.primaryDeep }} />
       </View>
 
-      <Animated.View
-        style={[st.hero, { top: -insets.top, left: 0, width: SCREEN_W, height: heroHeight, backgroundColor: T.primaryDeep }]}
+      {/* One scroll view for the whole passport. The cover is INSIDE its
+          content (drawn after the sheet, so on top; pinned to the screen
+          top by pinY), which is what lets a drag that starts on the cover
+          scroll the stamps and collapse the cover — the old layout kept the
+          cover outside the list as a sibling, and touches never reach a
+          sibling's scroll view. The sheet starts under the cover's rest
+          height and scrolls up exactly as fast as the cover shrinks (both
+          track scrollY), then keeps going underneath it once collapsed. */}
+      <Animated.ScrollView
+        ref={scrollRef}
+        style={StyleSheet.absoluteFill}
+        onScroll={handleScroll}
+        onScrollEndDrag={e => { if (e.nativeEvent.contentOffset.y < -DISMISS_PULL) requestClose(); }}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: HERO_REST - insets.top }}
       >
-        <View style={{ position: 'absolute', top: 0, left: 0, width: SCREEN_W, height: PATTERN_H }}>
-          <HolographicShine
-            staticSize={{ w: SCREEN_W, h: PATTERN_H }}
-            edgeTextSize={edgeTextSize}
-            edgeTextSpan={edgeTextSpan}
-            wavesAboveSeal
-          />
-        </View>
-        <Animated.View
-          style={[st.cardBlock, { top: blockTop }]}
-          onLayout={e => {
-            const h = e.nativeEvent.layout.height;
-            setCardH(h);
-            onCardHeight(h);
-          }}
-        >
-          <Text style={st.watermark} numberOfLines={1} ellipsizeMode="clip" pointerEvents="none">
-            {'PARKQUEST • '.repeat(16)}
-          </Text>
-          <PassportFace
-            avatarUrl={profile.avatarUrl}
-            name={profile.name}
-            username={profile.username || null}
-            joinDate={profile.joinDate}
-            bio={profile.bio}
-            statItems={statItems}
-            progressLabel={progressLabel}
-            progressPct={stats.parksTotal > 0 ? (stats.parksVisited / stats.parksTotal) * 100 : 0}
-            mrzLine1={mrzLine1}
-            mrzLine2={mrzLine2}
-            containerWidth={containerWidthAnim}
-            collapseFrac={collapseFrac}
-            onAvatarPress={onAvatarPress}
-            onStatsLayout={onStatsLayout ? handleStatsLayout : undefined}
-          />
-        </Animated.View>
-      </Animated.View>
-
-      <View style={[st.topBar, { top: insets.top + 4 }]} pointerEvents="box-none">
-        <GrowTouchable onPress={onRequestClose} hitSlop={8} style={st.topBarBtn}>
-          <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
-          <Ionicons name="close" size={22} color={GOLD} />
-        </GrowTouchable>
-        <GrowTouchable onPress={() => router.push('/passport-share' as never)} hitSlop={8} style={st.topBarBtn}>
-          <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
-          <Ionicons name="share-outline" size={20} color={GOLD} />
-        </GrowTouchable>
-      </View>
-
-      <Animated.View style={[st.contentWrap, { top: contentTop, backgroundColor: paper }]}>
-        <Animated.ScrollView
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+        <View
+          style={[st.sheet, {
+            backgroundColor: paper,
+            // Always at least a screen tall so the sheet, not the raw
+            // paper backdrop, is what's under a short stamp list.
+            minHeight: SCREEN_H - (HERO_REST - insets.top),
+            paddingBottom: insets.bottom + 40,
+          }]}
         >
           <View style={st.sectionHead}>
             <Text style={[st.sectionKicker, { color: mute }]}>NATIONAL PARK STAMPS</Text>
@@ -489,8 +505,88 @@ export function PassportBackdrop({
             <Text style={[st.seeAllText, { color: T.primary }]}>See full badge collection</Text>
             <Ionicons name="chevron-forward" size={15} color={T.primary} />
           </TouchableOpacity>
-        </Animated.ScrollView>
-      </Animated.View>
+        </View>
+
+        {/* Cover. Outer view: native-driven pin (transform only), sized to
+            the cover's rest height but box-none so it never intercepts a
+            stamp that has scrolled up under the collapsed cover. Inner
+            view: the JS-driven collapsing height (a layout prop, so it
+            can't share an Animated node with the native transform). */}
+        <Animated.View style={[st.heroPin, { height: HERO_REST, transform: [{ translateY: pinY }] }]} pointerEvents="box-none">
+          <Animated.View
+            style={[st.hero, { top: -insets.top, left: 0, width: SCREEN_W, height: heroHeight, backgroundColor: T.primaryDeep }]}
+          >
+            <View style={{ position: 'absolute', top: 0, left: 0, width: SCREEN_W, height: PATTERN_H }}>
+              <HolographicShine
+                staticSize={{ w: SCREEN_W, h: PATTERN_H }}
+                edgeTextSize={edgeTextSize}
+                edgeTextSpan={edgeTextSpan}
+                wavesAboveSeal
+              />
+            </View>
+            <Animated.View
+              style={[st.cardBlock, { top: blockTop }]}
+              onLayout={e => {
+                // The block shrinks as it collapses (its sections go to zero
+                // height) — only its at-rest height is the hole's height.
+                if (!listAtRestRef.current) return;
+                const h = e.nativeEvent.layout.height;
+                setCardH(h);
+                onCardHeight(h);
+              }}
+            >
+              <Animated.View style={watermarkStyle} pointerEvents="none">
+                <Text
+                  style={st.watermark}
+                  numberOfLines={1}
+                  ellipsizeMode="clip"
+                  onLayout={e => setWmH(e.nativeEvent.layout.height)}
+                >
+                  {'PARKQUEST • '.repeat(16)}
+                </Text>
+              </Animated.View>
+              <PassportFace
+                avatarUrl={profile.avatarUrl}
+                name={profile.name}
+                username={profile.username || null}
+                joinDate={profile.joinDate}
+                bio={profile.bio}
+                statItems={statItems}
+                progressLabel={progressLabel}
+                progressPct={stats.parksTotal > 0 ? (stats.parksVisited / stats.parksTotal) * 100 : 0}
+                mrzLine1={mrzLine1}
+                mrzLine2={mrzLine2}
+                containerWidth={containerWidthAnim}
+                collapseFrac={collapseFrac}
+                onAvatarPress={onAvatarPress}
+                onStatsLayout={onStatsLayout ? handleStatsLayout : undefined}
+              />
+            </Animated.View>
+            {/* Collapsed-state identity: small avatar + name + handle,
+                centered between the close and share buttons on their own
+                line. Cross-fades in as the face's big avatar/name section
+                collapses away. */}
+            <Animated.View style={[st.compactId, { top: insets.top * 2 + 4, opacity: compactOpacity }]} pointerEvents="none">
+              <Avatar url={profile.avatarUrl} name={profile.name ?? 'Explorer'} size={30} />
+              <Text style={st.compactName} numberOfLines={1}>{profile.name ?? 'Explorer'}</Text>
+              {profile.username ? (
+                <Text style={st.compactHandle} numberOfLines={1}>@{profile.username}</Text>
+              ) : null}
+            </Animated.View>
+          </Animated.View>
+        </Animated.View>
+      </Animated.ScrollView>
+
+      <View style={[st.topBar, { top: insets.top + 4 }]} pointerEvents="box-none">
+        <GrowTouchable onPress={requestClose} hitSlop={8} style={st.topBarBtn}>
+          <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
+          <Ionicons name="close" size={22} color={GOLD} />
+        </GrowTouchable>
+        <GrowTouchable onPress={() => router.push('/passport-share' as never)} hitSlop={8} style={st.topBarBtn}>
+          <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
+          <Ionicons name="share-outline" size={20} color={GOLD} />
+        </GrowTouchable>
+      </View>
 
       {selectedStamp && (
         <StampDetailModal
@@ -498,12 +594,12 @@ export function PassportBackdrop({
           onClose={() => setSelectedStamp(null)}
           onViewVisits={s => {
             setSelectedStamp(null);
-            onRequestClose();
+            requestClose();
             router.push({ pathname: '/profile/journal', params: { parkCode: s.park_code, parkName: s.name } } as never);
           }}
           onParkInfo={s => {
             setSelectedStamp(null);
-            onRequestClose();
+            requestClose();
             router.push(`/park/${s.park_code}` as never);
           }}
         />
@@ -535,14 +631,26 @@ const st = StyleSheet.create({
     paddingHorizontal: CARD_PAD_H,
     paddingVertical: CARD_PAD_V,
   },
+  // Vertical margins live on its collapsing wrapper (watermarkStyle).
   watermark: {
-    marginTop: -8,
     marginHorizontal: -CARD_PAD_H,
-    marginBottom: 12,
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 2.2,
     color: 'rgba(201,169,74,0.28)',
+  },
+  heroPin: {
+    position: 'absolute', top: 0, left: 0, width: SCREEN_W,
+  },
+  compactId: {
+    position: 'absolute', left: 64, right: 64, height: 44,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9,
+  },
+  compactName: {
+    fontSize: 15, fontWeight: '800', color: GOLD, letterSpacing: -0.2, flexShrink: 1,
+  },
+  compactHandle: {
+    fontSize: 12, fontWeight: '600', color: 'rgba(201,169,74,0.85)', letterSpacing: 0.6, flexShrink: 1,
   },
   topBar: {
     position: 'absolute', left: 12, right: 12, zIndex: 20,
@@ -552,8 +660,7 @@ const st = StyleSheet.create({
     width: 44, height: 44, borderRadius: 22, overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center',
   },
-  contentWrap: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
+  sheet: {
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
     overflow: 'hidden',
   },

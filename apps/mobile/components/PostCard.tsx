@@ -23,10 +23,12 @@ import { emitUserBlocked } from '@/lib/blocking';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { relTime } from '@/lib/dates';
 import { parkColor, parkGradientIndex } from '@/lib/parkColors';
+import { fullStateName } from '@/lib/stateNames';
 import { ParkStamp } from '@/components/ParkStamp';
+import { BadgePatch } from '@/components/BadgeDetailModal';
 import { showToast } from '@/lib/toast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ReportTargetType, ReportReason } from '@parkquest/types';
+import type { ReportTargetType, ReportReason, CustomStampGlyph } from '@parkquest/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,6 +44,7 @@ export interface FeedPost {
   park_name: string | null;
   park_image_url: string | null;
   park_states?: string | null;
+  park_stamp_glyph?: CustomStampGlyph | null;
   is_national_park?: boolean | null;
   // Viewer's own relationship to this post's park — not the author's.
   viewer_visited?: boolean | null;
@@ -99,32 +102,28 @@ interface Liker {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Plain words for the details line — read as a sentence fragment, so
+// "Partly cloudy · Hiking, Photography · With Sam · Would go back".
 const WEATHER_LABELS: Record<string, string> = {
-  clear: 'Clear', partly: 'Partly cloudy', cloudy: 'Cloudy',
+  clear: 'Clear skies', partly: 'Partly cloudy', cloudy: 'Overcast',
   rain: 'Rain', storm: 'Storms', snow: 'Snow', fog: 'Fog', wind: 'Windy',
 };
-const WEATHER_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
-  clear: 'sunny-outline', partly: 'partly-sunny-outline', cloudy: 'cloud-outline',
-  rain: 'rainy-outline', storm: 'thunderstorm-outline', snow: 'snow-outline',
-  fog: 'water-outline', wind: 'speedometer-outline',
-};
 const WOULD_RETURN_LABELS: Record<string, string> = {
-  yes: 'Definitely', maybe: 'Maybe', no: 'Probably not',
-};
-const WOULD_RETURN_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
-  yes: 'heart-outline', maybe: 'repeat-outline', no: 'cloud-outline',
-};
-const ACTIVITY_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
-  hiking: 'walk-outline', camping: 'bonfire-outline', backpacking: 'walk-outline',
-  climbing: 'trending-up-outline', kayaking: 'boat-outline', rafting: 'boat-outline',
-  fishing: 'fish-outline', diving: 'water-outline', wildlife: 'paw-outline',
-  photography: 'camera-outline', stargazing: 'moon-outline', tours: 'map-outline',
-  cycling: 'bicycle-outline', mountaineering: 'trending-up-outline',
+  yes: 'Would go back', maybe: 'Might go back', no: "Wouldn't go back",
 };
 const CROWD_LABELS  = ['Empty', 'Quiet', 'Moderate', 'Busy', 'Packed'];
 const DIFF_LABELS   = ['Easy', 'Light', 'Moderate', 'Hard', 'Strenuous'];
-// Low-to-high tier colors shared by the crowd/difficulty scale bars.
-const TIER_COLORS = ['#4C9A5B', '#8FB14E', '#D4A93F', '#D97F3D', '#C0483F'];
+const STAR = '#C49A28';
+
+// "Jun 12" this year, "Jun 12, 2024" otherwise — the year only when it
+// carries information.
+function fmtVisitDate(iso: string) {
+  const d = new Date(iso);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }),
+  });
+}
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 // iOS system red — matches the native destructive text color these menu
@@ -542,34 +541,32 @@ function BadgePostBody({ badgeId }: { badgeId: string }) {
 
   if (!ready) {
     return (
-      <View style={[styles.badgeBody, { borderColor: C.hairline, backgroundColor: C.surfaceAlt }]}>
-        <View style={[styles.badgeCircle, { backgroundColor: C.hairline, shadowOpacity: 0, elevation: 0 }]} />
+      <View style={styles.badgeRow}>
+        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: C.hairline }} />
         <View style={styles.badgeText}>
-          <View style={{ width: 72, height: 11, borderRadius: 4, backgroundColor: C.hairline, marginBottom: 8 }} />
-          <View style={{ width: '55%', height: 15, borderRadius: 5, backgroundColor: C.hairline }} />
+          <View style={{ width: '55%', height: 15, borderRadius: 5, backgroundColor: C.hairline, marginBottom: 8 }} />
+          <View style={{ width: 96, height: 11, borderRadius: 4, backgroundColor: C.hairline }} />
         </View>
       </View>
     );
   }
 
-  const col = badgeColors(badge);
-
+  // The same embroidered patch the passport and badge pages draw, at post
+  // size — the badge's own artwork carries the tier color, so the row
+  // around it stays plain: name, then "Gold · what it's for" in one muted
+  // line. (Was a tinted, glowing box with a tracked "GOLD BADGE" label.)
+  const tier = badge?.tier ?? 'bronze';
   return (
-    <View style={[styles.badgeBody, {
-      borderColor: col.fill + '60',
-      backgroundColor: col.fill + '1a',
-    }]}>
-      <View style={[styles.badgeCircle, { shadowColor: col.fill, backgroundColor: col.fill }]}>
-        <Text style={styles.badgeEmoji}>{badge?.emoji ?? '🏅'}</Text>
-      </View>
+    <View style={styles.badgeRow}>
+      <BadgePatch emoji={badge?.emoji ?? '🏅'} tier={tier} colors={badge?.colors} size={56} earned />
       <View style={styles.badgeText}>
-        <Text style={[styles.badgeTierLabel, { color: col.fill }]}>
-          {(badge?.tier ?? 'bronze').toUpperCase()} BADGE
+        <Text style={styles.badgeName} numberOfLines={2}>{badge?.name ?? badgeId}</Text>
+        <Text style={styles.badgeMeta} numberOfLines={3}>
+          <Text style={{ color: badgeColors(badge).fill, fontWeight: '700' }}>
+            {tier.charAt(0).toUpperCase() + tier.slice(1)}
+          </Text>
+          {badge?.description ? `  ·  ${badge.description}` : ''}
         </Text>
-        <Text style={styles.badgeName}>{badge?.name ?? badgeId}</Text>
-        {badge?.description ? (
-          <Text style={styles.badgeDesc}>{badge.description}</Text>
-        ) : null}
       </View>
     </View>
   );
@@ -612,186 +609,147 @@ function ParkHeroBanner({ post, onPress }: { post: FeedPost; onPress?: () => voi
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.parkHeroContent}>
+          {/* Name, then the state(s) it's in — the date is in the stat
+              strip below the banner, not here. */}
           <Text style={styles.parkHeroName} numberOfLines={2}>
             {post.park_name ?? 'National Park'}
           </Text>
-          {post.visit_date && (
-            <Text style={styles.parkHeroDate}>
-              {new Date(post.visit_date).toLocaleDateString('en-US', {
-                month: 'long', day: 'numeric', year: 'numeric',
-              })}
+          {post.park_states ? (
+            <Text style={styles.parkHeroStates} numberOfLines={1}>
+              {fullStateName(post.park_states)}
             </Text>
-          )}
+          ) : null}
         </View>
       </View>
     </TouchableOpacity>
   );
 }
 
-// ── MetaChip ──────────────────────────────────────────────────────────────────
+// ── Visit stats + facts ───────────────────────────────────────────────────────
+// Everything measurable about the visit, in plain words. No pill per item,
+// no icon per item, no colored scale bars — "Quiet" and "Strenuous" already
+// say where on the scale the visit landed, and a reader scans a sentence
+// faster than a row of tags.
+//
+// The stat strip (rating / crowd / difficulty, the same value-over-label
+// shape HikeStatsCard uses) sits ABOVE the picture as three fixed columns —
+// rating flush left, crowd dead center, difficulty flush right — so the
+// layout doesn't shift when one of the three wasn't logged. The details
+// line, notes and hike stats go under the picture.
 
-function MetaChip({ icon, children }: { icon?: React.ComponentProps<typeof Ionicons>['name']; children: React.ReactNode }) {
-  return (
-    <View style={styles.chip}>
-      {icon && <Ionicons name={icon} size={11} color={C.inkSoft} style={{ marginRight: 3 }} />}
-      {typeof children === 'string'
-        ? <Text style={styles.chipText}>{children}</Text>
-        : children}
-    </View>
-  );
-}
-
-// ── TierScale ─────────────────────────────────────────────────────────────────
-
-function TierScale({ label, value, labels, valueColor, valueText }: {
-  label: string; value: number; labels?: string[]; valueColor?: string; valueText?: string;
+function Stat({ value, label, star, align }: {
+  value: string; label: string; star?: boolean; align: 'flex-start' | 'center' | 'flex-end';
 }) {
-  const filled = Math.round(value);
-  const color = valueColor ?? TIER_COLORS[filled - 1];
   return (
-    <View style={styles.tierRow}>
-      <Text style={styles.tierLabel} numberOfLines={1}>{label}</Text>
-      <View style={styles.tierBar}>
-        {Array.from({ length: 5 }, (_, i) => (
-          <View
-            key={i}
-            style={[styles.tierSegment, { backgroundColor: i < filled ? color : C.hairline }]}
-          />
-        ))}
+    <View style={[styles.stat, { alignItems: align }]}>
+      <View style={styles.statValueRow}>
+        {star && <Ionicons name="star" size={13} color={STAR} />}
+        <Text style={styles.statValue} numberOfLines={1}>{value}</Text>
       </View>
-      <Text style={[styles.tierValue, { color }]}>{valueText ?? labels?.[value - 1]}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
-// Rating gets actual stars, not the same segment-bar shape Crowd/Difficulty
-// use — same tierRow/tierLabel/tierValue columns for alignment, but a
-// visually distinct middle column so the headline rating doesn't read as
-// just another tier scale. Half-star aware (Math.round alone loses .5s).
-function RatingRow({ value }: { value: number }) {
-  const valueText = value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
+function VisitStatsStrip({ post }: { post: FeedPost }) {
+  const date = post.visit_date ? fmtVisitDate(post.visit_date) : null;
+  const r = post.visit_rating;
+  const rating = r ? (r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)) : null;
+  const crowd = post.visit_crowd
+    ? (CROWD_LABELS[Math.round(post.visit_crowd) - 1] ?? String(post.visit_crowd)) : null;
+  const difficulty = post.visit_difficulty
+    ? (DIFF_LABELS[Math.round(post.visit_difficulty) - 1] ?? String(post.visit_difficulty)) : null;
+  if (!date && !rating && !crowd && !difficulty) return null;
+
+  // Four stats: when · how good · how busy · how hard. Natural widths spread
+  // edge to edge (space-between) — the outer two flush to the card's
+  // edges, the inner two spaced evenly — so a wide date never has to
+  // shrink and every value/label pair is the same size on the same line.
   return (
-    <View style={styles.tierRow}>
-      <Text style={styles.tierLabel} numberOfLines={1}>Rating</Text>
-      <View style={styles.tierStars}>
-        {Array.from({ length: 5 }, (_, i) => (
-          <Ionicons
-            key={i}
-            name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
-            size={14}
-            color="#C49A28"
-          />
-        ))}
-      </View>
-      <Text style={[styles.tierValue, { color: '#C49A28' }]}>{valueText}</Text>
+    <View style={styles.statsStrip}>
+      {date ? <Stat value={date} label="Visited" align="flex-start" /> : <View style={styles.stat} />}
+      {rating ? <Stat value={rating} label="Rating" star align="center" /> : <View style={styles.stat} />}
+      {crowd ? <Stat value={crowd} label="Crowd" align="center" /> : <View style={styles.stat} />}
+      {difficulty ? <Stat value={difficulty} label="Difficulty" align="flex-end" /> : <View style={styles.stat} />}
     </View>
   );
 }
 
-// ── VisitMeta ─────────────────────────────────────────────────────────────────
+function hasVisitDetails(post: FeedPost) {
+  return !!post.visit_weather?.length
+    || !!post.visit_activities?.length
+    || (post.visit_companion_count ?? 0) > 0
+    || !!post.visit_companion_names?.length
+    || !!post.visit_would_return;
+}
 
-function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: boolean }) {
+function VisitDetails({ post }: { post: FeedPost }) {
   const router = useRouter();
+  const parts: React.ReactNode[] = [];
 
-  const hasHikeStats = !!post.visit_external_source && post.visit_distance_meters != null;
+  if (post.visit_weather?.length) {
+    parts.push(post.visit_weather.map(w => WEATHER_LABELS[w] ?? w).join(', '));
+  }
+  if (post.visit_activities?.length) {
+    parts.push(post.visit_activities.map(a => a.charAt(0).toUpperCase() + a.slice(1)).join(', '));
+  }
+  const names = post.visit_companion_names;
+  const companionCount = post.visit_companion_count ?? 0;
+  if (names && names.length > 0) {
+    // "With Sam", "With Sam and Alex", "With Sam, Alex and 2 others"
+    const shown = names.slice(0, 2);
+    const extra = names.length - shown.length;
+    parts.push(
+      <Text>
+        {'With '}
+        {shown.map((c, i) => (
+          <Text key={c.user_id}>
+            {i > 0 ? (extra > 0 ? ', ' : ' and ') : ''}
+            <Text
+              style={styles.detailsLink}
+              onPress={() => router.push(`/user/${c.user_id}` as never)}
+              suppressHighlighting
+            >
+              {c.display_name ?? `@${c.username}`}
+            </Text>
+          </Text>
+        ))}
+        {extra > 0 ? ` and ${extra} other${extra > 1 ? 's' : ''}` : ''}
+      </Text>,
+    );
+  } else if (companionCount > 0) {
+    parts.push(`With ${companionCount} ${companionCount === 1 ? 'other' : 'others'}`);
+  }
+  if (post.visit_would_return) {
+    parts.push(WOULD_RETURN_LABELS[post.visit_would_return] ?? post.visit_would_return);
+  }
 
-  const hasAny =
-    post.visit_date ||
-    (post.visit_activities?.length ?? 0) > 0 ||
-    (post.visit_weather?.length ?? 0) > 0 ||
-    (post.visit_companion_count ?? 0) > 0 ||
-    post.visit_highlight || post.visit_title ||
-    post.visit_notes || post.visit_would_return || hasHikeStats;
+  if (parts.length === 0) return null;
+  return (
+    <Text style={styles.details}>
+      {parts.map((p, i) => (
+        <Text key={i}>{i > 0 ? '  ·  ' : ''}{p}</Text>
+      ))}
+    </Text>
+  );
+}
 
-  if (!hasAny) return null;
-
-  const dateLabel = post.visit_date
-    ? new Date(post.visit_date).toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
-      })
-    : null;
+function VisitFacts({ post }: { post: FeedPost }) {
+  const hasHike = !!post.visit_external_source && post.visit_distance_meters != null;
+  if (!hasVisitDetails(post) && !post.visit_notes && !hasHike) return null;
 
   return (
-    <View style={styles.visitMeta}>
-      {post.visit_title && (
-        <Text style={styles.visitTitle}>{post.visit_title}</Text>
-      )}
-      {post.visit_highlight && (
-        <Text style={styles.visitHighlight}>
-          <Text style={styles.metaLabelInline}>Highlight: </Text>
-          {post.visit_highlight}
-        </Text>
-      )}
-      <View style={styles.chipRow}>
-        {dateLabel && !heroDate ? (
-          <MetaChip icon="calendar-outline"><Text style={styles.chipText}>{dateLabel}</Text></MetaChip>
-        ) : null}
-        {post.visit_weather?.map(w => (
-          <MetaChip key={w} icon={WEATHER_ICONS[w] ?? 'cloudy-outline'}>
-            <Text style={styles.chipText}>{WEATHER_LABELS[w] ?? w}</Text>
-          </MetaChip>
-        ))}
-        {post.visit_would_return ? (
-          <MetaChip icon={WOULD_RETURN_ICONS[post.visit_would_return] ?? 'repeat-outline'}>
-            <Text style={styles.chipText}>{WOULD_RETURN_LABELS[post.visit_would_return] ?? post.visit_would_return}</Text>
-          </MetaChip>
-        ) : null}
-        {post.visit_activities?.map(a => (
-          <MetaChip key={a} icon={ACTIVITY_ICONS[a.toLowerCase()] ?? 'star-outline'}>
-            <Text style={styles.chipText}>{a.charAt(0).toUpperCase() + a.slice(1)}</Text>
-          </MetaChip>
-        ))}
-        {(post.visit_companion_count ?? 0) > 0 && (() => {
-          const names = post.visit_companion_names;
-          if (names && names.length > 0) {
-            const MAX = 2;
-            const shown = names.slice(0, MAX);
-            const extra = names.length - MAX;
-            return (
-              <MetaChip icon="people-outline">
-                <Text style={styles.chipText}>
-                  {'With '}
-                  {shown.map((c, i) => (
-                    <Text key={c.username}>
-                      {i > 0 && ', '}
-                      <Text
-                        style={{ textDecorationLine: 'underline' }}
-                        onPress={() => router.push(`/user/${c.user_id}` as never)}
-                      >
-                        {c.display_name ?? `@${c.username}`}
-                      </Text>
-                    </Text>
-                  ))}
-                  {extra > 0 ? `, +${extra} more` : ''}
-                </Text>
-              </MetaChip>
-            );
-          }
-          return (
-            <MetaChip icon="people-outline">
-              <Text style={styles.chipText}>
-                +{post.visit_companion_count}{' '}
-                {post.visit_companion_count === 1 ? 'companion' : 'companions'}
-              </Text>
-            </MetaChip>
-          );
-        })()}
-      </View>
-      {post.visit_notes && (
-        <Text style={styles.notesText}>
-          <Text style={styles.metaLabelInline}>Notes: </Text>
-          {post.visit_notes}
-        </Text>
-      )}
-      {hasHikeStats && (
-        <View style={{ marginTop: 10 }}>
-          <HikeStatsCard
-            distanceMeters={post.visit_distance_meters ?? null}
-            durationSeconds={post.visit_duration_seconds ?? null}
-            elevationGainMeters={post.visit_elevation_gain_meters ?? null}
-            routePolyline={post.visit_route_polyline ?? null}
-          />
-        </View>
+    <View style={styles.facts}>
+      <VisitDetails post={post} />
+      {/* Only present on the single-post detail fetch */}
+      {post.visit_notes ? <Text style={styles.notes}>{post.visit_notes}</Text> : null}
+      {hasHike && (
+        <HikeStatsCard
+          distanceMeters={post.visit_distance_meters ?? null}
+          durationSeconds={post.visit_duration_seconds ?? null}
+          elevationGainMeters={post.visit_elevation_gain_meters ?? null}
+          routePolyline={post.visit_route_polyline ?? null}
+        />
       )}
     </View>
   );
@@ -1156,7 +1114,8 @@ function PostCardImpl({
   // Literal resolved hex, not a DynamicColorIOS token — the menu lib's
   // native bridge can't render SF Symbols tinted with one (same class of
   // issue as LinearGradient; see the park page header menu's note).
-  const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
+  const isDark = useColorScheme() === 'dark';
+  const menuInk = isDark ? '#FFFBF1' : '#26231C';
   const freshToken = useFreshToken();
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likeCount, setLikeCount] = useState(post.like_count);
@@ -1349,64 +1308,74 @@ function PostCardImpl({
   };
 
   const isFirstVisit = !isBadge && !!post.visit_id && Number(post.visit_ordinal) === 1;
+  // First-visit callout is reserved for the classic 63 National Parks;
+  // every other designation gets none.
   const isNationalParkFirstVisit = isFirstVisit && !!post.is_national_park;
 
-  return (
-    <View style={[styles.card, isBadge && { borderWidth: 1, borderColor: C.primary + '60' }, isNationalParkFirstVisit && { borderWidth: 1, borderColor: C.accent + '60' }]}>
-      {/* Badge banner */}
-      {isBadge && (
-        <View style={[styles.badgeBanner, { borderBottomColor: C.primary + '60' }]}>
-          <Ionicons name="ribbon" size={14} color={C.primary} />
-          <Text style={[styles.badgeBannerText, { color: C.primary }]}>BADGE EARNED</Text>
-        </View>
-      )}
+  const showPark = !isBadge && !!post.park_name;
+  const goPark = () => {
+    if (!post.park_code) return;
+    if (onParkPress) onParkPress(post.park_code);
+    else router.push(`/park/${post.park_code}` as never);
+  };
+  // Already-visited parks can't be bucket-listed — POST /api/visits would
+  // wipe the dated visit's visited_date.
+  const canBookmark = !isBadge && !!post.park_code && !isOwnPost && !post.viewer_visited;
 
-      {/* First visit banner — reserved for the classic 63 National Parks;
-          every other designation gets no banner */}
+  // Layout, top to bottom: who (header: name, then where · when), the
+  // story (title, caption, highlight), the picture, the facts (stat strip,
+  // details line), then likes/comments. One left edge throughout, no
+  // banner strips or colored card borders — the park in the header line
+  // and the badge artwork itself are what tell the post types apart.
+  return (
+    <View style={styles.card}>
+      {/* First visit — the park's passport stamp, big, faded and tilted,
+          bleeding off the card's top-right corner behind everything else
+          (first child = bottom of the stack; the card clips it), as if the
+          post itself had been stamped. No label: the impression is the
+          callout. `dark` picks the lightened inks so it still shows on
+          the dark card. */}
       {isNationalParkFirstVisit && (
-        <View style={[styles.badgeBanner, { backgroundColor: C.accent + '1A', borderBottomColor: C.accent + '60', gap: 8, paddingVertical: 5 }]}>
+        <View style={[styles.firstVisitStamp, { opacity: isDark ? 0.2 : 0.14 }]} pointerEvents="none">
           <ParkStamp
             parkCode={post.park_code ?? ''}
             name={post.park_name ?? ''}
             states={post.park_states ?? ''}
             colorIdx={parkGradientIndex(post.park_code ?? 'xx')}
-            size={30}
+            size={150}
+            dark={isDark}
+            customGlyph={post.park_stamp_glyph}
             idSuffix={`-fv-${post.id}`}
           />
-          <Text style={[styles.badgeBannerText, { color: C.accent }]}>FIRST VISIT</Text>
         </View>
       )}
 
       {/* Header */}
+      {/* Who: avatar, then name (with the menu at the row's end) over
+          "@handle · when · visibility" — two lines that match the avatar's
+          height. The menu button's padding is pulled back with negative
+          margins so it doesn't inflate the name row and push the handle
+          line down. Where (the park) is its own full-width line under the
+          whole header, below. Avatar and name link to the author. */}
       <View style={styles.cardHeader}>
         <TouchableOpacity
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
           activeOpacity={0.7}
           onPress={() => router.push(`/user/${post.clerk_user_id}` as never)}
         >
           <Avatar url={post.avatar_url} name={name} size={40} />
-          <View style={styles.cardHeaderMeta}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              <Text style={styles.authorName}>{name}</Text>
-              {post.author_is_admin ? <AdminStar /> : null}
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 1 }}>
-              <Text style={[styles.authorSub, { marginTop: 0 }]}>
-                {post.username ? `@${post.username} · ` : ''}
-                {relTime(post.created_at)}
-              </Text>
-              {visibility != null && (
-                <Ionicons
-                  name={VIS_ICONS[visibility] ?? VIS_ICONS.public}
-                  size={10.5}
-                  color={C.inkMute}
-                  style={{ opacity: 0.75 }}
-                />
-              )}
-            </View>
-          </View>
         </TouchableOpacity>
-        <View style={{ position: 'relative' }}>
+        <View style={styles.cardHeaderMeta}>
+          <View style={styles.nameRow}>
+            <TouchableOpacity
+              style={styles.nameTap}
+              activeOpacity={0.7}
+              onPress={() => router.push(`/user/${post.clerk_user_id}` as never)}
+            >
+              <Text style={styles.authorName} numberOfLines={1}>{name}</Text>
+              {post.author_is_admin ? <AdminStar /> : null}
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+            <View style={styles.headerRight}>
           <MenuView
             onOpenMenu={() => setShowMenu(true)}
             onCloseMenu={() => setShowMenu(false)}
@@ -1429,6 +1398,9 @@ function PostCardImpl({
                 case 'block':
                   handleBlock();
                   break;
+                case 'bucket':
+                  handleToggleBucketList();
+                  break;
               }
             }}
             actions={isOwnPost ? [
@@ -1436,6 +1408,17 @@ function PostCardImpl({
               { id: 'edit-caption', title: 'Edit caption', image: 'text.bubble', imageColor: menuInk },
               { id: 'delete', title: 'Delete post', image: 'trash', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
             ] : [
+              // Bucket-listing is about the PARK, not the post — as a bare
+              // bookmark icon in the header it read as "save this post".
+              // Spelled out here instead. (Gated the same as before: not
+              // your own post, and a park you haven't already visited.)
+              ...(canBookmark ? [{
+                id: 'bucket',
+                title: bucketListed ? 'Remove park from bucket list' : 'Add park to bucket list',
+                image: bucketListed ? 'bookmark.slash' : 'bookmark',
+                imageColor: menuInk,
+                attributes: { disabled: bucketBusy },
+              }] : []),
               { id: 'report', title: reported ? 'Reported' : 'Report post', image: 'flag', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true, disabled: reported } },
               { id: 'block', title: 'Block user', image: 'person.crop.circle.badge.xmark', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
             ]}
@@ -1447,123 +1430,121 @@ function PostCardImpl({
               <Ionicons name="ellipsis-horizontal" size={18} color={showMenu ? C.primary : C.inkMute} />
             </TouchableOpacity>
           </MenuView>
+            </View>
+          </View>
+          <View style={styles.handleRow}>
+            <Text style={styles.handleText} numberOfLines={1}>
+              {post.username ? `@${post.username} · ` : ''}
+              {relTime(post.created_at)}
+            </Text>
+            {visibility != null && (
+              <Ionicons
+                name={VIS_ICONS[visibility] ?? VIS_ICONS.public}
+                size={11}
+                color={C.inkMute}
+                style={{ opacity: 0.75 }}
+              />
+            )}
+          </View>
         </View>
       </View>
 
-      <View>
-      {/* Park chip */}
-      {post.park_name && !isBadge && !(!hasPhotos && post.visit_id) && (
-        <View style={styles.parkChipRow}>
-          <TouchableOpacity
-            style={styles.parkChip}
-            onPress={() =>
-              onParkPress
-                ? onParkPress(post.park_code!)
-                : router.push(`/park/${post.park_code}` as never)
-            }
+      {/* Where. The park name is the most important thing on the card, so
+          it gets its own full-width line under the header — from the
+          card's left edge, under the avatar, out to the right edge — and
+          wraps to a second line before it ever truncates. */}
+      {showPark && (
+        <View style={styles.parkLine}>
+          <Text
+            style={[styles.parkText, { color: C.primary }]}
+            numberOfLines={2}
+            onPress={goPark}
+            suppressHighlighting
           >
-            <Ionicons name="location-sharp" size={11} color={C.primary} />
-            <Text style={[styles.parkChipText, { color: C.primary }]}>{post.park_name.toUpperCase()}</Text>
-          </TouchableOpacity>
-          {/* Already-visited parks can't be bucket-listed — POST /api/visits
-              would wipe the dated visit's visited_date */}
-          {!isOwnPost && !post.viewer_visited && (
-            <TouchableOpacity
-              onPress={handleToggleBucketList}
-              disabled={bucketBusy}
-              hitSlop={8}
-              style={{ padding: 4, opacity: bucketBusy ? 0.5 : 1 }}
-            >
-              <Ionicons
-                name={bucketListed ? 'bookmark' : 'bookmark-outline'}
-                size={16}
-                color={C.primary}
-              />
-            </TouchableOpacity>
-          )}
+            {post.park_name}
+          </Text>
         </View>
       )}
 
-      {/* Caption */}
-      {editingCaption ? (
-        <View style={styles.captionEdit}>
-          <TextInput
-            value={captionDraft}
-            onChangeText={setCaptionDraft}
-            multiline
-            placeholder="Add a caption…"
-            placeholderTextColor={C.inkMute}
-            style={styles.captionInput}
-          />
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' }}>
-            <TouchableOpacity
-              onPress={handleSaveCaption}
-              style={[styles.captionBtn, { backgroundColor: C.primary }]}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: C.onPrimary }}>Save</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setEditingCaption(false)}
-              style={[styles.captionBtn, { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline }]}
-            >
-              <Text style={{ fontSize: 13, color: C.ink }}>Cancel</Text>
-            </TouchableOpacity>
-            <View style={styles.visPicker}>
-              {VIS_ORDER.map(v => {
-                const active = visDraft === v;
-                return (
-                  <TouchableOpacity
-                    key={v}
-                    onPress={() => setVisDraft(v)}
-                    hitSlop={4}
-                    style={[styles.visPickerBtn, active && [styles.visPickerBtnActive, { borderColor: C.primary + '40' }]]}
-                  >
-                    <Ionicons name={VIS_ICONS[v]} size={13} color={active ? C.primary : C.inkMute} />
-                  </TouchableOpacity>
-                );
-              })}
+      <View>
+      {/* Story — a headline (the visit's title), the caption as a
+          paragraph, and the highlight set off as a pull quote. No
+          "Highlight:" / "Notes:" labels; the hierarchy does that work. */}
+      {(post.visit_title || editingCaption || currentCaption || (!isBadge && post.visit_highlight)) ? (
+        <View style={styles.story}>
+          {post.visit_title ? <Text style={styles.title}>{post.visit_title}</Text> : null}
+          {editingCaption ? (
+            <View>
+              <TextInput
+                value={captionDraft}
+                onChangeText={setCaptionDraft}
+                multiline
+                placeholder="Add a caption…"
+                placeholderTextColor={C.inkMute}
+                style={styles.captionInput}
+              />
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={handleSaveCaption}
+                  style={[styles.captionBtn, { backgroundColor: C.primary }]}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: C.onPrimary }}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setEditingCaption(false)}
+                  style={[styles.captionBtn, { backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline }]}
+                >
+                  <Text style={{ fontSize: 13, color: C.ink }}>Cancel</Text>
+                </TouchableOpacity>
+                <View style={styles.visPicker}>
+                  {VIS_ORDER.map(v => {
+                    const active = visDraft === v;
+                    return (
+                      <TouchableOpacity
+                        key={v}
+                        onPress={() => setVisDraft(v)}
+                        hitSlop={4}
+                        style={[styles.visPickerBtn, active && [styles.visPickerBtnActive, { borderColor: C.primary + '40' }]]}
+                      >
+                        <Ionicons name={VIS_ICONS[v]} size={13} color={active ? C.primary : C.inkMute} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
             </View>
-          </View>
+          ) : currentCaption ? (
+            <Text style={styles.caption}>{currentCaption}</Text>
+          ) : null}
+          {!isBadge && post.visit_highlight ? (
+            <View style={[styles.highlight, { borderLeftColor: C.primary + '66' }]}>
+              <Text style={styles.highlightText}>{post.visit_highlight}</Text>
+            </View>
+          ) : null}
         </View>
-      ) : currentCaption ? (
-        <Text style={styles.caption}>{currentCaption}</Text>
       ) : null}
 
-      {/* Badge body */}
+      {/* Badge */}
       {isBadge && post.badge_id && (
         <View style={styles.padH}>
           <BadgePostBody badgeId={post.badge_id} />
         </View>
       )}
 
-      {/* Visit metadata */}
-      {!isBadge && <VisitMeta post={post} heroDate={!hasPhotos && !!post.visit_id} />}
-
-      {/* Park hero banner — visit posts with no photos */}
-      {!isBadge && !hasPhotos && post.visit_id && (
+      {/* Picture — the photos, or the park's own image for a photo-less visit */}
+      {!isBadge && !hasPhotos && !!post.visit_id && (
         <View style={styles.padH}>
-          <ParkHeroBanner
-            post={post}
-            onPress={post.park_code
-              ? () => (onParkPress
-                  ? onParkPress(post.park_code!)
-                  : router.push(`/park/${post.park_code}` as never))
-              : undefined}
-          />
+          <ParkHeroBanner post={post} onPress={post.park_code ? goPark : undefined} />
         </View>
       )}
-
-      {/* Photo carousel */}
       {!isBadge && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
 
-      {/* Rating / crowd / difficulty scales */}
-      {!isBadge && (post.visit_rating || post.visit_crowd || post.visit_difficulty) && (
-        <View style={styles.tierBlock}>
-          {post.visit_rating ? <RatingRow value={post.visit_rating} /> : null}
-          {post.visit_crowd ? <TierScale label="Crowd" value={post.visit_crowd} labels={CROWD_LABELS} /> : null}
-          {post.visit_difficulty ? <TierScale label="Difficulty" value={post.visit_difficulty} labels={DIFF_LABELS} /> : null}
-        </View>
-      )}
+      {/* Rating / crowd / difficulty — the first thing under the picture */}
+      {!isBadge && <VisitStatsStrip post={post} />}
+
+      {/* Facts — the details line (weather, activities, company, would
+          return), notes, hike stats */}
+      {!isBadge && <VisitFacts post={post} />}
 
       {/* Action row — extra bottom padding when it's the last row in the card */}
       <View style={[styles.actionRow, commentCount === 0 && { paddingBottom: 12 }]}>
@@ -1789,87 +1770,68 @@ const styles = StyleSheet.create({
   },
   reportSubmitText: { fontSize: 14, fontWeight: '700', color: '#FFFBF1' },
 
-  // Badge post body
+  // Park hero (photo-less visits)
   parkHero: {
     borderRadius: 14, overflow: 'hidden',
-    height: 180, marginBottom: 14,
+    height: 180, marginBottom: 12,
     justifyContent: 'flex-end',
   },
   parkHeroContent: {
-    padding: 16,
+    padding: 14,
   },
   parkHeroName: {
-    fontSize: 22, fontWeight: '800', color: '#FFFBF1',
-    letterSpacing: -0.4, lineHeight: 26,
+    fontSize: 19, fontWeight: '800', color: '#FFFBF1',
+    letterSpacing: -0.3, lineHeight: 23,
   },
-  parkHeroDate: {
-    fontSize: 13, color: 'rgba(255,251,241,0.70)',
-    marginTop: 4, fontWeight: '500', letterSpacing: 0.2,
-  },
-
-  badgeBody: {
-    borderRadius: 14, padding: 18, borderWidth: 0.5,
-    flexDirection: 'row', alignItems: 'center', gap: 18,
-    marginBottom: 14,
-  },
-  badgeCircle: {
-    width: 64, height: 64, borderRadius: 32,
-    alignItems: 'center', justifyContent: 'center',
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 12,
-    elevation: 6,
-    flexShrink: 0,
-  },
-  badgeEmoji: { fontSize: 30 },
-  badgeText: { flex: 1, minWidth: 0 },
-  badgeTierLabel: {
-    fontSize: 13, letterSpacing: 1.4, fontWeight: '700', marginBottom: 3,
-  },
-  badgeName: {
-    fontWeight: '800', fontSize: 18, color: C.ink, letterSpacing: -0.3, lineHeight: 22,
-  },
-  badgeDesc: {
-    fontSize: 13, color: C.inkMute, marginTop: 4, lineHeight: 18,
+  parkHeroStates: {
+    fontSize: 13, color: 'rgba(255,251,241,0.72)',
+    marginTop: 3, fontWeight: '500',
   },
 
-  // Chips
-  chip: {
-    flexDirection: 'row', alignItems: 'center',
+  // Badge row
+  badgeRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 14, marginBottom: 14, borderRadius: 14,
     backgroundColor: C.surfaceAlt, borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 100, paddingHorizontal: 10, paddingVertical: 4,
   },
-  chipText: { fontSize: 13, fontWeight: '600', color: C.inkSoft },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-
-  // Visit meta
-  visitMeta: { paddingHorizontal: 18, paddingBottom: 14, gap: 10 },
-  visitTitle: {
-    fontSize: 15, fontWeight: '700', color: C.ink,
+  badgeText: { flex: 1, minWidth: 0, gap: 3 },
+  badgeName: {
+    fontWeight: '700', fontSize: 16, color: C.ink, letterSpacing: -0.2, lineHeight: 21,
   },
-  visitHighlight: {
-    fontSize: 13, color: C.inkSoft, lineHeight: 19,
-  },
-  notesText: {
-    fontSize: 13, color: C.inkSoft, lineHeight: 19,
-  },
-  metaLabelInline: {
-    fontWeight: '700', color: C.ink,
+  badgeMeta: {
+    fontSize: 13, color: C.inkMute, lineHeight: 18,
   },
 
-  // Crowd / difficulty tier scales
-  tierBlock: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 14, gap: 8 },
-  tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tierLabel: {
-    fontSize: 11, fontWeight: '700', color: C.inkMute,
-    textTransform: 'uppercase', letterSpacing: 0.4, width: 78,
+  // Story
+  story: { paddingHorizontal: 18, paddingBottom: 12, gap: 6 },
+  title: {
+    fontSize: 17, fontWeight: '700', color: C.ink, letterSpacing: -0.2, lineHeight: 22,
   },
-  tierBar: { flex: 1, flexDirection: 'row', gap: 3 },
-  tierStars: { flex: 1, flexDirection: 'row', gap: 4 },
-  tierSegment: { flex: 1, height: 5, borderRadius: 3 },
-  tierValue: { fontSize: 12, fontWeight: '600', minWidth: 62, textAlign: 'right' },
+  highlight: {
+    borderLeftWidth: 2, paddingLeft: 10, marginTop: 2,
+  },
+  highlightText: {
+    fontSize: 14, color: C.inkSoft, lineHeight: 20, fontStyle: 'italic',
+  },
+
+  // Facts
+  facts: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 14, gap: 10 },
+  // Natural-width stats spread edge to edge; each Stat aligns its own
+  // label under its value (left / center / right, see VisitStatsStrip).
+  statsStrip: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingHorizontal: 18, paddingTop: 12, paddingBottom: 12,
+  },
+  stat: { gap: 1 },
+  statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 20 },
+  statValue: { fontSize: 15, lineHeight: 20, fontWeight: '700', color: C.ink },
+  statLabel: { fontSize: 12, fontWeight: '500', color: C.inkMute },
+  details: { fontSize: 13.5, color: C.inkSoft, lineHeight: 20 },
+  detailsLink: { fontWeight: '600', color: C.ink },
+  notes: { fontSize: 14, color: C.ink, lineHeight: 21 },
 
   // Comments
   previewPanel: {
-    borderTopWidth: 0.5, borderTopColor: C.hairlineSoft,
     paddingBottom: 12,
   },
   viewAllBtn: {
@@ -1943,42 +1905,33 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: C.hairline,
     overflow: 'hidden', marginBottom: 16,
   },
-  badgeBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 18, paddingVertical: 10,
-    backgroundColor: C.surfaceAlt,
-    borderBottomWidth: 1,
-  },
-  badgeBannerText: {
-    fontSize: 13, letterSpacing: 1.2, fontWeight: '700',
-  },
   cardHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10,
+    paddingHorizontal: 18, paddingTop: 14, paddingBottom: 12,
   },
-  cardHeaderMeta: { flex: 1 },
-  authorName: { fontWeight: '700', fontSize: 14, color: C.ink },
-  authorSub: { fontSize: 13, color: C.inkMute, marginTop: 1 },
+  cardHeaderMeta: { flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  nameTap: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
+  authorName: { fontWeight: '700', fontSize: 15, lineHeight: 20, color: C.ink, flexShrink: 1 },
+  handleRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
+  handleText: { fontSize: 13, lineHeight: 17, color: C.inkMute, flexShrink: 1 },
+  // Pulled up a touch toward the header it belongs to; the first-visit
+  // row / story below keep their own spacing.
+  parkLine: { paddingHorizontal: 18, marginTop: -4, paddingBottom: 12 },
+  parkText: { fontSize: 15, fontWeight: '600', lineHeight: 20, letterSpacing: -0.1 },
+  firstVisitStamp: {
+    position: 'absolute', top: -22, right: -26,
+    transform: [{ rotate: '-14deg' }],
+  },
+  // Negative vertical margin cancels menuBtn's padding so the 30pt button
+  // doesn't make the name row taller than its text.
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 2, marginVertical: -6 },
   menuBtn: { padding: 6, borderRadius: 6 },
   menuBtnActive: {
     borderRadius: 6,
   },
-  parkChipRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-    paddingHorizontal: 18, paddingBottom: 10,
-  },
-  parkChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-  },
-  parkChipText: {
-    fontSize: 13, fontWeight: '700', letterSpacing: 0.4,
-  },
   caption: {
-    paddingHorizontal: 18, paddingBottom: 12,
     fontSize: 15, color: C.ink, lineHeight: 22,
-  },
-  captionEdit: {
-    paddingHorizontal: 18, paddingBottom: 12,
   },
   captionInput: {
     minHeight: 80, padding: 10, borderRadius: 8,

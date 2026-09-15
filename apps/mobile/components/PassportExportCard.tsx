@@ -126,10 +126,14 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
         {(`${data.passportNo} ✦ ${(data.username || data.name).toUpperCase()} ✦ NATIONAL PARK PASSPORT ✦ `).repeat(6)}
       </Text>
 
-      {/* Hero line — the one number that matters most, same wording as the
-          full passport screen's own progress row */}
+      {/* Hero line — the one number that matters most. Spells out "the 63
+          National Parks" (not just "parks"): shared outside the app, the
+          image has no passport screen around it to make clear this count
+          is the classic 63, not every NPS area (AREAS below covers those). */}
       <View style={st.hero}>
-        <Text style={st.heroText} numberOfLines={1}>{data.visitedCount} of {data.totalParks} parks stamped</Text>
+        <Text style={st.heroText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          {data.visitedCount} of the {data.totalParks} National Parks stamped
+        </Text>
         <View style={st.progressTrack}>
           <View style={[st.progressFill, { width: `${data.totalParks > 0 ? (data.visitedCount / data.totalParks) * 100 : 0}%` as `${number}%` }]} />
         </View>

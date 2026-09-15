@@ -3,7 +3,7 @@ import {
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +18,7 @@ import { buildMrzLines, passportNo } from '@/lib/passport';
 import { showToast } from '@/lib/toast';
 import { useColors } from '@/lib/palette';
 import { GlassIconBg } from '@/components/GlassIconBg';
+import { GrowTouchable } from '@/components/GrowTouchable';
 import type { CustomStampGlyph } from '@parkquest/types';
 
 // Pre-share screen (Flighty-style): a live preview of the exportable
@@ -44,7 +45,21 @@ interface Visit {
 
 const FILENAME = 'parkquest-passport.png';
 
+// Own SafeAreaProvider: the app-root provider reports the WINDOW's insets,
+// but this screen is a pageSheet modal that already sits below the status
+// bar — so paddingTop: insets.top (59pt) was a dead band of cover green
+// across the top of the sheet. A provider mounted here measures the
+// sheet's own view (top 0 on iPhone, the real bottom inset), so the
+// padding is only ever what the presentation actually needs.
 export default function PassportShareScreen() {
+  return (
+    <SafeAreaProvider>
+      <PassportShareInner />
+    </SafeAreaProvider>
+  );
+}
+
+function PassportShareInner() {
   const { getToken, userId } = useAuth();
   const { user } = useUser();
   const router = useRouter();
@@ -61,6 +76,9 @@ export default function PassportShareScreen() {
   // Real top-bar/destination-row heights let the card grow to fill it.
   const [topBarH, setTopBarH] = useState(0);
   const [destRowH, setDestRowH] = useState(0);
+  // The sheet's own height, not the window's — a pageSheet is shorter than
+  // the window by the status bar plus its top gap.
+  const [screenH, setScreenH] = useState(0);
 
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -157,10 +175,11 @@ export default function PassportShareScreen() {
     // destRowH already bakes in its own paddingBottom: insets.bottom + 18 (it's
     // measured via onLayout, which includes padding) — don't subtract
     // insets.bottom a second time here, only insets.top (consumed by the
-    // screen's own paddingTop, outside topBarH).
-    const availH = winH - insets.top - topBarH - destRowH - 24;
+    // screen's own paddingTop, outside topBarH). screenH is measured with
+    // that paddingTop included.
+    const availH = (screenH || winH) - insets.top - topBarH - destRowH - 24;
     return Math.min(availW / EXPORT_W, availH / EXPORT_H.square, 1);
-  }, [winH, insets.top, topBarH, destRowH]);
+  }, [screenH, winH, insets.top, topBarH, destRowH]);
 
   const capture = useCallback(async (): Promise<string | null> => {
     try {
@@ -221,15 +240,22 @@ export default function PassportShareScreen() {
   ];
 
   return (
-    <View style={[st.screen, { backgroundColor: T.primaryDeep, paddingTop: insets.top }]}>
+    <View
+      style={[st.screen, { backgroundColor: T.primaryDeep, paddingTop: insets.top }]}
+      onLayout={e => setScreenH(e.nativeEvent.layout.height)}
+    >
       <StatusBar style="light" />
 
-      {/* Top bar: close / title / aspect toggle */}
+      {/* Top bar: close / title / (spacer). The close button is the same
+          recipe as the passport cover's own: GrowTouchable + `onMedia` glass
+          (Apple's "clear" style, for buttons over a photo-like surface —
+          the "regular" material this had before renders as a frosted
+          whitish disc no matter what's behind it). */}
       <View style={st.topBar} onLayout={e => setTopBarH(e.nativeEvent.layout.height)}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={8} style={st.roundBtn}>
-          <GlassIconBg fallbackColor="rgba(8,16,12,0.45)" />
+        <GrowTouchable onPress={() => router.back()} hitSlop={8} style={st.roundBtn}>
+          <GlassIconBg onMedia fallbackColor="rgba(8,16,12,0.45)" />
           <Ionicons name="close" size={22} color={GOLD} />
-        </TouchableOpacity>
+        </GrowTouchable>
         <View style={{ alignItems: 'center' }}>
           <Text style={st.title}>Your Passport</Text>
           <Text style={st.subtitle}>View and Share</Text>
@@ -293,7 +319,7 @@ export default function PassportShareScreen() {
             style={[st.dest, (!data || busy) && { opacity: 0.4 }]}
           >
             <View style={st.destIcon}>
-              <GlassIconBg borderRadius={16} fallbackColor="rgba(8,16,12,0.45)" />
+              <GlassIconBg onMedia borderRadius={16} fallbackColor="rgba(8,16,12,0.45)" />
               <Ionicons name={d.icon} size={22} color={GOLD} />
             </View>
             <Text style={st.destLabel}>{d.label}</Text>
