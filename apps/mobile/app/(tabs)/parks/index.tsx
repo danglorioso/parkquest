@@ -439,6 +439,7 @@ function FilterPanel({
   const [section, setSection] = useState<FilterSection | null>(null);
   const { primary, accent } = useColors();
   const panelAnim = useRef(new Animated.Value(0)).current;
+  const animatingPanel = useRef(false);
   const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
 
   const activeCount =
@@ -448,20 +449,21 @@ function FilterPanel({
     topicFilters.length;
 
   const togglePanel = () => {
+    animatingPanel.current = true;
     if (open) {
       setSettled(false);
       setOpen(false);
       setSection(null);
       Animated.timing(panelAnim, {
         toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: false,
-      }).start(({ finished }) => { if (finished) setRenderPanel(false); });
+      }).start(({ finished }) => { animatingPanel.current = false; if (finished) setRenderPanel(false); });
     } else {
       setRenderPanel(true);
       setOpen(true);
       panelAnim.setValue(0);
       Animated.timing(panelAnim, {
         toValue: 1, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: false,
-      }).start(({ finished }) => { if (finished) setSettled(true); });
+      }).start(({ finished }) => { animatingPanel.current = false; if (finished) setSettled(true); });
     }
   };
 
@@ -638,7 +640,12 @@ function FilterPanel({
             },
           ]}
         >
-        <View onLayout={e => setPanelHeight(e.nativeEvent.layout.height)}>
+        <View
+          onLayout={e => {
+            const h = e.nativeEvent.layout.height;
+            if (!animatingPanel.current && h > 0 && h !== panelHeight) setPanelHeight(h);
+          }}
+        >
           {sections.map((s, i) => (
             <View key={s.key} style={i > 0 ? { borderTopWidth: 0.5, borderTopColor: C.hairlineSoft } : null}>
               <TouchableOpacity

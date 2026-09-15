@@ -157,6 +157,12 @@ export function ParkStamp({
 }) {
   const c         = inkColor ?? stampColor(colorIdx, dark);
   const sc        = stateCode(states);
+  // A truthy but malformed glyph (missing/empty `paths`, e.g. a partial
+  // admin upload) would otherwise crash `customGlyph.paths.map` below and
+  // take the WHOLE stamp down with it — RN shows nothing rather than a red
+  // screen for a render-time throw inside a list item like this. Treat it
+  // as absent instead, same as no custom glyph at all.
+  const hasCustomGlyph = !!customGlyph?.paths?.length;
   // "National Park" is implied by the stamp itself (ring text/compass motif) —
   // drop it so e.g. "Wrangell-St. Elias National Park & Preserve" leaves room
   // for the part that actually distinguishes the park, "& Preserve". Only the
@@ -261,7 +267,7 @@ export function ParkStamp({
             when a custom glyph fills the center, since an uploaded icon
             isn't drawn with a matching white gap and the lines would cut
             across it */}
-        {!customGlyph && (
+        {!hasCustomGlyph && (
           <>
             <Line x1="17"   y1="34"   x2="83"   y2="34"   stroke={c} strokeWidth="0.9" opacity="0.8" />
             <Line x1="17"   y1="66"   x2="83"   y2="66"   stroke={c} strokeWidth="0.9" opacity="0.8" />
@@ -297,7 +303,7 @@ export function ParkStamp({
 
         {/* Center scene ─────────────────────────────────────────── */}
         {(() => {
-          if (customGlyph) {
+          if (hasCustomGlyph && customGlyph) {
             return (
               <G transform={glyphTransform(customGlyph.viewBox)}>
                 {customGlyph.paths.map((shape, i) => (

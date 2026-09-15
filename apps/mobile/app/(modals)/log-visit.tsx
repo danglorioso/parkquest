@@ -2771,15 +2771,15 @@ export default function LogVisitModal() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
-      {/* Header: title on left, close on right; the grabber floats centered
-          over the FULL sheet width — inside the left column it sat centered
-          in that column only, i.e. visibly left of the sheet's midline. */}
+      {/* Header: close on the LEFT — every other sheet in the app puts its
+          X there (Search, badges, etc.); this was the one holdout with it
+          on the right. Title follows it, still reading as the big
+          left-aligned headline it always was, just starting a column later.
+          The grabber floats centered over the FULL sheet width regardless —
+          inside either column it'd sit off the sheet's true midline. */}
       <View style={styles.modalTopRow}>
         <View pointerEvents="none" style={{ position: 'absolute', top: 10, left: 0, right: 0, alignItems: 'center' }}>
           <View style={styles.grabber} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.modalTitle, { marginTop: 12 }]}>{isEditing ? 'Edit visit' : 'Log a visit'}</Text>
         </View>
         {/* +4 centers the circle in the full sheet-top → step-divider span
             (row padding is 10/10 but the divider sits 8 further down) */}
@@ -2787,6 +2787,9 @@ export default function LogVisitModal() {
           <GlassIconBg />
           <Ionicons name="close" size={22} color={C.inkSoft} />
         </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={[styles.modalTitle, { marginTop: 12 }]}>{isEditing ? 'Edit visit' : 'Log a visit'}</Text>
+        </View>
       </View>
 
       {/* Step indicator */}
@@ -2912,7 +2915,12 @@ export default function LogVisitModal() {
 
           {step > 0 ? (
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity onPress={goBack} style={[styles.backBtn, { flex: 1, width: undefined }]} activeOpacity={0.7}>
+              {/* On the last step the right button reads "Post"/"Save" —
+                  the actual submit, worth more visual weight — so the back
+                  arrow (icon-only already) narrows a bit further and Post
+                  takes the space. Earlier "Continue" steps keep the
+                  original 1:3 split. */}
+              <TouchableOpacity onPress={goBack} style={[styles.backBtn, { flex: isLast ? 0.7 : 1, width: undefined }]} activeOpacity={0.7}>
                 <Ionicons name="chevron-back" size={18} color={C.ink} />
               </TouchableOpacity>
 
@@ -2921,7 +2929,7 @@ export default function LogVisitModal() {
                 disabled={!canContinue || submitting}
                 style={[
                   styles.nextBtn,
-                  { flex: 3, width: undefined },
+                  { flex: isLast ? 3.3 : 3, width: undefined },
                   {
                     backgroundColor: canContinue ? C.primary : C.surfaceAlt,
                     borderWidth: canContinue ? 0 : 1,

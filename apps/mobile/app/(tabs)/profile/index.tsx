@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Animated, Dimensions, Easing, Linking, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Animated, Dimensions, Easing, Linking, RefreshControl, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View, Alert, useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -249,10 +249,15 @@ export default function ProfileScreen() {
     [scrollY],
   );
 
-  const loadData = useCallback(async () => {
+  // Pull-to-refresh spins its OWN native indicator — must not also swap the
+  // whole page to the full-screen loading state (the `loading && !profile`
+  // branch below), which is why this takes an isRefresh flag rather than
+  // just reusing `loading` for both.
+  const [refreshing, setRefreshing] = useState(false);
+  const loadData = useCallback(async (isRefresh = false) => {
     const tok = await getTokenRef.current();
-    if (!tok) { setLoading(false); return; }
-    setLoading(true);
+    if (!tok) { setLoading(false); setRefreshing(false); return; }
+    if (isRefresh) setRefreshing(true); else setLoading(true);
     setError(false);
     try {
       const [profRes, visitsRes, badgesRes, friendsRes] = await Promise.allSettled([
@@ -300,8 +305,14 @@ export default function ProfileScreen() {
       setError(true);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [user?.id]);
+
+  const handleRefresh = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    loadData(true);
+  }, [loadData]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
@@ -618,6 +629,17 @@ export default function ProfileScreen() {
         onScroll={onProfileScroll}
         scrollEventThrottle={16}
         contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={C.primary}
+            // The floating top bar overlaps content now (it blurs what
+            // scrolls under it) — without this the spinner sits hidden
+            // behind it, same fix as the feed tab's own pull-to-refresh.
+            progressViewOffset={TOP_BAR_H}
+          />
+        }
       >
         <Animated.View style={pageZoomStyle}>
 

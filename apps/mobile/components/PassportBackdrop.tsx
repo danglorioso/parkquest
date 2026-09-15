@@ -45,6 +45,31 @@ import type { CustomStampGlyph } from '@parkquest/types';
 // visibly glitched (pattern stretch, stat grid jumps, a duplicate avatar
 // bleeding through the top bar's blur). Nothing here ever needs to animate
 // its own frame, and nothing else ever draws the cover.
+//
+// ── The scroll-collapse header, take two ──────────────────────────────────
+// The first version tried to make ONE set of elements (avatar, bio, the
+// 2×2 stat grid) physically reflow into a compact header as the user
+// scrolled — animating height, padding and font size on the JS thread
+// (React Native's `Animated` can't run layout-affecting properties on the
+// native thread at all), triggered by a hand-rolled scroll-position state
+// machine. Every layer of that turned out fragile: the JS-thread animation
+// was inherently janky under any load, and the state machine had a real
+// bug (a native-driven scroll handler that got silently re-registered
+// mid-session) that left it stuck or flashing.
+//
+// This version doesn't reflow anything. The cover is ORDINARY scrolling
+// content — it has no pin, no collapsing height, nothing tracks scroll
+// position at all for its own layout. It simply scrolls away like anything
+// else when the user scrolls down. A completely separate, always-mounted
+// CompactBar overlay sits fixed at the top of the screen, invisible until
+// the cover has scrolled substantially out of view, then crossfades in —
+// driven by ONE Animated.Value, ONE property (opacity), fully native-
+// driven, with no layout properties involved anywhere. There is no shared
+// animation between "expanded" and "collapsed" states to keep in sync;
+// they're two independent, statically-laid-out views that happen to
+// crossfade. That's what makes this version actually smooth: the native
+// thread owns the entire transition once it starts, and the JS thread's
+// only job is a cheap threshold comparison on each scroll event.
 
 const GOLD        = '#F0C550';
 const PAPER       = '#FAF3E0';
@@ -139,9 +164,10 @@ export interface PassportBackdropProps {
   /** Reports the cover's 2×2 stat grid rect (relative to the card block =
       the hole) so the profile screen can float its own tap targets over the
       stats while the passport is closed — its hole tap target otherwise
-      swallows every touch on the card (see PASSPORT_STAT_LINKS). Only
-      reported for the at-rest grid: nothing fires while the stamps list is
-      scrolled and the cover is collapsed. */
+      swallows every touch on the card (see PASSPORT_STAT_LINKS). The cover
+      never collapses now, so unlike before this fires whenever the grid's
+      own layout genuinely changes (e.g. bio length) — there's no
+      "collapsed" variant of it to filter out. */
   onStatsLayout?: (rect: PassportStatsRect) => void;
   getToken: () => Promise<string | null>;
   rawVisits: any[];
@@ -213,12 +239,47 @@ function BadgeCell({ badge, index, onPress }: { badge: BadgeSummary; index: numb
   );
 }
 
-/** Where each stat on the passport cover leads, in statItems order (NP
-    VISITED, NPS AREAS, BADGES, FRIENDS). null = no link: on the closed card
-    the tap falls through to the hole and opens the passport, on the open
-    cover it's inert (the stamps grid is right underneath anyway). Shared
-    with the profile screen so both states link to the same places. */
+/** Where each stat leads, shared by the expanded grid and the compact bar's
+    row (in the same NP VISITED / NPS AREAS / BADGES / FRIENDS order). null =
+    inert — on the closed card the tap falls through to the hole and opens
+    the passport; on the open cover there's nothing more useful to link to
+    (the stamps grid is right underneath). Shared with the profile screen so
+    the closed card's own floating tap targets land on the same places. */
 export const PASSPORT_STAT_LINKS: readonly (string | null)[] = [null, null, '/profile/badges', '/profile/friends'];
+
+/** The compact bar's own stat row — independent from PassportFace's grid,
+    not a collapsed version of it. Plain, static layout; nothing here
+    animates except the bar's own opacity (handled by its parent). */
+function CompactStats({ stats, badgesLoaded, friendsLoaded, onPress }: {
+  stats: PassportBackdropProps['stats'];
+  badgesLoaded: boolean;
+  friendsLoaded: boolean;
+  onPress: (href: string) => void;
+}) {
+  const items = [
+    { label: 'NP VISITED', value: badgesLoaded ? `${stats.parksVisited}/${stats.parksTotal}` : '–', href: PASSPORT_STAT_LINKS[0] },
+    { label: 'NPS AREAS', value: badgesLoaded ? String(stats.areasVisited) : '–', href: PASSPORT_STAT_LINKS[1] },
+    { label: 'BADGES', value: badgesLoaded ? String(stats.badgesEarned) : '–', href: PASSPORT_STAT_LINKS[2] },
+    { label: stats.friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(stats.friendCount) : '–', href: PASSPORT_STAT_LINKS[3] },
+  ];
+  return (
+    <View style={st.compactStatsRow}>
+      {items.map(it => {
+        const body = (
+          <View style={st.compactStat}>
+            <Text style={st.compactStatValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{it.value}</Text>
+            <Text style={st.compactStatLabel} numberOfLines={1}>{it.label}</Text>
+          </View>
+        );
+        return it.href ? (
+          <TouchableOpacity key={it.label} style={st.compactStatTap} onPress={() => onPress(it.href!)} hitSlop={4} activeOpacity={0.6}>
+            {body}
+          </TouchableOpacity>
+        ) : <View key={it.label} style={st.compactStatTap}>{body}</View>;
+      })}
+    </View>
+  );
+}
 
 export function PassportBackdrop({
   active, onRequestClose, holeTop, shiftY, onCardHeight, onAvatarPress, onStatsLayout,
@@ -290,180 +351,71 @@ export function PassportBackdrop({
     return rows;
   }, [allStampItems]);
 
-  // ── Hero geometry ── The hero starts at -insets.top (screen-absolute 0
-  // is insets.top into it), so the card block's local top at rest is
-  // holeTop + insets.top, and the hero's resting height wraps the block
-  // plus the gap to the stamps sheet.
+  // ── Cover geometry ── The hero starts at -insets.top (screen-absolute 0
+  // is insets.top into it), so the card block's local top is
+  // holeTop + insets.top — a plain spacer view achieves that offset; no
+  // absolute positioning needed since the cover is ordinary flow content
+  // now. The hero's own height is never set explicitly — it's just
+  // whatever its children (the spacer + card block + gap) add up to.
   const blockTopRest = holeTop + insets.top;
-  const HERO_REST = blockTopRest + cardH + CARD_GAP_BELOW;
+  // For the compact-bar threshold only (see below) and the pattern's edge
+  // lockup sizing — NOT used to size anything anymore.
+  const heroH = blockTopRest + cardH + CARD_GAP_BELOW;
 
-  // ── Collapse-on-scroll ── (unrelated to `active` — this is purely about
-  // the stamps/badges list scrolling underneath the cover once revealed)
-  // Collapsed cover (screen coords): the compact avatar + name row on the
-  // top bar's line (insets.top + 4, 44 tall), the single stat row under it
-  // at ~insets.top + 74, and 20pt of air below that. Hero coords add one
-  // more insets.top since the hero starts at -insets.top.
-  const COLLAPSED_H = insets.top * 2 + 124;
-  // inputRange must be strictly increasing — guard the one frame before
-  // the block has reported its height.
-  const COLLAPSE_RANGE = Math.max(1, HERO_REST - COLLAPSED_H);
-  // Two copies of the scroll offset: a native-driven one for the cover's
-  // pin transform (runs on the UI thread, so the cover never swims a frame
-  // behind the list), and a JS mirror used only to detect the collapse
-  // threshold below (layout-affecting values can't ride the native driver,
-  // which is why the collapse itself is a separate Animated.Value — see
-  // collapseAnim).
-  const scrollYNative = useRef(new Animated.Value(0)).current;
-  const scrollY = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
-  // Cover pin: the cover lives INSIDE the scroll content, so translating it
-  // by +scrollY holds it at the top of the screen while the list moves.
-  // Clamped at 0 so an overscroll pull-down (negative offset) is NOT
-  // cancelled — the cover rides down with the rubber band, the whole
-  // passport dragging like a sheet, and a deep enough pull dismisses it.
-  const pinY = scrollYNative.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolateLeft: 'clamp' });
 
-  // The collapse itself: a binary snap, not a scrub. This used to be
-  // `scrollY.interpolate(...)` directly — the cover tracked the raw scroll
-  // offset 1:1, so it partially collapsed by exactly however far the user's
-  // finger happened to have dragged, and reversed just as readily if they
-  // let up or scrolled back a few pixels. That read as fighting the user's
-  // own touch rather than responding to it. collapseAnim instead only ever
-  // plays ONE clean timing animation, from wherever it currently sits to a
-  // full 0 or 1, fired once by the threshold crossing in handleScroll below
-  // — further scrolling in the same direction while it plays (or after)
-  // does nothing more; only crossing back the other way fires the reverse.
-  const collapseAnim = useRef(new Animated.Value(0)).current;
-  const collapsedRef = useRef(false);
-  // True for the duration of a snap animation (both directions) — cleared
-  // only once it finishes uninterrupted. cardBlock's onLayout below checks
-  // this before trusting anything it measures: while this is true, the
-  // block's own height is mid-flight (its collapsing sections are still
-  // growing/shrinking every frame), and capturing that into state fed a
-  // real feedback loop — a fast flick to the top reaches scroll-rest well
-  // before this 280ms animation finishes, so every one of its remaining
-  // animation frames got captured as "the" resting height, each slightly
-  // different, each re-triggering the container that height itself feeds
-  // (HERO_REST → heroHeight). That loop, once started, kept running — and
-  // since this whole component stays mounted behind the profile screen even
-  // once closed, the still-oscillating height kept visibly flashing through
-  // the profile's hole after leaving the passport, not just while on it.
-  const snapInFlightRef = useRef(false);
-  // Two thresholds with a dead zone between them, not one — a single
-  // crossing point retriggered the snap on every pixel of natural finger
-  // wobble right around it (a real drag rarely holds still at an exact
-  // offset), each retrigger interrupting the in-flight one and reversing
-  // direction, which is what read as the stats flashing. Collapsing needs
-  // a deliberate scroll past 60%; returning to open needs back past 35%;
-  // nothing in between changes anything.
-  const COLLAPSE_ON  = COLLAPSE_RANGE * 0.6;
-  const COLLAPSE_OFF = COLLAPSE_RANGE * 0.35;
-  const collapseShrink = collapseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, COLLAPSE_RANGE] });
-  const collapseFrac = collapseAnim;
+  // ── Compact bar crossfade ── A single native-driven opacity value, shown
+  // once the cover has scrolled substantially out of view and hidden again
+  // once scrolled back near the top. Two thresholds with a gap between them
+  // (not one) so ordinary finger wobble near a single crossing point can't
+  // retrigger it back and forth. `compactVisible` (plain React state, not
+  // animated) gates pointerEvents — shown the instant the fade-in starts,
+  // but only hidden once the fade-out has actually finished, so the bar's
+  // tap targets never intercept a touch while invisible mid-fade, but also
+  // never go dead half-visible.
+  const compactAnim = useRef(new Animated.Value(0)).current;
+  const compactShownRef = useRef(false);
+  const [compactVisible, setCompactVisible] = useState(false);
+  const thresholdsRef = useRef({ on: heroH * 0.55, off: heroH * 0.35 });
+  thresholdsRef.current = { on: heroH * 0.55, off: heroH * 0.35 };
 
-  // Read fresh every render (cardH isn't known until the block's first
-  // at-rest measurement, so these start tiny and correct themselves a
-  // render or two after mount) without going through handleScroll's own
-  // deps — see below.
-  const thresholdsRef = useRef({ on: COLLAPSE_ON, off: COLLAPSE_OFF });
-  thresholdsRef.current = { on: COLLAPSE_ON, off: COLLAPSE_OFF };
-
-  // Created exactly once (deps are all stable refs, never anything
-  // render-derived like the thresholds) and never again — an
-  // Animated.event bound with useNativeDriver: true is registered with the
-  // native side, and re-creating it mid-lifetime (which an earlier version
-  // of this did, by depending on COLLAPSE_ON/COLLAPSE_OFF, both of which
-  // legitimately change once cardH gets its real measurement) re-registers
-  // that native listener while the ScrollView is live. That's what was
-  // actually behind the collapsed state flashing and sometimes never
-  // returning to expanded — not the threshold values themselves, which
-  // this component already re-reads live via thresholdsRef on every event.
-  const handleScroll = useMemo(() => Animated.event(
-    [{ nativeEvent: { contentOffset: { y: scrollYNative } } }],
-    {
-      useNativeDriver: true,
-      listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-        const y = e.nativeEvent.contentOffset.y;
-        scrollY.setValue(y);
-        const { on, off } = thresholdsRef.current;
-        const snap = (toValue: 0 | 1) => {
-          collapsedRef.current = toValue === 1;
-          snapInFlightRef.current = true;
-          // Slower than the first pass at this (280ms) — PassportFace's own
-          // fade/weave choreography is deliberately timed in FRACTIONS of
-          // this duration (the avatar/bio section is fully gone by the
-          // halfway point, specifically so the rising stat items never
-          // cross through still-visible text — see its own comment).
-          // Scaling the total duration up keeps that relative timing intact
-          // while giving each phase more real time to read as a transition
-          // rather than a cut; 280ms compressed a fair amount of motion
-          // (fade + reflow + a rising row) into a ~140ms first half, which
-          // is what was reading as a flash even once the animation itself
-          // was firing correctly and exactly once.
-          Animated.timing(collapseAnim, {
-            toValue, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: false,
-          }).start(({ finished }) => { if (finished) snapInFlightRef.current = false; });
-        };
-        if (!collapsedRef.current && y > on) snap(1);
-        else if (collapsedRef.current && y < off) snap(0);
-      },
-    },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [scrollYNative, scrollY, collapseAnim]);
-  // Compact identity row + the cover's watermark strip trade places over
-  // the last stretch of the collapse.
-  const compactOpacity = collapseFrac.interpolate({ inputRange: [0.6, 1], outputRange: [0, 1], extrapolate: 'clamp' });
-  const [wmH, setWmH] = useState(0);
-  const watermarkStyle = {
-    marginTop: -8,
-    marginBottom: collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }),
-    height: wmH > 0 ? collapseFrac.interpolate({ inputRange: [0, 1], outputRange: [wmH, 0] }) : undefined,
-    opacity: collapseFrac.interpolate({ inputRange: [0, 0.5], outputRange: [1, 0], extrapolate: 'clamp' }),
-    overflow: 'hidden' as const,
-  };
+  // Plain callback, not Animated.event — nothing here needs to read scroll
+  // position on the native thread (there's no style left that tracks it),
+  // so there's no native-driver handler to accidentally re-register mid-
+  // session. useCallback with empty deps: created once, stays once,
+  // reasoning entirely through refs/setState — no room for the stale- or
+  // re-bound-handler class of bug the first version of this had.
+  const DISMISS_PULL = 80;
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const { on, off } = thresholdsRef.current;
+    if (!compactShownRef.current && y > on) {
+      compactShownRef.current = true;
+      setCompactVisible(true);
+      Animated.timing(compactAnim, {
+        toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+      }).start();
+    } else if (compactShownRef.current && y < off) {
+      compactShownRef.current = false;
+      Animated.timing(compactAnim, {
+        toValue: 0, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+      }).start(({ finished }) => { if (finished) setCompactVisible(false); });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onRequestCloseRef = useRef(onRequestClose);
   onRequestCloseRef.current = onRequestClose;
   // Every close goes through here: the list scrolls back to the top so the
-  // cover is expanded and glued to the profile's hole by the time the
-  // close animation lands — a collapsed cover showing through the hole
-  // would read as a broken card.
+  // cover (not whatever's scrolled to) is what's glued to the profile's
+  // hole by the time the close animation lands.
   const requestClose = useCallback(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
     onRequestCloseRef.current();
   }, []);
-  // Pull-to-dismiss: releasing an overscroll deeper than this closes the
-  // passport (sheet-like); anything shorter just rubber-bands back.
-  const DISMISS_PULL = 80;
-  // The face re-reports its stat grid on every layout pass, including each
-  // frame of the collapse (the row's height/padding are layout props driven
-  // off scrollY) — only the at-rest geometry is any use to the profile
-  // screen, so drop reports while the list is scrolled. The listener runs
-  // on the scroll event itself, i.e. before the layout it triggers, so the
-  // flag is already correct by the time onLayout fires.
-  const listAtRestRef = useRef(true);
-  useEffect(() => {
-    const id = scrollY.addListener(({ value }) => { listAtRestRef.current = value <= 0.5; });
-    return () => scrollY.removeListener(id);
-  }, [scrollY]);
-  const onStatsLayoutRef = useRef(onStatsLayout);
-  onStatsLayoutRef.current = onStatsLayout;
-  const handleStatsLayout = useCallback((rect: PassportStatsRect) => {
-    if (listAtRestRef.current) onStatsLayoutRef.current?.(rect);
-  }, []);
 
-  const heroHeight = Animated.subtract(HERO_REST, collapseShrink);
-  // The block sits at the hole at rest and rides up under the compact
-  // identity row as the cover collapses on scroll — by then its only
-  // remaining content is the single stat row (its watermark and the face's
-  // other sections have collapsed to zero height), which lands at about
-  // insets.top + 74 on screen.
-  const blockTop = collapseFrac.interpolate({
-    inputRange: [0, 1], outputRange: [blockTopRest, insets.top * 2 + 44],
-  });
-  const containerWidthAnim = useRef(new Animated.Value(PASSPORT_CARD_W)).current;
+  const go = useCallback((path: string) => { requestClose(); router.push(path as never); }, [requestClose, router]);
 
-  const go = (path: string) => { requestClose(); router.push(path as never); };
   const statItems: PassportFaceStatItem[] = [
     { label: 'NP VISITED', value: badgesLoaded ? `${stats.parksVisited}/${stats.parksTotal}` : '–' },
     { label: 'NPS AREAS', value: badgesLoaded ? String(stats.areasVisited) : '–' },
@@ -477,6 +429,13 @@ export function PassportBackdrop({
     ? 'Loading…'
     : stats.parksTotal > 0 ? `${stats.parksVisited} of ${stats.parksTotal} parks stamped` : 'No parks stamped yet';
 
+  // The cover never collapses now, so PassportFace's own (still-present,
+  // untouched) collapse machinery just needs a value that's permanently 0
+  // — passing a plain, never-animated Value is enough to keep it rendering
+  // its one, full "expanded" layout forever.
+  const zeroAnim = useRef(new Animated.Value(0)).current;
+  const containerWidthAnim = useRef(new Animated.Value(PASSPORT_CARD_W)).current;
+
   // The pattern's edge logo lockup is sized/centered for the card block's
   // own span (what the profile hole shows), not the whole pattern's height.
   const edgeTextSize = cardH > 0 ? Math.max(8, cardH * 0.08) : undefined;
@@ -489,33 +448,72 @@ export function PassportBackdrop({
       style={[StyleSheet.absoluteFillObject, { transform: [{ translateY: shiftY }] }]}
       pointerEvents={active ? 'auto' : 'none'}
     >
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: paper }]}>
-        <View style={{ height: HERO_REST - insets.top, backgroundColor: T.primaryDeep }} />
-      </View>
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: paper }]} />
 
-      {/* One scroll view for the whole passport. The cover is INSIDE its
-          content (drawn after the sheet, so on top; pinned to the screen
-          top by pinY), which is what lets a drag that starts on the cover
-          scroll the stamps and collapse the cover — the old layout kept the
-          cover outside the list as a sibling, and touches never reach a
-          sibling's scroll view. The sheet starts under the cover's rest
-          height and scrolls up exactly as fast as the cover shrinks (both
-          track scrollY), then keeps going underneath it once collapsed. */}
-      <Animated.ScrollView
+      <ScrollView
         ref={scrollRef}
         style={StyleSheet.absoluteFill}
         onScroll={handleScroll}
         onScrollEndDrag={e => { if (e.nativeEvent.contentOffset.y < -DISMISS_PULL) requestClose(); }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: HERO_REST - insets.top }}
       >
+        {/* Cover — ordinary scroll content, no pin, no collapsing height.
+            It just scrolls away like anything else; the compact bar
+            (below, outside this ScrollView) is what stays on screen. */}
+        <View style={[st.hero, { marginTop: -insets.top, backgroundColor: T.primaryDeep }]}>
+          <View style={{ position: 'absolute', top: 0, left: 0, width: SCREEN_W, height: PATTERN_H }}>
+            <HolographicShine
+              staticSize={{ w: SCREEN_W, h: PATTERN_H }}
+              edgeTextSize={edgeTextSize}
+              edgeTextSpan={edgeTextSpan}
+              wavesAboveSeal
+            />
+          </View>
+
+          {/* Pushes the card block down to line up with the profile's hole
+              — a plain spacer, not padding, so it can't interact with the
+              pattern's own absolute positioning above. */}
+          <View style={{ height: blockTopRest }} />
+
+          <View
+            style={st.cardBlock}
+            onLayout={e => {
+              const h = e.nativeEvent.layout.height;
+              setCardH(h);
+              onCardHeight(h);
+            }}
+          >
+            <Text style={st.watermark} numberOfLines={1} ellipsizeMode="clip">
+              {'PARKQUEST • '.repeat(16)}
+            </Text>
+            <PassportFace
+              avatarUrl={profile.avatarUrl}
+              name={profile.name}
+              username={profile.username || null}
+              joinDate={profile.joinDate}
+              bio={profile.bio}
+              statItems={statItems}
+              progressLabel={progressLabel}
+              progressPct={stats.parksTotal > 0 ? (stats.parksVisited / stats.parksTotal) * 100 : 0}
+              mrzLine1={mrzLine1}
+              mrzLine2={mrzLine2}
+              containerWidth={containerWidthAnim}
+              collapseFrac={zeroAnim}
+              onAvatarPress={onAvatarPress}
+              onStatsLayout={onStatsLayout}
+            />
+          </View>
+
+          <View style={{ height: CARD_GAP_BELOW }} />
+        </View>
+
         <View
           style={[st.sheet, {
             backgroundColor: paper,
             // Always at least a screen tall so the sheet, not the raw
             // paper backdrop, is what's under a short stamp list.
-            minHeight: SCREEN_H - (HERO_REST - insets.top),
+            minHeight: SCREEN_H,
             paddingBottom: insets.bottom + 40,
           }]}
         >
@@ -582,92 +580,24 @@ export function PassportBackdrop({
             <Ionicons name="chevron-forward" size={15} color={T.primary} />
           </TouchableOpacity>
         </View>
+      </ScrollView>
 
-        {/* Cover. Outer view: native-driven pin (transform only), sized to
-            the cover's rest height but box-none so it never intercepts a
-            stamp that has scrolled up under the collapsed cover. Inner
-            view: the JS-driven collapsing height (a layout prop, so it
-            can't share an Animated node with the native transform). */}
-        <Animated.View style={[st.heroPin, { height: HERO_REST, transform: [{ translateY: pinY }] }]} pointerEvents="box-none">
-          <Animated.View
-            style={[st.hero, { top: -insets.top, left: 0, width: SCREEN_W, height: heroHeight, backgroundColor: T.primaryDeep }]}
-          >
-            <View style={{ position: 'absolute', top: 0, left: 0, width: SCREEN_W, height: PATTERN_H }}>
-              <HolographicShine
-                staticSize={{ w: SCREEN_W, h: PATTERN_H }}
-                edgeTextSize={edgeTextSize}
-                edgeTextSpan={edgeTextSpan}
-                wavesAboveSeal
-              />
-            </View>
-            <Animated.View
-              style={[st.cardBlock, { top: blockTop }]}
-              onLayout={e => {
-                // The block shrinks as it collapses (its sections go to zero
-                // height) — only its at-rest height is the hole's height.
-                // Both checks matter: scroll can reach the top well before
-                // the (independently-timed) snap animation finishes growing
-                // this block back to its resting height, and capturing one
-                // of those still-mid-flight measurements is what fed the
-                // feedback loop described at snapInFlightRef above.
-                if (!listAtRestRef.current || snapInFlightRef.current) return;
-                const h = e.nativeEvent.layout.height;
-                // cardH is used locally (HERO_REST etc.) the whole time the
-                // passport is open and must keep tracking. onCardHeight only
-                // feeds the PROFILE screen's hole cutout, which is only
-                // ever seen while CLOSED — while open, that foreground is
-                // scaled 3x and pushed off-screen (see profile's own
-                // pageZoomStyle), so re-firing it here served no visible
-                // purpose. It fired anyway every time this block returned
-                // to its at-rest layout, including scrolling the passport's
-                // OWN list back to the top mid-session — a spurious update
-                // to the still-mounted foreground tree that visibly flashed
-                // its cream frame on top of the open passport for a frame.
-                setCardH(h);
-                if (!active) onCardHeight(h);
-              }}
-            >
-              <Animated.View style={watermarkStyle} pointerEvents="none">
-                <Text
-                  style={st.watermark}
-                  numberOfLines={1}
-                  ellipsizeMode="clip"
-                  onLayout={e => setWmH(e.nativeEvent.layout.height)}
-                >
-                  {'PARKQUEST • '.repeat(16)}
-                </Text>
-              </Animated.View>
-              <PassportFace
-                avatarUrl={profile.avatarUrl}
-                name={profile.name}
-                username={profile.username || null}
-                joinDate={profile.joinDate}
-                bio={profile.bio}
-                statItems={statItems}
-                progressLabel={progressLabel}
-                progressPct={stats.parksTotal > 0 ? (stats.parksVisited / stats.parksTotal) * 100 : 0}
-                mrzLine1={mrzLine1}
-                mrzLine2={mrzLine2}
-                containerWidth={containerWidthAnim}
-                collapseFrac={collapseFrac}
-                onAvatarPress={onAvatarPress}
-                onStatsLayout={onStatsLayout ? handleStatsLayout : undefined}
-              />
-            </Animated.View>
-            {/* Collapsed-state identity: small avatar + name + handle,
-                centered between the close and share buttons on their own
-                line. Cross-fades in as the face's big avatar/name section
-                collapses away. */}
-            <Animated.View style={[st.compactId, { top: insets.top * 2 + 4, opacity: compactOpacity }]} pointerEvents="none">
-              <Avatar url={profile.avatarUrl} name={profile.name ?? 'Explorer'} size={30} />
-              <Text style={st.compactName} numberOfLines={1}>{profile.name ?? 'Explorer'}</Text>
-              {profile.username ? (
-                <Text style={st.compactHandle} numberOfLines={1}>@{profile.username}</Text>
-              ) : null}
-            </Animated.View>
-          </Animated.View>
-        </Animated.View>
-      </Animated.ScrollView>
+      {/* Compact bar — a completely separate, statically-laid-out overlay,
+          not a collapsed version of the cover above. Only its own opacity
+          is ever animated. */}
+      <Animated.View
+        style={[st.compactBar, { paddingTop: insets.top, backgroundColor: T.primaryDeep, opacity: compactAnim }]}
+        pointerEvents={compactVisible ? 'auto' : 'none'}
+      >
+        <View style={st.compactIdRow}>
+          <Avatar url={profile.avatarUrl} name={profile.name ?? 'Explorer'} size={30} />
+          <Text style={st.compactName} numberOfLines={1}>{profile.name ?? 'Explorer'}</Text>
+          {profile.username ? (
+            <Text style={st.compactHandle} numberOfLines={1}>@{profile.username}</Text>
+          ) : null}
+        </View>
+        <CompactStats stats={stats} badgesLoaded={badgesLoaded} friendsLoaded={friendsLoaded} onPress={go} />
+      </Animated.View>
 
       <View style={[st.topBar, { top: insets.top + 4 }]} pointerEvents="box-none">
         <GrowTouchable onPress={requestClose} hitSlop={8} style={st.topBarBtn}>
@@ -713,29 +643,31 @@ export function PassportBackdrop({
 
 const st = StyleSheet.create({
   hero: {
-    position: 'absolute',
     overflow: 'hidden',
   },
   cardBlock: {
-    position: 'absolute',
-    left: PASSPORT_CARD_INSET,
+    marginLeft: PASSPORT_CARD_INSET,
     width: PASSPORT_CARD_W,
     paddingHorizontal: CARD_PAD_H,
     paddingVertical: CARD_PAD_V,
   },
-  // Vertical margins live on its collapsing wrapper (watermarkStyle).
   watermark: {
+    marginTop: -8,
     marginHorizontal: -CARD_PAD_H,
+    marginBottom: 12,
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 2.2,
     color: 'rgba(201,169,74,0.28)',
   },
-  heroPin: {
-    position: 'absolute', top: 0, left: 0, width: SCREEN_W,
+  compactBar: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
+    paddingBottom: 10,
+    borderBottomWidth: 0.5, borderBottomColor: 'rgba(201,169,74,0.25)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8,
   },
-  compactId: {
-    position: 'absolute', left: 64, right: 64, height: 44,
+  compactIdRow: {
+    height: 44, paddingHorizontal: 64,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9,
   },
   compactName: {
@@ -744,6 +676,13 @@ const st = StyleSheet.create({
   compactHandle: {
     fontSize: 12, fontWeight: '600', color: 'rgba(201,169,74,0.85)', letterSpacing: 0.6, flexShrink: 1,
   },
+  compactStatsRow: {
+    flexDirection: 'row', paddingHorizontal: 20, gap: 6, marginTop: 2,
+  },
+  compactStatTap: { flex: 1 },
+  compactStat: { alignItems: 'center' },
+  compactStatValue: { fontSize: 14, fontWeight: '800', color: GOLD, letterSpacing: -0.2 },
+  compactStatLabel: { fontSize: 8.5, fontWeight: '700', color: 'rgba(201,169,74,0.75)', letterSpacing: 0.8, marginTop: 1 },
   topBar: {
     position: 'absolute', left: 12, right: 12, zIndex: 20,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

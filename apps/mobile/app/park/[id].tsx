@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, Linking, Modal,
+  ActivityIndicator, Animated, DeviceEventEmitter, Dimensions, FlatList, Image, InteractionManager, Linking, Modal,
   PanResponder, Pressable, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View,
   useColorScheme,
   type ColorValue, type NativeScrollEvent, type NativeSyntheticEvent,
@@ -528,6 +528,21 @@ export function ParkProfileScreen({
   // opens on Info; the "Visits" stat cell below can jump straight to
   // Community (see its onPress).
   const [pageTab, setPageTab] = useState<'info' | 'community'>('info');
+  // GlassScrubTabs' own indicator is already fully UI-thread-driven
+  // (Reanimated shared values, a `withSpring` that plays out independent of
+  // whatever the JS thread is doing) and was never the slow part — this
+  // page's Info/Community content sits in ONE big component, so flipping
+  // pageTab re-renders (and, for Community, mounts a whole new post-list
+  // tree) the ENTIRE page synchronously. Mounting that much native view
+  // hierarchy is real main-thread work, and it was landing in the SAME
+  // frame as the gesture's release spring, competing with it for the one
+  // thread Reanimated's worklets ultimately still share with view-tree
+  // commits — that's what read as the indicator "freezing before the end"
+  // and only catching up once the heavy swap finished. Deferring the
+  // state change lets the drag/tap's own animation finish first.
+  const setPageTabDeferred = useCallback((tab: 'info' | 'community') => {
+    InteractionManager.runAfterInteractions(() => setPageTab(tab));
+  }, []);
   const [token,        setToken]        = useState<string | null>(null);
   const [loading,      setLoading]      = useState(!hasSeed);
   // Seeded from the map's own last-known status (see parkSheetProps in
@@ -1750,7 +1765,7 @@ export function ParkProfileScreen({
               { key: 'community', label: communityParkPosts.length > 0 ? `Community (${communityParkPosts.length})` : 'Community' },
             ]}
             active={pageTab}
-            onChange={setPageTab}
+            onChange={setPageTabDeferred}
           />
         </View>
 
