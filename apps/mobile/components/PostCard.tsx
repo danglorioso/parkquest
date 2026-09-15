@@ -659,18 +659,40 @@ function VisitStatsStrip({ post }: { post: FeedPost }) {
     ? (CROWD_LABELS[Math.round(post.visit_crowd) - 1] ?? String(post.visit_crowd)) : null;
   const difficulty = post.visit_difficulty
     ? (DIFF_LABELS[Math.round(post.visit_difficulty) - 1] ?? String(post.visit_difficulty)) : null;
-  if (!date && !rating && !crowd && !difficulty) return null;
+  // Fixed priority order — when · how good · how busy · how hard. Only the
+  // ones actually present render, as a plain list (no empty filler slots
+  // for missing stats) — space-between then naturally flushes whichever
+  // ends up first to the card's left edge and whichever ends up last to
+  // its right edge, however many stats that turns out to be, down to just
+  // one (which lands fully flex-start, not centered, since it's both the
+  // first and only item).
+  const items: { value: string; label: string; star?: boolean }[] = [
+    ...(date ? [{ value: date, label: 'Visited' }] : []),
+    ...(rating ? [{ value: rating, label: 'Rating', star: true }] : []),
+    ...(crowd ? [{ value: crowd, label: 'Crowd' }] : []),
+    ...(difficulty ? [{ value: difficulty, label: 'Difficulty' }] : []),
+  ];
+  if (items.length === 0) return null;
 
-  // Four stats: when · how good · how busy · how hard. Natural widths spread
-  // edge to edge (space-between) — the outer two flush to the card's
-  // edges, the inner two spaced evenly — so a wide date never has to
-  // shrink and every value/label pair is the same size on the same line.
   return (
     <View style={styles.statsStrip}>
-      {date ? <Stat value={date} label="Visited" align="flex-start" /> : <View style={styles.stat} />}
-      {rating ? <Stat value={rating} label="Rating" star align="center" /> : <View style={styles.stat} />}
-      {crowd ? <Stat value={crowd} label="Crowd" align="center" /> : <View style={styles.stat} />}
-      {difficulty ? <Stat value={difficulty} label="Difficulty" align="flex-end" /> : <View style={styles.stat} />}
+      {items.map((it, i) => (
+        <Stat
+          key={it.label}
+          value={it.value}
+          label={it.label}
+          star={it.star}
+          align={
+            items.length === 1 || i === 0 ? 'flex-start'
+            // Difficulty centers over its own label even as the last
+            // column — "Strenuous" is noticeably wider than "Difficulty",
+            // and right-aligning both let the label float disconnected
+            // from the value above it.
+            : (i === items.length - 1 && it.label !== 'Difficulty') ? 'flex-end'
+            : 'center'
+          }
+        />
+      ))}
     </View>
   );
 }
