@@ -1,8 +1,9 @@
 import {
-  ActivityIndicator, Animated, Image, Linking, Platform, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Animated, Dimensions, Easing, Linking, Platform, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View, Alert, useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
@@ -22,19 +23,40 @@ import type { CustomStampGlyph } from '@parkquest/types';
 import { NotificationBell } from '@/components/NotificationCenter';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { EmptyState } from '@/components/EmptyState';
-import { HolographicShine } from '@/components/HolographicShine';
+import {
+  PassportBackdrop, PASSPORT_CARD_INSET, PASSPORT_CARD_RADIUS, PASSPORT_CARD_W,
+} from '@/components/PassportBackdrop';
 import { AvatarLightbox } from '@/components/AvatarLightbox';
 import { FeedbackSheet } from '@/components/FeedbackSheet';
-import { STATIC as C, dyn, useColors } from '@/lib/palette';
+import { STATIC as C, colorStr, dyn, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
-import { openPassportExpand } from '@/lib/passportExpand';
-import Svg, { Circle, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
 // Passport gold foil — fixed across palettes, matches the passport screen
 const GOLD = '#F0C550';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+const SCREEN_W = Dimensions.get('window').width;
+// Cream frame above the hole (between the top bar and the card's top edge).
+const HOLE_TOP_PAD = 20;
+
+// SVG path for the page's cream "frame": a full-width rect with the card's
+// rounded rect cut out of it (evenodd), so the passport backdrop shows
+// through the cutout. This is how the profile screen shows a passport card
+// without drawing one — see PassportBackdrop's own comment.
+function frameHolePath(frameH: number, holeTop: number, holeH: number) {
+  const x = PASSPORT_CARD_INSET, y = holeTop, w = PASSPORT_CARD_W, h = holeH, r = PASSPORT_CARD_RADIUS;
+  // Before the backdrop has reported its card block's height there's no
+  // hole to cut yet — a degenerate rounded rect would draw garbage arcs.
+  if (h < r * 2) return { frame: `M0 0 H${SCREEN_W} V${frameH} H0 Z`, hole: null };
+  const hole =
+    `M${x + r} ${y} H${x + w - r} A${r} ${r} 0 0 1 ${x + w} ${y + r} V${y + h - r} ` +
+    `A${r} ${r} 0 0 1 ${x + w - r} ${y + h} H${x + r} A${r} ${r} 0 0 1 ${x} ${y + h - r} ` +
+    `V${y + r} A${r} ${r} 0 0 1 ${x + r} ${y} Z`;
+  return { frame: `M0 0 H${SCREEN_W} V${frameH} H0 Z ${hole}`, hole };
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -94,17 +116,6 @@ function usePulse() {
     return () => loop.stop();
   }, [pulse]);
   return pulse;
-}
-
-// Passport-card identity placeholder — sits where the name/handle render
-function NameSkeleton() {
-  const pulse = usePulse();
-  return (
-    <View>
-      <Animated.View style={[styles.skeletonName, { opacity: pulse }]} />
-      <Animated.View style={[styles.skeletonHandle, { opacity: pulse }]} />
-    </View>
-  );
 }
 
 // Horizontal strip placeholder — matches the stamp/badge preview rows
@@ -206,9 +217,20 @@ export default function ProfileScreen() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  // Measured on tap so the passport expand overlay can grow from this
-  // exact on-screen frame — see openPassport below.
-  const passportCardRef = useRef<View>(null);
+  // The passport "card" on this screen is a hole, not a component — see the
+  // render below and PassportBackdrop's own comment. Its rect: HOLE_TOP
+  // from the screen top (at scroll 0), PASSPORT_CARD_INSET from the sides,
+  // and as tall as the backdrop reports its card block to be.
+  const HOLE_TOP = TOP_BAR_H + HOLE_TOP_PAD;
+  const [holeH, setHoleH] = useState(0);
+  // Native-driven scroll offset — the backdrop is shifted by -scrollY while
+  // the passport is closed so its card block stays glued to the hole as
+  // this page scrolls (the hole scrolls; the backdrop otherwise wouldn't).
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const onProfileScroll = useMemo(
+    () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }),
+    [scrollY],
+  );
 
   const loadData = useCallback(async () => {
     const tok = await getTokenRef.current();
@@ -383,37 +405,31 @@ export default function ProfileScreen() {
   })();
 
   // Tapping the passport card (or any of its "see more" affordances) no
-  // longer navigates to a separate screen — it measures the card's current
-  // on-screen frame and hands it to the expand overlay (mounted at the app
-  // root, see lib/passportExpand.tsx) so the card itself visually grows to
-  // fill the screen instead of a new page sliding/modaling in.
+  // longer navigates anywhere or mounts a new component — the full passport
+  // (<PassportBackdrop>, cover + stamp grid + badges) is ALREADY rendered,
+  // permanently, behind this screen's own foreground (see the render below)
+  // — it never resizes, fades, or remounts itself. "Opening" is this
+  // screen's own foreground (the top bar + the page, i.e. the frame around
+  // the hole the cover shows through) scaling up past the edges of the
+  // screen, so the hole widens and uncovers the backdrop that was sitting
+  // there unchanged the whole time. Closing just reverses that.
+  const [passportOpen, setPassportOpen] = useState(false);
+  const passportForeground = useRef(new Animated.Value(0)).current;
+
   const openPassport = useCallback(() => {
-    const node = passportCardRef.current;
-    if (!node) return;
-    node.measureInWindow((x, y, width, height) => {
-      openPassportExpand({
-        originRect: { x, y, width, height },
-        getToken,
-        rawVisits,
-        earnedBadges: allEarnedBadges,
-        profile: {
-          avatarUrl,
-          name: realName,
-          username,
-          joinDate,
-          bio: profile?.bio ?? null,
-        },
-        stats: { parksVisited, parksTotal, areasVisited, badgesEarned, friendCount },
-        mrzLine1,
-        mrzLine2,
-        isDark,
-      });
-    });
-  }, [
-    getToken, rawVisits, allEarnedBadges, avatarUrl, realName, username, joinDate,
-    profile?.bio, parksVisited, parksTotal, areasVisited, badgesEarned, friendCount,
-    mrzLine1, mrzLine2, isDark,
-  ]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setPassportOpen(true);
+    Animated.timing(passportForeground, {
+      toValue: 1, duration: 380, easing: Easing.in(Easing.cubic), useNativeDriver: true,
+    }).start();
+  }, [passportForeground]);
+
+  const closePassport = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    Animated.timing(passportForeground, {
+      toValue: 0, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    }).start(() => setPassportOpen(false));
+  }, [passportForeground]);
 
   // Floating glass top bar — duplicated from the feed screen's header
   // (same wordmark + notification/search/settings actions, same
@@ -532,120 +548,106 @@ export default function ProfileScreen() {
     );
   }
 
+  // Pure scale, no fade — the page's frame (the hole's surround and
+  // everything below it) grows past the screen edges, so the hole simply
+  // widens, uncovering more of the backdrop that was always there; nothing
+  // dissolves. Pivoted at the hole's center (transformOrigin, relative to
+  // each wrapper's own box — both the scroll content and the top bar
+  // wrapper start at screen y=0, so they share this one pivot) so the page
+  // expands outward FROM the passport specifically.
+  const zoomScale = passportForeground.interpolate({ inputRange: [0, 1], outputRange: [1, 3] });
+  const pageZoomStyle = {
+    transform: [{ scale: zoomScale }],
+    transformOrigin: ['50%', HOLE_TOP + holeH / 2, 0] as [string, number, number],
+  };
+  // -scrollY while closed (backdrop rides with the hole as this page
+  // scrolls), easing to 0 as the passport opens so the cover settles into
+  // its own resting place on the open page.
+  const backdropShift = Animated.multiply(scrollY, Animated.subtract(passportForeground, 1));
+
+  // The frame extends HOLE_TOP_PAD past the hole's bottom (rather than the
+  // section below carrying that gap as paddingTop) so the hole's bottom
+  // edge never sits on a view boundary — with a fractional holeH, that
+  // seam let a hairline of the dark backdrop show under the card.
+  const FRAME_H = HOLE_TOP + holeH + HOLE_TOP_PAD;
+  const framePaths = frameHolePath(FRAME_H, HOLE_TOP, holeH);
+
   return (
     <View style={styles.screen}>
-      <ScrollView
+      {/* Permanently mounted, never resized/remounted, and the ONLY place
+          the passport cover is drawn — this screen's own "card" is a hole
+          cut in the page below that shows this through. See
+          PassportBackdrop's own comment. */}
+      <PassportBackdrop
+        active={passportOpen}
+        onRequestClose={closePassport}
+        holeTop={HOLE_TOP}
+        shiftY={backdropShift}
+        onCardHeight={setHoleH}
+        onAvatarPress={() => setAvatarLightbox(true)}
+        getToken={getToken}
+        rawVisits={rawVisits}
+        earnedBadges={allEarnedBadges}
+        profile={{ avatarUrl, name: realName, username, joinDate, bio: profile?.bio ?? null }}
+        stats={{ parksVisited, parksTotal, areasVisited, badgesEarned, friendCount }}
+        badgesLoaded={badgesLoaded}
+        friendsLoaded={friendsLoaded}
+        mrzLine1={mrzLine1}
+        mrzLine2={mrzLine2}
+        isDark={isDark}
+      />
+
+      {/* This screen's own foreground. Everything here scales up
+          (pageZoomStyle) and clears off past the screen edges on open,
+          uncovering the backdrop above instead of the backdrop animating
+          itself into view. pointerEvents 'none' once open so touches fall
+          through to the (by then fully visible) backdrop. No background of
+          its own anywhere above the hole — that's what lets the backdrop
+          show through it. */}
+      <Animated.View style={{ flex: 1 }} pointerEvents={passportOpen ? 'none' : 'auto'}>
+      <Animated.ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
-        style={{ marginTop: TOP_BAR_H }}
+        onScroll={onProfileScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}
       >
+        <Animated.View style={pageZoomStyle}>
 
-        {/* ── Passport hero card ───────────────────────────────────────────── */}
-        <TouchableOpacity
-          ref={passportCardRef}
-          style={[styles.passportCard, { backgroundColor: C.primaryDeep, shadowColor: C.primaryDeep }]}
-          onPress={openPassport}
-          activeOpacity={0.88}
-        >
-          {/* Guilloche background — same shared component as the full
-              passport page's cover (dense wave lattice, seal, rosette,
-              tilt-reactive rainbow shimmer) instead of a plain wavy Svg */}
-          <HolographicShine />
-
-          {/* Watermark strip */}
-          <Text style={styles.passportWatermark} numberOfLines={1} ellipsizeMode="clip" pointerEvents="none">
-            {'PARKQUEST • '.repeat(16)}
-          </Text>
-
-          {/* Share profile — top-right corner */}
+        {/* ── The passport "card": a rounded hole in the page's cream frame,
+            through which the backdrop's cover shows. The frame runs from
+            the very top of the content (under the floating top bar — so
+            behind the bar's blur there's cream, not the backdrop) down to
+            the hole's bottom edge; the section below continues the cream. */}
+        <View style={{ height: FRAME_H }} pointerEvents="box-none">
+          <Svg width={SCREEN_W} height={FRAME_H} style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Path d={framePaths.frame} fill={colorStr(C.bg)} fillRule="evenodd" />
+            {framePaths.hole && (
+              <Path d={framePaths.hole} fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth={0.5} />
+            )}
+          </Svg>
+          {/* Tap anywhere on the card to open it (the backdrop's own
+              stat/avatar taps take over once it's open). Transparent — the
+              content it sits over is the backdrop's, not its own. */}
           <TouchableOpacity
-            style={styles.shareBtn}
+            style={{ position: 'absolute', left: PASSPORT_CARD_INSET, top: HOLE_TOP, width: PASSPORT_CARD_W, height: holeH }}
+            onPress={openPassport}
+            activeOpacity={1}
+          />
+          {/* Share profile — top-right corner of the card */}
+          <TouchableOpacity
+            style={[styles.shareBtn, { top: HOLE_TOP + 34 }]}
             activeOpacity={0.7}
             onPress={handleShare}
             hitSlop={8}
           >
-            <Ionicons name="share-outline" size={16} color="#F0C550" />
+            <Ionicons name="share-outline" size={16} color={GOLD} />
           </TouchableOpacity>
+        </View>
 
-          <View style={styles.passportHeader}>
-            <TouchableOpacity
-              style={styles.avatarWrap}
-              activeOpacity={avatarUrl ? 0.85 : 1}
-              disabled={!avatarUrl}
-              onPress={() => setAvatarLightbox(true)}
-            >
-              {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: C.primary }]}>
-                  {realName ? (
-                    <Text style={styles.avatarInitial}>{realName[0].toUpperCase()}</Text>
-                  ) : (
-                    <Ionicons name="person" size={30} color="rgba(255,251,241,0.45)" />
-                  )}
-                </View>
-              )}
-            </TouchableOpacity>
-            {realName ? (
-              <>
-                <Text style={styles.passportName} numberOfLines={1} adjustsFontSizeToFit>
-                  {realName}
-                </Text>
-                {username ? <Text style={styles.passportHandle}>@{username}</Text> : null}
-                {joinDate ? <Text style={styles.passportJoined}>Joined {joinDate}</Text> : null}
-              </>
-            ) : (
-              <NameSkeleton />
-            )}
-          </View>
-
-          {profile?.bio ? (
-            <Text style={styles.passportBio}>{profile.bio}</Text>
-          ) : null}
-
-          <View style={styles.passportStats}>
-            {([
-              { label: 'NP VISITED', value: badgesLoaded ? `${parksVisited}/${parksTotal}` : '–', href: '/passport' },
-              { label: 'NPS AREAS', value: badgesLoaded ? String(areasVisited) : '–', href: '/passport' },
-              { label: 'BADGES',  value: badgesLoaded ? String(badgesEarned) : '–', href: '/profile/badges' },
-              { label: friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(friendCount) : '–', href: '/profile/friends' },
-            ] as { label: string; value: string; href: string }[]).map(s => (
-              // The 50%-wide cell itself is a plain View, not touchable — only
-              // the inner TouchableOpacity (sized to the label+value text) is a
-              // link, so the empty space around each stat falls through to the
-              // passportCard TouchableOpacity behind it instead of stealing tap
-              // area from the card-wide "open passport" gesture.
-              <View key={s.label} style={styles.passportStatItem}>
-                <TouchableOpacity
-                  activeOpacity={0.6}
-                  onPress={() => s.href === '/passport' ? openPassport() : router.push(s.href as never)}
-                >
-                  <Text style={styles.passportStatLabel}>{s.label}</Text>
-                  <Text style={styles.passportStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                    {s.value}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-
-          {/* Stamp count progress line — mirrors the passport page */}
-          <View style={styles.passportProgress}>
-            <Text style={styles.passportProgressText}>
-              {badgesLoaded ? `${parksVisited} of ${parksTotal} parks stamped` : 'Loading…'}
-            </Text>
-            <View style={styles.passportProgressTrack}>
-              <View style={[styles.passportProgressFill, { width: `${parksTotal > 0 ? (parksVisited / parksTotal) * 100 : 0}%` as `${number}%` }]} />
-            </View>
-          </View>
-
-          {/* MRZ strip */}
-          <View style={{ marginTop: 2, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.15)' }}>
-            <Text style={styles.mrzText} numberOfLines={1}>{mrzLine1}</Text>
-            <Text style={styles.mrzText} numberOfLines={1}>{mrzLine2}</Text>
-          </View>
-        </TouchableOpacity>
+        {/* Everything below the card — plain opaque cream, continuing the
+            frame (which already carries the gap under the hole); zooms with it. */}
+        <View style={{ backgroundColor: C.bg }}>
 
         {/* ── Recent stamps preview — skeleton until visits load, hidden only when truly empty ── */}
         {(!visitsLoaded || recentStamps.length > 0) && (
@@ -963,9 +965,13 @@ export default function ProfileScreen() {
           </Text>
           {' '}· Track your national park adventures
         </Text>
-      </ScrollView>
+        </View>
+        </Animated.View>
+      </Animated.ScrollView>
 
-      {topBar}
+      <Animated.View style={[StyleSheet.absoluteFillObject, pageZoomStyle]} pointerEvents="box-none">
+        {topBar}
+      </Animated.View>
 
       {selectedBadge ? (
         <BadgeDetailModal
@@ -994,12 +1000,17 @@ export default function ProfileScreen() {
         />
       ) : null}
 
-      <AvatarLightbox visible={avatarLightbox} url={avatarUrl} onClose={() => setAvatarLightbox(false)} />
       <SearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {feedbackOpen ? (
         <FeedbackSheet onClose={() => setFeedbackOpen(false)} />
       ) : null}
+      </Animated.View>
+
+      {/* Outside the foreground wrapper — the backdrop's own avatar (the
+          only avatar there is) opens this too, and while the passport is
+          open the foreground is pointerEvents 'none'. */}
+      <AvatarLightbox visible={avatarLightbox} url={avatarUrl} onClose={() => setAvatarLightbox(false)} />
     </View>
   );
 }
@@ -1009,125 +1020,18 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
-  // Avatar
-  avatarWrap: {
-    padding: 1.5,
-    borderRadius: 50,
-    borderWidth: 1,
-    borderColor: C.hairline,
-    backgroundColor: C.surface,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  avatar: {
-    width: 84, height: 84, borderRadius: 42,
-  },
-  avatarFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    fontSize: 30, fontWeight: '900', color: C.onPrimary,
-  },
-
-  // Passport card
-  passportCard: {
-    marginHorizontal: 16,
-    marginTop: 20,
-    marginBottom: 20,
-    borderRadius: 14,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    borderWidth: 0.5,
-    borderColor: 'rgba(0,0,0,0.3)',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-    overflow: 'hidden',
-  },
-  passportWatermark: {
-    marginTop: -8,
-    marginHorizontal: -20,
-    marginBottom: 12,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 2.2,
-    color: 'rgba(201,169,74,0.28)',
-  },
-  passportHeader: {
-    alignItems: 'center',
-  },
+  // Passport card — everything visual about it (pattern, avatar, name,
+  // stats, MRZ, watermark) lives in PassportBackdrop; this screen only cuts
+  // the hole (see frameHolePath) and floats this one button over it.
   shareBtn: {
     // Deliberately smaller than the app-wide 44pt round buttons — it's a
     // quiet corner affordance on the passport card, not primary chrome.
-    position: 'absolute', top: 34, right: 16, zIndex: 2,
+    // `top` is set inline (relative to the hole's measured position).
+    position: 'absolute', right: PASSPORT_CARD_INSET + 16, zIndex: 2,
     width: 34, height: 34, borderRadius: 17,
     overflow: 'hidden',
     borderWidth: 1, borderColor: 'rgba(201,169,74,0.35)',
     alignItems: 'center', justifyContent: 'center',
-  },
-  passportName: {
-    width: '100%', fontSize: 26, fontWeight: '800', color: GOLD, letterSpacing: -0.5, textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
-  },
-  passportHandle: {
-    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.85)', letterSpacing: 0.8, marginTop: 3, textAlign: 'center',
-  },
-  passportJoined: {
-    fontSize: 13, color: 'rgba(201,169,74,0.8)', marginTop: 8, textAlign: 'center',
-  },
-  passportBio: {
-    fontSize: 13.5, color: 'rgba(255,251,241,0.75)', lineHeight: 19, marginTop: 12,
-  },
-  passportStats: {
-    flexDirection: 'row', flexWrap: 'wrap', marginTop: 14, paddingTop: 12,
-    borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.2)',
-  },
-  passportStatItem: {
-    width: '50%', marginBottom: 14, alignItems: 'center',
-  },
-  passportStatLabel: {
-    fontSize: 13, fontWeight: '600', color: 'rgba(201,169,74,0.8)', letterSpacing: 1.2, textAlign: 'center',
-  },
-  passportStatVal: {
-    fontSize: 26, fontWeight: '800', color: GOLD, marginTop: 2, letterSpacing: -0.3, textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
-  },
-  passportProgress: {
-    gap: 6,
-    marginTop: 18,
-    marginBottom: 10,
-  },
-  passportProgressText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: GOLD,
-    opacity: 0.7,
-    letterSpacing: 0.5,
-  },
-  passportProgressTrack: {
-    height: 3,
-    backgroundColor: GOLD + '22',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  passportProgressFill: {
-    height: 3,
-    backgroundColor: GOLD,
-    borderRadius: 2,
-    opacity: 0.85,
-  },
-  mrzText: {
-    fontFamily: 'JetBrainsMono_400Regular',
-    fontSize: 9,
-    color: 'rgba(201,169,74,0.35)',
-    letterSpacing: 1.5,
-    lineHeight: 14,
   },
 
   // Badges preview
@@ -1216,14 +1120,6 @@ const styles = StyleSheet.create({
   },
 
   // Loading skeletons
-  skeletonName: {
-    width: 150, height: 22, borderRadius: 6,
-    backgroundColor: 'rgba(201,169,74,0.25)', marginTop: 4,
-  },
-  skeletonHandle: {
-    width: 90, height: 11, borderRadius: 5,
-    backgroundColor: 'rgba(201,169,74,0.16)', marginTop: 8,
-  },
   skeletonCircle: {
     width: 52, height: 52, borderRadius: 26,
     backgroundColor: dyn('rgba(27,26,22,0.08)', 'rgba(240,234,217,0.10)'), marginBottom: 6,

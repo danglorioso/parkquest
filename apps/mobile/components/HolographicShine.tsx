@@ -172,6 +172,58 @@ function webBand(cx: number, cy: number, rIn: number, rOut: number, count: numbe
   });
 }
 
+// Pure geometry build for a given (w,h) — wave rows, seal/rosette/web
+// mandala, ribbon mesh. Cached below by exact (w,h) since it's the same
+// handful of trig-heavy loops every time a caller asks for that size again
+// (e.g. the passport-expand overlay re-mounting this component at its
+// fixed cover size on every open) — without the cache, that recomputation
+// happening synchronously on mount was slow enough to eat into the first
+// few frames of the overlay's own entrance animation, so it either had to
+// delay mounting this (leaving the cover a flash of plain green with no
+// pattern before popping in) or visibly stutter the animation's start.
+function buildLayers(w: number, h: number) {
+  const rowsA = waveRows(w, h, -0.6 * h,           h / 9,   h * 0.11); // primary — shimmers
+  const rowsB = waveRows(w, h, -0.6 * h + h / 17,   h / 7.6, h * 0.08); // secondary — static crosshatch
+  // Kept deliberately small — the seal + mandala is background texture on
+  // a card full of real text; at h*0.42 with three bands it dominated.
+  // Shrunk further (0.21 → 0.13) so the bottom-left ribbon sweep has the
+  // whole lower-left quadrant to itself without tangling with the rings.
+  const sealCx = w * 0.82, sealCy = h * 0.5, sealR = h * 0.13;
+  // Two interleaved rosette rings — different radius, size, and a
+  // half-step phase shift, so the circles weave through each other into a
+  // moiré lattice instead of one string of evenly-spaced rings. circR is
+  // several times the center-to-center spacing so consecutive circles
+  // overlap neighbors deep (spirograph weave, not barely-touching rings).
+  // Bands hug the seal — inner rosette ring's near edge basically touches
+  // the seal's outline, no dead gap between logo and decoration.
+  const rosetteCircles = [
+    ...rosette(sealCx, sealCy, sealR * 1.17, sealR * 0.235, 72),
+    ...rosette(sealCx, sealCy, sealR * 1.26, sealR * 0.2,   72, Math.PI / 72),
+  ];
+  // One crossing string-art web band, framed by two solid rings — the
+  // outermost circle-ring band from the reference dropped; with the
+  // smaller seal it pushed the mandala's footprint back to "distracting".
+  const webLines = [
+    ...webBand(sealCx, sealCy, sealR * 1.44, sealR * 1.74, 72, 6),
+    ...webBand(sealCx, sealCy, sealR * 1.44, sealR * 1.74, 72, -6),
+  ];
+  const frameRings = [1.42, 1.76].map(k => sealR * k);
+  const ribbon = ribbonPaths(w, h);
+  return { rowsA, rowsB, sealCx, sealCy, sealR, rosetteCircles, webLines, frameRings, ribbon };
+}
+
+const layersCache = new Map<string, ReturnType<typeof buildLayers>>();
+
+function getCachedLayers(w: number, h: number) {
+  const key = `${w}x${h}`;
+  let cached = layersCache.get(key);
+  if (!cached) {
+    cached = buildLayers(w, h);
+    layersCache.set(key, cached);
+  }
+  return cached;
+}
+
 // Compass-ring + mountain + sun — a simplified line-art take on the app
 // icon, used as an engraved "official seal" watermark. Proportioned off
 // its own radius so it scales cleanly with the measured card size.
@@ -322,37 +374,7 @@ export function HolographicShine({ edgeTextSize, edgeTextSpan, staticSize, lineI
     }, [size, glow, hueGlows])
   );
 
-  const layers = useMemo(() => {
-    if (!size) return null;
-    const rowsA = waveRows(w, h, -0.6 * h,           h / 9,   h * 0.11); // primary — shimmers
-    const rowsB = waveRows(w, h, -0.6 * h + h / 17,   h / 7.6, h * 0.08); // secondary — static crosshatch
-    // Kept deliberately small — the seal + mandala is background texture on
-    // a card full of real text; at h*0.42 with three bands it dominated.
-    // Shrunk further (0.21 → 0.13) so the bottom-left ribbon sweep has the
-    // whole lower-left quadrant to itself without tangling with the rings.
-    const sealCx = w * 0.82, sealCy = h * 0.5, sealR = h * 0.13;
-    // Two interleaved rosette rings — different radius, size, and a
-    // half-step phase shift, so the circles weave through each other into a
-    // moiré lattice instead of one string of evenly-spaced rings. circR is
-    // several times the center-to-center spacing so consecutive circles
-    // overlap neighbors deep (spirograph weave, not barely-touching rings).
-    // Bands hug the seal — inner rosette ring's near edge basically touches
-    // the seal's outline, no dead gap between logo and decoration.
-    const rosetteCircles = [
-      ...rosette(sealCx, sealCy, sealR * 1.17, sealR * 0.235, 72),
-      ...rosette(sealCx, sealCy, sealR * 1.26, sealR * 0.2,   72, Math.PI / 72),
-    ];
-    // One crossing string-art web band, framed by two solid rings — the
-    // outermost circle-ring band from the reference dropped; with the
-    // smaller seal it pushed the mandala's footprint back to "distracting".
-    const webLines = [
-      ...webBand(sealCx, sealCy, sealR * 1.44, sealR * 1.74, 72, 6),
-      ...webBand(sealCx, sealCy, sealR * 1.44, sealR * 1.74, 72, -6),
-    ];
-    const frameRings = [1.42, 1.76].map(k => sealR * k);
-    const ribbon = ribbonPaths(w, h);
-    return { rowsA, rowsB, sealCx, sealCy, sealR, rosetteCircles, webLines, frameRings, ribbon };
-  }, [size, w, h]);
+  const layers = useMemo(() => (size ? getCachedLayers(w, h) : null), [size, w, h]);
 
   // Wave lines — always fully colorful (not faint-gold-then-shimmer like the
   // rest of the pattern). Four copies of the identical static geometry, each

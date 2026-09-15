@@ -675,13 +675,12 @@ function RatingRow({ value }: { value: number }) {
       <Text style={styles.tierLabel} numberOfLines={1}>Rating</Text>
       <View style={styles.tierStars}>
         {Array.from({ length: 5 }, (_, i) => (
-          <View key={i} style={styles.tierStarSlot}>
-            <Ionicons
-              name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
-              size={14}
-              color="#C49A28"
-            />
-          </View>
+          <Ionicons
+            key={i}
+            name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
+            size={14}
+            color="#C49A28"
+          />
         ))}
       </View>
       <Text style={[styles.tierValue, { color: '#C49A28' }]}>{valueText}</Text>
@@ -1864,8 +1863,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.4, width: 78,
   },
   tierBar: { flex: 1, flexDirection: 'row', gap: 3 },
-  tierStars: { flex: 1, flexDirection: 'row', gap: 3 },
-  tierStarSlot: { flex: 1, alignItems: 'center' },
+  tierStars: { flex: 1, flexDirection: 'row', gap: 4 },
   tierSegment: { flex: 1, height: 5, borderRadius: 3 },
   tierValue: { fontSize: 12, fontWeight: '600', minWidth: 62, textAlign: 'right' },
 

@@ -23,7 +23,6 @@ import LoadingScreen from '../components/LoadingScreen';
 import { ToastHost } from '../lib/toast';
 import { PinchZoomHost } from '../lib/pinchZoom';
 import { ImageLightboxHost } from '../lib/imageLightbox';
-import { PassportExpandHost } from '../lib/passportExpand';
 import { useAuthBootstrapReady } from '../lib/network';
 import { syncLastAccountProfile, type AuthStrategy } from '../lib/lastAccount';
 
@@ -199,10 +198,10 @@ function RootStack() {
           that's what made the map underneath un-pannable no matter how the
           sheet's own pointerEvents were configured). */}
       {/* Pre-share/export screen — modal over the passport (or straight over
-          the profile via its share button). Passport itself no longer has
-          its own route: PassportExpandHost renders it as an in-place
-          overlay that grows out of the profile screen's own card instead of
-          navigating to a new screen — see lib/passportExpand.tsx. */}
+          the profile via its share button). Passport itself has no route
+          at all: it's PassportBackdrop, mounted permanently behind the
+          profile tab's own screen (app/(tabs)/profile/index.tsx), not a
+          navigable destination. */}
       <Stack.Screen
         name="passport-share"
         options={{ presentation: 'modal', headerShown: false }}
@@ -285,7 +284,6 @@ function RootLayout() {
             <RootStack />
             <LoadingScreen visible={!appReady} />
             <ToastHost />
-            <PassportExpandHost />
             <PinchZoomHost />
             <ImageLightboxHost />
           </SafeAreaProvider>
