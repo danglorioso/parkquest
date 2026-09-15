@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DeviceEventEmitter, View, Text, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, StyleSheet, Platform, useColorScheme,
+  ActivityIndicator, RefreshControl, StyleSheet, useColorScheme,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { HeaderBlurFade } from '@/components/HeaderBlurFade';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -523,34 +523,9 @@ export default function FeedScreen() {
           </GlassContainer>
         ) : (
           <>
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-              {Platform.OS === 'ios' && (
-                <>
-                  {/* Top-anchored, taller/stronger blur stacked over a full-height
-                      softer one — a crude but effective step-down in blur strength
-                      toward the bottom edge, since BlurView has no gradient mask */}
-                  <BlurView
-                    intensity={90}
-                    tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-                    style={{ position: 'absolute', top: 0, left: 0, right: 0, height: TOP_BAR_H * 0.6 }}
-                  />
-                  <BlurView
-                    intensity={40}
-                    tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </>
-              )}
-              {/* Fades the tint color to fully transparent by the bar's own
-                  bottom edge — same height, no hard cutoff */}
-              <LinearGradient
-                colors={isDark
-                  ? ['rgba(23,21,17,0.72)', 'rgba(23,21,17,0.4)', 'rgba(23,21,17,0)']
-                  : ['rgba(242,235,219,0.72)', 'rgba(242,235,219,0.4)', 'rgba(242,235,219,0)']}
-                locations={[0, 0.55, 1]}
-                style={StyleSheet.absoluteFill}
-              />
-            </View>
+            {/* Blur + tint that both dissolve toward the bar's bottom edge —
+                no hard line where the blur stops. Shared with the profile tab. */}
+            <HeaderBlurFade isDark={isDark} />
             <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
               {/* Explicit 44px box (matching iconBtn) instead of trusting
                   flex alignItems:center to match cross-axis centers — the

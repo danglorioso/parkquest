@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, Dimensions, StyleSheet,
   Text, TouchableOpacity, View,
@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { HolographicShine } from '@/components/HolographicShine';
-import { PassportFace, type PassportFaceStatItem } from '@/components/PassportFace';
+import { PassportFace, type PassportFaceStatItem, type PassportStatsRect } from '@/components/PassportFace';
 import { GrowTouchable } from '@/components/GrowTouchable';
 import { ParkStamp } from '@/components/ParkStamp';
 import { StampDetailModal } from '@/components/StampDetailModal';
@@ -134,6 +134,13 @@ export interface PassportBackdropProps {
       size its hole to match. */
   onCardHeight: (h: number) => void;
   onAvatarPress: () => void;
+  /** Reports the cover's 2×2 stat grid rect (relative to the card block =
+      the hole) so the profile screen can float its own tap targets over the
+      stats while the passport is closed — its hole tap target otherwise
+      swallows every touch on the card (see PASSPORT_STAT_LINKS). Only
+      reported for the at-rest grid: nothing fires while the stamps list is
+      scrolled and the cover is collapsed. */
+  onStatsLayout?: (rect: PassportStatsRect) => void;
   getToken: () => Promise<string | null>;
   rawVisits: any[];
   earnedBadges: BadgeSummary[];
@@ -204,8 +211,15 @@ function BadgeCell({ badge, index, onPress }: { badge: BadgeSummary; index: numb
   );
 }
 
+/** Where each stat on the passport cover leads, in statItems order (NP
+    VISITED, NPS AREAS, BADGES, FRIENDS). null = no link: on the closed card
+    the tap falls through to the hole and opens the passport, on the open
+    cover it's inert (the stamps grid is right underneath anyway). Shared
+    with the profile screen so both states link to the same places. */
+export const PASSPORT_STAT_LINKS: readonly (string | null)[] = [null, null, '/profile/badges', '/profile/friends'];
+
 export function PassportBackdrop({
-  active, onRequestClose, holeTop, shiftY, onCardHeight, onAvatarPress,
+  active, onRequestClose, holeTop, shiftY, onCardHeight, onAvatarPress, onStatsLayout,
   getToken, rawVisits, earnedBadges, profile, stats, badgesLoaded, friendsLoaded, mrzLine1, mrzLine2, isDark,
 }: PassportBackdropProps) {
   const insets = useSafeAreaInsets();
@@ -298,6 +312,22 @@ export function PassportBackdrop({
   const collapseFrac = scrollY.interpolate({
     inputRange: [0, COLLAPSE_RANGE], outputRange: [0, 1], extrapolate: 'clamp',
   });
+  // The face re-reports its stat grid on every layout pass, including each
+  // frame of the collapse (the row's height/padding are layout props driven
+  // off scrollY) — only the at-rest geometry is any use to the profile
+  // screen, so drop reports while the list is scrolled. The listener runs
+  // on the scroll event itself, i.e. before the layout it triggers, so the
+  // flag is already correct by the time onLayout fires.
+  const listAtRestRef = useRef(true);
+  useEffect(() => {
+    const id = scrollY.addListener(({ value }) => { listAtRestRef.current = value <= 0.5; });
+    return () => scrollY.removeListener(id);
+  }, [scrollY]);
+  const onStatsLayoutRef = useRef(onStatsLayout);
+  onStatsLayoutRef.current = onStatsLayout;
+  const handleStatsLayout = useCallback((rect: PassportStatsRect) => {
+    if (listAtRestRef.current) onStatsLayoutRef.current?.(rect);
+  }, []);
 
   const heroHeight = Animated.subtract(HERO_REST, collapseShrink);
   const contentTop = Animated.add(-insets.top, heroHeight);
@@ -312,9 +342,12 @@ export function PassportBackdrop({
   const statItems: PassportFaceStatItem[] = [
     { label: 'NP VISITED', value: badgesLoaded ? `${stats.parksVisited}/${stats.parksTotal}` : '–' },
     { label: 'NPS AREAS', value: badgesLoaded ? String(stats.areasVisited) : '–' },
-    { label: 'BADGES', value: badgesLoaded ? String(stats.badgesEarned) : '–', onPress: () => go('/profile/badges') },
-    { label: stats.friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(stats.friendCount) : '–', onPress: () => go('/profile/friends') },
-  ];
+    { label: 'BADGES', value: badgesLoaded ? String(stats.badgesEarned) : '–' },
+    { label: stats.friendCount === 1 ? 'FRIEND' : 'FRIENDS', value: friendsLoaded ? String(stats.friendCount) : '–' },
+  ].map((item, i) => {
+    const href = PASSPORT_STAT_LINKS[i];
+    return href ? { ...item, onPress: () => go(href) } : item;
+  });
   const progressLabel = !badgesLoaded
     ? 'Loading…'
     : stats.parksTotal > 0 ? `${stats.parksVisited} of ${stats.parksTotal} parks stamped` : 'No parks stamped yet';
@@ -371,6 +404,7 @@ export function PassportBackdrop({
             containerWidth={containerWidthAnim}
             collapseFrac={collapseFrac}
             onAvatarPress={onAvatarPress}
+            onStatsLayout={onStatsLayout ? handleStatsLayout : undefined}
           />
         </Animated.View>
       </Animated.View>

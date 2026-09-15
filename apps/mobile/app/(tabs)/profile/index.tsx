@@ -1,5 +1,5 @@
 import {
-  ActivityIndicator, Animated, Dimensions, Easing, Linking, Platform, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Animated, Dimensions, Easing, Linking, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View, Alert, useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -9,8 +9,9 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { HeaderBlurFade } from '@/components/HeaderBlurFade';
+import { passportStatHitRects, type PassportStatsRect } from '@/components/PassportFace';
 import type { BadgeColors } from '@/lib/badges';
 import { BadgeDetailModal, BadgePatch } from '@/components/BadgeDetailModal';
 import { BadgeShareSheet } from '@/components/BadgeShareSheet';
@@ -24,7 +25,7 @@ import { NotificationBell } from '@/components/NotificationCenter';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { EmptyState } from '@/components/EmptyState';
 import {
-  PassportBackdrop, PASSPORT_CARD_INSET, PASSPORT_CARD_RADIUS, PASSPORT_CARD_W,
+  PassportBackdrop, PASSPORT_CARD_INSET, PASSPORT_CARD_RADIUS, PASSPORT_CARD_W, PASSPORT_STAT_LINKS,
 } from '@/components/PassportBackdrop';
 import { AvatarLightbox } from '@/components/AvatarLightbox';
 import { FeedbackSheet } from '@/components/FeedbackSheet';
@@ -224,6 +225,21 @@ export default function ProfileScreen() {
   // and as tall as the backdrop reports its card block to be.
   const HOLE_TOP = TOP_BAR_H + HOLE_TOP_PAD;
   const [holeH, setHoleH] = useState(0);
+  // The cover's stat grid, relative to the hole — the closed card's stat
+  // links are this screen's own transparent tap targets floated over the
+  // hole at these positions (the hole's open-passport target underneath
+  // would otherwise take every touch, and the backdrop can't own them
+  // itself: dragging on the card has to scroll this page, so the touch has
+  // to land inside this ScrollView). Only stored when actually different —
+  // the backdrop re-reports on every layout pass.
+  const [statsRect, setStatsRect] = useState<PassportStatsRect | null>(null);
+  const handleStatsLayout = useCallback((r: PassportStatsRect) => {
+    setStatsRect(prev =>
+      prev && Math.abs(prev.x - r.x) < 0.5 && Math.abs(prev.y - r.y) < 0.5
+        && Math.abs(prev.width - r.width) < 0.5 && Math.abs(prev.height - r.height) < 0.5
+        ? prev : r,
+    );
+  }, []);
   // Native-driven scroll offset — the backdrop is shifted by -scrollY while
   // the passport is closed so its card block stays glued to the hole as
   // this page scrolls (the hole scrolls; the backdrop otherwise wouldn't).
@@ -481,34 +497,9 @@ export default function ProfileScreen() {
         </GlassContainer>
       ) : (
         <>
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            {Platform.OS === 'ios' && (
-              <>
-                {/* Top-anchored, taller/stronger blur stacked over a full-height
-                    softer one — a crude but effective step-down in blur strength
-                    toward the bottom edge, since BlurView has no gradient mask */}
-                <BlurView
-                  intensity={90}
-                  tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: TOP_BAR_H * 0.6 }}
-                />
-                <BlurView
-                  intensity={40}
-                  tint={isDark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-                  style={StyleSheet.absoluteFill}
-                />
-              </>
-            )}
-            {/* Fades the tint color to fully transparent by the bar's own
-                bottom edge — same height, no hard cutoff */}
-            <LinearGradient
-              colors={isDark
-                ? ['rgba(23,21,17,0.72)', 'rgba(23,21,17,0.4)', 'rgba(23,21,17,0)']
-                : ['rgba(242,235,219,0.72)', 'rgba(242,235,219,0.4)', 'rgba(242,235,219,0)']}
-              locations={[0, 0.55, 1]}
-              style={StyleSheet.absoluteFill}
-            />
-          </View>
+          {/* Blur + tint that both dissolve toward the bar's bottom edge —
+              no hard line where the blur stops. Shared with the feed tab. */}
+          <HeaderBlurFade isDark={isDark} />
           <View style={[styles.topBarInner, { marginTop: insets.top - 8 }]}>
             <View style={{ height: 44, justifyContent: 'center' }}>
               <Wordmark onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} />
@@ -590,6 +581,7 @@ export default function ProfileScreen() {
         holeTop={HOLE_TOP}
         shiftY={backdropShift}
         onCardHeight={setHoleH}
+        onStatsLayout={handleStatsLayout}
         onAvatarPress={() => setAvatarLightbox(true)}
         getToken={getToken}
         rawVisits={rawVisits}
@@ -644,6 +636,23 @@ export default function ProfileScreen() {
             onPress={openPassport}
             activeOpacity={1}
           />
+          {/* Stat links on the closed card (see statsRect) — later siblings
+              of the hole target above, so they win the touch. Stats with no
+              link of their own get no target: the tap falls through to the
+              hole and opens the passport, same as tapping anywhere else. */}
+          {statsRect && passportStatHitRects(statsRect).map((r, i) => {
+            const href = PASSPORT_STAT_LINKS[i];
+            if (!href) return null;
+            return (
+              <TouchableOpacity
+                key={href}
+                style={{ position: 'absolute', left: PASSPORT_CARD_INSET + r.left, top: HOLE_TOP + r.top, width: r.width, height: r.height }}
+                onPress={() => router.push(href as never)}
+                activeOpacity={1}
+                hitSlop={4}
+              />
+            );
+          })}
           {/* Share profile — top-right corner of the card */}
           <TouchableOpacity
             style={[styles.shareBtn, { top: HOLE_TOP + 34 }]}
@@ -658,6 +667,16 @@ export default function ProfileScreen() {
         {/* Everything below the card — plain opaque cream, continuing the
             frame (which already carries the gap under the hole); zooms with it. */}
         <View style={{ backgroundColor: C.bg }}>
+
+        {/* "Tap to expand" — a labeled rule the width of the card, sitting
+            in the frame's gap just under it (negative marginTop pulls it up
+            into that gap; the frame is cream too, so there's no seam). Taps
+            open the passport like the card does. */}
+        <TouchableOpacity style={styles.expandHint} onPress={openPassport} activeOpacity={0.6} hitSlop={8}>
+          <View style={styles.expandHintRule} />
+          <Text style={styles.expandHintText}>TAP TO EXPAND</Text>
+          <View style={styles.expandHintRule} />
+        </TouchableOpacity>
 
         {/* ── Recent stamps preview — skeleton until visits load, hidden only when truly empty ── */}
         {(!visitsLoaded || recentStamps.length > 0) && (
@@ -1033,6 +1052,17 @@ const styles = StyleSheet.create({
   // Passport card — everything visual about it (pattern, avatar, name,
   // stats, MRZ, watermark) lives in PassportBackdrop; this screen only cuts
   // the hole (see frameHolePath) and floats this one button over it.
+  expandHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: PASSPORT_CARD_INSET,
+    // HOLE_TOP_PAD (20) of cream frame sits between the hole and this
+    // section — pull up into it so the hint reads as the card's caption,
+    // not the next section's header.
+    marginTop: -HOLE_TOP_PAD + 8,
+    marginBottom: 18,
+  },
+  expandHintRule: { flex: 1, height: 0.5, backgroundColor: C.hairline },
+  expandHintText: { fontSize: 10, fontWeight: '700', letterSpacing: 1.4, color: C.inkMute },
   shareBtn: {
     // Deliberately smaller than the app-wide 44pt round buttons — it's a
     // quiet corner affordance on the passport card, not primary chrome.

@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/lib/palette';
@@ -15,11 +16,39 @@ const GOLD = '#F0C550';
 // Matches the card's own passportCard paddingHorizontal exactly.
 const PADDING_H = 20;
 const STAT_ROW_H = 52;
+// statsRow's paddingTop at rest (collapseFrac 0) — the stat items are
+// absolutely positioned from the row's padding box, so this is where row 0
+// actually starts.
+const STAT_ROW_PAD_TOP = 12;
 
 export interface PassportFaceStatItem {
   label: string;
   value: string;
   onPress?: () => void;
+}
+
+/** The 2×2 stat grid's rendered box, relative to this component's PARENT
+    (the passport card block, whose box is exactly what the profile screen's
+    hole shows). Reported via onStatsLayout. */
+export interface PassportStatsRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Per-stat hit boxes (index order = statItems order) inside the card
+    block for the at-rest, un-collapsed grid — so a screen that only shows
+    the face through a hole (and can't hand touches to it) can float its own
+    tap targets exactly over each stat. */
+export function passportStatHitRects(rect: PassportStatsRect) {
+  const w = rect.width / 2;
+  return [0, 1, 2, 3].map(i => ({
+    left: rect.x + (i % 2) * w,
+    top: rect.y + STAT_ROW_PAD_TOP + Math.floor(i / 2) * STAT_ROW_H,
+    width: w,
+    height: STAT_ROW_H,
+  }));
 }
 
 type AnimatedNumber = Animated.Value | Animated.AnimatedInterpolation<number>;
@@ -53,13 +82,31 @@ export interface PassportFaceProps {
       card). */
   collapseFrac: AnimatedNumber;
   onAvatarPress?: () => void;
+  /** See PassportStatsRect. Fires on every layout pass of the grid,
+      including while it collapses — callers wanting the rest geometry gate
+      it themselves. */
+  onStatsLayout?: (rect: PassportStatsRect) => void;
 }
 
 export function PassportFace({
   avatarUrl, name, username, joinDate, bio, statItems, progressLabel, progressPct, mrzLine1, mrzLine2,
-  containerWidth, collapseFrac, onAvatarPress,
+  containerWidth, collapseFrac, onAvatarPress, onStatsLayout,
 }: PassportFaceProps) {
   const T = useColors();
+
+  // The grid's rect relative to the parent = root's offset in the parent +
+  // the row's offset in the root. Either onLayout can fire first (and the
+  // root re-lays out whenever the bio/name change), so both are stashed and
+  // the combined rect re-reported whenever either lands.
+  const rootLayoutRef = useRef<{ x: number; y: number } | null>(null);
+  const rowLayoutRef = useRef<PassportStatsRect | null>(null);
+  const onStatsLayoutRef = useRef(onStatsLayout);
+  onStatsLayoutRef.current = onStatsLayout;
+  const reportStats = () => {
+    const root = rootLayoutRef.current, row = rowLayoutRef.current;
+    if (!root || !row) return;
+    onStatsLayoutRef.current?.({ x: root.x + row.x, y: root.y + row.y, width: row.width, height: row.height });
+  };
 
   const contentWidth = Animated.subtract(containerWidth, PADDING_H * 2);
   const halfW = Animated.multiply(contentWidth, 0.5);
@@ -117,7 +164,14 @@ export function PassportFace({
   );
 
   return (
-    <View style={{ alignItems: 'center' }}>
+    <View
+      style={{ alignItems: 'center' }}
+      onLayout={onStatsLayout ? e => {
+        const { x, y } = e.nativeEvent.layout;
+        rootLayoutRef.current = { x, y };
+        reportStats();
+      } : undefined}
+    >
       {onAvatarPress ? (
         <TouchableOpacity
           style={[st.avatarWrap, { borderColor: T.hairline, backgroundColor: T.surface }]}
@@ -139,7 +193,13 @@ export function PassportFace({
 
       {bio ? <Animated.Text style={[st.bio, fadeAwayStyle]}>{bio}</Animated.Text> : null}
 
-      <Animated.View style={[st.statsRow, statsRowStyle]}>
+      <Animated.View
+        style={[st.statsRow, statsRowStyle]}
+        onLayout={onStatsLayout ? e => {
+          rowLayoutRef.current = e.nativeEvent.layout;
+          reportStats();
+        } : undefined}
+      >
         {statItems.map((sItem, i) => {
           const label = (
             <Animated.Text style={[st.statLabel, { fontSize: statLabelSize }]} numberOfLines={1}>{sItem.label}</Animated.Text>
@@ -157,7 +217,16 @@ export function PassportFace({
           return (
             <Animated.View key={sItem.label} style={[st.statItem, statItemStyle(i)]}>
               {sItem.onPress ? (
-                <TouchableOpacity activeOpacity={0.6} onPress={sItem.onPress}>
+                // Stretched across the item's whole column (not just the
+                // text's own width — "0" under a short label made for a
+                // tiny target) plus slop, so a tap anywhere near the stat
+                // lands.
+                <TouchableOpacity
+                  activeOpacity={0.6}
+                  onPress={sItem.onPress}
+                  hitSlop={6}
+                  style={{ alignSelf: 'stretch', alignItems: 'center' }}
+                >
                   {label}
                   {value}
                 </TouchableOpacity>

@@ -28,6 +28,7 @@ config.resolver.extraNodeModules = {
   'expo-sms': rootPkg('expo-sms'),
   'react-native-view-shot': rootPkg('react-native-view-shot'),
   '@react-native-community/netinfo': rootPkg('@react-native-community/netinfo'),
+  '@react-native-masked-view/masked-view': rootPkg('@react-native-masked-view/masked-view'),
   '@react-native-community/slider': rootPkg('@react-native-community/slider'),
   '@react-native-segmented-control/segmented-control': rootPkg('@react-native-segmented-control/segmented-control'),
   '@sentry/react-native': rootPkg('@sentry/react-native'),
