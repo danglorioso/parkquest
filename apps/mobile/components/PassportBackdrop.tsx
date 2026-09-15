@@ -364,6 +364,19 @@ export function PassportBackdrop({
   const heroH = blockTopRest + cardH + CARD_GAP_BELOW;
 
   const scrollRef = useRef<ScrollView>(null);
+  // Native-driven mirror of scroll position — exists for exactly one
+  // reason: overscrollCompensation below, a UI-thread-only transform that
+  // cancels the ScrollView's own rubber-band shift on the way up. A JS-side
+  // reaction (however small the threshold) always lags the touch by at
+  // least one round trip, which is what made the avatar/text visibly
+  // slide down and then snap back once a JS check finally caught up and
+  // closed things. This has no such lag: both the native overscroll shift
+  // and this counter-shift are driven off the same value in the same
+  // native commit, so content just doesn't appear to move, full stop.
+  const scrollYNative = useRef(new Animated.Value(0)).current;
+  const overscrollCompensation = scrollYNative.interpolate({
+    inputRange: [-1000, 0], outputRange: [-1000, 0], extrapolateRight: 'clamp',
+  });
 
   // ── Compact bar crossfade ── A single native-driven opacity value, shown
   // once the cover has scrolled substantially out of view and hidden again
@@ -411,14 +424,15 @@ export function PassportBackdrop({
   // dismiss path itself, which only runs once per genuine pull.
   const dismissingRef = useRef(false);
   useEffect(() => { if (active) dismissingRef.current = false; }, [active]);
-  // Plain callback, not Animated.event — nothing here needs to read scroll
-  // position on the native thread (there's no style left that tracks it),
-  // so there's no native-driver handler to accidentally re-register mid-
-  // session. useCallback with empty deps: created once, stays once,
-  // reasoning entirely through refs/setState — no room for the stale- or
-  // re-bound-handler class of bug the first version of this had.
-  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
+  // The actual per-event reaction (compact bar crossfade, dismiss-on-pull)
+  // — unchanged logic, just called from inside the Animated.event listener
+  // below instead of being the onScroll handler directly. Reassigned into a
+  // ref on every render (cheap; not a hook) rather than depended on by the
+  // Animated.event itself, which is what keeps THAT stable — see its own
+  // comment for why depending on anything that legitimately changes over
+  // time (thresholds, requestClose) bit this component before.
+  const onScrollReactRef = useRef((_y: number) => {});
+  onScrollReactRef.current = (y: number) => {
     if (y < -DISMISS_PULL) {
       if (dismissingRef.current) return;
       dismissingRef.current = true;
@@ -438,7 +452,21 @@ export function PassportBackdrop({
         toValue: 0, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true,
       }).start(({ finished }) => { if (finished) setCompactVisible(false); });
     }
-  }, [requestClose]);
+  };
+  // Created exactly once — deps are ONLY scrollYNative, a ref that never
+  // changes identity for the life of this component. Do not add anything
+  // else to this array: an earlier version depended on values derived from
+  // measured layout (which legitimately change once, shortly after mount),
+  // and recreating a useNativeDriver: true handler while the ScrollView
+  // was already live re-registered it with the native side mid-session —
+  // that was the actual cause of the collapsed-state flashing/stuck-open
+  // bugs from earlier in this file's history, not anything about what the
+  // handler computed.
+  const handleScroll = useMemo(() => Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollYNative } } }],
+    { useNativeDriver: true, listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => onScrollReactRef.current(e.nativeEvent.contentOffset.y) },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [scrollYNative]);
 
   // Edge-swipe to close, like iOS's own interactive-pop gesture — this
   // screen isn't a real navigation route (it's a permanently-mounted
@@ -501,13 +529,18 @@ export function PassportBackdrop({
         <View style={{ height: 150, backgroundColor: T.primaryDeep }} />
       </View>
 
-      <ScrollView
+      <Animated.ScrollView
         ref={scrollRef}
         style={StyleSheet.absoluteFill}
         onScroll={handleScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
+        {/* Cancels the ScrollView's own overscroll shift — see
+            overscrollCompensation above. Wraps everything that scrolls, so
+            the cover and the sheet move together as one unit exactly like
+            before; only their combined response to a top-overscroll changes. */}
+        <Animated.View style={{ transform: [{ translateY: overscrollCompensation }] }}>
         {/* Cover — ordinary scroll content, no pin, no collapsing height.
             It just scrolls away like anything else; the compact bar
             (below, outside this ScrollView) is what stays on screen. */}
@@ -630,7 +663,8 @@ export function PassportBackdrop({
             <Ionicons name="chevron-forward" size={15} color={T.primary} />
           </TouchableOpacity>
         </View>
-      </ScrollView>
+        </Animated.View>
+      </Animated.ScrollView>
 
       {/* Left-edge swipe-to-close hot zone — see edgeSwipe above. Sits on
           top (after the ScrollView in paint order) but is only as wide as
