@@ -32,6 +32,35 @@ function centerOffset(textLen: number): string {
   return `${((TEXT_ARC_LEN - textLen) / 2 / TEXT_ARC_LEN * 100).toFixed(2)}%`;
 }
 
+// ── Perforated edge ───────────────────────────────────────────────────────────
+// The die-cut/perforated silhouette real postage stamps have, instead of a
+// plain circular border: a ring of small, perfectly even outward scallops
+// (unlike the ink texture above, real perforation is machine-cut — uniform,
+// not seeded/random) traced through `count` points on a base circle, each
+// pair joined by a quadratic Bezier bulging out to a peak on a slightly
+// larger circle. Solved directly for the control point that makes the curve
+// pass through that peak at t=0.5 (for quadratic B(t), B(0.5) = P solves to
+// control = 2P − (A+B)/2), so the bump shape is exact regardless of how SVG
+// arc sweep flags resolve on a given renderer — no guessing needed.
+function scallopedCirclePath(cx: number, cy: number, rBase: number, amplitude: number, count: number): string {
+  const step = (Math.PI * 2) / count;
+  const pt = (theta: number, r: number) => ({ x: cx + r * Math.cos(theta), y: cy + r * Math.sin(theta) });
+  const base = Array.from({ length: count + 1 }, (_, i) => pt(i * step, rBase));
+  let d = `M ${base[0].x.toFixed(2)} ${base[0].y.toFixed(2)} `;
+  for (let i = 0; i < count; i++) {
+    const a = base[i], b = base[i + 1];
+    const peak = pt((i + 0.5) * step, rBase + amplitude);
+    const ctrl = { x: 2 * peak.x - 0.5 * (a.x + b.x), y: 2 * peak.y - 0.5 * (a.y + b.y) };
+    d += `Q ${ctrl.x.toFixed(2)} ${ctrl.y.toFixed(2)} ${b.x.toFixed(2)} ${b.y.toFixed(2)} `;
+  }
+  return d + 'Z';
+}
+// Same base radius the plain outer ring used to sit at, so nothing else
+// (tick marks, text arcs, the halo) needs to move. Computed once — every
+// park's stamp shares the same physical "die", same as a real perforation
+// machine punches an identical pattern regardless of what's printed inside.
+const OUTER_SCALLOP = scallopedCirclePath(50, 50, 44, 3, 30);
+
 export function stampColor(idx: number, dark = false): string {
   return (dark ? STAMP_COLORS_DARK : STAMP_COLORS)[idx % STAMP_COLORS.length];
 }
@@ -180,17 +209,27 @@ export function ParkStamp({
 
         {/* Emboss bevel — a faint light/dark offset pair behind the main
             rings, like a seal pressed into the paper rather than printed
-            flat on top of it. No blur filter (unreliable cross-platform per
-            the note above) — the sub-pixel offset alone reads as a bevel
+            flat on top of it. Follows the same perforated silhouette as the
+            outer ring below (wrapped in a translated G, since a Path has no
+            cx/cy of its own to offset the way Circle did) — a plain-circle
+            bevel sitting behind a scalloped ring would drift in and out from
+            under it at every bump. No blur filter (unreliable cross-platform
+            per the note above) — the sub-pixel offset alone reads as a bevel
             at this scale. */}
-        <Circle cx="49.4" cy="49.4" r="44" fill="none" stroke="white" strokeWidth="1.1" opacity="0.3" />
-        <Circle cx="50.6" cy="50.6" r="44" fill="none" stroke="black" strokeWidth="1.1" opacity="0.22" />
+        <G transform="translate(-0.6 -0.6)">
+          <SvgPath d={OUTER_SCALLOP} fill="none" stroke="white" strokeWidth="1.1" opacity="0.3" />
+        </G>
+        <G transform="translate(0.6 0.6)">
+          <SvgPath d={OUTER_SCALLOP} fill="none" stroke="black" strokeWidth="1.1" opacity="0.22" />
+        </G>
 
-        {/* Outer ring, doubled — a thin line just inside the main border,
-            like an engraved medal/seal edge rather than a plain circle.
-            Stops at r=40.5, clear of the r=33 name/state text arcs below —
-            a ring any closer overlaps the lettering. */}
-        <Circle cx="50" cy="50" r="44"   fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" />
+        {/* Outer edge — perforated/scalloped like a real postage stamp's
+            die-cut border, replacing what used to be a second plain circle
+            here. The inner ring stays a plain line, same as before — a
+            "ribbon" of perforation around a plain engraved border. Stops at
+            r=40.5, clear of the r=33 name/state text arcs below — a ring
+            any closer overlaps the lettering. */}
+        <SvgPath d={OUTER_SCALLOP} fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" strokeLinejoin="round" />
         <Circle cx="50" cy="50" r="40.5" fill="none" stroke={c} strokeWidth="1"   opacity="0.75" />
 
         {/* Ink specks — the fine grain an ink pad leaves around the ring */}
