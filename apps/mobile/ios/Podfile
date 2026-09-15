@@ -7,7 +7,8 @@ podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties
 ENV['RCT_NEW_ARCH_ENABLED'] = podfile_properties['newArchEnabled'] == 'true' ? '1' : '0'
 ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] = podfile_properties['EX_DEV_CLIENT_NETWORK_INSPECTOR']
 
-platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
+min_ios_version_supported = podfile_properties['ios.deploymentTarget'] || '15.1'
+platform :ios, min_ios_version_supported
 install! 'cocoapods',
   :deterministic_uuids => false
 
@@ -61,6 +62,17 @@ target 'ParkQuest' do
         config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
         config.build_settings['SWIFT_VERSION'] = '5.0'
         config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
+        # react_native_post_install already raises this on regular pod
+        # targets, but resource-bundle targets (RNSVG's filters bundle,
+        # react-native-maps' privacy bundle, RNCAsyncStorage's/SDWebImage's
+        # resource bundles, etc.) are separate Xcode targets that don't go
+        # through that fixup — they keep whatever ancient minimum their own
+        # podspec declared (9.0, 11.0, 12.4...), which recent Xcode refuses
+        # to build against. Force every target, resource bundles included,
+        # to the same floor the app itself uses.
+        if Gem::Version.new(config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] || '0') < Gem::Version.new(min_ios_version_supported)
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = min_ios_version_supported
+        end
       end
     end
 
