@@ -212,7 +212,7 @@ export default function JournalScreen() {
   const confirmDeleteEntry = useCallback((entry: JournalEntry) => {
     Alert.alert(
       'Delete entry',
-      `Delete your ${entry.park_name ?? entry.park_code} journal entry? This cannot be undone.`,
+      `Delete your ${entry.park_name ?? entry.park_code} visit? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -265,7 +265,7 @@ export default function JournalScreen() {
       <View style={styles.pageHeader}>
         <Text style={styles.kicker}>COLLECTIONS</Text>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-          <Text style={styles.title}>Journal</Text>
+          <Text style={styles.title}>Visits</Text>
         </View>
         {!loading && (
           <Text style={styles.subtitle}>
@@ -349,11 +349,11 @@ export default function JournalScreen() {
             <Ionicons name="journal-outline" size={22} color={C.inkMute} />
           </View>
           <Text style={styles.emptyTitle}>
-            {entries.length === 0 ? 'No journal entries yet' : 'No matching entries'}
+            {entries.length === 0 ? 'No visits yet' : 'No matching entries'}
           </Text>
           <Text style={styles.emptySub}>
             {entries.length === 0
-              ? 'Log a visit to start your journal.'
+              ? 'Log a visit to get started.'
               : 'Try adjusting your search or filters.'}
           </Text>
         </View>

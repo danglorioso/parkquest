@@ -97,7 +97,7 @@ export function JournalTimeline({ entries, badges }: { entries: JournalEntry[]; 
   if (items.length === 0) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>No journal entries visible.</Text>
+        <Text style={styles.emptyText}>No visits visible.</Text>
       </View>
     );
   }

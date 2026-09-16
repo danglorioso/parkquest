@@ -14,8 +14,10 @@ export default function ProfileStackLayout() {
     <Stack screenOptions={HEADER}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="badges"   options={{ title: 'Badges' }} />
-      <Stack.Screen name="journal/index" options={{ title: 'Journal' }} />
-      <Stack.Screen name="journal/[id]" options={{ headerBackTitle: 'Journal' }} />
+      {/* Route/folder name (journal/*) is unchanged internally — this is a
+          user-facing rename only ("Journal" → "Visits"). */}
+      <Stack.Screen name="journal/index" options={{ title: 'Visits' }} />
+      <Stack.Screen name="journal/[id]" options={{ headerBackTitle: 'Visits' }} />
       {/* Plain default back — arrow only, no label. headerBackTitle: '' falls
           back to the previous screen's route name ("index") instead of
           hiding the label, so this needs headerBackButtonDisplayMode

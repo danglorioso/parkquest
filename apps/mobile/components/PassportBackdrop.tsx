@@ -241,12 +241,16 @@ function BadgeCell({ badge, index, onPress }: { badge: BadgeSummary; index: numb
 }
 
 /** Where each stat leads, shared by the expanded grid and the compact bar's
-    row (in the same NP VISITED / NPS AREAS / BADGES / FRIENDS order). null =
+    row (in the same NP VISITED / NPS AREAS / BADGES / FRIENDS order). NP
+    VISITED and NPS AREAS both go to Visits (formerly "Journal") — the two
+    counts are really two views of the same visit log. null would mean
     inert — on the closed card the tap falls through to the hole and opens
-    the passport; on the open cover there's nothing more useful to link to
-    (the stamps grid is right underneath). Shared with the profile screen so
-    the closed card's own floating tap targets land on the same places. */
-export const PASSPORT_STAT_LINKS: readonly (string | null)[] = [null, null, '/profile/badges', '/profile/friends'];
+    the passport instead — but every stat here links somewhere now.
+    Shared with the profile screen so the closed card's own floating tap
+    targets land on the same places. */
+export const PASSPORT_STAT_LINKS: readonly (string | null)[] = [
+  '/profile/journal', '/profile/journal', '/profile/badges', '/profile/friends',
+];
 
 /** The compact bar's own stat row — independent from PassportFace's grid,
     not a collapsed version of it. Plain, static layout; nothing here
@@ -424,6 +428,15 @@ export function PassportBackdrop({
   // dismiss path itself, which only runs once per genuine pull.
   const dismissingRef = useRef(false);
   useEffect(() => { if (active) dismissingRef.current = false; }, [active]);
+  // Whether a touch is CURRENTLY driving the scroll — set true/false by
+  // onScrollBeginDrag/onScrollEndDrag (below), which only fire for an
+  // actual finger-driven drag, never for momentum deceleration once it's
+  // lifted. Without this, flinging the list from deep in the stamps could
+  // overshoot back up to y<0 purely on momentum/rubber-band with no
+  // finger down at all, and that also used to dismiss the passport — the
+  // dismiss should only ever fire while the user is still physically
+  // pulling, not from physics carrying the list to the top on its own.
+  const isDraggingRef = useRef(false);
   // The actual per-event reaction (compact bar crossfade, dismiss-on-pull)
   // — unchanged logic, just called from inside the Animated.event listener
   // below instead of being the onScroll handler directly. Reassigned into a
@@ -433,7 +446,7 @@ export function PassportBackdrop({
   // time (thresholds, requestClose) bit this component before.
   const onScrollReactRef = useRef((_y: number) => {});
   onScrollReactRef.current = (y: number) => {
-    if (y < -DISMISS_PULL) {
+    if (isDraggingRef.current && y < -DISMISS_PULL) {
       if (dismissingRef.current) return;
       dismissingRef.current = true;
       requestClose();
@@ -533,6 +546,8 @@ export function PassportBackdrop({
         ref={scrollRef}
         style={StyleSheet.absoluteFill}
         onScroll={handleScroll}
+        onScrollBeginDrag={() => { isDraggingRef.current = true; }}
+        onScrollEndDrag={() => { isDraggingRef.current = false; }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >

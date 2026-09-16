@@ -520,7 +520,7 @@ export default function JournalEntryScreen() {
     if (!entry) return;
     Alert.alert(
       'Delete entry',
-      `Delete your ${entry.park_name ?? entry.park_code} journal entry? This cannot be undone.`,
+      `Delete your ${entry.park_name ?? entry.park_code} visit? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

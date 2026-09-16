@@ -192,9 +192,12 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
     dismiss();
   };
 
-  const openPark = (code: string) => {
+  const openPark = (park: ParkLite) => {
     close();
-    router.push(`/park/${code}` as never);
+    router.push({
+      pathname: '/park/[id]',
+      params: { id: park.park_code, name: park.name, states: park.states },
+    } as never);
   };
 
   const openUser = (id: string) => {
@@ -333,7 +336,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
                     <>
                       <Text style={styles.sectionTitle}>RECENTLY VISITED</Text>
                       {suggestions.recent.map(p => (
-                        <ParkRow key={p.park_code} park={p} onPress={() => openPark(p.park_code)} />
+                        <ParkRow key={p.park_code} park={p} onPress={() => openPark(p)} />
                       ))}
                     </>
                   )}
@@ -341,7 +344,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
                     <>
                       <Text style={styles.sectionTitle}>ON YOUR BUCKET LIST</Text>
                       {suggestions.bucket.map(p => (
-                        <ParkRow key={p.park_code} park={p} onPress={() => openPark(p.park_code)} />
+                        <ParkRow key={p.park_code} park={p} onPress={() => openPark(p)} />
                       ))}
                     </>
                   )}
@@ -349,7 +352,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
                     <>
                       <Text style={styles.sectionTitle}>DISCOVER</Text>
                       {suggestions.discover.map(p => (
-                        <ParkRow key={p.park_code} park={p} onPress={() => openPark(p.park_code)} />
+                        <ParkRow key={p.park_code} park={p} onPress={() => openPark(p)} />
                       ))}
                     </>
                   )}
@@ -360,7 +363,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
                     {filteredParks.length} PARK{filteredParks.length !== 1 ? 'S' : ''}
                   </Text>
                   {filteredParks.slice(0, MAX_LIST).map(p => (
-                    <ParkRow key={p.park_code} park={p} onPress={() => openPark(p.park_code)} />
+                    <ParkRow key={p.park_code} park={p} onPress={() => openPark(p)} />
                   ))}
                 </>
               ) : noResults ? (

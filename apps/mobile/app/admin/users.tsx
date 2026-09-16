@@ -1,7 +1,7 @@
 import {
   ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,14 +28,46 @@ export default function AdminUsersScreen() {
   const [users, setUsers] = useState<AdminUserRow[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [sort, setSort] = useState<AdminUserSort>('joined');
+  // The API was already paginated (returns has_more) but this screen only
+  // ever requested page 1 and threw the flag away — "showing only the
+  // first N" was that, not a server-side cap. pageRef/hasMore/loadingMore
+  // wire up the same infinite-scroll idiom the feed tab uses.
+  const pageRef = useRef(1);
+  const [hasMore, setHasMore] = useState(true);
+  const loadingMoreRef = useRef(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(async () => {
     const tok = await getToken();
     if (!tok) return;
-    getAdminUsers(tok, 1, activeWindow, sort).then(r => setUsers(r.users)).catch(() => setUsers([]));
+    pageRef.current = 1;
+    setHasMore(true);
+    getAdminUsers(tok, 1, activeWindow, sort)
+      .then(r => { setUsers(r.users); setHasMore(r.has_more); })
+      .catch(() => { setUsers([]); setHasMore(false); });
   }, [getToken, activeWindow, sort]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMore) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const tok = await getToken();
+      if (!tok) return;
+      const nextPage = pageRef.current + 1;
+      const r = await getAdminUsers(tok, nextPage, activeWindow, sort);
+      pageRef.current = nextPage;
+      setUsers(prev => [...(prev ?? []), ...r.users]);
+      setHasMore(r.has_more);
+    } catch (e) {
+      console.error('Admin users load-more failed:', e);
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [getToken, activeWindow, sort, hasMore]);
 
   const toggleBan = async (u: AdminUserRow) => {
     if (busyId) return;
@@ -75,6 +107,9 @@ export default function AdminUsersScreen() {
         keyExtractor={u => u.clerk_user_id}
         contentContainerStyle={{ padding: 16, paddingTop: activeWindow ? 16 : 4 }}
         ListEmptyComponent={users === null ? <ActivityIndicator color={C.inkMute} style={{ marginTop: 40 }} /> : null}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMore ? <ActivityIndicator color={C.inkMute} style={{ marginVertical: 20 }} /> : null}
         renderItem={({ item: u }) => (
           <View style={[st.row, u.deleted && { opacity: 0.45 }]}>
             <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/user/${u.clerk_user_id}` as never)}>

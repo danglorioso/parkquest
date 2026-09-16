@@ -75,7 +75,9 @@ export default function PostDetailScreen() {
             myAvatarUrl={me?.imageUrl}
             myName={me?.fullName ?? me?.username}
             onDelete={() => router.replace('/(tabs)/feed' as never)}
-            onParkPress={code => router.push(`/park/${code}` as never)}
+            onParkPress={(code, seed) => router.push(seed
+              ? { pathname: '/park/[id]', params: { id: code, name: seed.name, states: seed.states, imageUrl: seed.imageUrl ?? '' } } as never
+              : `/park/${code}` as never)}
             autoOpenComments={open !== 'likes' && post.comment_count > 0}
             autoOpenLikers={open === 'likes'}
           />

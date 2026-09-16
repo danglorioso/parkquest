@@ -1127,7 +1127,12 @@ function PostCardImpl({
   myAvatarUrl?: string | null;
   myName?: string | null;
   onDelete?: (id: number) => void;
-  onParkPress?: (parkCode: string) => void;
+  /** `seed`, when given, is this post's own park_name/states/image — pass
+      it straight through as the park page's seedName/seedStates/seedImageUrl
+      route params so it can paint its real header instantly instead of a
+      bare spinner. Every post already carries this data; the only reason
+      not to forward it would be a caller with no route to attach params to. */
+  onParkPress?: (parkCode: string, seed?: { name: string; states: string; imageUrl: string | null }) => void;
   autoOpenComments?: boolean;
   autoOpenLikers?: boolean;
 }) {
@@ -1337,8 +1342,19 @@ function PostCardImpl({
   const showPark = !isBadge && !!post.park_name;
   const goPark = () => {
     if (!post.park_code) return;
-    if (onParkPress) onParkPress(post.park_code);
-    else router.push(`/park/${post.park_code}` as never);
+    const seed = post.park_name
+      ? { name: post.park_name, states: post.park_states ?? '', imageUrl: post.park_image_url ?? null }
+      : undefined;
+    if (onParkPress) {
+      onParkPress(post.park_code, seed);
+    } else if (seed) {
+      router.push({
+        pathname: '/park/[id]',
+        params: { id: post.park_code, name: seed.name, states: seed.states, imageUrl: seed.imageUrl ?? '' },
+      } as never);
+    } else {
+      router.push(`/park/${post.park_code}` as never);
+    }
   };
   // Already-visited parks can't be bucket-listed — POST /api/visits would
   // wipe the dated visit's visited_date.

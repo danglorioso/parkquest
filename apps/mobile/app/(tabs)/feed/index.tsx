@@ -273,8 +273,10 @@ export default function FeedScreen() {
     setPosts(prev => prev.filter(p => p.id !== id));
   }, []);
 
-  const handleParkPress = useCallback((code: string) => {
-    router.push(`/park/${code}` as never);
+  const handleParkPress = useCallback((code: string, seed?: { name: string; states: string; imageUrl: string | null }) => {
+    router.push(seed
+      ? { pathname: '/park/[id]', params: { id: code, name: seed.name, states: seed.states, imageUrl: seed.imageUrl ?? '' } } as never
+      : `/park/${code}` as never);
   }, [router]);
 
   // Stable identity — FlatList's CellRenderer shallow-compares renderItem

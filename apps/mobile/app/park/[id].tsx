@@ -496,6 +496,12 @@ export function ParkProfileScreen({
   } : null);
   const [nps,          setNps]          = useState<NpsData | null>(null);
   const [weather,      setWeather]      = useState<WeatherForecast | null>(null);
+  // Settles (true) once the NWS forecast fetch finishes, success or not —
+  // separate from `weather` itself so the Weather section below can show a
+  // spinner while genuinely still in flight, rather than either rendering
+  // nothing at all (indistinguishable from "this park truly has no
+  // forecast data") or showing a spinner forever after a failed fetch.
+  const [weatherLoaded, setWeatherLoaded] = useState(false);
   // Best-effort real photo-strip box count for the skeleton below, read
   // from the on-device offline nps cache (lib/offlineParks.ts) — which
   // only has data for parks the user explicitly downloaded for offline
@@ -696,11 +702,22 @@ export function ParkProfileScreen({
 
   const loadWeather = useCallback(async () => {
     const tok = await getToken();
-    if (!tok || !id) return;
+    if (!tok || !id) {
+      setWeatherLoaded(true);
+      return;
+    }
     try {
       const data = await apiFetch<WeatherForecast>(`/api/parks/${id}/weather`, tok);
       setWeather(data);
-    } catch { /* weather is optional */ }
+    } catch { /* weather is optional */ } finally {
+      // Settled either way — this is what lets the Weather section tell
+      // "still fetching, show a spinner" apart from "genuinely nothing to
+      // show" once the request comes back empty/failed. Refetches (pull to
+      // refresh, reconnect) don't reset this back to false — the section
+      // already has content or has already decided there's none, so there's
+      // no missing-content span left for a spinner to fill in.
+      setWeatherLoaded(true);
+    }
   }, [getToken, id]);
 
   const toggleBucketList = useCallback(async () => {
@@ -1201,10 +1218,38 @@ export function ParkProfileScreen({
     }
   }
 
+  // Shared by the loading and failed states below — same dismissal a real
+  // header back button uses (dismissSheet's own close animation inSheet,
+  // a plain pop otherwise), so there's always a way off this screen even
+  // when the fetch never seeded a name and is taking a while, or fails
+  // outright. Previously neither state rendered any way to leave at all.
+  const loadingBackBtn = (
+    <View style={{ position: 'absolute', left: 16, top: insets.top + 8 }}>
+      <GrowTouchable
+        style={[styles.backBtn, { position: 'relative', left: undefined, top: undefined }]}
+        onPress={() => inSheet ? dismissSheet() : onDismiss?.()}
+        hitSlop={8}
+      >
+        {/* Plain-surface glass (no onMedia/tint) — this sits directly on
+            C.bg, not a hero photo, so it needs the theme-aware default
+            fallback, not the hero header's cream-on-dark-overlay recipe. */}
+        <GlassIconBg />
+        <Ionicons name="chevron-back" size={20} color={C.ink} />
+      </GrowTouchable>
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
+        {/* Seeded navigations never reach this branch (loading starts
+            false — see hasSeed) — this is unseeded ones, where the name
+            genuinely isn't known yet, so there's nothing better to show
+            than the spinner. The back button is what actually matters
+            here: previously there was no way off this screen if the fetch
+            was slow. */}
         <ActivityIndicator size="large" color={C.primary} />
+        {loadingBackBtn}
       </View>
     );
   }
@@ -1222,6 +1267,7 @@ export function ParkProfileScreen({
         >
           <Text style={{ color: C.onPrimary, fontWeight: '700', fontSize: 14 }}>Retry</Text>
         </TouchableOpacity>
+        {loadingBackBtn}
       </View>
     );
   }
@@ -1968,8 +2014,20 @@ export function ParkProfileScreen({
             mounts once as soon as either is available and just fills in the
             forecast row underneath when it arrives, same as any other
             section whose content grows while open. */}
-        {(forecastDays.length > 0 || nps?.weatherInfo) && (
+        {/* Also renders (with a spinner standing in for the forecast row)
+            while the NWS fetch is still in flight and nothing else has
+            landed yet — otherwise this section, sitting well below the
+            instantly-seeded name/hero/first-image, just wasn't there at
+            all for however long the forecast took, with no sign anything
+            was still coming. Disappears for good only once the fetch has
+            actually settled with nothing to show. */}
+        {(forecastDays.length > 0 || nps?.weatherInfo || !weatherLoaded) && (
           <Section title="Weather">
+            {!weatherLoaded && forecastDays.length === 0 && (
+              <View style={{ paddingVertical: 18, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={C.inkMute} />
+              </View>
+            )}
             {forecastDays.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }}>
                 <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 4 }}>

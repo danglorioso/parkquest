@@ -803,7 +803,9 @@ export default function UserProfileScreen() {
                               myAvatarUrl={me?.imageUrl}
                               myName={me?.fullName ?? me?.username}
                               onDelete={pid => setPosts(prev => prev.filter(x => x.id !== pid))}
-                              onParkPress={code => router.push(`/park/${code}` as never)}
+                              onParkPress={(code, seed) => router.push(seed
+                                ? { pathname: '/park/[id]', params: { id: code, name: seed.name, states: seed.states, imageUrl: seed.imageUrl ?? '' } } as never
+                                : `/park/${code}` as never)}
                             />
                           </View>
                         ))}
@@ -895,7 +897,7 @@ export default function UserProfileScreen() {
             {tabIndex === 2 ? (
               (profile.journal && profile.journal.length > 0) || badgeTimelineEntries.length > 0 ? (
                 <View style={styles.section}>
-                  <SectionHeader icon="journal-outline" title="JOURNAL" />
+                  <SectionHeader icon="journal-outline" title="VISITS" />
                   <JournalTimeline entries={profile.journal ?? []} badges={badgeTimelineEntries} />
                 </View>
               ) : (

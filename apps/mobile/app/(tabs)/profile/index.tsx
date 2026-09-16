@@ -928,8 +928,8 @@ export default function ProfileScreen() {
             <View style={styles.rowDivider} />
             <NavRow
               icon="journal-outline"
-              label="Journal"
-              subtitle="Your park visit logs"
+              label="Visits"
+              subtitle="Every park you've logged"
               count={parksVisited > 0 ? parksVisited : undefined}
               onPress={() => router.push('/profile/journal' as never)}
             />
