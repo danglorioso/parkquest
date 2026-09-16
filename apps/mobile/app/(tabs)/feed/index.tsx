@@ -461,7 +461,18 @@ export default function FeedScreen() {
             progressViewOffset={TOP_BAR_H}
           />
         }
-        removeClippedSubviews
+        // NOT removeClippedSubviews — this crashed in production:
+        // -[AIRMap insertReactSubview:atIndex:]: object cannot be nil, inside
+        // RCTLegacyViewManagerInteropComponentView's finalizeUpdates. Posts
+        // with an attached GPX hike render a react-native-maps MapView
+        // (HikeStatsCard); react-native-maps still runs through RN's legacy-
+        // view-manager compatibility shim under Fabric, and that shim is a
+        // documented source of exactly this crash when the native view it's
+        // mid-mutation on gets torn down by clipping — removeClippedSubviews
+        // yanking an off-screen cell's native views while a pending Fabric
+        // mutation still targets that MapView. windowSize/maxToRenderPerBatch
+        // below are a different, unrelated axis of virtualization (render
+        // scheduling, not native view removal) and don't share this risk.
         windowSize={5}
         maxToRenderPerBatch={3}
       />
