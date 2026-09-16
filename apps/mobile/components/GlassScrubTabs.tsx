@@ -60,6 +60,14 @@ export function GlassScrubTabs<T extends string | number>({
   const tick = () => Haptics.selectionAsync();
 
   const pan = Gesture.Pan()
+    // Requires real horizontal movement before this claims the gesture at
+    // all, and releases to whatever's underneath (the page's own vertical
+    // ScrollView) the moment vertical movement dominates instead — without
+    // these, ANY drag starting on the pill, including a plain scroll of
+    // the page with a finger that happens to land here, got claimed and
+    // flipped tabs. Same recipe as the passport's edge-swipe-to-close.
+    .activeOffsetX([-10, 10])
+    .failOffsetY([-10, 10])
     .onStart(() => {
       dragging.value = 1;
     })

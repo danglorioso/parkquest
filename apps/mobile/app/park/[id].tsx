@@ -470,6 +470,17 @@ export function ParkProfileScreen({
   const tabBarSpace = useTabBarSpace();
   const isDark = useColorScheme() === 'dark';
   const C = useColors();
+  // Shared by every "this section's own data isn't in yet" placeholder
+  // below (About/Activities/Topics/Operating Hours/Location/Entrance Fees/
+  // Directions/Contact, plus Weather) — a spinner inside the section's OWN
+  // header/frame rather than the section not existing at all until its
+  // data lands, so the page's layout doesn't jump around as each piece
+  // resolves independently (see parkLoaded/npsLoaded above).
+  const sectionSpinner = (
+    <View style={{ paddingVertical: 18, alignItems: 'center' }}>
+      <ActivityIndicator size="small" color={C.inkMute} />
+    </View>
+  );
   // sheetFull: whether the custom sheet (see the gesture/animation block
   // below) is currently at its full, true-top-of-screen position. Declared
   // here (ahead of its sibling sheet-state hooks) specifically because
@@ -494,6 +505,17 @@ export function ParkProfileScreen({
     description: seedDescription || null, latitude: seedLatitude || null,
     longitude: seedLongitude || null, image_url: seedImageUrl || null,
   } : null);
+  // Settle flags for park/nps, same idea as weatherLoaded below — park and
+  // nps used to update together (both awaited inside the SAME
+  // Promise.allSettled as visits/posts/visitors in loadData), so About/
+  // Location (sourced from `park`, normally fast — its own database row)
+  // sat blank until NPS.gov's own slow live API, bundled in the same
+  // batch, finally answered too. loadData now resolves park/nps as soon as
+  // EACH one individually lands (see the .then() attached to each fetch
+  // there) — these flags are what let the sections below tell "still
+  // fetching, show a spinner" apart from "genuinely nothing to show".
+  const [parkLoaded, setParkLoaded] = useState(hasSeed);
+  const [npsLoaded,  setNpsLoaded]  = useState(false);
   const [nps,          setNps]          = useState<NpsData | null>(null);
   const [weather,      setWeather]      = useState<WeatherForecast | null>(null);
   // Settles (true) once the NWS forecast fetch finishes, success or not —
@@ -628,6 +650,8 @@ export function ParkProfileScreen({
       const cachedNps = npsCache?.npsByCode[id] ?? null;
       if (cachedPark) setPark(cachedPark);
       if (cachedNps) setNps(cachedNps);
+      setParkLoaded(true);
+      setNpsLoaded(true);
       setOfflineFetchedAt(npsCache?.fetchedAt ?? parksCache?.fetchedAt ?? null);
       // "Friends who've visited" depends on the current user's live friends list —
       // there's no offline cache for it (unlike the park content above), so it
@@ -638,9 +662,24 @@ export function ParkProfileScreen({
     }
 
     try {
+      const parkPromise = apiFetch<Park>(`/api/parks/${id}`, tok);
+      const npsPromise = apiFetch<NpsData>(`/api/parks/${id}/nps`, tok);
+      // park and nps used to only ever update once ALL FIVE of these
+      // requests below had settled — About/Location (sourced from `park`,
+      // normally a fast same-database lookup) sat blank the whole time
+      // NPS.gov's own slow live API was still out, since both were awaited
+      // together. Attaching a resolve handler directly to each one's own
+      // promise lets it update the moment IT individually lands, rather
+      // than waiting on the slowest of five. The Promise.allSettled below
+      // still runs (for the offline-fallback logic and the overall
+      // loading/visitsLoaded bookkeeping) — these are a strictly earlier,
+      // best-effort path to the SAME setters, so firing both is harmless.
+      parkPromise.then(setPark).catch(() => {}).finally(() => setParkLoaded(true));
+      npsPromise.then(setNps).catch(() => {}).finally(() => setNpsLoaded(true));
+
       const [parkData, npsData, visitsData, postsData, visitorsData] = await Promise.allSettled([
-        apiFetch<Park>(`/api/parks/${id}`, tok),
-        apiFetch<NpsData>(`/api/parks/${id}/nps`, tok),
+        parkPromise,
+        npsPromise,
         apiFetch<Visit[]>('/api/visits', tok),
         apiFetch<FeedPost[]>(`/api/feed?park=${id}`, tok),
         apiFetch<ParkVisitorsSummary>(`/api/parks/${id}/visitors`, tok),
@@ -1069,6 +1108,36 @@ export function ParkProfileScreen({
           else if (dx >= 40 || vx >= 0.5) goHero(-1);
         }
         heroDragModeRef.current = null;
+      },
+    })
+  ).current;
+
+  // Edge-swipe to dismiss, like iOS's own interactive-pop gesture. inSheet
+  // this screen has no navigation stack of its own to inherit that from at
+  // all (it's rendered inline over map.tsx); pushed, it IS a real stack
+  // screen so the OS gesture already exists there — but this still needs
+  // to work in both presentations for one behavior the user actually
+  // triggers, so it's reproduced by hand here rather than only covering
+  // the pushed case.
+  //
+  // A separate, narrow (0–14pt) strip, not a capture claim woven into
+  // heroPan/contentPan above: onStartShouldSetPanResponder stays false (a
+  // plain tap always falls through), so the only question is whether a
+  // real drag starting in this strip gets claimed here first. 14pt keeps
+  // it entirely clear of the back button at left:16..60 — no need to
+  // reason about which of two overlapping responders a touch should
+  // prefer, since they never overlap. heroPan's own horizontal swipe (photo
+  // paging) still works everywhere else on the hero; this claims only
+  // drags that start within the strip, which a deliberate edge-swipe does
+  // and a swipe-to-change-photo essentially never does.
+  const edgeSwipeBack = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, { dx, dy }) => dx > 10 && dx > Math.abs(dy) * 1.5,
+      onPanResponderRelease: (_, { dx, vx }) => {
+        if (dx > 60 || vx > 0.5) {
+          if (inSheet) dismissSheet(); else onDismiss?.();
+        }
       },
     })
   ).current;
@@ -1818,28 +1887,37 @@ export function ParkProfileScreen({
         {pageTab === 'info' && (
         <>
         {/* ── About ─────────────────────────────────────────────────────────── */}
-        {park.description ? (
+        {/* Shows the section (spinner inside) as soon as we know it's
+            coming, i.e. before parkLoaded, rather than not existing at all
+            until park.description lands — that "everything pops in at
+            once" jump was the actual complaint here, not any one section
+            being slow on its own. */}
+        {!parkLoaded ? (
+          <Section title="About">{sectionSpinner}</Section>
+        ) : park.description ? (
           <Section title="About">
             <Text style={styles.bodyText}>{park.description}</Text>
           </Section>
         ) : null}
 
         {/* ── Activities ───────────────────────────────────────────────────── */}
-        {nps?.activities && nps.activities.length > 0 ? (
+        {!npsLoaded ? (
+          <Section title="Activities">{sectionSpinner}</Section>
+        ) : nps?.activities && nps.activities.length > 0 ? (
           <Section title="Activities">
             <ChipGrid items={nps.activities} />
           </Section>
         ) : null}
 
         {/* ── Topics ───────────────────────────────────────────────────────── */}
-        {nps?.topics && nps.topics.length > 0 ? (
+        {!npsLoaded ? null : nps?.topics && nps.topics.length > 0 ? (
           <Section title="Topics">
             <ChipGrid items={nps.topics} muted />
           </Section>
         ) : null}
 
         {/* ── Operating hours ───────────────────────────────────────────────── */}
-        {nps?.operatingHours && nps.operatingHours.length > 0 ? (
+        {!npsLoaded ? null : nps?.operatingHours && nps.operatingHours.length > 0 ? (
           <Section title="Operating Hours">
             {nps.operatingHours.map((h, hi) => (
               <View key={hi} style={[styles.hoursCard, hi < nps.operatingHours.length - 1 && { marginBottom: 10 }]}>
@@ -1866,7 +1944,11 @@ export function ParkProfileScreen({
         ) : null}
 
         {/* ── Location ──────────────────────────────────────────────────────── */}
-        {park.latitude && park.longitude ? (
+        {/* No spinner of its own — About above already stands in for
+            "park data is loading" (same parkLoaded flag); this just waits
+            quietly and appears once it lands, same as Topics/Hours do
+            relative to Activities' spinner for the nps-derived block. */}
+        {!parkLoaded ? null : park.latitude && park.longitude ? (
           <Section title="Location">
             <View style={styles.miniMapContainer}>
               <MapView
@@ -1934,7 +2016,7 @@ export function ParkProfileScreen({
         ) : null}
 
         {/* ── Entrance fees ─────────────────────────────────────────────────── */}
-        {nps?.entranceFees && nps.entranceFees.length > 0 ? (
+        {!npsLoaded ? null : nps?.entranceFees && nps.entranceFees.length > 0 ? (
           <Section title="Entrance Fees">
             {nps.entranceFees.map((fee, fi) => (
               <View key={fi} style={[styles.feeRow, fi < nps.entranceFees.length - 1 && { marginBottom: 12 }]}>
@@ -1953,7 +2035,7 @@ export function ParkProfileScreen({
         ) : null}
 
         {/* ── Directions ───────────────────────────────────────────────────── */}
-        {nps?.directionsInfo ? (
+        {!npsLoaded ? null : nps?.directionsInfo ? (
           <Section title="Directions">
             <Text style={styles.bodyText}>{nps.directionsInfo}</Text>
             {nps.directionsUrl ? (
@@ -1969,7 +2051,7 @@ export function ParkProfileScreen({
         ) : null}
 
         {/* ── Contact ───────────────────────────────────────────────────────── */}
-        {(nps?.phone || nps?.email || nps?.url) ? (
+        {!npsLoaded ? null : (nps?.phone || nps?.email || nps?.url) ? (
           <Section title="Contact">
             <View style={{ gap: 10 }}>
               {nps.phone ? (
@@ -2023,11 +2105,7 @@ export function ParkProfileScreen({
             actually settled with nothing to show. */}
         {(forecastDays.length > 0 || nps?.weatherInfo || !weatherLoaded) && (
           <Section title="Weather">
-            {!weatherLoaded && forecastDays.length === 0 && (
-              <View style={{ paddingVertical: 18, alignItems: 'center' }}>
-                <ActivityIndicator size="small" color={C.inkMute} />
-              </View>
-            )}
+            {!weatherLoaded && forecastDays.length === 0 && sectionSpinner}
             {forecastDays.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }}>
                 <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 4 }}>
@@ -2291,6 +2369,14 @@ export function ParkProfileScreen({
             : park.name}
         </Text>
       </Animated.View>
+
+      {/* Edge-swipe-to-dismiss hot zone — see edgeSwipeBack above. Sibling
+          of the back button below, not a child of it; both are fixed
+          overlays positioned relative to this same outer screen. */}
+      <View
+        {...edgeSwipeBack.panHandlers}
+        style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 14, zIndex: 9 }}
+      />
 
       {/* Top-left button — fixed overlay, always visible, three roles: in
           the sheet, not yet full, it's an explicit tap-to-expand shortcut
