@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
     borderRadius: 12, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', minHeight: 42,
   },
   primaryContinueBtnText: { fontSize: 14, fontWeight: '700', color: C.onPrimary },
-  notYouText: { fontSize: 12.5, fontWeight: '600', color: C.inkMute, textAlign: 'center', marginTop: 6 },
+  notYouText: { fontSize: 12.5, fontWeight: '600', color: C.inkMute, textAlign: 'center', marginTop: 12 },
 
   oauthBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

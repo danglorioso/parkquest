@@ -1,0 +1,13 @@
+diff --git a/React/Fabric/Mounting/ComponentViews/ScrollView/RCTPullToRefreshViewComponentView.mm b/React/Fabric/Mounting/ComponentViews/ScrollView/RCTPullToRefreshViewComponentView.mm
+index 0d231bc8aa938da296eb3b981e8ac9595a43b87f..bc10363217100ad335076ab81fe59daf0aa61e53 100644
+--- a/React/Fabric/Mounting/ComponentViews/ScrollView/RCTPullToRefreshViewComponentView.mm
++++ b/React/Fabric/Mounting/ComponentViews/ScrollView/RCTPullToRefreshViewComponentView.mm
+@@ -76,7 +76,7 @@ using namespace facebook::react;
+     return;
+   }
+ 
+-  const auto &oldConcreteProps = static_cast<const PullToRefreshViewProps &>(*_props);
++  const auto &oldConcreteProps = static_cast<const PullToRefreshViewProps &>(*oldProps);
+   const auto &newConcreteProps = static_cast<const PullToRefreshViewProps &>(*props);
+ 
+   if (newConcreteProps.tintColor != oldConcreteProps.tintColor) {
