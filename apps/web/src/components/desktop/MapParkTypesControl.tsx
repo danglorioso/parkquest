@@ -16,6 +16,7 @@ export const PARK_TYPES: ParkTypeOption[] = [
   { key: "national_park", label: "National Parks", match: (p) => p.is_national_park },
   { key: "historical_park", label: "National Historical Parks", match: (p) => p.designation === "National Historical Park" },
   { key: "monument", label: "National Monuments", match: (p) => p.designation === "National Monument" },
+  { key: "historic_site", label: "National Historic Sites", match: (p) => p.designation === "National Historic Site" },
 ];
 export const DEFAULT_PARK_TYPES = new Set(["national_park"]);
 

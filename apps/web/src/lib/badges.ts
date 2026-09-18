@@ -148,6 +148,7 @@ export function conditionsProgress(conditions: BadgeCondition[], stats: UserStat
 function scopeNoun(scope: BadgeParkScope | undefined, plural: boolean): string {
   if (scope === 'historic_park') return plural ? 'National Historical Parks' : 'National Historical Park';
   if (scope === 'monument') return plural ? 'National Monuments' : 'National Monument';
+  if (scope === 'historic_site') return plural ? 'National Historic Sites' : 'National Historic Site';
   if (scope === 'all') return plural ? 'park areas' : 'park area';
   return plural ? 'parks' : 'park';
 }
@@ -197,6 +198,7 @@ export function computeStats(
     national_park: new Set(allParks.filter(p => p.is_national_park).map(p => p.park_code)),
     historic_park: new Set(allParks.filter(p => p.designation === 'National Historical Park').map(p => p.park_code)),
     monument: new Set(allParks.filter(p => p.designation === 'National Monument').map(p => p.park_code)),
+    historic_site: new Set(allParks.filter(p => p.designation === 'National Historic Site').map(p => p.park_code)),
     all: new Set(allParks.map(p => p.park_code)),
   };
   const parkScopes = Object.fromEntries(

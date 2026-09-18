@@ -7,7 +7,7 @@ const NUMERIC_TYPES: BadgeConditionType[] = [
   'visits_to_single_park', 'parks_in_year', 'visits_in_year',
 ];
 
-const SCOPES: BadgeParkScope[] = ['national_park', 'historic_park', 'monument', 'all'];
+const SCOPES: BadgeParkScope[] = ['national_park', 'historic_park', 'monument', 'historic_site', 'all'];
 /** Undefined (not a stored default) falls back to 'national_park' — see BadgeParkScope. */
 function validateScope(raw: unknown): BadgeParkScope | undefined {
   return typeof raw === 'string' && (SCOPES as string[]).includes(raw) ? (raw as BadgeParkScope) : undefined;

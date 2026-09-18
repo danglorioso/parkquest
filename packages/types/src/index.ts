@@ -206,7 +206,7 @@ export type BadgeConditionType =
  * this field existed was implicitly scoped to the only parks that existed
  * then — never default new conditions to 'all' without saying so explicitly.
  */
-export type BadgeParkScope = 'national_park' | 'historic_park' | 'monument' | 'all';
+export type BadgeParkScope = 'national_park' | 'historic_park' | 'monument' | 'historic_site' | 'all';
 
 export interface BadgeCondition {
   type: BadgeConditionType;
