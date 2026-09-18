@@ -220,6 +220,23 @@ export default function UserProfileScreen() {
   const [tabIndex, setTabIndex] = useState(0);
   // 2-up at iPad width — see the POSTS section below.
   const columns = useFeedColumns();
+  // Stat-cell shortcuts (NP VISITED/AREAS -> jump to that tab, scrolled to
+  // its top; BADGES -> stay on Overview, scroll down to the badges carousel)
+  // need these sections' y-offsets in the scroll content. Both sections are
+  // direct ScrollView children (conditionals/fragments don't add native
+  // views), so onLayout's y is already scroll-content-relative — no
+  // measureLayout needed.
+  const scrollRef = useRef<ScrollView>(null);
+  const segmentY = useRef(0);
+  const badgesY = useRef(0);
+  const jumpToTab = useCallback((tab: number) => {
+    setTabIndex(tab);
+    scrollRef.current?.scrollTo({ y: segmentY.current, animated: true });
+  }, []);
+  const jumpToBadges = useCallback(() => {
+    setTabIndex(0);
+    scrollRef.current?.scrollTo({ y: badgesY.current, animated: true });
+  }, []);
   const [allParks, setAllParks] = useState<{ park_code: string; latitude: string | null; longitude: string | null }[]>([]);
 
   const isOwnProfile = me?.id === id;
@@ -503,7 +520,7 @@ export default function UserProfileScreen() {
         options={{
           title: profile ? (profile.display_name ?? `@${profile.username}`) : 'Profile',
           headerLeft: () => (
-            <TouchableOpacity onPress={goBack} hitSlop={10} style={{ paddingRight: 12, paddingVertical: 4 }}>
+            <TouchableOpacity onPress={goBack} hitSlop={10} style={{ paddingHorizontal: 12, paddingVertical: 4 }}>
               <Ionicons name="chevron-back" size={24} color={T.primary} />
             </TouchableOpacity>
           ),
@@ -552,8 +569,10 @@ export default function UserProfileScreen() {
           </View>
         ) : (
           <ScrollView
+            ref={scrollRef}
             contentContainerStyle={styles.scroll}
             showsVerticalScrollIndicator={false}
+            scrollEnabled={!avatarLightbox}
           >
             {/* Hero */}
             <View style={styles.hero}>
@@ -602,22 +621,27 @@ export default function UserProfileScreen() {
             <View style={styles.statsStrip}>
               <View style={styles.statsStripInner}>
                 <View style={styles.statsRow}>
-                  <View style={styles.statCell}>
+                  <TouchableOpacity style={styles.statCell} onPress={() => jumpToTab(1)} activeOpacity={0.6}>
                     <Text style={styles.statLabel}>NP VISITED</Text>
                     <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                       {profile.parks_visited}<Text style={styles.statSub}> / {profile.parks_total}</Text>
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.statDivider} />
-                  <View style={styles.statCell}>
+                  <TouchableOpacity style={styles.statCell} onPress={() => jumpToTab(2)} activeOpacity={0.6}>
                     <Text style={styles.statLabel}>AREAS</Text>
                     <Text style={styles.statValue}>{stampItems.length}</Text>
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.statDivider} />
-                  <View style={styles.statCell}>
+                  <TouchableOpacity
+                    style={styles.statCell}
+                    onPress={jumpToBadges}
+                    activeOpacity={0.6}
+                    disabled={!profile.badges?.length}
+                  >
                     <Text style={styles.statLabel}>BADGES</Text>
                     <Text style={styles.statValue}>{profile.badges?.length ?? 0}</Text>
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.statsProgress}>
@@ -739,7 +763,7 @@ export default function UserProfileScreen() {
 
             {/* Tab switcher — thin Liquid-Glass scrub control, same
                 component/feel as the park page's Info/Community switcher */}
-            <View style={styles.section}>
+            <View style={styles.section} onLayout={e => { segmentY.current = e.nativeEvent.layout.y; }}>
               <GlassScrubTabs
                 segments={[
                   { key: 0, label: 'Overview' },
@@ -764,7 +788,7 @@ export default function UserProfileScreen() {
               ) : (
                 <>
                   {profile.badges?.length > 0 ? (
-                    <View style={styles.section}>
+                    <View style={styles.section} onLayout={e => { badgesY.current = e.nativeEvent.layout.y; }}>
                       <SectionHeader icon="ribbon-outline" title="BADGES EARNED" />
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel}>
                         {profile.badges.map(b => (
