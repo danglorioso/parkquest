@@ -4,18 +4,44 @@ import { getParkGlyph, glyphTransform, type CustomStampGlyph } from "@parkquest/
 
 // ── Stamp palette + helpers ───────────────────────────────────────────────────
 // Ported from apps/mobile/components/ParkStamp.tsx — same seeded ink-worn
-// texture and arc-text layout, translated from react-native-svg to plain SVG
-// (the two share almost identical prop names).
+// texture, scalloped edge, and arc-text layout, translated from
+// react-native-svg to plain SVG (the two share almost identical prop names).
 
 const STAMP_COLORS = ["#5A2418", "#1F3D2E", "#2D4F66", "#3A2E5C", "#7B3A1F"];
+const STAMP_COLORS_DARK = ["#E0A98C", "#7FCBA0", "#8FBEDE", "#B3A0E0", "#E8B37E"];
 
 const TEXT_ARC_R = 33; // matches the topId/botId path radius below
 const TEXT_ARC_LEN = Math.PI * TEXT_ARC_R; // semicircle (180° sweep)
 const STATE_TEXT_LEN = 44; // forced glyph width for "★ XX ★" at fontSize 6.5
 const STATE_START_OFFSET = `${(((TEXT_ARC_LEN - STATE_TEXT_LEN) / 2 / TEXT_ARC_LEN) * 100).toFixed(2)}%`;
+const NAME_ARC_MAX_LEN = TEXT_ARC_LEN - 6;
 
-export function stampColor(idx: number): string {
-  return STAMP_COLORS[idx % STAMP_COLORS.length];
+/** startOffset that centers a forced-width run of text on the shared name/state arc. */
+function centerOffset(textLen: number): string {
+  return `${(((TEXT_ARC_LEN - textLen) / 2 / TEXT_ARC_LEN) * 100).toFixed(2)}%`;
+}
+
+// ── Perforated edge ───────────────────────────────────────────────────────────
+// Die-cut/perforated silhouette real postage stamps have, instead of a plain
+// circular border — see apps/mobile/components/ParkStamp.tsx for the full
+// derivation of the control-point math.
+function scallopedCirclePath(cx: number, cy: number, rBase: number, amplitude: number, count: number): string {
+  const step = (Math.PI * 2) / count;
+  const pt = (theta: number, r: number) => ({ x: cx + r * Math.cos(theta), y: cy + r * Math.sin(theta) });
+  const base = Array.from({ length: count + 1 }, (_, i) => pt(i * step, rBase));
+  let d = `M ${base[0].x.toFixed(2)} ${base[0].y.toFixed(2)} `;
+  for (let i = 0; i < count; i++) {
+    const a = base[i], b = base[i + 1];
+    const peak = pt((i + 0.5) * step, rBase + amplitude);
+    const ctrl = { x: 2 * peak.x - 0.5 * (a.x + b.x), y: 2 * peak.y - 0.5 * (a.y + b.y) };
+    d += `Q ${ctrl.x.toFixed(2)} ${ctrl.y.toFixed(2)} ${b.x.toFixed(2)} ${b.y.toFixed(2)} `;
+  }
+  return d + "Z";
+}
+const OUTER_SCALLOP = scallopedCirclePath(50, 50, 44, 3, 30);
+
+export function stampColor(idx: number, dark = false): string {
+  return (dark ? STAMP_COLORS_DARK : STAMP_COLORS)[idx % STAMP_COLORS.length];
 }
 
 // ── Ink-worn texture ─────────────────────────────────────────────────────────
@@ -36,6 +62,21 @@ function inkSpecks(seed: string, count: number): { x: number; y: number; r: numb
       y: 50 + Math.sin(angle) * radius,
       r: 0.3 + seededRand(seed, i * 4 + 2) * 0.6,
       op: 0.08 + seededRand(seed, i * 4 + 3) * 0.22,
+    };
+  });
+}
+
+function inkBlotches(seed: string, count: number): { x: number; y: number; rx: number; ry: number; rot: number; op: number }[] {
+  return Array.from({ length: count }, (_, i) => {
+    const angle = seededRand(seed, i * 5 + 500) * Math.PI * 2;
+    const radius = 20 + seededRand(seed, i * 5 + 501) * 24;
+    return {
+      x: 50 + Math.cos(angle) * radius,
+      y: 50 + Math.sin(angle) * radius,
+      rx: 1.8 + seededRand(seed, i * 5 + 502) * 2.6,
+      ry: 0.8 + seededRand(seed, i * 5 + 503) * 1.4,
+      rot: seededRand(seed, i * 5 + 504) * 180,
+      op: 0.03 + seededRand(seed, i * 5 + 505) * 0.05,
     };
   });
 }
@@ -63,7 +104,7 @@ export function stateCode(states: string): string {
 // ── ParkStamp ─────────────────────────────────────────────────────────────────
 
 export function ParkStamp({
-  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = "", inkColor, customGlyph,
+  parkCode, name, states, colorIdx, size = 96, rotated = true, idSuffix = "", inkColor, customGlyph, dark = false,
 }: {
   parkCode: string;
   name: string;
@@ -77,18 +118,26 @@ export function ParkStamp({
   inkColor?: string;
   /** Admin-uploaded center icon (parks.stamp_glyph) — takes priority over the hand-authored PARK_GLYPHS. */
   customGlyph?: CustomStampGlyph | null;
+  /** Renders against a dark page — picks the lightened ink variant instead of the paper-tuned default. Ignored when inkColor is set. */
+  dark?: boolean;
 }) {
-  const c = inkColor ?? stampColor(colorIdx);
+  const c = inkColor ?? stampColor(colorIdx, dark);
   const sc = stateCode(states);
+  const hasCustomGlyph = !!customGlyph?.paths?.length;
   const raw = name.toUpperCase().replace(/NATIONAL PARK/g, "").replace(/\s+/g, " ").trim();
-  const shortName = raw.length > 18 ? raw.slice(0, 16) + "…" : raw;
-  const nameFontSize = shortName.length > 16 ? 7 : shortName.length > 13 ? 7.5 : shortName.length > 10 ? 8 : 9;
+  const shortName = raw.length > 30 ? raw.slice(0, 28) + "…" : raw;
+  const nameFontSize = shortName.length > 24 ? 6 : shortName.length > 16 ? 7 : shortName.length > 13 ? 7.5 : shortName.length > 10 ? 8 : 9;
+  const nameLetterSpacing = 1.5;
+  const nameNaturalLen = shortName.length * (nameFontSize * 0.62 + nameLetterSpacing);
+  const nameTextLen = Math.min(nameNaturalLen, NAME_ARC_MAX_LEN);
+  const nameStartOffset = centerOffset(nameTextLen);
   const rotate = rotated ? `${((colorIdx * 37) % 16) - 8}deg` : "0deg";
   const topId = `top-${parkCode}${idSuffix}`;
   const botId = `bot-${parkCode}${idSuffix}`;
   const bleedId = `bleed-${parkCode}${idSuffix}`;
 
   const specks = inkSpecks(parkCode, 16);
+  const blotches = inkBlotches(parkCode, 8);
   const ghostDx = (seededRand(parkCode, 900) - 0.5) * 1.6;
   const ghostDy = (seededRand(parkCode, 901) - 0.5) * 1.6;
   const ghostRotate = (seededRand(parkCode, 902) - 0.5) * 6;
@@ -114,13 +163,33 @@ export function ParkStamp({
           <circle cx="50" cy="50" r="37" fill="none" stroke={c} strokeWidth="1.1" />
         </g>
 
-        {/* Outer ring, doubled */}
-        <circle cx="50" cy="50" r="44" fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" />
+        {/* Emboss bevel — light/dark offset pair behind the main rings,
+            following the scalloped silhouette so it doesn't drift in and
+            out from under the ring at every bump */}
+        <g transform="translate(-0.6 -0.6)">
+          <path d={OUTER_SCALLOP} fill="none" stroke="white" strokeWidth="1.1" opacity="0.3" />
+        </g>
+        <g transform="translate(0.6 0.6)">
+          <path d={OUTER_SCALLOP} fill="none" stroke="black" strokeWidth="1.1" opacity="0.22" />
+        </g>
+
+        {/* Outer edge — perforated/scalloped like a real postage stamp's
+            die-cut border. Inner ring stays a plain line. */}
+        <path d={OUTER_SCALLOP} fill="none" stroke={c} strokeWidth="3.5" opacity="0.92" strokeLinejoin="round" />
         <circle cx="50" cy="50" r="40.5" fill="none" stroke={c} strokeWidth="1" opacity="0.75" />
 
         {/* Ink specks */}
         {specks.map((s, i) => (
           <circle key={i} cx={s.x} cy={s.y} r={s.r} fill={c} opacity={s.op} />
+        ))}
+
+        {/* Ink blotches — coarser, elongated pooling alongside the fine
+            specks above */}
+        {blotches.map((b, i) => (
+          <ellipse
+            key={i} cx={b.x} cy={b.y} rx={b.rx} ry={b.ry} fill={c} opacity={b.op}
+            transform={`rotate(${b.rot} ${b.x} ${b.y})`}
+          />
         ))}
 
         {/* Tick marks between rings at 8 positions */}
@@ -136,16 +205,22 @@ export function ParkStamp({
         {/* Horizontal band dividers — skipped when a custom glyph fills the
             center, since an uploaded icon isn't drawn with a matching white
             gap and the lines would cut across it */}
-        {!customGlyph && (
+        {!hasCustomGlyph && (
           <>
             <line x1="17" y1="34" x2="83" y2="34" stroke={c} strokeWidth="0.9" opacity="0.8" />
             <line x1="17" y1="66" x2="83" y2="66" stroke={c} strokeWidth="0.9" opacity="0.8" />
           </>
         )}
 
-        {/* Park name on top arc */}
-        <text fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing="1.5" opacity="0.92" textAnchor="middle">
-          <textPath href={`#${topId}`} startOffset="50%" textAnchor="middle">
+        {/* Park name on top arc — startOffset/textLength forced so a long
+            name compresses to fit the arc instead of overflowing */}
+        <text fill={c} fontWeight="800" fontSize={nameFontSize} letterSpacing={nameLetterSpacing} opacity="0.92">
+          <textPath
+            href={`#${topId}`}
+            startOffset={nameStartOffset}
+            textLength={nameTextLen}
+            lengthAdjust="spacingAndGlyphs"
+          >
             {shortName}
           </textPath>
         </text>
@@ -164,7 +239,7 @@ export function ParkStamp({
 
         {/* Center scene */}
         {(() => {
-          if (customGlyph) {
+          if (hasCustomGlyph && customGlyph) {
             return (
               <g transform={glyphTransform(customGlyph.viewBox)}>
                 {customGlyph.paths.map((shape, i) => (
