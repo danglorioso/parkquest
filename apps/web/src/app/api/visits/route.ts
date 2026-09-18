@@ -44,6 +44,7 @@ export async function GET() {
         id: visits.id,
         park_code: visits.park_code,
         park_name: parks.name,
+        park_image_url: parks.image_url,
         states: parks.states,
         latitude: parks.latitude,
         longitude: parks.longitude,

@@ -676,7 +676,10 @@ export default function ProfileScreen() {
             if (!href) return null;
             return (
               <TouchableOpacity
-                key={href}
+                // Index, not href — VISITED and NPS AREAS intentionally
+                // both link to /profile/journal (two views of the same
+                // visit log), so href alone isn't a unique key here.
+                key={i}
                 style={{ position: 'absolute', left: PASSPORT_CARD_INSET + r.left, top: HOLE_TOP + r.top, width: r.width, height: r.height }}
                 onPress={() => router.push(href as never)}
                 activeOpacity={1}

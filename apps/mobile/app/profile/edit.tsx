@@ -679,7 +679,7 @@ export default function EditProfileScreen() {
                   <TouchableOpacity
                     onPress={toggleAllDefaultParkTypes}
                     activeOpacity={0.7}
-                    style={[styles.paletteChip, allSelected && { borderColor: C.primary, backgroundColor: C.surface }]}
+                    style={[styles.paletteChip, styles.paletteChipFull, allSelected && { borderColor: C.primary, backgroundColor: C.surface }]}
                   >
                     <Ionicons
                       name={allSelected ? 'checkbox' : 'square-outline'}
@@ -1127,6 +1127,12 @@ function makeStyles(C: Colors) {
     backgroundColor: C.surfaceAlt,
     minWidth: '46%',
     flex: 1,
+  },
+  // "All" in the default-map-view grid spans the full row (two chip
+  // widths) — an explicit width wins over the row's flex/minWidth sizing,
+  // so the wrap starts a fresh line right after it.
+  paletteChipFull: {
+    width: '100%',
   },
   paletteSwatch: {
     width: 28,

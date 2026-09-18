@@ -3,7 +3,7 @@ import {
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
@@ -17,6 +17,8 @@ import { STATIC as C, useColors, useThemedStyles, type Colors } from '@/lib/pale
 import { dayCount, fmtDate, fmtRange, MONTHS } from '@/lib/dates';
 import { parkColor } from '@/lib/parkColors';
 import { HikeStatsCard } from '@/components/HikeStatsCard';
+import { CompanionSearch, type CompanionUser } from '@/components/CompanionSearch';
+import { ActivityChips } from '@/components/ActivityChips';
 
 const DANGER = '#C0392B';
 
@@ -34,12 +36,6 @@ const WEATHER_OPTS = [
   { value: 'snow',    label: '❄️ Snow' },
   { value: 'fog',     label: '🌫️ Fog' },
   { value: 'wind',    label: '💨 Windy' },
-];
-
-const ALL_ACTIVITIES = [
-  'hiking','camping','backpacking','climbing','kayaking',
-  'rafting','fishing','diving','wildlife','photography',
-  'stargazing','tours','cycling','mountaineering',
 ];
 
 const CROWD_LABELS  = ['Empty', 'Quiet', 'Moderate', 'Busy', 'Packed'];
@@ -97,6 +93,8 @@ interface Draft {
   difficulty: number;
   weather_conditions: string[];
   activities: string[];
+  companions: string[];
+  companionObjs: CompanionUser[];
   would_return: string;
   highlight: string;
   notes: string;
@@ -113,17 +111,6 @@ function capitalize(s: string): string {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-
-function Stars({ value, size = 14 }: { value: number; size?: number }) {
-  const T = useColors();
-  return (
-    <View style={{ flexDirection: 'row', gap: 2 }}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Ionicons key={i} name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'} size={size} color={T.accent} />
-      ))}
-    </View>
-  );
-}
 
 function RatingInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   const T = useColors();
@@ -177,16 +164,6 @@ function MultiChips({
         );
       })}
     </View>
-  );
-}
-
-function ActivityChips({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
-  return (
-    <MultiChips
-      options={ALL_ACTIVITIES.map(a => ({ value: a, label: capitalize(a) }))}
-      selected={selected}
-      onChange={onChange}
-    />
   );
 }
 
@@ -424,9 +401,24 @@ export default function JournalEntryScreen() {
   const [draft, setDraft] = useState<Draft>({
     title: '', visited_date: new Date(), end_date: null, rating: 0,
     crowd: 0, difficulty: 0, weather_conditions: [], activities: [],
+    companions: [], companionObjs: [],
     would_return: '', highlight: '', notes: '', photos: [],
     cover_photo: null, visibility: 'private', caption: '',
   });
+
+  // Union of NPS activity names across all parks — feeds activity autocomplete,
+  // same corpus the log-visit wizard's own Activities step uses.
+  const [npsActivityNames, setNpsActivityNames] = useState<string[]>([]);
+  useEffect(() => {
+    fetch(`${BASE}/api/parks/activities`)
+      .then(r => r.ok ? r.json() : {})
+      .then((map: Record<string, string[]>) => {
+        const names = new Set<string>();
+        Object.values(map).forEach(list => list.forEach(n => names.add(n)));
+        setNpsActivityNames([...names].sort());
+      })
+      .catch(() => {});
+  }, []);
 
   // getToken is unstable across renders — dep arrays containing it loop forever
   const getTokenRef = useRef(getToken);
@@ -445,6 +437,14 @@ export default function JournalEntryScreen() {
       if (found) {
         setEntry(found);
         setDraft(entryToDraft(found));
+        // Companions come back as bare clerk_user_ids — resolve to
+        // display-ready profiles for the chip row + picker.
+        if (found.companions?.length) {
+          const objs = await fetch(`${BASE}/api/users?ids=${found.companions.join(',')}`, {
+            headers: { Authorization: `Bearer ${tok}` },
+          }).then(r => r.ok ? r.json() : []).catch(() => []);
+          setDraft(d => ({ ...d, companionObjs: objs }));
+        }
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -462,6 +462,11 @@ export default function JournalEntryScreen() {
       difficulty:         e.difficulty ?? 0,
       weather_conditions: e.weather_conditions ?? [],
       activities:         e.activities ?? [],
+      // companionObjs resolved separately in load() (companions here are
+      // bare ids) — reset to empty so a stale prior entry's tagged people
+      // don't bleed into this one while resolution is in flight.
+      companions:         e.companions ?? [],
+      companionObjs:      [],
       would_return:       e.would_return ?? '',
       highlight:          e.highlight ?? '',
       notes:              e.notes ?? '',
@@ -490,6 +495,7 @@ export default function JournalEntryScreen() {
         difficulty:        draft.difficulty || null,
         weather:           draft.weather_conditions,
         activities:        draft.activities,
+        companions:        draft.companions,
         wouldReturn:       draft.would_return || null,
         highlight:         draft.highlight || null,
         notes:             draft.notes || null,
@@ -576,12 +582,28 @@ export default function JournalEntryScreen() {
 
   if (!editing) {
     const visKey   = (entry.visibility ?? 'private').toLowerCase();
-    const visIcon  = visKey === 'public' ? 'globe-outline' : visKey === 'friends' ? 'people-outline' : 'lock-closed-outline';
-    const visColor = visKey === 'public' ? C.visited : visKey === 'friends' ? T.primary : C.inkMute;
+    const placeholderBg = parkColor(entry.park_code);
     const weatherLabels = (entry.weather_conditions ?? []).map(
       v => WEATHER_OPTS.find(o => o.value === v)?.label ?? v
     );
-    const placeholderBg = parkColor(entry.park_code);
+    const hasHike = !!entry.external_source && entry.distance_meters != null;
+    // Plain label: value rows instead of PostCard's spread-out stat strip —
+    // this screen is the full read-out of a visit, not a social card, so it
+    // reads better as a sentence-per-fact list than columns of numbers.
+    const detailRows: { key: string; value: string }[] = [
+      { key: 'Visit date', value: fmtRange(entry.visited_date, entry.end_date) + (days > 1 ? ` · ${days} days` : '') },
+      { key: 'Visibility', value: capitalize(visKey) },
+      ...(entry.rating ? [{ key: 'Rating', value: `${entry.rating}/5` }] : []),
+      ...(entry.crowd ? [{ key: 'Crowd', value: CROWD_LABELS[(entry.crowd ?? 1) - 1] }] : []),
+      ...(entry.difficulty ? [{ key: 'Difficulty', value: DIFF_LABELS[(entry.difficulty ?? 1) - 1] }] : []),
+      ...(weatherLabels.length > 0 ? [{ key: 'Weather', value: weatherLabels.join(', ') }] : []),
+      ...((entry.activities?.length ?? 0) > 0 ? [{ key: 'Activities', value: entry.activities!.map(capitalize).join(', ') }] : []),
+      ...((entry.companions?.length ?? 0) > 0 ? [{ key: 'With', value: `${entry.companions!.length} ${entry.companions!.length === 1 ? 'person' : 'people'}` }] : []),
+      ...(entry.would_return ? [{ key: 'Would return', value: capitalize(entry.would_return) }] : []),
+      ...(entry.highlight ? [{ key: 'Highlight', value: entry.highlight }] : []),
+      ...(entry.notes ? [{ key: 'Notes', value: entry.notes }] : []),
+      ...(entry.created_at ? [{ key: 'Post date', value: fmtDate(entry.created_at) }] : []),
+    ];
 
     return (
       <SafeAreaView style={s.screen} edges={['bottom']}>
@@ -636,110 +658,32 @@ export default function JournalEntryScreen() {
             {/* Title */}
             <Text style={s.entryTitle}>{title}</Text>
 
-            {/* Metadata row */}
-            <View style={s.metaRow}>
-              <Text style={s.metaText}>{fmtRange(entry.visited_date, entry.end_date)}</Text>
-              {days > 1 && (
-                <>
-                  <View style={s.metaDivider} />
-                  <View style={s.daysBadge}>
-                    <Text style={s.daysBadgeText}>{days} days</Text>
-                  </View>
-                </>
-              )}
-              {entry.rating ? (
-                <>
-                  <View style={s.metaDivider} />
-                  <Stars value={entry.rating} size={13} />
-                </>
-              ) : null}
-              <View style={s.metaDivider} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name={visIcon as any} size={12} color={visColor} />
-                <Text style={[s.metaText, { color: visColor }]}>{capitalize(visKey)}</Text>
-              </View>
-            </View>
-
             {/* Caption */}
             {entry.caption ? (
               <Text style={{ fontSize: 14, color: C.inkSoft, lineHeight: 21, marginTop: 4 }}>{entry.caption}</Text>
             ) : null}
 
-            {/* Highlight */}
-            {entry.highlight ? (
-              <View style={s.highlightBox}>
-                <Ionicons name="sparkles-outline" size={13} color={T.accent} style={{ marginTop: 2 }} />
-                <Text style={s.highlightText}>"{entry.highlight}"</Text>
-              </View>
-            ) : null}
+            {/* Everything else, plain label: value rows — this screen is
+                the full read-out of a visit, not a social card, so it
+                reads better as a sentence-per-fact list than a spread of
+                stat columns. */}
+            <View style={s.detailList}>
+              {detailRows.map((row, i) => (
+                <View key={row.key} style={[s.detailRow, i === 0 && { borderTopWidth: 0 }]}>
+                  <Text style={s.detailKey}>{row.key}</Text>
+                  <Text style={s.detailVal}>{row.value}</Text>
+                </View>
+              ))}
+            </View>
 
             {/* Hike stats + route (attached from a GPX upload in the log-visit wizard) */}
-            {entry.external_source && entry.distance_meters != null ? (
-              <View style={{ marginTop: 14 }}>
-                <HikeStatsCard
-                  distanceMeters={entry.distance_meters}
-                  durationSeconds={entry.duration_seconds}
-                  elevationGainMeters={entry.elevation_gain_meters}
-                  routePolyline={entry.route_polyline}
-                />
-              </View>
-            ) : null}
-
-            {/* Conditions */}
-            {(entry.crowd || entry.difficulty || weatherLabels.length > 0 || entry.would_return) ? (
-              <View style={s.section}>
-                <Text style={s.sectionLabel}>Conditions</Text>
-                <View style={{ gap: 8 }}>
-                  {entry.crowd ? (
-                    <View style={s.condRow}>
-                      <Text style={s.condKey}>Crowds</Text>
-                      <Text style={s.condVal}>{CROWD_LABELS[(entry.crowd ?? 1) - 1]}</Text>
-                    </View>
-                  ) : null}
-                  {entry.difficulty ? (
-                    <View style={s.condRow}>
-                      <Text style={s.condKey}>Difficulty</Text>
-                      <Text style={s.condVal}>{DIFF_LABELS[(entry.difficulty ?? 1) - 1]}</Text>
-                    </View>
-                  ) : null}
-                  {weatherLabels.length > 0 ? (
-                    <View style={s.condRow}>
-                      <Text style={s.condKey}>Weather</Text>
-                      <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
-                        {weatherLabels.map(l => (
-                          <View key={l} style={s.viewChip}><Text style={s.viewChipText}>{l}</Text></View>
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
-                  {entry.would_return ? (
-                    <View style={s.condRow}>
-                      <Text style={s.condKey}>Would return</Text>
-                      <Text style={s.condVal}>{capitalize(entry.would_return)}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-            ) : null}
-
-            {/* Activities */}
-            {(entry.activities?.length ?? 0) > 0 ? (
-              <View style={s.section}>
-                <Text style={s.sectionLabel}>Activities</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {entry.activities!.map(a => (
-                    <View key={a} style={s.viewChip}><Text style={s.viewChipText}>{capitalize(a)}</Text></View>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            {/* Notes */}
-            {entry.notes ? (
-              <View style={s.section}>
-                <Text style={s.sectionLabel}>Notes</Text>
-                <Text style={{ fontSize: 14.5, color: C.inkSoft, lineHeight: 22 }}>{entry.notes}</Text>
-              </View>
+            {hasHike ? (
+              <HikeStatsCard
+                distanceMeters={entry.distance_meters}
+                durationSeconds={entry.duration_seconds}
+                elevationGainMeters={entry.elevation_gain_meters}
+                routePolyline={entry.route_polyline}
+              />
             ) : null}
 
             {/* Delete */}
@@ -844,10 +788,22 @@ export default function JournalEntryScreen() {
             </View>
           </View>
 
-          {/* Activities */}
+          {/* Activities — fixed chips + free-text add, same picker the
+              log-visit wizard uses */}
           <View style={{ gap: 8 }}>
             <Text style={s.fieldLabel}>Activities</Text>
-            <ActivityChips selected={draft.activities} onChange={v => set('activities', v)} />
+            <ActivityChips value={draft.activities} onChange={v => set('activities', v)} npsActivityNames={npsActivityNames} />
+          </View>
+
+          {/* Who came along */}
+          <View style={{ gap: 8 }}>
+            <Text style={s.fieldLabel}>Who came along?</Text>
+            <CompanionSearch
+              companions={draft.companions}
+              companionObjs={draft.companionObjs}
+              onChange={(ids, objs) => { set('companions', ids); set('companionObjs', objs); }}
+              token={token}
+            />
           </View>
 
           {/* Highlight */}
@@ -954,32 +910,18 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   parkLabel:  { fontSize: 13, fontWeight: '700', color: T.primary },
   entryTitle: { fontSize: 22, fontWeight: '900', color: C.ink, letterSpacing: -0.5, lineHeight: 28 },
 
-  metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  metaText: { fontSize: 13, color: C.inkMute },
-  metaDivider: { width: 1, height: 12, backgroundColor: C.hairline },
-  daysBadge: { backgroundColor: C.surfaceAlt, borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2 },
-  daysBadgeText: { fontSize: 13, fontWeight: '700', color: T.accent },
-
-  highlightBox: {
-    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+  detailList: {
     backgroundColor: C.surface, borderRadius: 12,
-    borderLeftWidth: 3, borderLeftColor: T.accent,
-    padding: 12, paddingLeft: 10,
-  },
-  highlightText: { flex: 1, fontSize: 14.5, fontStyle: 'italic', color: C.inkSoft, lineHeight: 22 },
-
-  section:      { gap: 10, paddingTop: 4 },
-  sectionLabel: { fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8, textTransform: 'uppercase' },
-  condRow:      { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  condKey:      { fontSize: 13.5, color: C.inkMute, width: 96 },
-  condVal:      { fontSize: 13.5, color: C.ink, fontWeight: '600' },
-
-  viewChip: {
-    backgroundColor: C.surfaceAlt, borderRadius: 100,
-    paddingHorizontal: 10, paddingVertical: 4,
     borderWidth: 0.5, borderColor: C.hairline,
+    paddingHorizontal: 14,
   },
-  viewChipText: { fontSize: 13, color: C.inkSoft, fontWeight: '500' },
+  detailRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    paddingVertical: 11,
+    borderTopWidth: 0.5, borderTopColor: C.hairline,
+  },
+  detailKey: { fontSize: 13.5, fontWeight: '600', color: C.inkMute, width: 96 },
+  detailVal: { flex: 1, fontSize: 13.5, color: C.ink, fontWeight: '500', lineHeight: 19 },
 
   // Edit form
   fieldLabel: { fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8, textTransform: 'uppercase' },

@@ -10,7 +10,6 @@ import { openImageLightbox } from '@/lib/imageLightbox';
 import { PinchZoomPhoto } from '@/components/PinchZoomPhoto';
 import { Avatar } from '@/components/Avatar';
 import { AdminStar } from '@/components/AdminStar';
-import { HikeStatsCard } from '@/components/HikeStatsCard';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -18,6 +17,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { BADGE_MAP, badgeColors, ensureBadgeDefs } from '@/lib/badges';
+import { VisitStatsStrip, VisitFacts } from '@/components/VisitStats';
 import { blockUser, sendFriendRequest } from '@/lib/api';
 import { emitUserBlocked } from '@/lib/blocking';
 import { STATIC as C, useColors } from '@/lib/palette';
@@ -101,29 +101,6 @@ interface Liker {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-// Plain words for the details line — read as a sentence fragment, so
-// "Partly cloudy · Hiking, Photography · With Sam · Would go back".
-const WEATHER_LABELS: Record<string, string> = {
-  clear: 'Clear skies', partly: 'Partly cloudy', cloudy: 'Overcast',
-  rain: 'Rain', storm: 'Storms', snow: 'Snow', fog: 'Fog', wind: 'Windy',
-};
-const WOULD_RETURN_LABELS: Record<string, string> = {
-  yes: 'Would go back', maybe: 'Might go back', no: "Wouldn't go back",
-};
-const CROWD_LABELS  = ['Empty', 'Quiet', 'Moderate', 'Busy', 'Packed'];
-const DIFF_LABELS   = ['Easy', 'Light', 'Moderate', 'Hard', 'Strenuous'];
-const STAR = '#C49A28';
-
-// "Jun 12" this year, "Jun 12, 2024" otherwise — the year only when it
-// carries information.
-function fmtVisitDate(iso: string) {
-  const d = new Date(iso);
-  const sameYear = d.getFullYear() === new Date().getFullYear();
-  return d.toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }),
-  });
-}
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 // iOS system red — matches the native destructive text color these menu
@@ -622,158 +599,6 @@ function ParkHeroBanner({ post, onPress }: { post: FeedPost; onPress?: () => voi
         </View>
       </View>
     </TouchableOpacity>
-  );
-}
-
-// ── Visit stats + facts ───────────────────────────────────────────────────────
-// Everything measurable about the visit, in plain words. No pill per item,
-// no icon per item, no colored scale bars — "Quiet" and "Strenuous" already
-// say where on the scale the visit landed, and a reader scans a sentence
-// faster than a row of tags.
-//
-// The stat strip (rating / crowd / difficulty, the same value-over-label
-// shape HikeStatsCard uses) sits ABOVE the picture as three fixed columns —
-// rating flush left, crowd dead center, difficulty flush right — so the
-// layout doesn't shift when one of the three wasn't logged. The details
-// line, notes and hike stats go under the picture.
-
-function Stat({ value, label, star, align }: {
-  value: string; label: string; star?: boolean; align: 'flex-start' | 'center' | 'flex-end';
-}) {
-  return (
-    <View style={[styles.stat, { alignItems: align }]}>
-      <View style={styles.statValueRow}>
-        {star && <Ionicons name="star" size={13} color={STAR} />}
-        <Text style={styles.statValue} numberOfLines={1}>{value}</Text>
-      </View>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function VisitStatsStrip({ post }: { post: FeedPost }) {
-  const date = post.visit_date ? fmtVisitDate(post.visit_date) : null;
-  const r = post.visit_rating;
-  const rating = r ? (r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)) : null;
-  const crowd = post.visit_crowd
-    ? (CROWD_LABELS[Math.round(post.visit_crowd) - 1] ?? String(post.visit_crowd)) : null;
-  const difficulty = post.visit_difficulty
-    ? (DIFF_LABELS[Math.round(post.visit_difficulty) - 1] ?? String(post.visit_difficulty)) : null;
-  // Fixed priority order — when · how good · how busy · how hard. Only the
-  // ones actually present render, as a plain list (no empty filler slots
-  // for missing stats) — space-between then naturally flushes whichever
-  // ends up first to the card's left edge and whichever ends up last to
-  // its right edge, however many stats that turns out to be, down to just
-  // one (which lands fully flex-start, not centered, since it's both the
-  // first and only item).
-  const items: { value: string; label: string; star?: boolean }[] = [
-    ...(date ? [{ value: date, label: 'Visited' }] : []),
-    ...(rating ? [{ value: rating, label: 'Rating', star: true }] : []),
-    ...(crowd ? [{ value: crowd, label: 'Crowd' }] : []),
-    ...(difficulty ? [{ value: difficulty, label: 'Difficulty' }] : []),
-  ];
-  if (items.length === 0) return null;
-
-  return (
-    <View style={styles.statsStrip}>
-      {items.map((it, i) => (
-        <Stat
-          key={it.label}
-          value={it.value}
-          label={it.label}
-          star={it.star}
-          align={
-            items.length === 1 || i === 0 ? 'flex-start'
-            // Difficulty centers over its own label even as the last
-            // column — "Strenuous" is noticeably wider than "Difficulty",
-            // and right-aligning both let the label float disconnected
-            // from the value above it.
-            : (i === items.length - 1 && it.label !== 'Difficulty') ? 'flex-end'
-            : 'center'
-          }
-        />
-      ))}
-    </View>
-  );
-}
-
-function hasVisitDetails(post: FeedPost) {
-  return !!post.visit_weather?.length
-    || !!post.visit_activities?.length
-    || (post.visit_companion_count ?? 0) > 0
-    || !!post.visit_companion_names?.length
-    || !!post.visit_would_return;
-}
-
-function VisitDetails({ post }: { post: FeedPost }) {
-  const router = useRouter();
-  const parts: React.ReactNode[] = [];
-
-  if (post.visit_weather?.length) {
-    parts.push(post.visit_weather.map(w => WEATHER_LABELS[w] ?? w).join(', '));
-  }
-  if (post.visit_activities?.length) {
-    parts.push(post.visit_activities.map(a => a.charAt(0).toUpperCase() + a.slice(1)).join(', '));
-  }
-  const names = post.visit_companion_names;
-  const companionCount = post.visit_companion_count ?? 0;
-  if (names && names.length > 0) {
-    // "With Sam", "With Sam and Alex", "With Sam, Alex and 2 others"
-    const shown = names.slice(0, 2);
-    const extra = names.length - shown.length;
-    parts.push(
-      <Text>
-        {'With '}
-        {shown.map((c, i) => (
-          <Text key={c.user_id}>
-            {i > 0 ? (extra > 0 ? ', ' : ' and ') : ''}
-            <Text
-              style={styles.detailsLink}
-              onPress={() => router.push(`/user/${c.user_id}` as never)}
-              suppressHighlighting
-            >
-              {c.display_name ?? `@${c.username}`}
-            </Text>
-          </Text>
-        ))}
-        {extra > 0 ? ` and ${extra} other${extra > 1 ? 's' : ''}` : ''}
-      </Text>,
-    );
-  } else if (companionCount > 0) {
-    parts.push(`With ${companionCount} ${companionCount === 1 ? 'other' : 'others'}`);
-  }
-  if (post.visit_would_return) {
-    parts.push(WOULD_RETURN_LABELS[post.visit_would_return] ?? post.visit_would_return);
-  }
-
-  if (parts.length === 0) return null;
-  return (
-    <Text style={styles.details}>
-      {parts.map((p, i) => (
-        <Text key={i}>{i > 0 ? '  ·  ' : ''}{p}</Text>
-      ))}
-    </Text>
-  );
-}
-
-function VisitFacts({ post }: { post: FeedPost }) {
-  const hasHike = !!post.visit_external_source && post.visit_distance_meters != null;
-  if (!hasVisitDetails(post) && !post.visit_notes && !hasHike) return null;
-
-  return (
-    <View style={styles.facts}>
-      <VisitDetails post={post} />
-      {/* Only present on the single-post detail fetch */}
-      {post.visit_notes ? <Text style={styles.notes}>{post.visit_notes}</Text> : null}
-      {hasHike && (
-        <HikeStatsCard
-          distanceMeters={post.visit_distance_meters ?? null}
-          durationSeconds={post.visit_duration_seconds ?? null}
-          elevationGainMeters={post.visit_elevation_gain_meters ?? null}
-          routePolyline={post.visit_route_polyline ?? null}
-        />
-      )}
-    </View>
   );
 }
 
@@ -1625,11 +1450,19 @@ function PostCardImpl({
       {!isBadge && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
 
       {/* Rating / crowd / difficulty — the first thing under the picture */}
-      {!isBadge && <VisitStatsStrip post={post} />}
+      {!isBadge && (
+        <View style={styles.statsStrip}>
+          <VisitStatsStrip visit={post} />
+        </View>
+      )}
 
       {/* Facts — the details line (weather, activities, company, would
           return), notes, hike stats */}
-      {!isBadge && <VisitFacts post={post} />}
+      {!isBadge && (
+        <View style={styles.facts}>
+          <VisitFacts visit={post} />
+        </View>
+      )}
 
       {/* Action row — extra bottom padding when it's the last row in the card */}
       <View style={[styles.actionRow, commentCount === 0 && { paddingBottom: 12 }]}>

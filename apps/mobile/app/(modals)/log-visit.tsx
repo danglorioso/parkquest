@@ -21,6 +21,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fullStateName } from '@/lib/stateNames';
+import { CompanionSearch, type CompanionUser } from '@/components/CompanionSearch';
+import { ActivityChips } from '@/components/ActivityChips';
 import { STATIC as C, dyn, useColors, useReassertThemeOnUnmount } from '@/lib/palette';
 import { GlassIconBg } from '@/components/GlassIconBg';
 import { MonthYearWheel } from '@/components/MonthYearWheel';
@@ -68,7 +70,6 @@ interface Draft {
 }
 
 interface ParkInfo { park_code: string; name: string; states: string; image_url: string | null; }
-interface CompanionUser { clerk_user_id: string; username: string; display_name: string | null; avatar_url: string | null; }
 
 interface VisitDetail {
   id: number;
@@ -112,7 +113,6 @@ const WEATHER_OPTS = [
 ];
 const CROWD_LABELS  = ['Empty', 'Quiet', 'Moderate', 'Busy', 'Packed'];
 const DIFF_LABELS   = ['Easy', 'Light', 'Moderate', 'Hard', 'Strenuous'];
-const ALL_ACTIVITIES= ['hiking','camping','backpacking','climbing','kayaking','rafting','fishing','diving','wildlife','photography','sightseeing','stargazing','tours','cycling','mountaineering'];
 const RETURN_OPTS   = [
   { id: 'yes',   label: 'Definitely',   color: C.visited, icon: 'heart-outline' as const,  iconFilled: 'heart' as const },
   { id: 'maybe', label: 'Maybe',        color: C.bucket,  icon: 'repeat-outline' as const, iconFilled: 'repeat' as const },
@@ -499,131 +499,6 @@ function WeatherGrid({ value, onChange }: { value: string[]; onChange: (v: strin
   );
 }
 
-// ── ActivityChips ─────────────────────────────────────────────────────────────
-
-function ActivityChips({ value, onChange, npsActivityNames = [] }: {
-  value: string[];
-  onChange: (v: string[]) => void;
-  npsActivityNames?: string[];
-}) {
-  const C = useColors();
-  const [customQ, setCustomQ] = useState('');
-
-  const toggle = (a: string) => {
-    Keyboard.dismiss();
-    onChange(value.includes(a) ? value.filter(x => x !== a) : value.length < 8 ? [...value, a] : value);
-  };
-
-  const removeCustom = (a: string) => onChange(value.filter(x => x !== a));
-
-  const addActivity = (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed || value.length >= 8) return;
-    const std = ALL_ACTIVITIES.find(a => a.toLowerCase() === trimmed.toLowerCase());
-    const key = std ?? trimmed;
-    if (!value.some(v => v.toLowerCase() === key.toLowerCase())) onChange([...value, key]);
-    setCustomQ('');
-  };
-
-  // Suggestions from NPS activity names as you type (like web)
-  const suggestions = customQ.trim().length > 0
-    ? npsActivityNames
-        .filter(n =>
-          n.toLowerCase().includes(customQ.trim().toLowerCase()) &&
-          !value.some(v => v.toLowerCase() === n.toLowerCase())
-        )
-        .slice(0, 6)
-    : [];
-
-  const qLower = customQ.trim().toLowerCase();
-  const exactMatch = suggestions.some(s => s.toLowerCase() === qLower);
-  const alreadyAdded = value.some(v => v.toLowerCase() === qLower);
-  const showAddNew = customQ.trim().length > 1 && !exactMatch && !alreadyAdded;
-
-  const customActivities = value.filter(a => !ALL_ACTIVITIES.includes(a));
-
-  return (
-    <View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-        {ALL_ACTIVITIES.map(a => {
-          const on = value.includes(a);
-          return (
-            <TouchableOpacity
-              key={a} onPress={() => toggle(a)} activeOpacity={0.7}
-              style={[styles.activityChip, { backgroundColor: on ? C.primary : C.surfaceAlt, borderColor: on ? C.primary : C.hairline }]}
-            >
-              {on && <Ionicons name="checkmark" size={11} color="#FFFBF1" />}
-              <Text style={[styles.activityChipText, { color: on ? C.onPrimary : C.inkSoft }]}>{a}</Text>
-            </TouchableOpacity>
-          );
-        })}
-        {customActivities.map(a => (
-          <View key={a} style={[styles.activityChip, { backgroundColor: C.primary, borderColor: C.primary }]}>
-            <Text style={[styles.activityChipText, { color: C.onPrimary }]}>{a}</Text>
-            <TouchableOpacity onPress={() => removeCustom(a)} hitSlop={6}>
-              <Ionicons name="close" size={11} color="rgba(255,251,241,0.8)" />
-            </TouchableOpacity>
-          </View>
-        ))}
-      </View>
-      {value.length < 8 && (
-        <View style={{ marginTop: 10 }}>
-          <View style={styles.searchRow}>
-            <Ionicons name="search" size={14} color={C.inkMute} />
-            <TextInput
-              value={customQ} onChangeText={setCustomQ}
-              placeholder="Add another activity…" placeholderTextColor={C.inkMute}
-              style={styles.searchInput}
-              autoCorrect={false} autoCapitalize="none"
-              onSubmitEditing={() => {
-                if (suggestions.length > 0) addActivity(suggestions[0]);
-                else if (customQ.trim()) addActivity(customQ);
-              }}
-              returnKeyType="done"
-            />
-            {customQ.length > 0 && (
-              <TouchableOpacity onPress={() => setCustomQ('')} hitSlop={6}>
-                <Ionicons name="close-circle" size={15} color={C.inkMute} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {(suggestions.length > 0 || showAddNew) && (
-            <View style={styles.activitySuggestBox}>
-              {suggestions.map((name, i) => (
-                <TouchableOpacity
-                  key={name}
-                  onPress={() => addActivity(name)}
-                  activeOpacity={0.7}
-                  style={[
-                    styles.activitySuggestRow,
-                    (i < suggestions.length - 1 || showAddNew) && { borderBottomWidth: 0.5, borderBottomColor: C.hairlineSoft },
-                  ]}
-                >
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.primary }} />
-                  <Text style={{ fontSize: 13, color: C.ink, fontWeight: '500' }} numberOfLines={1}>{name}</Text>
-                </TouchableOpacity>
-              ))}
-              {showAddNew && (
-                <TouchableOpacity
-                  onPress={() => addActivity(customQ)}
-                  activeOpacity={0.7}
-                  style={styles.activitySuggestRow}
-                >
-                  <Ionicons name="add-circle-outline" size={14} color={C.accent} />
-                  <Text style={{ fontSize: 13, color: C.accent, fontWeight: '600' }} numberOfLines={1}>
-                    Add “{customQ.trim()}”
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </View>
-      )}
-    </View>
-  );
-}
-
 // ── ReturnRow ─────────────────────────────────────────────────────────────────
 
 function ReturnRow({ value, onChange }: { value: Draft['wouldReturn']; onChange: (v: Draft['wouldReturn']) => void }) {
@@ -681,122 +556,6 @@ function VisibilityPicker({ value, onChange }: { value: Draft['visibility']; onC
           </TouchableOpacity>
         );
       })}
-    </View>
-  );
-}
-
-// ── CompanionSearch ───────────────────────────────────────────────────────────
-
-function CompanionSearch({ companions, companionObjs, onChange, token }: {
-  companions: string[];
-  companionObjs: CompanionUser[];
-  onChange: (ids: string[], objs: CompanionUser[]) => void;
-  token: string | null;
-}) {
-  const C = useColors();
-  const [q, setQ] = useState('');
-  const [results, setResults] = useState<CompanionUser[]>([]);
-  const [searching, setSearching] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const seq = useRef(0);
-
-  const toggle = (u: CompanionUser) => {
-    if (companions.includes(u.clerk_user_id)) {
-      onChange(companions.filter(id => id !== u.clerk_user_id), companionObjs.filter(o => o.clerk_user_id !== u.clerk_user_id));
-    } else {
-      const newObjs = companionObjs.find(o => o.clerk_user_id === u.clerk_user_id) ? companionObjs : [...companionObjs, u];
-      onChange([...companions, u.clerk_user_id], newObjs);
-    }
-  };
-
-  useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    if (!q.trim()) { setResults([]); setSearching(false); return; }
-    // Stay in "searching" through the debounce + fetch so the empty state
-    // doesn't flash while typing
-    setSearching(true);
-    const mySeq = ++seq.current;
-    timer.current = setTimeout(() => {
-      fetch(`${BASE}/api/users?search=${encodeURIComponent(q)}&limit=10`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
-        .then(r => r.ok ? r.json() : [])
-        .then((data: CompanionUser[]) => {
-          if (mySeq !== seq.current) return;
-          setResults(data);
-          setSearching(false);
-        })
-        .catch(() => { if (mySeq === seq.current) setSearching(false); });
-    }, 250);
-    return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [q, token]);
-
-  const tagged = companionObjs.filter(u => companions.includes(u.clerk_user_id));
-
-  return (
-    <View>
-      {tagged.length > 0 && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-          {tagged.map(u => {
-            const name = (u.display_name ?? u.username).split(' ')[0];
-            return (
-              <View key={u.clerk_user_id} style={[styles.companionChip, { backgroundColor: C.primary }]}>
-                {u.avatar_url
-                  ? <Image source={{ uri: u.avatar_url }} style={{ width: 22, height: 22, borderRadius: 11 }} />
-                  : <View style={styles.companionInitial}><Text style={{ color: C.onPrimary, fontSize: 13, fontWeight: '700' }}>{name[0]}</Text></View>
-                }
-                <Text style={{ fontSize: 13, fontWeight: '600', color: C.onPrimary }}>{name}</Text>
-                <TouchableOpacity onPress={() => toggle(u)} hitSlop={6}>
-                  <Ionicons name="close" size={13} color="rgba(255,251,241,0.8)" />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-        </View>
-      )}
-
-      <View style={styles.searchRow}>
-        <Ionicons name="search" size={14} color={C.inkMute} />
-        <TextInput
-          value={q} onChangeText={setQ} placeholder="Search by name or username…"
-          placeholderTextColor={C.inkMute} style={styles.searchInput}
-          autoCorrect={false} autoCapitalize="none"
-        />
-        {q.length > 0 && (
-          <TouchableOpacity onPress={() => { setQ(''); setResults([]); }}>
-            <Ionicons name="close-circle" size={16} color={C.inkMute} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {results.length > 0 && (
-        <View style={styles.resultsBox}>
-          {results.map((u, idx) => {
-            const on = companions.includes(u.clerk_user_id);
-            const name = u.display_name ?? u.username;
-            return (
-              <TouchableOpacity
-                key={u.clerk_user_id} onPress={() => { toggle(u); setQ(''); setResults([]); }} activeOpacity={0.7}
-                style={[styles.resultRow, { backgroundColor: on ? 'rgba(31,61,46,0.06)' : 'transparent',
-                  borderBottomWidth: idx < results.length - 1 ? 0.5 : 0, borderBottomColor: C.hairlineSoft }]}
-              >
-                {u.avatar_url
-                  ? <Image source={{ uri: u.avatar_url }} style={{ width: 32, height: 32, borderRadius: 16 }} />
-                  : <View style={[styles.companionInitial, { width: 32, height: 32, borderRadius: 16 }]}><Text style={{ color: C.onPrimary, fontWeight: '700' }}>{name[0]}</Text></View>
-                }
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '600', fontSize: 13.5, color: C.ink }}>{name}</Text>
-                  <Text style={{ fontSize: 13, color: C.inkMute }}>@{u.username}</Text>
-                </View>
-                {on && <Ionicons name="checkmark-circle" size={18} color={C.primary} />}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-      {q.trim().length > 0 && results.length === 0 && !searching && (
-        <Text style={{ fontSize: 13, color: C.inkMute, paddingHorizontal: 4, paddingTop: 6 }}>No users found</Text>
-      )}
     </View>
   );
 }
@@ -3123,14 +2882,6 @@ const styles = StyleSheet.create({
     fontSize: 15, fontWeight: '700',
   },
 
-  // Activity
-  activityChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 13, paddingVertical: 7, borderRadius: 100, borderWidth: 0.5,
-  },
-  activityChipText: {
-    fontSize: 13, fontWeight: '600', textTransform: 'capitalize',
-  },
 
   // Would return
   returnBtn: {
@@ -3159,15 +2910,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
 
-  // Companion
-  companionChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingLeft: 4, paddingRight: 8, paddingVertical: 4, borderRadius: 100,
-  },
-  companionInitial: {
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: 'rgba(255,251,241,0.2)', alignItems: 'center', justifyContent: 'center',
-  },
   searchRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: C.surface, borderRadius: 14, padding: 13,
@@ -3175,13 +2917,6 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1, fontSize: 15, fontWeight: '600', color: C.ink, padding: 0,
-  },
-  resultsBox: {
-    backgroundColor: C.surface, borderRadius: 12,
-    borderWidth: 0.5, borderColor: C.hairline, overflow: 'hidden',
-  },
-  resultRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10,
   },
 
   // Photos
@@ -3341,18 +3076,6 @@ const styles = StyleSheet.create({
     fontSize: 13, color: C.inkMute, fontWeight: '600', letterSpacing: 0.5,
   },
 
-  // Activity autocomplete
-  activitySuggestBox: {
-    marginTop: 4,
-    backgroundColor: C.surface,
-    borderWidth: 0.5, borderColor: C.hairline,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  activitySuggestRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10,
-  },
 
   // Date rows
   dateRow: {

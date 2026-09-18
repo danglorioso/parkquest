@@ -11,8 +11,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { MenuView } from '@react-native-menu/menu';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { GlassIconBg } from '@/components/GlassIconBg';
+import { VisitDetails, type VisitStatsInput } from '@/components/VisitStats';
 import { STATIC as C, colorStr, useColors } from '@/lib/palette';
-import { dayCount, fmtDate, fmtRange } from '@/lib/dates';
+import { dayCount, fmtRange } from '@/lib/dates';
 import { parkColor } from '@/lib/parkColors';
 
 const MENU_DESTRUCTIVE = '#FF3B30';
@@ -25,6 +26,7 @@ export interface JournalEntry {
   id: number;
   park_code: string;
   park_name: string | null;
+  park_image_url: string | null;
   states: string | null;
   visited_date: string | null;
   end_date: string | null;
@@ -45,6 +47,22 @@ export interface JournalEntry {
   created_at: string | null;
 }
 
+// ── Skeleton card ─────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <View style={[styles.card, { overflow: 'hidden' }]}>
+      <View style={{ width: 128, backgroundColor: C.surfaceAlt }} />
+      <View style={{ flex: 1, padding: 12, gap: 8 }}>
+        <View style={{ height: 9, width: '50%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
+        <View style={{ height: 14, width: '80%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
+        <View style={{ height: 11, width: '60%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
+        <View style={{ height: 11, width: '40%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
+      </View>
+    </View>
+  );
+}
+
 // ── Stars ─────────────────────────────────────────────────────────────────────
 
 function Stars({ value, size = 11 }: { value: number; size?: number }) {
@@ -61,40 +79,34 @@ function Stars({ value, size = 11 }: { value: number; size?: number }) {
   );
 }
 
-// ── Skeleton card ─────────────────────────────────────────────────────────────
-
-function SkeletonCard() {
-  return (
-    <View style={[styles.card, { overflow: 'hidden' }]}>
-      <View style={{ width: 80, backgroundColor: C.surfaceAlt }} />
-      <View style={{ flex: 1, padding: 12, gap: 8 }}>
-        <View style={{ height: 9, width: '50%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
-        <View style={{ height: 14, width: '80%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
-        <View style={{ height: 11, width: '60%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
-        <View style={{ height: 11, width: '40%', backgroundColor: C.surfaceAlt, borderRadius: 4 }} />
-      </View>
-    </View>
-  );
-}
-
 // ── Entry card ────────────────────────────────────────────────────────────────
 
 function EntryCard({ entry, onPress, onEdit, onDelete }: {
   entry: JournalEntry; onPress: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   const T = useColors();
-  const cover  = entry.cover_photo ?? entry.photos?.[0] ?? null;
+  // No user photo? Fall back to the park's own stock image rather than a
+  // flat color block — still gives the card something to show.
+  const cover  = entry.cover_photo ?? entry.photos?.[0] ?? entry.park_image_url ?? null;
   const days   = dayCount(entry.visited_date, entry.end_date);
   const visKey = (entry.visibility ?? 'private').toLowerCase();
   const visColor = visKey === 'public' ? C.visited : visKey === 'friends' ? T.primary : C.inkMute;
   const visIcon  = visKey === 'public'
     ? 'globe-outline' : visKey === 'friends'
     ? 'people-outline' : 'lock-closed-outline';
+  // One plain sentence of context (weather/activities/who was there) — not
+  // a stat strip, just enough to jog the memory of what the trip was like.
+  const visitStats: VisitStatsInput = {
+    visit_weather: entry.weather_conditions,
+    visit_activities: entry.activities,
+    visit_companion_count: entry.companions?.length ?? null,
+    visit_would_return: entry.would_return,
+  };
 
   return (
     <View>
       <TouchableOpacity onPress={onPress} style={styles.card} activeOpacity={0.78}>
-        {/* Thumbnail — matches web's 80px left column */}
+        {/* Thumbnail — wide enough that the photo actually reads at a glance */}
         <View style={[styles.thumb, { backgroundColor: parkColor(entry.park_code) }]}>
           {cover && (
             <Image
@@ -114,18 +126,21 @@ function EntryCard({ entry, onPress, onEdit, onDelete }: {
 
         {/* Content — matches web's padding: 12px 14px 12px 13px */}
         <View style={styles.cardContent}>
-          {/* Park name kicker */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingRight: 26 }}>
-            <Ionicons name="location" size={10} color={T.primary} />
-            <Text style={[styles.parkKicker, { color: T.primary }]} numberOfLines={1}>
+          {/* Park name kicker — full name, not truncated, since it's the
+              one thing this card exists to tell you */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 5, paddingRight: 26 }}>
+            <Ionicons name="location" size={10} color={T.primary} style={{ marginTop: 2 }} />
+            <Text style={[styles.parkKicker, { color: T.primary }]}>
               {(entry.park_name ?? entry.park_code).toUpperCase()}
             </Text>
           </View>
 
-          {/* Title or date */}
-          <Text style={styles.entryTitle} numberOfLines={1}>
-            {entry.title || fmtDate(entry.visited_date)}
-          </Text>
+          {/* Title — the date row below already covers the date, so skip
+              this line entirely rather than falling back to it and
+              printing the same date twice */}
+          {entry.title ? (
+            <Text style={styles.entryTitle} numberOfLines={1}>{entry.title}</Text>
+          ) : null}
 
           {/* Date range + duration badge */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -137,20 +152,21 @@ function EntryCard({ entry, onPress, onEdit, onDelete }: {
             )}
           </View>
 
-          {/* Stars + visibility */}
+          {/* Stars + visibility — icon only, no label */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
             {entry.rating ? <Stars value={entry.rating} size={11} /> : <View />}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-              <Ionicons name={visIcon as any} size={10} color={visColor} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: visColor, letterSpacing: 0.8, textTransform: 'uppercase' }}>
-                {visKey}
-              </Text>
-            </View>
+            <Ionicons name={visIcon as any} size={13} color={visColor} />
           </View>
+
+          {/* Weather / activities / who was there — one line, memory-jogging
+              context without turning this into a stat strip */}
+          <VisitDetails visit={visitStats} numberOfLines={2} />
         </View>
       </TouchableOpacity>
 
-      {/* Per-entry quick actions — native menu, matches PostCard's post-level "..." */}
+      {/* Per-entry quick actions — native menu, matches PostCard's post-level
+          "..." — top-right of the card itself (over the plain content
+          surface), not floating over the thumbnail image. */}
       <View style={styles.entryMenuWrap}>
         <MenuView
           onPressAction={({ nativeEvent }) => {
@@ -158,13 +174,13 @@ function EntryCard({ entry, onPress, onEdit, onDelete }: {
             else if (nativeEvent.event === 'delete') onDelete();
           }}
           actions={[
-            { id: 'edit', title: 'Edit entry', image: 'pencil', imageColor: '#FFFBF1' },
+            { id: 'edit', title: 'Edit entry', image: 'pencil' },
             { id: 'delete', title: 'Delete entry', image: 'trash', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
           ]}
         >
           <TouchableOpacity style={styles.entryMenuBtn} hitSlop={8} activeOpacity={0.8}>
-            <GlassIconBg onMedia fallbackColor="rgba(20,17,12,0.45)" />
-            <Ionicons name="ellipsis-horizontal" size={13} color="#FFFBF1" />
+            <GlassIconBg borderRadius={12} fallbackColor={colorStr(C.surface)} />
+            <Ionicons name="ellipsis-horizontal" size={13} color={C.inkMute} />
           </TouchableOpacity>
         </MenuView>
       </View>
@@ -439,17 +455,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   thumb: {
-    width: 80, flexShrink: 0,
+    width: 128, flexShrink: 0,
   },
   photoCountBadge: {
     position: 'absolute', bottom: 6, right: 6,
     flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 100,
   },
-  // Sits over the thumbnail's top-right corner — "clear" glass (see
-  // GlassIconBg's onMedia) since it's floating over a photo, not a flat surface.
+  // Top-right of the card itself — over the plain content surface, not
+  // floating over the thumbnail image.
   entryMenuWrap: {
-    position: 'absolute', top: 6, left: 50,
+    position: 'absolute', top: 8, right: 8,
   },
   entryMenuBtn: {
     width: 24, height: 24, borderRadius: 12, overflow: 'hidden',
