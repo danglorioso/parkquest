@@ -758,7 +758,7 @@ function CompanionSearch({ companions, companionObjs, onChange, token }: {
       <View style={styles.searchRow}>
         <Ionicons name="search" size={14} color={C.inkMute} />
         <TextInput
-          value={q} onChangeText={setQ} placeholder="Search for other users…"
+          value={q} onChangeText={setQ} placeholder="Search by name or username…"
           placeholderTextColor={C.inkMute} style={styles.searchInput}
           autoCorrect={false} autoCapitalize="none"
         />
