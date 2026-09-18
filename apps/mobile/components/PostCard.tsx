@@ -18,7 +18,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { BADGE_MAP, badgeColors, ensureBadgeDefs } from '@/lib/badges';
-import { blockUser } from '@/lib/api';
+import { blockUser, sendFriendRequest } from '@/lib/api';
 import { emitUserBlocked } from '@/lib/blocking';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { relTime } from '@/lib/dates';
@@ -1152,6 +1152,7 @@ function PostCardImpl({
   const [showMenu, setShowMenu] = useState(false);
   const [showReportSheet, setShowReportSheet] = useState(false);
   const [reported, setReported] = useState(false);
+  const [friendAdded, setFriendAdded] = useState(false);
   // Full comment list, preloaded as the card scrolls into view so the sheet
   // opens instantly instead of showing a spinner.
   const [allComments, setAllComments] = useState<CommentRow[] | null>(null);
@@ -1309,6 +1310,19 @@ function PostCardImpl({
     );
   };
 
+  const handleAddFriend = async () => {
+    setShowMenu(false);
+    try {
+      const tok = await freshToken();
+      if (!tok) throw new Error('Not signed in');
+      await sendFriendRequest(tok, post.clerk_user_id);
+      setFriendAdded(true);
+      showToast(`Friend request sent to ${name}`);
+    } catch {
+      Alert.alert('Error', 'Could not send friend request. Please try again.');
+    }
+  };
+
   const handleSaveCaption = async () => {
     // Visit posts inherit the visit's visibility, so route the change there;
     // all other posts carry their own
@@ -1455,6 +1469,9 @@ function PostCardImpl({
                 case 'bucket':
                   handleToggleBucketList();
                   break;
+                case 'add-friend':
+                  handleAddFriend();
+                  break;
               }
             }}
             actions={isOwnPost ? [
@@ -1478,6 +1495,13 @@ function PostCardImpl({
                 attributes: { disabled: bucketBusy },
               }] : []),
               ...(post.park_code ? [{ id: 'log-visit', title: 'Log a visit', image: 'calendar.badge.plus', imageColor: menuInk }] : []),
+              ...(!post.is_friend_post ? [{
+                id: 'add-friend',
+                title: friendAdded ? 'Friend request sent' : 'Add friend',
+                image: friendAdded ? 'person.badge.checkmark' : 'person.badge.plus',
+                imageColor: menuInk,
+                attributes: { disabled: friendAdded },
+              }] : []),
               { id: 'report', title: reported ? 'Reported' : 'Report post', image: 'flag', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true, disabled: reported } },
               { id: 'block', title: 'Block user', image: 'person.crop.circle.badge.xmark', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
             ]}
