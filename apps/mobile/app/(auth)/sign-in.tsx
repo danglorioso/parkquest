@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOAuth, useSignUp, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { AppleIcon, clerkMsg, ErrorBox, FField, GoogleG, MONO, NameField, PrimaryBtn, TermsCheckbox } from '@/components/AuthAtoms';
 import { Avatar } from '@/components/Avatar';
@@ -458,9 +459,16 @@ export default function LandingScreen() {
 
                 {lastAccount && (
                   <View style={styles.lastAccountCard}>
+                    <TouchableOpacity
+                      onPress={handleNotYou}
+                      hitSlop={8}
+                      style={styles.dismissBtn}
+                    >
+                      <Ionicons name="close" size={16} color={C.inkMute} />
+                    </TouchableOpacity>
                     <View style={styles.lastAccountRow}>
                       <Avatar url={lastAccount.avatarUrl} name={lastAccount.name} size={40} />
-                      <View style={{ flex: 1, marginLeft: 12 }}>
+                      <View style={{ flex: 1, marginLeft: 12, marginRight: 20 }}>
                         <Text style={styles.lastAccountName} numberOfLines={1}>{lastAccountLabel}</Text>
                         <Text style={styles.lastAccountSub}>{lastAccountSub}</Text>
                       </View>
@@ -471,12 +479,14 @@ export default function LandingScreen() {
                       disabled={oauthBusy !== null}
                       activeOpacity={0.85}
                     >
-                      {oauthBusy !== null
+                      {/* Only spin for the strategy THIS button actually
+                          triggers — oauthBusy is shared with the OAuth
+                          buttons below, and tapping one of those (a
+                          different method than the saved account) must
+                          not also buffer this button. */}
+                      {oauthBusy !== null && oauthBusy === lastAccount.strategy
                         ? <ActivityIndicator size="small" color={C.onPrimary} />
                         : <Text style={styles.primaryContinueBtnText}>{lastAccountBtnLabel}</Text>}
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleNotYou} hitSlop={8}>
-                      <Text style={styles.notYouText}>Not you?</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -513,11 +523,19 @@ export default function LandingScreen() {
 
                 {error ? <ErrorBox msg={error} /> : null}
 
-                <View style={styles.dividerRow}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>OR</Text>
-                  <View style={styles.dividerLine} />
-                </View>
+                {/* Sign-back-in state already has one divider ("OR USE
+                    ANOTHER ACCOUNT") separating the remembered account from
+                    everything else — a second "OR" here just splits that
+                    same "everything else" group in two for no reason. Only
+                    the fresh sign-in state (no remembered account) needs it,
+                    to separate OAuth from the email/password path below. */}
+                {!lastAccount && (
+                  <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>OR</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+                )}
 
                 <PrimaryBtn label="Sign In" onPress={() => router.push('/(auth)/login' as never)} />
 
@@ -580,6 +598,13 @@ const styles = StyleSheet.create({
   lastAccountCard: {
     backgroundColor: C.surface, borderWidth: 0.5, borderColor: C.hairline,
     borderRadius: 16, padding: 12, marginTop: 14,
+    position: 'relative',
+  },
+  dismissBtn: {
+    position: 'absolute', top: 10, right: 10, zIndex: 1,
+    width: 22, height: 22, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.surfaceAlt,
   },
   lastAccountRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   lastAccountName: { fontSize: 15, fontWeight: '700', color: C.ink },
@@ -588,7 +613,6 @@ const styles = StyleSheet.create({
     borderRadius: 12, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', minHeight: 42,
   },
   primaryContinueBtnText: { fontSize: 14, fontWeight: '700', color: C.onPrimary },
-  notYouText: { fontSize: 12.5, fontWeight: '600', color: C.inkMute, textAlign: 'center', marginTop: 12 },
 
   oauthBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
