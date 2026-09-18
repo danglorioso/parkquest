@@ -1,6 +1,6 @@
 import {
   Alert, FlatList, Platform, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  Text, TextInput, TouchableOpacity, View, useColorScheme,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -85,6 +85,7 @@ function EntryCard({ entry, onPress, onEdit, onDelete }: {
   entry: JournalEntry; onPress: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   const T = useColors();
+  const router = useRouter();
   // No user photo? Fall back to the park's own stock image rather than a
   // flat color block — still gives the card something to show.
   const cover  = entry.cover_photo ?? entry.photos?.[0] ?? entry.park_image_url ?? null;
@@ -127,13 +128,18 @@ function EntryCard({ entry, onPress, onEdit, onDelete }: {
         {/* Content — matches web's padding: 12px 14px 12px 13px */}
         <View style={styles.cardContent}>
           {/* Park name kicker — full name, not truncated, since it's the
-              one thing this card exists to tell you */}
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 5, paddingRight: 26 }}>
+              one thing this card exists to tell you. Its own tap target,
+              nested inside the card's, links to the park's profile page. */}
+          <TouchableOpacity
+            onPress={() => router.push(`/park/${entry.park_code}` as never)}
+            activeOpacity={0.6}
+            style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 5, paddingRight: 26 }}
+          >
             <Ionicons name="location" size={10} color={T.primary} style={{ marginTop: 2 }} />
             <Text style={[styles.parkKicker, { color: T.primary }]}>
               {(entry.park_name ?? entry.park_code).toUpperCase()}
             </Text>
-          </View>
+          </TouchableOpacity>
 
           {/* Title — the date row below already covers the date, so skip
               this line entirely rather than falling back to it and
@@ -188,6 +194,85 @@ function EntryCard({ entry, onPress, onEdit, onDelete }: {
   );
 }
 
+// ── Grid entry card ───────────────────────────────────────────────────────────
+// Compact 2-column variant for grid view — photo-forward, just enough text
+// to identify the trip; the full facts line lives in list view instead.
+
+function GridEntryCard({ entry, onPress, onEdit, onDelete }: {
+  entry: JournalEntry; onPress: () => void; onEdit: () => void; onDelete: () => void;
+}) {
+  const T = useColors();
+  const router = useRouter();
+  const cover  = entry.cover_photo ?? entry.photos?.[0] ?? null;
+  const visKey = (entry.visibility ?? 'private').toLowerCase();
+  const visColor = visKey === 'public' ? C.visited : visKey === 'friends' ? T.primary : C.inkMute;
+  const visIcon  = visKey === 'public'
+    ? 'globe-outline' : visKey === 'friends'
+    ? 'people-outline' : 'lock-closed-outline';
+
+  return (
+    <View style={{ flex: 1 }}>
+      <TouchableOpacity onPress={onPress} style={styles.gridCard} activeOpacity={0.85}>
+        <View style={[styles.gridPhoto, { backgroundColor: parkColor(entry.park_code) }]}>
+          {cover ? (
+            <Image
+              source={{ uri: cover }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 10 }}>
+              <Text style={styles.gridPhotoFallbackText} numberOfLines={3}>
+                {(entry.park_name ?? entry.park_code).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          {(entry.photos?.length ?? 0) > 1 && (
+            <View style={styles.photoCountBadge}>
+              <Ionicons name="images-outline" size={9} color={C.onPrimary} />
+              <Text style={{ color: C.onPrimary, fontSize: 13, fontWeight: '600' }}>{entry.photos!.length}</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={{ padding: 10, gap: 3 }}>
+          <TouchableOpacity onPress={() => router.push(`/park/${entry.park_code}` as never)} activeOpacity={0.6}>
+            <Text style={[styles.parkKicker, { color: T.primary, fontSize: 12 }]} numberOfLines={1}>
+              {(entry.park_name ?? entry.park_code).toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+          <Text style={styles.entryTitle} numberOfLines={1}>
+            {entry.title || fmtRange(entry.visited_date, entry.end_date)}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 1 }}>
+            <Text style={styles.entryDate} numberOfLines={1}>{fmtRange(entry.visited_date, entry.end_date)}</Text>
+            <Ionicons name={visIcon as any} size={12} color={visColor} />
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      <View style={styles.entryMenuWrap}>
+        <MenuView
+          onPressAction={({ nativeEvent }) => {
+            if (nativeEvent.event === 'edit') onEdit();
+            else if (nativeEvent.event === 'delete') onDelete();
+          }}
+          actions={[
+            { id: 'edit', title: 'Edit entry', image: 'pencil' },
+            { id: 'delete', title: 'Delete entry', image: 'trash', imageColor: MENU_DESTRUCTIVE, attributes: { destructive: true } },
+          ]}
+        >
+          <TouchableOpacity style={styles.entryMenuBtn} hitSlop={8} activeOpacity={0.8}>
+            <GlassIconBg onMedia fallbackColor="rgba(20,17,12,0.45)" />
+            <Ionicons name="ellipsis-horizontal" size={13} color="#FFFBF1" />
+          </TouchableOpacity>
+        </MenuView>
+      </View>
+    </View>
+  );
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function JournalScreen() {
@@ -202,6 +287,9 @@ export default function JournalScreen() {
   const [query,      setQuery]      = useState('');
   const [yearFilter, setYearFilter] = useState<number | null>(null);
   const [sortBy,     setSortBy]     = useState<'newest' | 'oldest' | 'rating'>('newest');
+  const [viewMode,      setViewMode]      = useState<'grid' | 'list'>('list');
+  const [showViewMenu,  setShowViewMenu]  = useState(false);
+  const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
   // Deep-linked from a stamp's "view your visits" — cleared locally so the
   // user can back out to the unfiltered journal without re-navigating.
   const [parkFilter, setParkFilter] = useState<string | null>(parkCode ?? null);
@@ -279,9 +367,32 @@ export default function JournalScreen() {
     <View>
       {/* Page header */}
       <View style={styles.pageHeader}>
-        <Text style={styles.kicker}>COLLECTIONS</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={styles.title}>Visits</Text>
+          <MenuView
+            onOpenMenu={() => setShowViewMenu(true)}
+            onCloseMenu={() => setShowViewMenu(false)}
+            onPressAction={({ nativeEvent }) => setViewMode(nativeEvent.event as 'grid' | 'list')}
+            actions={[
+              // Explicit imageColor: the menu lib's new-arch bridge tints
+              // unset icons with color 0 (transparent) — see parks page.
+              { id: 'grid', title: 'Grid', image: 'square.grid.2x2', imageColor: menuInk, state: viewMode === 'grid' ? 'on' : 'off' },
+              { id: 'list', title: 'List', image: 'list.bullet', imageColor: menuInk, state: viewMode === 'list' ? 'on' : 'off' },
+            ]}
+          >
+            <TouchableOpacity
+              hitSlop={8}
+              activeOpacity={0.7}
+              style={[styles.viewToggle, showViewMenu && { backgroundColor: T.primary + '14', borderColor: T.primary }]}
+            >
+              <GlassIconBg />
+              <Ionicons
+                name={viewMode === 'grid' ? 'grid-outline' : 'list-outline'}
+                size={20}
+                color={showViewMenu ? T.primary : C.inkSoft}
+              />
+            </TouchableOpacity>
+          </MenuView>
         </View>
         {!loading && (
           <Text style={styles.subtitle}>
@@ -328,7 +439,7 @@ export default function JournalScreen() {
           >
             <TouchableOpacity style={styles.sortBtn} activeOpacity={0.8}>
               <GlassIconBg borderRadius={11} fallbackColor={colorStr(C.surface)} />
-              <Ionicons name="funnel-outline" size={14} color={C.inkSoft} />
+              <Ionicons name="swap-vertical-outline" size={14} color={C.inkSoft} />
               <Text style={styles.sortBtnText} numberOfLines={1}>{SORT_LABELS_SHORT[sortBy]}</Text>
             </TouchableOpacity>
           </MenuView>
@@ -383,18 +494,33 @@ export default function JournalScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
       <FlatList
+        // FlatList requires a remount when numColumns changes — key does that.
+        key={viewMode}
         data={loading ? [] : filtered}
+        numColumns={viewMode === 'grid' ? 2 : 1}
+        columnWrapperStyle={viewMode === 'grid' ? { paddingHorizontal: 16, gap: 10 } : undefined}
         keyExtractor={item => String(item.id)}
-        renderItem={({ item }) => (
-          <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
-            <EntryCard
-              entry={item}
-              onPress={() => router.push(`/profile/journal/${item.id}` as never)}
-              onEdit={() => router.push(`/profile/journal/${item.id}?edit=1` as never)}
-              onDelete={() => confirmDeleteEntry(item)}
-            />
-          </View>
-        )}
+        renderItem={({ item }) =>
+          viewMode === 'grid' ? (
+            <View style={{ flex: 1, marginBottom: 10 }}>
+              <GridEntryCard
+                entry={item}
+                onPress={() => router.push(`/profile/journal/${item.id}` as never)}
+                onEdit={() => router.push(`/profile/journal/${item.id}?edit=1` as never)}
+                onDelete={() => confirmDeleteEntry(item)}
+              />
+            </View>
+          ) : (
+            <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+              <EntryCard
+                entry={item}
+                onPress={() => router.push(`/profile/journal/${item.id}` as never)}
+                onEdit={() => router.push(`/profile/journal/${item.id}?edit=1` as never)}
+                onDelete={() => confirmDeleteEntry(item)}
+              />
+            </View>
+          )
+        }
         ListHeaderComponent={ListHeader}
         contentContainerStyle={{ paddingBottom: tabBarSpace + 16 }}
         showsVerticalScrollIndicator={false}
@@ -411,9 +537,15 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
 
   pageHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 16 },
-  kicker:     { fontSize: 13, fontWeight: '600', color: C.inkMute, letterSpacing: 1.6, marginBottom: 4 },
   title:      { fontSize: 32, fontWeight: '800', color: C.ink, letterSpacing: -0.7 },
   subtitle:   { fontSize: 13.5, color: C.inkMute, marginTop: 6 },
+  // 44pt, the app-wide round icon button size (matches the parks page's own
+  // grid/list toggle).
+  viewToggle: {
+    width: 44, height: 44, borderRadius: 22, overflow: 'hidden',
+    borderWidth: 0.5, borderColor: C.hairline,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   filterBar:  { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 18 },
   searchBox:  {
@@ -456,6 +588,15 @@ const styles = StyleSheet.create({
   },
   thumb: {
     width: 128, flexShrink: 0,
+  },
+  gridCard: {
+    backgroundColor: C.surface, borderRadius: 14,
+    borderWidth: 0.5, borderColor: C.hairline, overflow: 'hidden',
+  },
+  gridPhoto: { width: '100%', aspectRatio: 1 },
+  gridPhotoFallbackText: {
+    fontSize: 12, fontWeight: '700', color: 'rgba(255,251,241,0.75)',
+    letterSpacing: 0.6, textAlign: 'center',
   },
   photoCountBadge: {
     position: 'absolute', bottom: 6, right: 6,

@@ -587,31 +587,35 @@ export default function JournalEntryScreen() {
       v => WEATHER_OPTS.find(o => o.value === v)?.label ?? v
     );
     const hasHike = !!entry.external_source && entry.distance_meters != null;
-    // Plain label: value rows instead of PostCard's spread-out stat strip —
-    // this screen is the full read-out of a visit, not a social card, so it
-    // reads better as a sentence-per-fact list than columns of numbers.
-    const detailRows: { key: string; value: string }[] = [
+    // Plain label: value rows, grouped into sections like the park profile
+    // page — not PostCard's spread-out stat strip, and not one undifferentiated
+    // list either, since "when/who/what it was like" are different questions.
+    type Row = { key: string; value: string };
+    const tripRows: Row[] = [
       { key: 'Visit date', value: fmtRange(entry.visited_date, entry.end_date) + (days > 1 ? ` · ${days} days` : '') },
       { key: 'Visibility', value: capitalize(visKey) },
+      ...(entry.created_at ? [{ key: 'Post date', value: fmtDate(entry.created_at) }] : []),
+    ];
+    const statRows: Row[] = [
       ...(entry.rating ? [{ key: 'Rating', value: `${entry.rating}/5` }] : []),
       ...(entry.crowd ? [{ key: 'Crowd', value: CROWD_LABELS[(entry.crowd ?? 1) - 1] }] : []),
       ...(entry.difficulty ? [{ key: 'Difficulty', value: DIFF_LABELS[(entry.difficulty ?? 1) - 1] }] : []),
+      ...(entry.would_return ? [{ key: 'Would return', value: capitalize(entry.would_return) }] : []),
+    ];
+    const activityRows: Row[] = [
       ...(weatherLabels.length > 0 ? [{ key: 'Weather', value: weatherLabels.join(', ') }] : []),
       ...((entry.activities?.length ?? 0) > 0 ? [{ key: 'Activities', value: entry.activities!.map(capitalize).join(', ') }] : []),
       ...((entry.companions?.length ?? 0) > 0 ? [{ key: 'With', value: `${entry.companions!.length} ${entry.companions!.length === 1 ? 'person' : 'people'}` }] : []),
-      ...(entry.would_return ? [{ key: 'Would return', value: capitalize(entry.would_return) }] : []),
-      ...(entry.highlight ? [{ key: 'Highlight', value: entry.highlight }] : []),
-      ...(entry.notes ? [{ key: 'Notes', value: entry.notes }] : []),
-      ...(entry.created_at ? [{ key: 'Post date', value: fmtDate(entry.created_at) }] : []),
     ];
 
     return (
       <SafeAreaView style={s.screen} edges={['bottom']}>
         <Stack.Screen options={{ headerShown: false }} />
 
-        {/* Floating back + edit — 44pt glass circles over the hero, same
-            recipe as the park detail page's header buttons, since this
-            screen is the journal's own photo-hero detail view. */}
+        {/* Floating back + edit + log-another-visit — 44pt glass circles
+            over the hero, same recipe (and same edit/log-visit icon pair)
+            as the park detail page's header buttons for an already-visited
+            park. */}
         <View pointerEvents="box-none" style={[StyleSheet.absoluteFillObject, { zIndex: 10 }]}>
           <TouchableOpacity
             style={[s.floatBtn, { top: insets.top + 8, left: 16 }]}
@@ -622,12 +626,23 @@ export default function JournalEntryScreen() {
             <Ionicons name="chevron-back" size={22} color="#FFFBF1" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.floatBtn, { top: insets.top + 8, right: 16 }]}
+            style={[s.floatBtn, { top: insets.top + 8, right: 68 }]}
             onPress={() => router.push({ pathname: '/(modals)/log-visit', params: { visitId: String(entry.id) } } as never)}
             hitSlop={8}
           >
             <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
-            <Ionicons name="create-outline" size={19} color="#FFFBF1" />
+            <Ionicons name="pencil-outline" size={19} color="#FFFBF1" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.floatBtn, { top: insets.top + 8, right: 16 }]}
+            onPress={() => router.push({
+              pathname: '/(modals)/log-visit',
+              params: { parkCode: entry.park_code, parkName: entry.park_name ?? '', parkStates: entry.states ?? '' },
+            } as never)}
+            hitSlop={8}
+          >
+            <GlassIconBg onMedia fallbackColor="rgba(0,0,0,0.35)" />
+            <Ionicons name="checkmark-outline" size={22} color="#FFFBF1" />
           </TouchableOpacity>
         </View>
 
@@ -646,14 +661,19 @@ export default function JournalEntryScreen() {
 
           {/* Body */}
           <View style={s.body}>
-            {/* Park + state */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            {/* Park + state — links to the park's own profile page */}
+            <TouchableOpacity
+              onPress={() => router.push(`/park/${entry.park_code}` as never)}
+              activeOpacity={0.6}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start' }}
+            >
               <Ionicons name="location" size={12} color={T.primary} />
               <Text style={s.parkLabel}>
                 {entry.park_name ?? entry.park_code}
                 {entry.states ? <Text style={{ color: C.inkMute }}> · {entry.states}</Text> : null}
               </Text>
-            </View>
+              <Ionicons name="chevron-forward" size={13} color={T.primary} />
+            </TouchableOpacity>
 
             {/* Title */}
             <Text style={s.entryTitle}>{title}</Text>
@@ -663,18 +683,63 @@ export default function JournalEntryScreen() {
               <Text style={{ fontSize: 14, color: C.inkSoft, lineHeight: 21, marginTop: 4 }}>{entry.caption}</Text>
             ) : null}
 
-            {/* Everything else, plain label: value rows — this screen is
-                the full read-out of a visit, not a social card, so it
-                reads better as a sentence-per-fact list than a spread of
-                stat columns. */}
-            <View style={s.detailList}>
-              {detailRows.map((row, i) => (
-                <View key={row.key} style={[s.detailRow, i === 0 && { borderTopWidth: 0 }]}>
-                  <Text style={s.detailKey}>{row.key}</Text>
-                  <Text style={s.detailVal}>{row.value}</Text>
+            {/* Grouped into sections, like the park profile page, instead of
+                one undifferentiated list — when/who/what-it-was-like are
+                different questions. */}
+            {tripRows.length > 0 && (
+              <View style={{ gap: 8 }}>
+                <Text style={s.sectionLabel}>Trip</Text>
+                <View style={s.detailList}>
+                  {tripRows.map((row, i) => (
+                    <View key={row.key} style={[s.detailRow, i === 0 && { borderTopWidth: 0 }]}>
+                      <Text style={s.detailKey}>{row.key}</Text>
+                      <Text style={s.detailVal}>{row.value}</Text>
+                    </View>
+                  ))}
                 </View>
-              ))}
-            </View>
+              </View>
+            )}
+
+            {statRows.length > 0 && (
+              <View style={{ gap: 8 }}>
+                <Text style={s.sectionLabel}>Conditions</Text>
+                <View style={s.detailList}>
+                  {statRows.map((row, i) => (
+                    <View key={row.key} style={[s.detailRow, i === 0 && { borderTopWidth: 0 }]}>
+                      <Text style={s.detailKey}>{row.key}</Text>
+                      <Text style={s.detailVal}>{row.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {activityRows.length > 0 && (
+              <View style={{ gap: 8 }}>
+                <Text style={s.sectionLabel}>Activity</Text>
+                <View style={s.detailList}>
+                  {activityRows.map((row, i) => (
+                    <View key={row.key} style={[s.detailRow, i === 0 && { borderTopWidth: 0 }]}>
+                      <Text style={s.detailKey}>{row.key}</Text>
+                      <Text style={s.detailVal}>{row.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {(entry.highlight || entry.notes) && (
+              <View style={{ gap: 8 }}>
+                <Text style={s.sectionLabel}>Notes</Text>
+                {entry.highlight ? (
+                  <View style={s.highlightBox}>
+                    <Ionicons name="sparkles-outline" size={13} color={T.accent} style={{ marginTop: 2 }} />
+                    <Text style={s.highlightText}>"{entry.highlight}"</Text>
+                  </View>
+                ) : null}
+                {entry.notes ? <Text style={s.notesText}>{entry.notes}</Text> : null}
+              </View>
+            )}
 
             {/* Hike stats + route (attached from a GPX upload in the log-visit wizard) */}
             {hasHike ? (
@@ -686,7 +751,11 @@ export default function JournalEntryScreen() {
               />
             ) : null}
 
-            {/* Delete */}
+            {/* Edit + delete */}
+            <TouchableOpacity onPress={() => setEditing(true)} style={s.editEntryBtn}>
+              <Ionicons name="pencil-outline" size={15} color={T.primary} />
+              <Text style={[s.editEntryBtnText, { color: T.primary }]}>Edit entry</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={confirmDelete} style={s.deleteBtn}>
               <Ionicons name="trash-outline" size={15} color={DANGER} />
               <Text style={s.deleteBtnText}>Delete entry</Text>
@@ -910,6 +979,7 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   parkLabel:  { fontSize: 13, fontWeight: '700', color: T.primary },
   entryTitle: { fontSize: 22, fontWeight: '900', color: C.ink, letterSpacing: -0.5, lineHeight: 28 },
 
+  sectionLabel: { fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8, textTransform: 'uppercase' },
   detailList: {
     backgroundColor: C.surface, borderRadius: 12,
     borderWidth: 0.5, borderColor: C.hairline,
@@ -922,6 +992,23 @@ const makeStyles = (T: Colors) => StyleSheet.create({
   },
   detailKey: { fontSize: 13.5, fontWeight: '600', color: C.inkMute, width: 96 },
   detailVal: { flex: 1, fontSize: 13.5, color: C.ink, fontWeight: '500', lineHeight: 19 },
+
+  highlightBox: {
+    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+    backgroundColor: C.surface, borderRadius: 12,
+    borderLeftWidth: 3, borderLeftColor: T.accent,
+    padding: 12, paddingLeft: 10,
+  },
+  highlightText: { flex: 1, fontSize: 14.5, fontStyle: 'italic', color: C.inkSoft, lineHeight: 22 },
+  notesText: { fontSize: 14.5, color: C.inkSoft, lineHeight: 22 },
+
+  editEntryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1, borderColor: C.hairline,
+    backgroundColor: C.surface,
+  },
+  editEntryBtnText: { fontSize: 14, fontWeight: '600' },
 
   // Edit form
   fieldLabel: { fontSize: 13, fontWeight: '700', color: C.inkMute, letterSpacing: 0.8, textTransform: 'uppercase' },

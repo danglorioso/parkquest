@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     LEFT JOIN posts po ON po.park_code = p.park_code
     GROUP BY p.park_code, p.name, p.states, p.stamp_glyph
     ORDER BY ${orderColumn} ${dir} NULLS LAST
-    LIMIT 100
+    LIMIT 500
   `);
 
   return NextResponse.json({ parks: rows.rows, sort, dir: searchParams.get('dir') === 'asc' ? 'asc' : 'desc' });

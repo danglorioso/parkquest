@@ -349,7 +349,7 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
 
         {/* Tagline */}
         <View style={styles.tagline}>
-          <Animated.Text style={styles.taglineText}>63 PARKS · ONE QUEST</Animated.Text>
+          <Animated.Text style={styles.taglineText}>EVERY PARK · ONE QUEST</Animated.Text>
         </View>
 
         {/* Compass spinner */}
