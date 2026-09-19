@@ -8,6 +8,7 @@ public class AppDelegate: ExpoAppDelegate {
 
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
+  var launchOptions: [UIApplication.LaunchOptionsKey: Any]?
 
   public override func application(
     _ application: UIApplication,
@@ -17,6 +18,7 @@ public class AppDelegate: ExpoAppDelegate {
     delegate.dependencyProvider = RCTAppDependencyProvider()
 
     reactNativeDelegate = delegate
+    self.launchOptions = launchOptions
 
     let factory = ExpoReactNativeFactory(delegate: delegate)
     reactNativeFactory = factory
@@ -26,10 +28,19 @@ public class AppDelegate: ExpoAppDelegate {
     RCTBundleURLProvider.sharedSettings().jsLocation = "10.0.0.251"
 #endif
 
-    window = UIWindow(frame: UIScreen.main.bounds)
-    factory.startReactNative(withModuleName: "main", in: window, launchOptions: launchOptions)
-
+    // Window is created by SceneDelegate.scene(_:willConnectTo:options:) — iOS 27 hard-crashes
+    // apps that create UIWindow without an associated UIWindowScene.
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  public func application(
+    _ application: UIApplication,
+    configurationForConnecting connectingSceneSession: UISceneSession,
+    options: UIScene.ConnectionOptions
+  ) -> UISceneConfiguration {
+    let configuration = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    configuration.delegateClass = SceneDelegate.self
+    return configuration
   }
 
   public override func application(
