@@ -351,6 +351,11 @@ export default function LandingScreen() {
         pendingOAuthSignUpRef.current = oauthSU;
         pendingSetActiveRef.current = (sa ?? setActive) as any;
         pendingOAuthProviderRef.current = provider;
+        // Apple/Google already supplied name via the identity token — use it
+        // instead of asking the user to type it again (App Review 4.8 / HIG).
+        const su = oauthSU as any;
+        setFirstName(su?.firstName ?? '');
+        setLastName(su?.lastName ?? '');
         setMode('username');
       }
       // else: user cancelled the OAuth sheet — do nothing, no error
@@ -370,9 +375,9 @@ export default function LandingScreen() {
     if (uname.length < 3) return;
     setError('');
     setBusy(true);
-    const nameFields = showName
-      ? { firstName: firstName.trim() || undefined, lastName: lastName.trim() || undefined }
-      : {};
+    // Not gated on `showName` — Apple/Google-supplied names are pre-filled
+    // but the accordion stays collapsed, so this must submit regardless.
+    const nameFields = { firstName: firstName.trim() || undefined, lastName: lastName.trim() || undefined };
     try {
       // Prefer the stored OAuth sign-up object; fall back to useSignUp()'s signUp.
       const pendingSU = pendingOAuthSignUpRef.current ?? signUp;
@@ -419,11 +424,16 @@ export default function LandingScreen() {
                   <FField label="USERNAME" value={username} onChange={v => setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoFocus />
                   <Text style={styles.helperText}>Lowercase letters, numbers, underscores · min 3 chars</Text>
 
-                  <NameField
-                    open={showName} onToggle={toggleShowName}
-                    firstName={firstName} lastName={lastName}
-                    onFirstName={setFirstName} onLastName={setLastName}
-                  />
+                  {/* Skip asking when Apple/Google already gave us a name —
+                      re-asking for info Sign In with Apple already supplied
+                      is an App Review 4.8 / HIG violation. */}
+                  {!(firstName && lastName) && (
+                    <NameField
+                      open={showName} onToggle={toggleShowName}
+                      firstName={firstName} lastName={lastName}
+                      onFirstName={setFirstName} onLastName={setLastName}
+                    />
+                  )}
 
                   <TermsCheckbox checked={agreedToTerms} onToggle={() => setAgreedToTerms(v => !v)} />
 
