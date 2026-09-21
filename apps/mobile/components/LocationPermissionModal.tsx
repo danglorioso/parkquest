@@ -33,7 +33,7 @@ export function LocationPermissionModal({
             onPress={onAllow}
             activeOpacity={0.85}
           >
-            <Text style={[styles.allowText, { color: T.onPrimary }]}>Allow Location Access</Text>
+            <Text style={[styles.allowText, { color: T.onPrimary }]}>Continue</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.skip} onPress={onDismiss} hitSlop={10}>
             <Text style={styles.skipText}>Not now</Text>
