@@ -3,6 +3,7 @@ import { Animated, Easing, Modal, StyleSheet, Text, TouchableOpacity, View, useC
 import { Ionicons } from '@expo/vector-icons';
 import type { CustomStampGlyph } from '@parkquest/types';
 import { ParkStamp } from '@/components/ParkStamp';
+import { GlassIconBg } from '@/components/GlassIconBg';
 import { fullStateName } from '@/lib/stateNames';
 
 // Stamp counterpart to BadgeDetailModal — same animated-entrance card shape,
@@ -116,6 +117,7 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
               activeOpacity={0.8}
               style={styles.secondaryCta}
             >
+              <GlassIconBg borderRadius={100} fallbackColor={closeBg} />
               <Ionicons name="book-outline" size={14} color={ink} />
               <Text style={[styles.secondaryCtaText, { color: ink }]}>Your visits</Text>
             </TouchableOpacity>
@@ -124,8 +126,9 @@ export function StampDetailModal({ stamp, onClose, onViewVisits, onParkInfo }: {
               activeOpacity={0.8}
               style={styles.primaryCta}
             >
-              <Ionicons name="information-circle-outline" size={14} color={PAPER} />
-              <Text style={styles.primaryCtaText}>Park info</Text>
+              <GlassIconBg borderRadius={100} tintColor={GOLD} fallbackColor={GOLD} />
+              <Ionicons name="information-circle-outline" size={14} color={ink} />
+              <Text style={[styles.primaryCtaText, { color: ink }]}>Park info</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -175,7 +178,7 @@ const styles = StyleSheet.create({
   secondaryCta: {
     flex: 1,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderRadius: 100, borderWidth: 1, borderColor: GOLD + '55',
+    borderRadius: 100, borderWidth: 1, borderColor: GOLD + '55', overflow: 'hidden',
     paddingHorizontal: 14, paddingVertical: 10,
   },
   secondaryCtaText: {
@@ -184,10 +187,10 @@ const styles = StyleSheet.create({
   primaryCta: {
     flex: 1,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: GOLD, borderRadius: 100,
+    borderRadius: 100, overflow: 'hidden',
     paddingHorizontal: 14, paddingVertical: 10,
   },
   primaryCtaText: {
-    fontSize: 12.5, fontWeight: '700', color: PAPER,
+    fontSize: 12.5, fontWeight: '700',
   },
 });
