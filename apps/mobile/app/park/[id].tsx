@@ -1161,7 +1161,12 @@ export function ParkProfileScreen({
   // ScrollView scrolls normally, uncontested, exactly as before.
   const contentPan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
+      // Claimed at touch START (not just on move) while at half — half
+      // only ever shows a peek with nothing independently tappable in it,
+      // so any touch there is either a drag (handled below) or a plain tap,
+      // and a plain tap should expand to full rather than fall through and
+      // do nothing. onPanResponderRelease tells the two apart by distance.
+      onStartShouldSetPanResponder: () => inSheet && !sheetFullRef.current,
       onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: (_, { dx, dy }) =>
         inSheet && !sheetFullRef.current && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx) * 1.5,
@@ -1175,7 +1180,10 @@ export function ParkProfileScreen({
         sheetY.stopAnimation(v => { sheetYBase.current = v; });
       },
       onPanResponderMove: (_, { dy }) => onSheetDragMove(dy),
-      onPanResponderRelease: (_, { dy, vy }) => onSheetDragRelease(dy, vy),
+      onPanResponderRelease: (_, { dx, dy, vy }) => {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) { snapSheetTo(0); return; }
+        onSheetDragRelease(dy, vy);
+      },
     })
   ).current;
 
@@ -2251,7 +2259,14 @@ export function ParkProfileScreen({
               style={StyleSheet.absoluteFill}
               activeOpacity={0.95}
               disabled={!nps?.images?.length}
-              onPress={() => nps?.images?.length && openImageLightbox({ images: nps.images, initialIndex: heroIdx, onClose: () => {} })}
+              onPress={() => {
+                // At half, a tap on the cover expands to full instead of
+                // opening the lightbox straight away — matches every other
+                // tap in the peeked area (see contentPan above); tap again
+                // once full to actually open it.
+                if (inSheet && !sheetFull) { snapSheetTo(0); return; }
+                nps?.images?.length && openImageLightbox({ images: nps.images, initialIndex: heroIdx, onClose: () => {} });
+              }}
             >
               <ExpoImage
                 key={heroImage}
