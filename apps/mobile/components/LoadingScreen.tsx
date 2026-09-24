@@ -1,9 +1,16 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Defs, Ellipse, G, Line, Path, RadialGradient, Stop } from 'react-native-svg';
+import MaskedView from '@react-native-masked-view/masked-view';
+import Svg, { Circle, Defs, Ellipse, G, Line, Mask, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 const { width: W, height: H } = Dimensions.get('window');
+// Reveal circle only ever needs to grow from screen-center to just past the
+// farthest corner — the exact point a circle centered on the screen fully
+// covers it.
+const MASK_RMAX = Math.hypot(W, H) / 2 * 1.08;
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const STARS: [number, number, number, number][] = [
   [0.11, 0.09, 0.8, 0],   [0.21, 0.07, 0.7, 500], [0.32, 0.13, 0.6, 1100],
@@ -238,32 +245,52 @@ function SunGlow() {
 }
 
 export default function LoadingScreen({ visible }: { visible: boolean }) {
-  const fadeAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const maskRadius = useRef(new Animated.Value(0)).current;
   const contentFade = useRef(new Animated.Value(0)).current;
   const contentRise = useRef(new Animated.Value(16)).current;
+  // Wordmark + tagline peel upward, the spinner + copyright drop away below —
+  // a deliberate split rather than the whole card fading/sliding as one unit.
+  const topFade = useRef(new Animated.Value(1)).current;
+  const topExitY = useRef(new Animated.Value(0)).current;
+  const bottomFade = useRef(new Animated.Value(1)).current;
+  const bottomExitY = useRef(new Animated.Value(0)).current;
+  // Once the reveal finishes, unmount the decorative layers entirely (stars/
+  // clouds/sun all run their own perpetual loops) rather than leaving them
+  // ticking behind an invisible, non-interactive view.
+  const [fullyHidden, setFullyHidden] = useState(false);
 
   useEffect(() => {
     if (!visible) {
-      // Exit: zoom-through + fade, like iOS's own launch-screen handoff —
-      // the splash swells slightly as it dissolves into the app behind it.
+      // Exit: the wordmark lifts away, the spinner sinks away, and — like an
+      // aperture opening — a circular hole punches through screen-center and
+      // grows past the corners while the whole backdrop zooms outward, so the
+      // app underneath feels revealed rather than swiped-to. Touches already
+      // pass through (pointerEvents flips below) before this finishes.
       Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 450,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1.08,
-          duration: 450,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
+        Animated.timing(topFade, { toValue: 0, duration: 320, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(topExitY, { toValue: -44, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(bottomFade, { toValue: 0, duration: 320, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(bottomExitY, { toValue: 56, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 1.15, duration: 760, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.sequence([
+          Animated.delay(90),
+          Animated.timing(maskRadius, {
+            toValue: MASK_RMAX,
+            duration: 680,
+            easing: Easing.bezier(0.22, 1, 0.36, 1),
+            useNativeDriver: false,
+          }),
+        ]),
+      ]).start(({ finished }) => { if (finished) setFullyHidden(true); });
     } else {
-      fadeAnim.setValue(1);
+      setFullyHidden(false);
       scaleAnim.setValue(1);
+      maskRadius.setValue(0);
+      topFade.setValue(1);
+      topExitY.setValue(0);
+      bottomFade.setValue(1);
+      bottomExitY.setValue(0);
       contentFade.setValue(0);
       contentRise.setValue(16);
       Animated.parallel([
@@ -273,95 +300,113 @@ export default function LoadingScreen({ visible }: { visible: boolean }) {
     }
   }, [visible]);
 
+  if (fullyHidden && !visible) return null;
+
   return (
     <Animated.View
       pointerEvents={visible ? 'auto' : 'none'}
-      style={[StyleSheet.absoluteFill, { opacity: fadeAnim, transform: [{ scale: scaleAnim }], zIndex: 999 }]}
+      style={[StyleSheet.absoluteFill, { transform: [{ scale: scaleAnim }], zIndex: 999 }]}
     >
-      <LinearGradient
-        colors={['#0D2B1E', '#1F3D2E', '#2A5240']}
+      <MaskedView
         style={StyleSheet.absoluteFill}
-      />
-
-      {/* Clouds — rendered before the sun so they drift behind it */}
-      <CloudLayer />
-      <CloudLayer2 />
-
-      {/* Sun glow behind mountains */}
-      <SunGlow />
-
-      {/* Stars */}
-      {STARS.map(([x, y, o, delay], i) => (
-        <Star key={i} x={x} y={y} size={2 + (i % 3)} opacity={o} delay={delay} />
-      ))}
-
-      {/* Mountains — 3 SVG layers */}
-      <View style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}>
-        <Svg
-          width={W}
-          height={H * 0.55}
-          viewBox={`0 0 ${W} ${H * 0.55}`}
-          style={{ position: 'absolute', bottom: 0 }}
-        >
-          {/* Far layer */}
-          <Path
-            d={`M0 ${H * 0.55} L0 ${H * 0.30} L${W * 0.13} ${H * 0.22} L${W * 0.27} ${H * 0.28} L${W * 0.40} ${H * 0.15} L${W * 0.53} ${H * 0.22} L${W * 0.67} ${H * 0.10} L${W * 0.80} ${H * 0.19} L${W * 0.93} ${H * 0.14} L${W} ${H * 0.17} L${W} ${H * 0.55} Z`}
-            fill="rgba(0,0,0,0.22)"
-          />
-          {/* Mid layer */}
-          <Path
-            d={`M0 ${H * 0.55} L0 ${H * 0.38} L${W * 0.17} ${H * 0.32} L${W * 0.33} ${H * 0.36} L${W * 0.47} ${H * 0.28} L${W * 0.63} ${H * 0.34} L${W * 0.77} ${H * 0.28} L${W * 0.93} ${H * 0.34} L${W} ${H * 0.32} L${W} ${H * 0.55} Z`}
-            fill="rgba(0,0,0,0.36)"
-          />
-          {/* Near layer */}
-          <Path
-            d={`M0 ${H * 0.55} L0 ${H * 0.46} L${W * 0.20} ${H * 0.43} L${W * 0.40} ${H * 0.44} L${W * 0.60} ${H * 0.42} L${W * 0.80} ${H * 0.44} L${W} ${H * 0.43} L${W} ${H * 0.55} Z`}
-            fill="rgba(0,0,0,0.50)"
-          />
-        </Svg>
-      </View>
-
-      {/* Center content — wordmark + spinner */}
-      <Animated.View
-        style={[
-          styles.center,
-          { opacity: contentFade, transform: [{ translateY: contentRise }] },
-        ]}
-      >
-        {/* Wordmark */}
-        <View style={styles.wordmark}>
-          <Svg width={28} height={28} viewBox="0 0 24 24" style={{ marginTop: -2 }}>
-            <Path
-              d="M3 20L9 9l3 5 3-7 6 13H3z"
-              stroke="#FFFBF1"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-            <Circle cx="20" cy="4" r="3.5" fill="#FFFBF1" />
+        maskElement={
+          <Svg width={W} height={H} style={StyleSheet.absoluteFill}>
+            <Defs>
+              <Mask id="splashReveal" maskUnits="userSpaceOnUse">
+                <Rect x={0} y={0} width={W} height={H} fill="#fff" />
+                <AnimatedCircle cx={W / 2} cy={H / 2} r={maskRadius} fill="#000" />
+              </Mask>
+            </Defs>
+            <Rect x={0} y={0} width={W} height={H} fill="#fff" mask="url(#splashReveal)" />
           </Svg>
-          <View style={{ flexDirection: 'row' }}>
-            <Animated.Text style={styles.wordmarkBold}>Park</Animated.Text>
-            <Animated.Text style={styles.wordmarkLight}>Quest</Animated.Text>
-          </View>
+        }
+      >
+        <LinearGradient
+          colors={['#0D2B1E', '#1F3D2E', '#2A5240']}
+          style={StyleSheet.absoluteFill}
+        />
+
+        {/* Clouds — rendered before the sun so they drift behind it */}
+        <CloudLayer />
+        <CloudLayer2 />
+
+        {/* Sun glow behind mountains */}
+        <SunGlow />
+
+        {/* Stars */}
+        {STARS.map(([x, y, o, delay], i) => (
+          <Star key={i} x={x} y={y} size={2 + (i % 3)} opacity={o} delay={delay} />
+        ))}
+
+        {/* Mountains — 3 SVG layers */}
+        <View style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}>
+          <Svg
+            width={W}
+            height={H * 0.55}
+            viewBox={`0 0 ${W} ${H * 0.55}`}
+            style={{ position: 'absolute', bottom: 0 }}
+          >
+            {/* Far layer */}
+            <Path
+              d={`M0 ${H * 0.55} L0 ${H * 0.30} L${W * 0.13} ${H * 0.22} L${W * 0.27} ${H * 0.28} L${W * 0.40} ${H * 0.15} L${W * 0.53} ${H * 0.22} L${W * 0.67} ${H * 0.10} L${W * 0.80} ${H * 0.19} L${W * 0.93} ${H * 0.14} L${W} ${H * 0.17} L${W} ${H * 0.55} Z`}
+              fill="rgba(0,0,0,0.22)"
+            />
+            {/* Mid layer */}
+            <Path
+              d={`M0 ${H * 0.55} L0 ${H * 0.38} L${W * 0.17} ${H * 0.32} L${W * 0.33} ${H * 0.36} L${W * 0.47} ${H * 0.28} L${W * 0.63} ${H * 0.34} L${W * 0.77} ${H * 0.28} L${W * 0.93} ${H * 0.34} L${W} ${H * 0.32} L${W} ${H * 0.55} Z`}
+              fill="rgba(0,0,0,0.36)"
+            />
+            {/* Near layer */}
+            <Path
+              d={`M0 ${H * 0.55} L0 ${H * 0.46} L${W * 0.20} ${H * 0.43} L${W * 0.40} ${H * 0.44} L${W * 0.60} ${H * 0.42} L${W * 0.80} ${H * 0.44} L${W} ${H * 0.43} L${W} ${H * 0.55} Z`}
+              fill="rgba(0,0,0,0.50)"
+            />
+          </Svg>
         </View>
 
-        {/* Tagline */}
-        <View style={styles.tagline}>
-          <Animated.Text style={styles.taglineText}>EVERY PARK · ONE QUEST</Animated.Text>
-        </View>
+        {/* Center content — wordmark + spinner */}
+        <Animated.View
+          style={[
+            styles.center,
+            { opacity: contentFade, transform: [{ translateY: contentRise }] },
+          ]}
+        >
+          {/* Wordmark + tagline — exits upward */}
+          <Animated.View style={{ alignItems: 'center', opacity: topFade, transform: [{ translateY: topExitY }] }}>
+            <View style={styles.wordmark}>
+              <Svg width={28} height={28} viewBox="0 0 24 24" style={{ marginTop: -2 }}>
+                <Path
+                  d="M3 20L9 9l3 5 3-7 6 13H3z"
+                  stroke="#FFFBF1"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <Circle cx="20" cy="4" r="3.5" fill="#FFFBF1" />
+              </Svg>
+              <View style={{ flexDirection: 'row' }}>
+                <Animated.Text style={styles.wordmarkBold}>Park</Animated.Text>
+                <Animated.Text style={styles.wordmarkLight}>Quest</Animated.Text>
+              </View>
+            </View>
 
-        {/* Compass spinner */}
-        <View style={{ marginTop: 48 }}>
-          <CompassSpinner />
-        </View>
-      </Animated.View>
+            <View style={styles.tagline}>
+              <Animated.Text style={styles.taglineText}>EVERY PARK · ONE QUEST</Animated.Text>
+            </View>
+          </Animated.View>
 
-      {/* Copyright */}
-      <Animated.Text style={styles.copyright}>
-        © {new Date().getFullYear()} ParkQuest. All rights reserved.
-      </Animated.Text>
+          {/* Compass spinner — exits downward */}
+          <Animated.View style={{ marginTop: 48, opacity: bottomFade, transform: [{ translateY: bottomExitY }] }}>
+            <CompassSpinner />
+          </Animated.View>
+        </Animated.View>
+
+        {/* Copyright — exits downward alongside the spinner */}
+        <Animated.Text style={[styles.copyright, { opacity: bottomFade, transform: [{ translateY: bottomExitY }] }]}>
+          © {new Date().getFullYear()} ParkQuest. All rights reserved.
+        </Animated.Text>
+      </MaskedView>
     </Animated.View>
   );
 }

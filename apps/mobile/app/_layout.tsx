@@ -24,6 +24,7 @@ import { ToastHost } from '../lib/toast';
 import { PinchZoomHost } from '../lib/pinchZoom';
 import { ImageLightboxHost } from '../lib/imageLightbox';
 import { useAuthBootstrapReady } from '../lib/network';
+import { useFeedBootstrapReady } from '../lib/feedReady';
 import { syncLastAccountProfile, type AuthStrategy } from '../lib/lastAccount';
 
 // enableNative captures native crashes (e.g. uncaught worklet exceptions —
@@ -143,7 +144,7 @@ function AuthSync() {
 }
 
 function SplashController({ onReady }: { onReady: () => void }) {
-  const { isLoaded: clerkLoaded } = useAuth();
+  const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
   const [fontsLoaded] = useFonts({
     JetBrainsMono_400Regular,
     JetBrainsMono_600SemiBold,
@@ -155,12 +156,21 @@ function SplashController({ onReady }: { onReady: () => void }) {
   // (online-aware) timeout elapses; the app falls back to cached offline
   // data and AuthSync re-evaluates once/if Clerk does finish loading.
   const authReady = useAuthBootstrapReady(clerkLoaded);
+  // Feed screen mounts immediately behind the splash and starts fetching its
+  // first page right away — this just makes the splash wait for that page
+  // (or its own bootstrap timeout) instead of handing off into an empty
+  // skeleton the instant fonts/auth resolve, which is usually sooner. Skip
+  // the wait entirely once we know for sure the user is signed out (or
+  // Clerk never resolved) — that lands on sign-in, not the feed, and the
+  // feed's fetch never fires to satisfy it.
+  const landsOnFeed = !clerkLoaded || isSignedIn;
+  const feedReady = useFeedBootstrapReady();
 
   useEffect(() => {
-    if (authReady && fontsLoaded) {
+    if (authReady && fontsLoaded && (feedReady || !landsOnFeed)) {
       onReady();
     }
-  }, [authReady, fontsLoaded]);
+  }, [authReady, fontsLoaded, feedReady, landsOnFeed]);
 
   return null;
 }

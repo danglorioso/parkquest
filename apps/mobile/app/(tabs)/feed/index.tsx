@@ -24,6 +24,7 @@ import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { useIsOnline } from '@/lib/network';
 import { useFeedColumns } from '@/lib/responsive';
 import { loadOfflineFeed, saveOfflineFeed } from '@/lib/offlineFeed';
+import { markFeedReady } from '@/lib/feedReady';
 import { onUserBlocked } from '@/lib/blocking';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -160,6 +161,7 @@ export default function FeedScreen() {
       setLoading(false);
       setRefreshing(false);
       refreshingRef.current = false;
+      markFeedReady();
       return;
     }
 
@@ -193,6 +195,7 @@ export default function FeedScreen() {
       setLoading(false);
       setRefreshing(false);
       refreshingRef.current = false;
+      markFeedReady();
     }
   }, [getToken, isOnline]);
 
