@@ -403,6 +403,7 @@ export function PassportBackdrop({
   // cover (not whatever's scrolled to) is what's glued to the profile's
   // hole by the time the close animation lands.
   const requestClose = useCallback(() => {
+    setClosing(true);
     scrollRef.current?.scrollTo({ y: 0, animated: true });
     onRequestCloseRef.current();
   }, []);
@@ -427,7 +428,22 @@ export function PassportBackdrop({
   // the first. Re-armed on every reopen instead of ever being reset by the
   // dismiss path itself, which only runs once per genuine pull.
   const dismissingRef = useRef(false);
-  useEffect(() => { if (active) dismissingRef.current = false; }, [active]);
+  // Locks the ScrollView the instant a close is requested — see
+  // requestClose below. Without this, a pull-to-dismiss that fires mid-drag
+  // (live, not on release) left the user's finger still driving the native
+  // pan: continuing to scroll right after the swipe-down could out-race the
+  // scrollTo(0) reset below and park the ScrollView mid-content. Since this
+  // layer never unmounts and the profile's hole just shows whatever's at
+  // its scroll offset 0, a stuck nonzero offset meant the stamps grid (not
+  // the cover) showed through the hole back on the profile screen.
+  const [closing, setClosing] = useState(false);
+  useEffect(() => {
+    if (active) { dismissingRef.current = false; setClosing(false); }
+    // Hard reset once fully closed (pointerEvents already none by then) —
+    // a belt-and-suspenders guarantee independent of whatever race did or
+    // didn't happen during the close animation.
+    else scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [active]);
   // Whether a touch is CURRENTLY driving the scroll — set true/false by
   // onScrollBeginDrag/onScrollEndDrag (below), which only fire for an
   // actual finger-driven drag, never for momentum deceleration once it's
@@ -550,6 +566,7 @@ export function PassportBackdrop({
         onScrollEndDrag={() => { isDraggingRef.current = false; }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!closing}
       >
         {/* Cancels the ScrollView's own overscroll shift — see
             overscrollCompensation above. Wraps everything that scrolls, so

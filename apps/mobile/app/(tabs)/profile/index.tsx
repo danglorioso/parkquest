@@ -135,6 +135,42 @@ function PreviewSkeleton() {
   );
 }
 
+// Passport card placeholder, painted over the hole before the real cover
+// (PassportBackdrop) has reported its card block's height. Mirrors that
+// card's own padding/spacing (not its styles) so its natural height lands
+// close to the real one — the hole sizes itself off WHICHEVER height has
+// been measured so far (this or the real card's), so it never has to sit at
+// 0 and pop open once the real height finally lands.
+function PassportSkeleton({ onLayout }: { onLayout: (h: number) => void }) {
+  const T = useColors();
+  const pulse = usePulse();
+  const Bar = ({ w, h, mt = 0 }: { w: number | `${number}%`; h: number; mt?: number }) => (
+    <Animated.View style={[styles.skelBar, { width: w, height: h, marginTop: mt, opacity: pulse }]} />
+  );
+  return (
+    <View
+      style={[styles.skelCard, { backgroundColor: T.primaryDeep }]}
+      onLayout={e => onLayout(e.nativeEvent.layout.height)}
+    >
+      <Animated.View style={[styles.skelAvatar, { opacity: pulse }]} />
+      <Bar w={150} h={20} mt={12} />
+      <Bar w={90} h={12} mt={8} />
+      <Bar w={110} h={12} mt={8} />
+      <View style={styles.skelStatsRow}>
+        {[0, 1, 2, 3].map(i => (
+          <View key={i} style={styles.skelStatItem}>
+            <Bar w={48} h={10} />
+            <Bar w={34} h={20} mt={5} />
+          </View>
+        ))}
+      </View>
+      <Bar w="100%" h={3} mt={18} />
+      <Bar w="70%" h={9} mt={16} />
+      <Bar w="55%" h={9} mt={4} />
+    </View>
+  );
+}
+
 // ── Nav row ───────────────────────────────────────────────────────────────────
 
 function NavRow({
@@ -225,6 +261,19 @@ export default function ProfileScreen() {
   // and as tall as the backdrop reports its card block to be.
   const HOLE_TOP = TOP_BAR_H + HOLE_TOP_PAD;
   const [holeH, setHoleH] = useState(0);
+  // True once the REAL cover (PassportBackdrop) has reported its own card
+  // height — until then the hole sizes itself off the skeleton's height
+  // instead (see PassportSkeleton/handleSkeletonHeight below), so the frame
+  // never collapses to a blank cutout-less rect and then pops open once the
+  // real height finally lands.
+  const [cardMeasured, setCardMeasured] = useState(false);
+  const handleCardHeight = useCallback((h: number) => {
+    setCardMeasured(true);
+    setHoleH(h);
+  }, []);
+  const handleSkeletonHeight = useCallback((h: number) => {
+    setHoleH(prev => (cardMeasured ? prev : h));
+  }, [cardMeasured]);
   // The cover's stat grid, relative to the hole — the closed card's stat
   // links are this screen's own transparent tap targets floated over the
   // hole at these positions (the hole's open-passport target underneath
@@ -600,7 +649,7 @@ export default function ProfileScreen() {
         onRequestClose={closePassport}
         holeTop={HOLE_TOP}
         shiftY={backdropShift}
-        onCardHeight={setHoleH}
+        onCardHeight={handleCardHeight}
         onStatsLayout={handleStatsLayout}
         onAvatarPress={() => setAvatarLightbox(true)}
         getToken={getToken}
@@ -659,6 +708,16 @@ export default function ProfileScreen() {
               <Path d={framePaths.hole} fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth={0.5} />
             )}
           </Svg>
+          {/* Painted over the (possibly still blank) hole until the real
+              cover reports its own height — see PassportSkeleton above. */}
+          {!cardMeasured && (
+            <View
+              style={{ position: 'absolute', left: PASSPORT_CARD_INSET, top: HOLE_TOP }}
+              pointerEvents="none"
+            >
+              <PassportSkeleton onLayout={handleSkeletonHeight} />
+            </View>
+          )}
           {/* Tap anywhere on the card to open it (the backdrop's own
               stat/avatar taps take over once it's open). Transparent — the
               content it sits over is the backdrop's, not its own. */}
@@ -1202,6 +1261,27 @@ const styles = StyleSheet.create({
     width: 48, height: 9, borderRadius: 5,
     backgroundColor: dyn('rgba(27,26,22,0.06)', 'rgba(240,234,217,0.07)'),
   },
+
+  // Passport card skeleton — see PassportSkeleton above.
+  skelCard: {
+    width: PASSPORT_CARD_W, alignItems: 'center',
+    borderRadius: PASSPORT_CARD_RADIUS,
+    paddingHorizontal: 20, paddingVertical: 24,
+  },
+  skelAvatar: {
+    width: 84, height: 84, borderRadius: 42,
+    backgroundColor: 'rgba(240,197,80,0.16)',
+  },
+  skelBar: {
+    borderRadius: 5,
+    backgroundColor: 'rgba(240,197,80,0.16)',
+  },
+  skelStatsRow: {
+    flexDirection: 'row', alignSelf: 'stretch', justifyContent: 'space-between',
+    marginTop: 26, paddingTop: 12,
+    borderTopWidth: 0.5, borderTopColor: 'rgba(201,169,74,0.2)',
+  },
+  skelStatItem: { flex: 1, alignItems: 'center' },
 
   // Attribution
   attribution: {
