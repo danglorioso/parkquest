@@ -149,6 +149,9 @@ function scopeNoun(scope: BadgeParkScope | undefined, plural: boolean): string {
   if (scope === 'historic_park') return plural ? 'National Historical Parks' : 'National Historical Park';
   if (scope === 'monument') return plural ? 'National Monuments' : 'National Monument';
   if (scope === 'historic_site') return plural ? 'National Historic Sites' : 'National Historic Site';
+  if (scope === 'preserve') return plural ? 'National Preserves' : 'National Preserve';
+  if (scope === 'recreation_area') return plural ? 'National Recreation Areas' : 'National Recreation Area';
+  if (scope === 'seashore') return plural ? 'National Seashores' : 'National Seashore';
   if (scope === 'all') return plural ? 'park areas' : 'park area';
   return plural ? 'parks' : 'park';
 }
@@ -199,6 +202,9 @@ export function computeStats(
     historic_park: new Set(allParks.filter(p => p.designation === 'National Historical Park').map(p => p.park_code)),
     monument: new Set(allParks.filter(p => p.designation === 'National Monument').map(p => p.park_code)),
     historic_site: new Set(allParks.filter(p => p.designation === 'National Historic Site').map(p => p.park_code)),
+    preserve: new Set(allParks.filter(p => p.designation === 'National Preserve').map(p => p.park_code)),
+    recreation_area: new Set(allParks.filter(p => p.designation === 'National Recreation Area').map(p => p.park_code)),
+    seashore: new Set(allParks.filter(p => p.designation === 'National Seashore').map(p => p.park_code)),
     all: new Set(allParks.map(p => p.park_code)),
   };
   const parkScopes = Object.fromEntries(

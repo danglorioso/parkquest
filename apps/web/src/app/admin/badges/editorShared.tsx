@@ -43,6 +43,9 @@ export const SCOPE_LABELS: Record<BadgeParkScope, string> = {
   historic_park: 'National Historical Parks',
   monument: 'National Monuments',
   historic_site: 'National Historic Sites',
+  preserve: 'National Preserves',
+  recreation_area: 'National Recreation Areas',
+  seashore: 'National Seashores',
   all: 'any park area',
 };
 

@@ -17,6 +17,9 @@ export const PARK_TYPES: ParkTypeOption[] = [
   { key: "historical_park", label: "National Historical Parks", match: (p) => p.designation === "National Historical Park" },
   { key: "monument", label: "National Monuments", match: (p) => p.designation === "National Monument" },
   { key: "historic_site", label: "National Historic Sites", match: (p) => p.designation === "National Historic Site" },
+  { key: "preserve", label: "National Preserves", match: (p) => p.designation === "National Preserve" },
+  { key: "recreation_area", label: "National Recreation Areas", match: (p) => p.designation === "National Recreation Area" },
+  { key: "seashore", label: "National Seashores", match: (p) => p.designation === "National Seashore" },
 ];
 export const DEFAULT_PARK_TYPES = new Set(["national_park"]);
 
