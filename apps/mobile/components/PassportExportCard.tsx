@@ -45,8 +45,6 @@ export interface PassportExportData {
   totalParks: number;
   areasVisited: number;
   areasTotal: number;
-  statesCount: number;
-  totalParkStates: number;
   badgeCount: number;
   totalBadges: number;
   passportNo: string;
@@ -61,16 +59,14 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
   const story = variant === 'story';
   const H = EXPORT_H[variant];
 
-  // Trimmed to three secondary stats — visitedCount now gets its own hero
-  // line below (mirrors the passport screen's own "N of 63 parks stamped"
-  // treatment) instead of being buried as a fourth small number here.
-  // Matches the full passport screen's stat plate: bare counts except
-  // STATES, whose "/total" is real information (not all 50 US states have
-  // a park) but rendered small so it doesn't fight the headline number.
+  // Mirrors the full passport screen's own stat row (NP VISITED / NPS
+  // AREAS / BADGES) — visitedCount also gets its own hero line below, but
+  // repeating it here as "NP" keeps this plate reading the same as the
+  // passport cover's.
   const stats = [
-    { label: 'AREAS',  value: String(data.areasVisited), sub: `/${data.areasTotal}` },
-    { label: 'STATES', value: String(data.statesCount), sub: `/${data.totalParkStates}` },
-    { label: 'BADGES', value: String(data.badgeCount) },
+    { label: 'NP',       value: String(data.visitedCount),  sub: `/${data.totalParks}` },
+    { label: 'NP AREAS', value: String(data.areasVisited),  sub: `/${data.areasTotal}` },
+    { label: 'BADGES',   value: String(data.badgeCount) },
   ];
 
   const chips = [
@@ -227,25 +223,21 @@ const st = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: GOLD,
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
   handle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: GOLD,
-    opacity: 0.75,
-    letterSpacing: 0.4,
+    color: 'rgba(201,169,74,0.85)',
+    letterSpacing: 0.8,
     marginTop: 3,
   },
   joined: {
     fontSize: 12,
-    fontWeight: '500',
-    color: GOLD,
-    opacity: 0.6,
-    letterSpacing: 0.3,
+    color: 'rgba(201,169,74,0.8)',
     marginTop: 3,
   },
   watermark: {
@@ -287,18 +279,17 @@ const st = StyleSheet.create({
   },
   statLabel: {
     fontSize: 10,
-    fontWeight: '700',
-    color: GOLD,
-    letterSpacing: 1.5,
-    opacity: 0.85,
+    fontWeight: '600',
+    color: 'rgba(201,169,74,0.8)',
+    letterSpacing: 1.2,
   },
   statVal: {
     fontSize: 25,
     fontWeight: '800',
     color: GOLD,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
     marginTop: 3,
-    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowColor: 'rgba(0,0,0,0.45)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
