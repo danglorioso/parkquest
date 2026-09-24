@@ -16,6 +16,9 @@ patchedDependencies:
   '@expo/metro-runtime@4.0.1':
     hash: a1d736b20b3716aa5dbad49d2eca656423e50b0c140c8038706f99b16f1cc33e
     path: patches/@expo__metro-runtime@4.0.1.patch
+  expo-dev-launcher@6.0.21:
+    hash: a6956ba9c748451247a9e73b695dc4550eef13a175299a4812f491efef84404b
+    path: patches/expo-dev-launcher.patch
   react-native@0.81.5:
     hash: 6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4
     path: patches/react-native@0.81.5.patch
@@ -12915,7 +12918,7 @@ snapshots:
   expo-dev-client@6.0.21(expo@54.0.35):
     dependencies:
       expo: 54.0.35(@babel/core@7.29.0)(@expo/metro-runtime@4.0.1(patch_hash=a1d736b20b3716aa5dbad49d2eca656423e50b0c140c8038706f99b16f1cc33e)(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6)))(bufferutil@4.1.0)(expo-router@6.0.24)(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      expo-dev-launcher: 6.0.21(expo@54.0.35)
+      expo-dev-launcher: 6.0.21(patch_hash=a6956ba9c748451247a9e73b695dc4550eef13a175299a4812f491efef84404b)(expo@54.0.35)
       expo-dev-menu: 7.0.19(expo@54.0.35)
       expo-dev-menu-interface: 2.0.0(expo@54.0.35)
       expo-manifests: 1.0.11(expo@54.0.35)
@@ -12923,7 +12926,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  expo-dev-launcher@6.0.21(expo@54.0.35):
+  expo-dev-launcher@6.0.21(patch_hash=a6956ba9c748451247a9e73b695dc4550eef13a175299a4812f491efef84404b)(expo@54.0.35):
     dependencies:
       ajv: 8.20.0
       expo: 54.0.35(@babel/core@7.29.0)(@expo/metro-runtime@4.0.1(patch_hash=a1d736b20b3716aa5dbad49d2eca656423e50b0c140c8038706f99b16f1cc33e)(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6)))(bufferutil@4.1.0)(expo-router@6.0.24)(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
