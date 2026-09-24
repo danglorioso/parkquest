@@ -2531,11 +2531,13 @@ export default function LogVisitModal() {
       keyboardVerticalOffset={0}
     >
       {/* Header: close on the LEFT — every other sheet in the app puts its
-          X there (Search, badges, etc.); this was the one holdout with it
-          on the right. Title follows it, still reading as the big
-          left-aligned headline it always was, just starting a column later.
-          The grabber floats centered over the FULL sheet width regardless —
-          inside either column it'd sit off the sheet's true midline. */}
+          X there (Search, badges, etc.). The step progress bar sits inline
+          with it now, in the column the title used to occupy; the kicker
+          ("STEP n OF m") stays directly underneath the bar, same adjacency
+          as before. The title moved out to its own row below, no longer
+          inline with the close button. The grabber floats centered over the
+          FULL sheet width regardless — inside either column it'd sit off
+          the sheet's true midline. */}
       <View style={styles.modalTopRow}>
         <View pointerEvents="none" style={{ position: 'absolute', top: 10, left: 0, right: 0, alignItems: 'center' }}>
           <View style={styles.grabber} />
@@ -2546,27 +2548,27 @@ export default function LogVisitModal() {
           <GlassIconBg />
           <Ionicons name="close" size={22} color={C.inkSoft} />
         </TouchableOpacity>
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={[styles.modalTitle, { marginTop: 12 }]}>{isEditing ? 'Edit visit' : 'Log a visit'}</Text>
+        <View style={[styles.stepBar, { flex: 1, marginLeft: 12, paddingHorizontal: 0, paddingTop: 0 }]}>
+          {STEPS.map((_, i) => (
+            <View
+              key={i}
+              style={[styles.stepDot, {
+                flex: i === step ? 2 : 1,
+                backgroundColor: i <= step ? C.primary : C.hairline,
+              }]}
+            />
+          ))}
         </View>
       </View>
 
-      {/* Step indicator */}
-      <View style={styles.stepBar}>
-        {STEPS.map((_, i) => (
-          <View
-            key={i}
-            style={[styles.stepDot, {
-              flex: i === step ? 2 : 1,
-              backgroundColor: i <= step ? C.primary : C.hairline,
-            }]}
-          />
-        ))}
+      {/* Step kicker — still directly underneath the status bar */}
+      <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 4 }}>
+        <Text style={styles.kicker}>STEP {step + 1} OF {STEPS.length}</Text>
       </View>
 
-      {/* Step kicker */}
-      <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
-        <Text style={styles.kicker}>STEP {step + 1} OF {STEPS.length}</Text>
+      {/* Title — its own row now, below the close button instead of inline with it */}
+      <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
+        <Text style={styles.modalTitle}>{isEditing ? 'Edit visit' : 'Log a visit'}</Text>
       </View>
 
       {/* Content */}
