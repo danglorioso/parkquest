@@ -111,17 +111,13 @@ function PassportShareInner() {
       const areasTotal = (parks ?? []).length;
 
       const visitedStamps: ExportStamp[] = [];
-      const stampedStates = new Set<string>();
-      const allStates = new Set<string>();
       nationalParks.forEach((p, idx) => {
-        p.states.split(',').forEach(s => allStates.add(s.trim()));
         const date = visitedMap.get(p.park_code);
         if (date) {
           visitedStamps.push({
             park_code: p.park_code, name: p.name, states: p.states,
             colorIdx: idx, stamp_glyph: p.stamp_glyph, visited_date: date,
           });
-          p.states.split(',').forEach(s => stampedStates.add(s.trim()));
         }
       });
       visitedStamps.sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
@@ -146,8 +142,6 @@ function PassportShareInner() {
         totalParks: nationalParks.length,
         areasVisited,
         areasTotal,
-        statesCount: stampedStates.size,
-        totalParkStates: allStates.size,
         badgeCount: allBadges.filter((b: { earned: boolean }) => b.earned).length,
         totalBadges: allBadges.length,
         passportNo: passportNo(username || 'explorer'),
