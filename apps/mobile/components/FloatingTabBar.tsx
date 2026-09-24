@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useColorScheme,
+  useWindowDimensions,
+} from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -17,6 +25,10 @@ import { GlassView, GlassContainer, liquidGlassAvailable } from '@/lib/glass';
 
 const PILL_HEIGHT = 62;
 const PILL_MARGIN_H = 18;
+// Above this width (iPad) the bar stops stretching edge-to-edge and caps
+// out at MAX_PILL_WIDTH, centered — 5 buttons stretched across an iPad
+// screen puts absurd gaps between them.
+const MAX_PILL_WIDTH = 440;
 // Inset the row of tabs from the pill's rounded ends. Also widens the
 // highlight bubble (see bubbleW): each extra point here adds two points
 // of bubble width to keep the end gap equal to the top/bottom gap.
@@ -58,8 +70,12 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   const router = useRouter();
   const C = useColors();
   const isDark = useColorScheme() === 'dark';
+  const { width: screenW } = useWindowDimensions();
   const [pillW, setPillW] = useState(0);
   const glass = liquidGlassAvailable && GlassView != null && GlassContainer != null;
+
+  const horizontalMargin =
+    screenW > MAX_PILL_WIDTH + PILL_MARGIN_H * 2 ? (screenW - MAX_PILL_WIDTH) / 2 : PILL_MARGIN_H;
 
   const routes = state.routes;
   const slotW = pillW > 0 ? (pillW - PILL_PADDING_H * 2) / routes.length : 0;
@@ -241,7 +257,10 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={[styles.wrap, { bottom: bottomOffset(insets.bottom) }]}
+      style={[
+        styles.wrap,
+        { bottom: bottomOffset(insets.bottom), left: horizontalMargin, right: horizontalMargin },
+      ]}
     >
       <GestureDetector gesture={pan}>
         <View
@@ -345,8 +364,6 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    left: PILL_MARGIN_H,
-    right: PILL_MARGIN_H,
     alignItems: 'stretch',
   },
   pill: {
