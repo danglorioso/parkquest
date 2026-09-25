@@ -267,13 +267,24 @@ export default function ProfileScreen() {
   // never collapses to a blank cutout-less rect and then pops open once the
   // real height finally lands.
   const [cardMeasured, setCardMeasured] = useState(false);
+  // A ref, not just the `cardMeasured` state: the skeleton and the real
+  // card's onLayout can both fire in the same batch (both mount and lay out
+  // together), and a state-only check reads whatever `cardMeasured` was at
+  // the time each callback was CREATED, not at the time it actually runs —
+  // if the skeleton's stale-false closure ran after the real one in that
+  // batch, it clobbered the just-set real height back down to the smaller
+  // skeleton estimate, permanently capping the hole short of the progress
+  // bar/MRZ footer. The ref is mutated synchronously, so whichever callback
+  // runs second always sees the truth.
+  const cardMeasuredRef = useRef(false);
   const handleCardHeight = useCallback((h: number) => {
+    cardMeasuredRef.current = true;
     setCardMeasured(true);
     setHoleH(h);
   }, []);
   const handleSkeletonHeight = useCallback((h: number) => {
-    setHoleH(prev => (cardMeasured ? prev : h));
-  }, [cardMeasured]);
+    if (!cardMeasuredRef.current) setHoleH(h);
+  }, []);
   // The cover's stat grid, relative to the hole — the closed card's stat
   // links are this screen's own transparent tap targets floated over the
   // hole at these positions (the hole's open-passport target underneath

@@ -560,7 +560,7 @@ function AuthForm({
     background: "var(--surface)",
     border: "0.5px solid var(--hairline)",
     borderRadius: 12,
-    padding: "13px 0",
+    padding: "14px 0",
     fontWeight: 600,
     fontSize: 13,
     color: "var(--ink)",

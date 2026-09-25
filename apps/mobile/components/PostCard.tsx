@@ -1738,7 +1738,7 @@ const styles = StyleSheet.create({
   // label under its value (left / center / right, see VisitStatsStrip).
   statsStrip: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingHorizontal: 18, paddingTop: 12, paddingBottom: 12,
+    paddingHorizontal: 18, paddingTop: 8, paddingBottom: 6,
   },
   stat: { gap: 1 },
   statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 20 },
