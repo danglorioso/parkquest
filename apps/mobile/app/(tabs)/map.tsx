@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated, DeviceEventEmitter, Dimensions, Keyboard, Platform,
+  Animated, DeviceEventEmitter, Dimensions, Keyboard, Linking, Platform,
   Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View, useColorScheme,
   type ColorValue,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
@@ -21,6 +22,8 @@ import { useIsOnline } from '@/lib/network';
 import { PARK_TYPES } from '@/lib/parkTypes';
 import { getDefaultParkTypes } from '@/lib/settings';
 import { MapDetailsSheet, type StatusOption } from '@/components/MapDetailsSheet';
+import { LocationPermissionModal } from '@/components/LocationPermissionModal';
+import { markLocationPromptSeen } from '@/lib/location';
 import { ParkProfileScreen } from '../park/[id]';
 
 // Not-yet-visited marker gray — map-only, not part of the shared palette
@@ -1111,6 +1114,43 @@ export default function MapScreen() {
   // often already comfortably visible and shouldn't be shifted for no
   // reason), this function is ONLY ever called right before the sheet
   // opens, so the shift is always warranted here.
+  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
+
+  const zoomToCoords = useCallback((latitude: number, longitude: number) => {
+    const delta = 0.08;
+    mapRef.current?.animateToRegion({ latitude, longitude, latitudeDelta: delta, longitudeDelta: delta }, 500);
+  }, []);
+
+  const zoomToCurrentLocation = useCallback(async () => {
+    try {
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      zoomToCoords(pos.coords.latitude, pos.coords.longitude);
+    } catch { /* location temporarily unavailable — no-op */ }
+  }, [zoomToCoords]);
+
+  // Same pre-permission explainer + "seen" bookkeeping the parks tab uses
+  // (LocationPermissionModal, markLocationPromptSeen) — asked here only on
+  // an explicit tap of the locate button, not proactively on focus.
+  const handleLocatePress = useCallback(async () => {
+    const { status } = await Location.getForegroundPermissionsAsync();
+    if (status === 'granted') { zoomToCurrentLocation(); return; }
+    if (status === 'undetermined') { setShowLocationPrompt(true); return; }
+    // Already asked once and denied/restricted — only the Settings app can change it now.
+    Linking.openSettings();
+  }, [zoomToCurrentLocation]);
+
+  const handleAllowLocation = useCallback(async () => {
+    setShowLocationPrompt(false);
+    await markLocationPromptSeen();
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') zoomToCurrentLocation();
+  }, [zoomToCurrentLocation]);
+
+  const handleDismissLocation = useCallback(async () => {
+    setShowLocationPrompt(false);
+    await markLocationPromptSeen();
+  }, []);
+
   const zoomToPark = useCallback((latitude: number, longitude: number) => {
     const delta = 0.08;
     mapRef.current?.animateToRegion(
@@ -1208,6 +1248,11 @@ export default function MapScreen() {
 
   return (
     <View style={styles.screen}>
+      <LocationPermissionModal
+        visible={showLocationPrompt}
+        onAllow={handleAllowLocation}
+        onDismiss={handleDismissLocation}
+      />
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -1292,6 +1337,14 @@ export default function MapScreen() {
 
         <TouchableOpacity style={styles.mapControlCircle} onPress={goHome} activeOpacity={0.75}>
           <Ionicons name="home-outline" size={17} color={dyn('#4A4535', '#F0EAD9')} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Mirrors mapControls' own circle on the opposite corner — a single
+          button, so no capsule/column grouping needed. */}
+      <View style={[styles.mapControlsLeft, { bottom: insets.bottom + 68 }]}>
+        <TouchableOpacity style={styles.mapControlCircle} onPress={handleLocatePress} activeOpacity={0.75}>
+          <Ionicons name="navigate-outline" size={19} color={dyn('#4A4535', '#F0EAD9')} />
         </TouchableOpacity>
       </View>
 
@@ -1594,6 +1647,11 @@ const styles = StyleSheet.create({
     zIndex: 31,
     flexDirection: 'column',
     gap: 4,
+  },
+  mapControlsLeft: {
+    position: 'absolute',
+    left: 14,
+    zIndex: 31,
   },
   mapControlCircle: {
     width: 44,
