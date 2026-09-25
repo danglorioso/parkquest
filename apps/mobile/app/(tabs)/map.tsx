@@ -153,6 +153,82 @@ function computeVisibleLabelCodes(
   return visible;
 }
 
+// ── Dot clustering ────────────────────────────────────────────────────────────
+// Same screen-pixel projection as the label declutter above, but for the dots
+// themselves — greedily bucketing parks into a grid of CLUSTER_CELL_PX cells so
+// cold start (whole-US view) mounts a handful of cluster markers instead of one
+// native Marker view per park. No separate zoom gate needed: as the user zooms
+// in, px distances between parks grow and cells naturally end up with a single
+// member, so clusters dissolve into individual pins on their own.
+const CLUSTER_CELL_PX = 44;
+// Max individual markers added/removed per animation frame while ramping
+// renderedIndividualParks toward its target — see the effect in MapScreen.
+const STAGE_CHUNK = 40;
+
+interface ParkCluster { id: string; parks: ParkForMap[]; latitude: number; longitude: number }
+
+function computeClusters(
+  parks: ParkForMap[], region: MapRegion, keepIndividual: Set<string>,
+): { individual: ParkForMap[]; clusters: ParkCluster[] } {
+  if (region.latitudeDelta <= 0 || region.longitudeDelta <= 0) {
+    return { individual: parks, clusters: [] };
+  }
+  const pxPerDegLat = SCREEN_H / region.latitudeDelta;
+  const pxPerDegLon = SCREEN_W / region.longitudeDelta;
+
+  const cells = new Map<string, ParkForMap[]>();
+  const individual: ParkForMap[] = [];
+  for (const p of parks) {
+    if (keepIndividual.has(p.park_code)) { individual.push(p); continue; }
+    const cx = Math.floor(((p.longitude - region.longitude) * pxPerDegLon) / CLUSTER_CELL_PX);
+    const cy = Math.floor(((region.latitude - p.latitude) * pxPerDegLat) / CLUSTER_CELL_PX);
+    const key = `${cx}:${cy}`;
+    const bucket = cells.get(key);
+    if (bucket) bucket.push(p); else cells.set(key, [p]);
+  }
+
+  const clusters: ParkCluster[] = [];
+  for (const [key, members] of cells) {
+    if (members.length === 1) { individual.push(members[0]); continue; }
+    const latitude = members.reduce((s, p) => s + p.latitude, 0) / members.length;
+    const longitude = members.reduce((s, p) => s + p.longitude, 0) / members.length;
+    clusters.push({ id: key, parks: members, latitude, longitude });
+  }
+  return { individual, clusters };
+}
+
+// Plain circle, colored by the cluster's own status mix (visited > bucket list >
+// not-visited, same priority the status filter chips use) — no glow/gradient,
+// matching the existing dot's flat halo+border language. Deliberately skips the
+// tracksViewChanges bitmap-snapshot dance ParkMapMarker needs: there are only
+// ever a handful of clusters on screen, so re-rendering them live is cheap.
+function ParkClusterMarker({
+  cluster, onPress,
+}: { cluster: ParkCluster; onPress: (cluster: ParkCluster) => void }) {
+  const dark = useColorScheme() === 'dark' && Platform.OS === 'ios';
+  const anyVisited = cluster.parks.some(p => p.status === 'visited');
+  const anyBucket = cluster.parks.some(p => p.status === 'bucketList');
+  const color = anyVisited ? (dark ? '#4FA76C' : '#2F7A4A') : anyBucket ? (dark ? '#D9A63E' : '#C48A20') : UNVISITED;
+  const border = dark ? '#201D17' : '#FFFBF1';
+  const size = 30;
+  return (
+    <Marker
+      coordinate={{ latitude: cluster.latitude, longitude: cluster.longitude }}
+      onPress={e => { e.stopPropagation(); onPress(cluster); }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      zIndex={3}
+    >
+      <View style={{
+        width: size, height: size, borderRadius: size / 2,
+        backgroundColor: color, borderWidth: 2.5, borderColor: border,
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{cluster.parks.length}</Text>
+      </View>
+    </Marker>
+  );
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ParkStatus = 'visited' | 'bucketList' | 'notVisited';
@@ -722,17 +798,76 @@ export default function MapScreen() {
     filterStatus === 'notVisited' ? visibleParks.filter(p => p.status === 'notVisited' || p.status === 'bucketList') :
     visibleParks.filter(p => p.status === filterStatus);
 
+  // National parks (all 63) always get their own dot, never absorbed into a
+  // cluster — they're the primary content, so density-hiding them at low zoom
+  // would bury the exact pins someone opens the map to find. The tapped/
+  // deep-linked park is exempted too — selection and sheet-anchoring both key
+  // off its own marker and must never see it vanish into a cluster mid-interaction.
+  const keepIndividualCodes = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of filteredParks) if (p.is_national_park) s.add(p.park_code);
+    if (selectedPark) s.add(selectedPark.park_code);
+    if (focusParkCode) s.add(focusParkCode);
+    return s;
+  }, [filteredParks, selectedPark, focusParkCode]);
+
+  const { individual: individualParks, clusters } = useMemo(
+    () => computeClusters(filteredParks, labelRegion, keepIndividualCodes),
+    [filteredParks, labelRegion, keepIndividualCodes]
+  );
+
+  // react-native-maps' iOS backing view (AIRMap) can throw an out-of-bounds
+  // NSRangeException when many Marker children are added/removed in the same
+  // commit (react-native-maps#5345, react/react-native#57872) — exactly what
+  // a fast pinch-zoom triggers here when it crosses many cluster-dissolve
+  // cells at once and individualParks' membership jumps by a lot in one tick.
+  // Capping how many individual dots can appear/disappear per frame keeps
+  // every single commit's marker-count delta small regardless of gesture
+  // speed. Clusters themselves are never staged — there are only ever a
+  // handful on screen, so swapping them freely is safe.
+  const [renderedIndividualParks, setRenderedIndividualParks] = useState(individualParks);
+  const rampRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (rampRef.current != null) cancelAnimationFrame(rampRef.current);
+    const targetCodes = new Set(individualParks.map(p => p.park_code));
+
+    const step = () => {
+      let converged = false;
+      setRenderedIndividualParks(prev => {
+        const prevCodes = new Set(prev.map(p => p.park_code));
+        const toAdd = individualParks.filter(p => !prevCodes.has(p.park_code));
+        const dropCodes = new Set(prev.filter(p => !targetCodes.has(p.park_code)).map(p => p.park_code));
+        if (toAdd.length === 0 && dropCodes.size === 0) { converged = true; return prev; }
+        const addNow = toAdd.slice(0, STAGE_CHUNK);
+        const dropNow = new Set([...dropCodes].slice(0, STAGE_CHUNK));
+        return [...prev.filter(p => !dropNow.has(p.park_code)), ...addNow];
+      });
+      rampRef.current = converged ? null : requestAnimationFrame(step);
+    };
+    rampRef.current = requestAnimationFrame(step);
+
+    return () => { if (rampRef.current != null) cancelAnimationFrame(rampRef.current); };
+  }, [individualParks]);
+
   const visibleLabelCodes = useMemo(
     () => {
       const v = computeVisibleLabelCodes(
-        filteredParks, labelRegion, labelFontSize / LABEL_FONT_DEFAULT, prevVisibleLabelsRef.current
+        renderedIndividualParks, labelRegion, labelFontSize / LABEL_FONT_DEFAULT, prevVisibleLabelsRef.current
       );
       prevVisibleLabelsRef.current = v;
       return v;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filteredParks, labelRegion, labelFontSize]
+    [renderedIndividualParks, labelRegion, labelFontSize]
   );
+
+  const handleClusterPress = useCallback((cluster: ParkCluster) => {
+    mapRef.current?.fitToCoordinates(
+      cluster.parks.map(p => ({ latitude: p.latitude, longitude: p.longitude })),
+      { edgePadding: { top: 80, right: 60, bottom: 200, left: 60 }, animated: true }
+    );
+  }, []);
 
   const mergeVisits = useCallback((
     parksData: typeof rawParksRef.current,
@@ -1109,7 +1244,10 @@ export default function MapScreen() {
           setMapPressKey(k => k + 1);
         }}
       >
-        {filteredParks.map(park => (
+        {clusters.map(cluster => (
+          <ParkClusterMarker key={`cluster-${cluster.id}`} cluster={cluster} onPress={handleClusterPress} />
+        ))}
+        {renderedIndividualParks.map(park => (
           <ParkMapMarker
             key={park.park_code}
             park={park}
@@ -1117,7 +1255,7 @@ export default function MapScreen() {
             onSelect={handleSelectPark}
           />
         ))}
-        {labelsEnabled && filteredParks.filter(park => visibleLabelCodes.has(park.park_code)).map(park => (
+        {labelsEnabled && renderedIndividualParks.filter(park => visibleLabelCodes.has(park.park_code)).map(park => (
           // fontSize in the key: a size change fully remounts the marker so it
           // re-measures through the reliable initial-mount path — resetting
           // measurement state in place left pills invisible, because a mounted

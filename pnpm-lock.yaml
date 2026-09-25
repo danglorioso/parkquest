@@ -163,8 +163,8 @@ importers:
         specifier: ~2.28.0
         version: 2.28.0(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)
       react-native-maps:
-        specifier: 1.20.1
-        version: 1.20.1(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)
+        specifier: 1.29.8
+        version: 1.29.8(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)
       react-native-reanimated:
         specifier: ~4.1.1
         version: 4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0))(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)
@@ -6672,12 +6672,12 @@ packages:
       react: '*'
       react-native: '*'
 
-  react-native-maps@1.20.1:
-    resolution: {integrity: sha512-NZI3B5Z6kxAb8gzb2Wxzu/+P2SlFIg1waHGIpQmazDSCRkNoHNY4g96g+xS0QPSaG/9xRBbDNnd2f2/OW6t6LQ==}
-    engines: {node: '>=18'}
+  react-native-maps@1.29.8:
+    resolution: {integrity: sha512-LPbe+j/1IQKK6geKYHgZmh6lZ3WtDiALVw3lgL+vOxPFqMven6tIpIRuFgy3++Qw0rtr7nl221yk1yqP+lq3yQ==}
+    engines: {node: '>= 20.19.4'}
     peerDependencies:
-      react: '>= 17.0.1'
-      react-native: '>= 0.64.3'
+      react: '>= 18.3.1'
+      react-native: '>= 0.76.0'
       react-native-web: '>= 0.11'
     peerDependenciesMeta:
       react-native-web:
@@ -15075,7 +15075,7 @@ snapshots:
       react: 19.1.0
       react-native: 0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6)
 
-  react-native-maps@1.20.1(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0):
+  react-native-maps@1.29.8(react-native@0.81.5(patch_hash=6dcb0719697645789b72ca87770bbe121fd70000ed4f39ced3708a8cc6f033e4)(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.15)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0):
     dependencies:
       '@types/geojson': 7946.0.16
       react: 19.1.0
