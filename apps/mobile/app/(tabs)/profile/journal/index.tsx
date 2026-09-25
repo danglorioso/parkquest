@@ -15,6 +15,7 @@ import { VisitDetails, type VisitStatsInput } from '@/components/VisitStats';
 import { STATIC as C, colorStr, useColors } from '@/lib/palette';
 import { dayCount, fmtRange } from '@/lib/dates';
 import { parkColor } from '@/lib/parkColors';
+import { deriveRankScore, sortByRankKey } from '@parkquest/types';
 
 const MENU_DESTRUCTIVE = '#FF3B30';
 
@@ -31,7 +32,7 @@ export interface JournalEntry {
   visited_date: string | null;
   end_date: string | null;
   is_bucket_list: boolean;
-  rating: number | null;
+  rank_key: string | null;
   crowd: number | null;
   difficulty: number | null;
   weather_conditions: string[] | null;
@@ -63,26 +64,23 @@ function SkeletonCard() {
   );
 }
 
-// ── Stars ─────────────────────────────────────────────────────────────────────
+// ── Rank badge ────────────────────────────────────────────────────────────────
 
-function Stars({ value, size = 11 }: { value: number; size?: number }) {
+function RankBadge({ position, score }: { position: number; score: number }) {
   const T = useColors();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Ionicons key={i} name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'} size={size} color={T.accent} />
-      ))}
-      <Text style={{ fontSize: Math.max(13, size - 2), fontWeight: '600', color: C.inkMute, marginLeft: 4 }}>
-        {value}/5
-      </Text>
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: T.accent }}>#{position}</Text>
+      <Text style={{ fontSize: 12, fontWeight: '600', color: C.inkMute }}>{score}</Text>
     </View>
   );
 }
 
 // ── Entry card ────────────────────────────────────────────────────────────────
 
-function EntryCard({ entry, onPress, onEdit, onDelete }: {
-  entry: JournalEntry; onPress: () => void; onEdit: () => void; onDelete: () => void;
+function EntryCard({ entry, rank, onPress, onEdit, onDelete }: {
+  entry: JournalEntry; rank: { position: number; score: number } | null;
+  onPress: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   const T = useColors();
   const router = useRouter();
@@ -158,9 +156,9 @@ function EntryCard({ entry, onPress, onEdit, onDelete }: {
             )}
           </View>
 
-          {/* Stars + visibility — icon only, no label */}
+          {/* Rank + visibility — icon only, no label */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-            {entry.rating ? <Stars value={entry.rating} size={11} /> : <View />}
+            {rank ? <RankBadge position={rank.position} score={rank.score} /> : <View />}
             <Ionicons name={visIcon as any} size={13} color={visColor} />
           </View>
 
@@ -286,7 +284,7 @@ export default function JournalScreen() {
   const [loading,    setLoading]    = useState(true);
   const [query,      setQuery]      = useState('');
   const [yearFilter, setYearFilter] = useState<number | null>(null);
-  const [sortBy,     setSortBy]     = useState<'newest' | 'oldest' | 'rating'>('newest');
+  const [sortBy,     setSortBy]     = useState<'newest' | 'oldest' | 'rank'>('newest');
   const [viewMode,      setViewMode]      = useState<'grid' | 'list'>('list');
   const [showViewMenu,  setShowViewMenu]  = useState(false);
   const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
@@ -354,14 +352,26 @@ export default function JournalScreen() {
         (e.notes ?? '').toLowerCase().includes(q)
       );
     }
-    if (sortBy === 'oldest')  return [...list].sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
-    if (sortBy === 'rating')  return [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    if (sortBy === 'oldest') return [...list].sort((a, b) => (a.visited_date ?? '').localeCompare(b.visited_date ?? ''));
+    if (sortBy === 'rank') {
+      const order = new Map(sortByRankKey(list).map((e, i) => [e.id, i]));
+      return [...list].sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
+    }
     return [...list].sort((a, b) => (b.visited_date ?? '').localeCompare(a.visited_date ?? ''));
   }, [entries, query, yearFilter, sortBy, parkFilter]);
 
+  // Rank position/score is relative to ALL ranked visits, not just the
+  // filtered/sorted view above — computed once from the full entries list.
+  const rankById = useMemo(() => {
+    const ranked = sortByRankKey(entries);
+    const m = new Map<number, { position: number; score: number }>();
+    ranked.forEach((e, i) => m.set(e.id, { position: i + 1, score: deriveRankScore(i, ranked.length) }));
+    return m;
+  }, [entries]);
+
   const totalPhotos = useMemo(() => entries.reduce((n, e) => n + (e.photos?.length ?? 0), 0), [entries]);
-  const SORT_LABELS: Record<typeof sortBy, string> = { newest: 'Newest first', oldest: 'Oldest first', rating: 'Top rated' };
-  const SORT_LABELS_SHORT: Record<typeof sortBy, string> = { newest: 'Newest', oldest: 'Oldest', rating: 'Top rated' };
+  const SORT_LABELS: Record<typeof sortBy, string> = { newest: 'Newest first', oldest: 'Oldest first', rank: 'Top ranked' };
+  const SORT_LABELS_SHORT: Record<typeof sortBy, string> = { newest: 'Newest', oldest: 'Oldest', rank: 'Top ranked' };
 
   const ListHeader = (
     <View>
@@ -433,7 +443,7 @@ export default function JournalScreen() {
           </View>
           <MenuView
             onPressAction={({ nativeEvent }) => setSortBy(nativeEvent.event as typeof sortBy)}
-            actions={(['newest', 'oldest', 'rating'] as const).map(s => ({
+            actions={(['newest', 'oldest', 'rank'] as const).map(s => ({
               id: s, title: SORT_LABELS[s], state: sortBy === s ? 'on' : 'off',
             }))}
           >
@@ -514,6 +524,7 @@ export default function JournalScreen() {
             <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
               <EntryCard
                 entry={item}
+                rank={rankById.get(item.id) ?? null}
                 onPress={() => router.push(`/profile/journal/${item.id}` as never)}
                 onEdit={() => router.push(`/profile/journal/${item.id}?edit=1` as never)}
                 onDelete={() => confirmDeleteEntry(item)}

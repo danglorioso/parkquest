@@ -67,7 +67,7 @@ export interface FeedPost {
   viewer_bucket_listed?: boolean | null;
   // visit metadata (only present on visit posts)
   visit_date: string | null;
-  visit_rating: number | null;
+  visit_rank_score: number | null;
   visit_activities: string[] | null;
   visit_weather: string[] | null;
   visit_crowd: number | null;
@@ -1039,28 +1039,6 @@ const WOULD_RETURN_LABELS: Record<string, string> = { yes: "Definitely", maybe: 
 // Low-to-high tier colors shared by the crowd/difficulty scale bars.
 const TIER_COLORS = ["#4C9A5B", "#8FB14E", "#D4A93F", "#D97F3D", "#C0483F"];
 
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <span style={{ fontSize: 13, letterSpacing: 1.5, lineHeight: 1 }}>
-      {Array.from({ length: 5 }, (_, i) => {
-        const full = rating >= i + 1;
-        const half = !full && rating >= i + 0.5;
-        return (
-          <span key={i} style={{ position: "relative", display: "inline-block", width: 13 }}>
-            <span style={{ color: "var(--hairline)" }}>★</span>
-            {(full || half) && (
-              <span style={{
-                position: "absolute", left: 0, top: 0,
-                color: "#C49A28",
-                clipPath: half ? "inset(0 50% 0 0)" : undefined,
-              }}>★</span>
-            )}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
 
 function CompanionLink({ username, displayName, avatarUrl }: {
   username: string;
@@ -1159,7 +1137,7 @@ function TierScale({ label, value, labels }: { label: string; value: number; lab
 }
 
 function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: boolean }) {
-  const hasAny = post.visit_date || post.visit_rating || (post.visit_activities?.length ?? 0) > 0
+  const hasAny = post.visit_date || post.visit_rank_score || (post.visit_activities?.length ?? 0) > 0
     || (post.visit_weather?.length ?? 0) > 0
     || (post.visit_companion_count ?? 0) > 0 || post.visit_highlight || post.visit_title
     || post.visit_notes || post.visit_would_return;
@@ -1189,10 +1167,9 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
 
       {/* Chips */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {post.visit_rating && (
+        {post.visit_rank_score != null && (
           <MetaChip>
-            <span style={{ color: "#C49A28", marginRight: 3, fontSize: 12 }}>★</span>
-            {post.visit_rating % 1 === 0 ? post.visit_rating.toFixed(0) : post.visit_rating.toFixed(1)}
+            {post.visit_rank_score % 1 === 0 ? post.visit_rank_score.toFixed(0) : post.visit_rank_score.toFixed(1)}
           </MetaChip>
         )}
         {dateLabel && !heroDate && (

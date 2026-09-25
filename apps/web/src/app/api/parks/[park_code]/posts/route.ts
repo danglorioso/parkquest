@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { posts, parks, userProfiles, friendships, visits } from '@/lib/db/schema';
 import { getBlockedIds } from '@/lib/blocks';
 import { getReportedPostIds } from '@/lib/reportedContent';
+import { visitRankScoreSql } from '@/lib/rankKey';
 
 // GET /api/parks/:park_code/posts — recent community activity for a park's
 // detail page. Splits into the viewer's own posts vs everyone else's, and
@@ -96,7 +97,7 @@ export async function GET(
           ? sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${viewerId})`
           : sql<boolean>`false`,
         visit_date: visits.visited_date,
-        visit_rating: visits.rating,
+        visit_rank_score: visitRankScoreSql(),
         visit_activities: visits.activities,
         visit_weather: visits.weather_conditions,
         visit_crowd: visits.crowd,

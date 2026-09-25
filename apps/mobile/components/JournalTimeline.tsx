@@ -20,7 +20,8 @@ export interface JournalEntry {
   park_name: string | null;
   title: string | null;
   notes: string | null;
-  rating: number | null;
+  rank_position: number | null;
+  rank_score: number | null;
   activities: string[] | null;
   visibility: string | null;
   redacted: boolean;
@@ -73,17 +74,11 @@ function VisibilityPill({ vis }: { vis: string | null }) {
   );
 }
 
-function StarRating({ n }: { n: number }) {
+function RankBadge({ position, score }: { position: number; score: number }) {
   return (
-    <View style={{ flexDirection: 'row', gap: 1 }}>
-      {Array.from({ length: 5 }, (_, i) => (
-        <Ionicons
-          key={i}
-          name={n >= i + 1 ? 'star' : n >= i + 0.5 ? 'star-half' : 'star-outline'}
-          size={13}
-          color={n >= i + 0.5 ? '#C49A28' : C.hairline}
-        />
-      ))}
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: '#C49A28' }}>#{position}</Text>
+      <Text style={{ fontSize: 12, fontWeight: '600', color: C.inkMute }}>{score}</Text>
     </View>
   );
 }
@@ -167,9 +162,11 @@ export function JournalTimeline({ entries, badges }: { entries: JournalEntry[]; 
                           {entry.title ? (
                             <Text style={styles.entryTitle}>"{entry.title}"</Text>
                           ) : null}
-                          {(entry.rating || (entry.activities?.length ?? 0) > 0) ? (
+                          {(entry.rank_position || (entry.activities?.length ?? 0) > 0) ? (
                             <View style={styles.ratingRow}>
-                              {entry.rating ? <StarRating n={entry.rating} /> : null}
+                              {entry.rank_position != null && entry.rank_score != null
+                                ? <RankBadge position={entry.rank_position} score={entry.rank_score} />
+                                : null}
                               {(entry.activities?.length ?? 0) > 0 ? (
                                 <Text style={styles.activities} numberOfLines={1}>
                                   {entry.activities!.join(' · ')}

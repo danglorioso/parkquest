@@ -9,6 +9,7 @@ import { HolographicShine } from "@/components/desktop/HolographicShine";
 import { ParkStamp } from "@/components/desktop/ParkStamp";
 import { PassportWatermark } from "@/components/desktop/PassportWatermark";
 import type { CustomStampGlyph, BadgeParkScope } from "@parkquest/types";
+import { sortByRankKey } from "@parkquest/types";
 import type { ParkScopeStats } from "@/lib/badges";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ interface Visit {
   park_code: string;
   is_bucket_list: boolean;
   visited_date: string | null;
-  rating?: number | null;
+  rank_key: string | null;
 }
 
 interface StampItem {
@@ -218,12 +219,12 @@ export default function PassportPage() {
     let mvCode: string | null = null, mvCount = 1;
     counts.forEach((n, code) => { if (n > mvCount) { mvCount = n; mvCode = code; } });
 
-    const rated = dated.filter((v) => typeof v.rating === "number");
-    const top = rated.sort((a, b) => (b.rating! - a.rating!) || (a.visited_date ?? "").localeCompare(b.visited_date ?? ""))[0] ?? null;
+    const ranked = sortByRankKey(dated);
+    const top = ranked[0] ?? null;
 
     return {
       mostVisited: mvCode ? { name: parkName(mvCode), detail: `${mvCount} visits` } : null,
-      topRated: top ? { name: parkName(top.park_code), detail: "★".repeat(Math.round(top.rating!)) } : null,
+      topRated: top ? { name: parkName(top.park_code), detail: `#1 of ${ranked.length}` } : null,
     };
   }, [visits, allParks]);
 

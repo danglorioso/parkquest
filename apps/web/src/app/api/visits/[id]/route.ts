@@ -26,6 +26,7 @@ export async function GET(
         visited_date_exact: visits.visited_date_exact,
         end_date_exact: visits.end_date_exact,
         rating: visits.rating,
+        rank_key: visits.rank_key,
         crowd: visits.crowd,
         difficulty: visits.difficulty,
         weather_conditions: visits.weather_conditions,

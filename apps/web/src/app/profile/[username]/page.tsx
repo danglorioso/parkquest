@@ -83,7 +83,8 @@ interface JournalEntry {
   states: string | null;
   title: string | null;
   notes: string | null;
-  rating: number | null;
+  rank_position: number | null;
+  rank_score: number | null;
   activities: string[] | null;
   visibility: string | null;
   redacted?: boolean;
@@ -330,12 +331,10 @@ function groupJournalByYearMonth(entries: JournalEntry[]) {
     }));
 }
 
-function StarRating({ n }: { n: number }) {
+function RankBadge({ position, score }: { position: number; score: number }) {
   return (
-    <span style={{ fontSize: 11, letterSpacing: 1 }}>
-      {Array.from({ length: 5 }, (_, i) => (
-        <span key={i} style={{ color: i < n ? "#C49A28" : "var(--hairline)" }}>★</span>
-      ))}
+    <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent)" }}>
+      #{position} <span style={{ fontWeight: 600, color: "var(--ink-mute)" }}>{score}</span>
     </span>
   );
 }
@@ -442,7 +441,7 @@ function JournalTimeline({ entries, onEdit }: { entries: JournalEntry[]; onEdit?
                           padding: "12px 14px",
                         }}>
                           {/* Top row: date + park + visibility + edit */}
-                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: entry.title || entry.notes || entry.rating || (entry.activities?.length ?? 0) > 0 ? 8 : 0 }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: entry.title || entry.notes || entry.rank_position || (entry.activities?.length ?? 0) > 0 ? 8 : 0 }}>
                             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flex: 1, minWidth: 0 }}>
                               <span style={{
                                 fontFamily: "var(--font-mono)", fontSize: 10,
@@ -491,9 +490,11 @@ function JournalTimeline({ entries, onEdit }: { entries: JournalEntry[]; onEdit?
                             </div>
                           )}
                           {/* Rating + activities row */}
-                          {(entry.rating || (entry.activities?.length ?? 0) > 0) && (
+                          {(entry.rank_position || (entry.activities?.length ?? 0) > 0) && (
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: entry.notes ? 6 : 0 }}>
-                              {entry.rating && <StarRating n={entry.rating} />}
+                              {entry.rank_position != null && entry.rank_score != null && (
+                                <RankBadge position={entry.rank_position} score={entry.rank_score} />
+                              )}
                               {(entry.activities?.length ?? 0) > 0 && (
                                 <span style={{ fontSize: 11, color: "var(--ink-mute)" }}>
                                   {entry.activities!.join(" · ")}

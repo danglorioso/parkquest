@@ -10,7 +10,7 @@ interface ParkRow {
   name: string;
   visit_count: number;
   post_count: number;
-  avg_rating: string | null;
+  avg_rank_score: string | null;
   avg_crowd: string | null;
   avg_difficulty: string | null;
   pct_would_return: string | null;
@@ -20,7 +20,7 @@ const COLUMNS: { key: string; label: string }[] = [
   { key: 'name', label: 'Park' },
   { key: 'visit_count', label: 'Visits' },
   { key: 'post_count', label: 'Posts' },
-  { key: 'avg_rating', label: 'Avg rating' },
+  { key: 'avg_rank_score', label: 'Avg rank score' },
   { key: 'avg_crowd', label: 'Avg crowd' },
   { key: 'avg_difficulty', label: 'Avg difficulty' },
   { key: 'pct_would_return', label: '% would return' },
@@ -81,7 +81,7 @@ export default async function AdminParksPage({
                   <td className="px-4 py-3 font-semibold text-ink">{p.name}</td>
                   <td className="px-4 py-3 text-ink-soft">{p.visit_count}</td>
                   <td className="px-4 py-3 text-ink-soft">{p.post_count}</td>
-                  <td className="px-4 py-3 text-ink-soft">{p.avg_rating ?? '—'}</td>
+                  <td className="px-4 py-3 text-ink-soft">{p.avg_rank_score ?? '—'}</td>
                   <td className="px-4 py-3 text-ink-soft">{p.avg_crowd ?? '—'}</td>
                   <td className="px-4 py-3 text-ink-soft">{p.avg_difficulty ?? '—'}</td>
                   <td className="px-4 py-3 text-ink-soft">{p.pct_would_return != null ? `${p.pct_would_return}%` : '—'}</td>

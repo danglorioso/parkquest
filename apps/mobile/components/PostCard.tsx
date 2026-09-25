@@ -61,7 +61,7 @@ export interface FeedPost {
   visibility?: string | null;
   // visit metadata
   visit_date: string | null;
-  visit_rating: number | null;
+  visit_rank_score: number | null;
   visit_activities: string[] | null;
   visit_weather: string[] | null;
   visit_crowd: number | null;

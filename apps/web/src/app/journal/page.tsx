@@ -4,12 +4,13 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import {
-  Star, ChevronLeft, ChevronRight, X, Lock, Users, Globe,
+  ChevronLeft, ChevronRight, X, Lock, Users, Globe,
   MapPin, Image, PenLine, Search, SlidersHorizontal, Pencil, Trash2,
 } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { LightboxModal } from "@/components/LightboxModal";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
+import { deriveRankScore, sortByRankKey } from "@parkquest/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ interface JournalEntry {
   end_date: string | null;
   is_bucket_list: boolean;
   rating: number | null;
+  rank_key: string | null;
   crowd: number | null;
   difficulty: number | null;
   weather_conditions: string[] | null;
@@ -117,19 +119,11 @@ const mono: React.CSSProperties = { fontFamily: "var(--font-mono)" };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function Stars({ value, size = 13 }: { value: number; size?: number }) {
-  if (!value) return null;
+function RankBadge({ position, score, size = 13 }: { position: number; score: number; size?: number }) {
   return (
-    <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} style={{ position: "relative", width: size, height: size }}>
-          <Star style={{ position: "absolute", inset: 0, width: size, height: size, color: "var(--ink-mute)" }} strokeWidth={1.6} fill="none" />
-          {value >= i + 0.5 && (
-            <Star style={{ position: "absolute", inset: 0, width: size, height: size, color: "var(--accent)", clipPath: value >= i + 1 ? "none" : "inset(0 50% 0 0)" }} strokeWidth={1.6} fill="var(--accent)" />
-          )}
-        </div>
-      ))}
-      <span style={{ ...mono, fontSize: size - 2, color: "var(--ink-mute)", marginLeft: 4 }}>{value}/5</span>
+    <div style={{ display: "flex", gap: 4, alignItems: "baseline" }}>
+      <span style={{ fontSize: size + 1, fontWeight: 700, color: "var(--accent)" }}>#{position}</span>
+      <span style={{ ...mono, fontSize: size - 2, color: "var(--ink-mute)" }}>{score}</span>
     </div>
   );
 }
@@ -167,7 +161,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── Entry card ────────────────────────────────────────────────────────────────
 
-function EntryCard({ entry, selected, onClick }: { entry: JournalEntry; selected: boolean; onClick: () => void }) {
+function EntryCard({ entry, rank, selected, onClick }: {
+  entry: JournalEntry; rank: { position: number; score: number } | null; selected: boolean; onClick: () => void;
+}) {
   const imgs = photos(entry);
   const cover = entry.cover_photo ?? imgs[0] ?? null;
   const days = dayCount(entry.visited_date, entry.end_date);
@@ -215,7 +211,7 @@ function EntryCard({ entry, selected, onClick }: { entry: JournalEntry; selected
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
-          {entry.rating ? <Stars value={entry.rating} size={11} /> : <span />}
+          {rank ? <RankBadge position={rank.position} score={rank.score} size={11} /> : <span />}
           <VisChip v={entry.visibility} />
         </div>
       </div>
@@ -226,9 +222,10 @@ function EntryCard({ entry, selected, onClick }: { entry: JournalEntry; selected
 // ── Detail overlay ────────────────────────────────────────────────────────────
 
 function EntryDetail({
-  entry, onClose, onEdit, onDelete,
+  entry, rank, onClose, onEdit, onDelete,
 }: {
   entry: JournalEntry;
+  rank: { position: number; score: number } | null;
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -374,7 +371,7 @@ function EntryDetail({
             {days > 1 && (
               <span style={{ ...mono, fontSize: 10, background: "rgba(197,107,61,0.12)", color: "var(--accent)", borderRadius: 100, padding: "2px 7px", fontWeight: 700 }}>{days} DAYS</span>
             )}
-            {entry.rating != null && entry.rating > 0 && <Stars value={entry.rating} size={15} />}
+            {rank && <RankBadge position={rank.position} score={rank.score} size={15} />}
             <VisChip v={entry.visibility} />
           </div>
 
@@ -556,7 +553,7 @@ export default function JournalPage() {
   const [logVisitOpen, setLogVisitOpen] = useState(false);
   const [logVisitDraft, setLogVisitDraft] = useState<Partial<VisitDraft> | undefined>(undefined);
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "rating">("newest");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "rank">("newest");
   const [yearFilter, setYearFilter] = useState<number | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
@@ -602,9 +599,21 @@ export default function JournalPage() {
     }
     if (sortBy === "oldest") list = [...list].sort((a, b) => (a.visited_date ?? "").localeCompare(b.visited_date ?? ""));
     else if (sortBy === "newest") list = [...list].sort((a, b) => (b.visited_date ?? "").localeCompare(a.visited_date ?? ""));
-    else if (sortBy === "rating") list = [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    else if (sortBy === "rank") {
+      const order = new Map(sortByRankKey(list).map((e, i) => [e.id, i]));
+      list = [...list].sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
+    }
     return list;
   }, [entries, query, yearFilter, sortBy]);
+
+  // Rank position/score relative to ALL ranked visits, not just the
+  // filtered/sorted view above.
+  const rankById = useMemo(() => {
+    const ranked = sortByRankKey(entries);
+    const m = new Map<number, { position: number; score: number }>();
+    ranked.forEach((e, i) => m.set(e.id, { position: i + 1, score: deriveRankScore(i, ranked.length) }));
+    return m;
+  }, [entries]);
 
   const totalPhotos = useMemo(() => entries.reduce((n, e) => n + photos(e).length, 0), [entries]);
 
@@ -652,7 +661,7 @@ export default function JournalPage() {
     setSelected(null);
   }, [selected]);
 
-  const SORT_LABELS: Record<string, string> = { newest: "Newest first", oldest: "Oldest first", rating: "Highest rated" };
+  const SORT_LABELS: Record<string, string> = { newest: "Newest first", oldest: "Oldest first", rank: "Top ranked" };
 
   return (
     <DesktopShell>
@@ -713,7 +722,7 @@ export default function JournalPage() {
               </button>
               {sortOpen && (
                 <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.18)", zIndex: 50, minWidth: 160 }}>
-                  {(["newest", "oldest", "rating"] as const).map(s => (
+                  {(["newest", "oldest", "rank"] as const).map(s => (
                     <button key={s} onClick={() => { setSortBy(s); setSortOpen(false); }} style={{ width: "100%", padding: "9px 14px", border: 0, background: sortBy === s ? "rgba(31,61,46,0.07)" : "transparent", color: sortBy === s ? "var(--primary)" : "var(--ink)", fontWeight: sortBy === s ? 700 : 500, fontSize: 12.5, cursor: "pointer", textAlign: "left", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       {SORT_LABELS[s]}
                       {sortBy === s && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--primary)", flexShrink: 0 }} />}
@@ -743,6 +752,7 @@ export default function JournalPage() {
               <EntryCard
                 key={entry.id}
                 entry={entry}
+                rank={rankById.get(entry.id) ?? null}
                 selected={selected?.id === entry.id}
                 onClick={() => setSelected(selected?.id === entry.id ? null : entry)}
               />
@@ -755,6 +765,7 @@ export default function JournalPage() {
       {selected && (
         <EntryDetail
           entry={selected}
+          rank={rankById.get(selected.id) ?? null}
           onClose={() => setSelected(null)}
           onEdit={() => openEdit(selected)}
           onDelete={handleDelete}

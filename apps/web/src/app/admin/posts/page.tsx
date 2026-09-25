@@ -5,6 +5,7 @@ import { posts, userProfiles, parks, visits } from '@/lib/db/schema';
 import { Pagination } from '../Pagination';
 import { PostsFeed } from './PostsFeed';
 import type { FeedPost } from '@/components/PostCard';
+import { visitRankScoreSql } from '@/lib/rankKey';
 
 const PAGE_SIZE = 10;
 
@@ -35,7 +36,7 @@ export default async function AdminPostsPage({
       comment_count: sql<number>`(SELECT COUNT(*)::int FROM comments WHERE comments.post_id = ${posts.id})`,
       liked_by_me: sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${admin?.id ?? ''})`,
       visit_date: visits.visited_date,
-      visit_rating: visits.rating,
+      visit_rank_score: visitRankScoreSql(),
       visit_activities: visits.activities,
       visit_weather: visits.weather_conditions,
       visit_crowd: visits.crowd,

@@ -277,7 +277,7 @@ export interface AdminParkRow {
   name: string;
   visit_count: number;
   post_count: number;
-  avg_rating: string | null;
+  avg_rank_score: string | null;
   avg_crowd: string | null;
   avg_difficulty: string | null;
   pct_would_return: string | null;

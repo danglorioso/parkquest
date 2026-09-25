@@ -6,6 +6,7 @@ import { posts, friendships, parks, userProfiles, visits } from '@/lib/db/schema
 import { getBlockedIds } from '@/lib/blocks';
 import { getReportedPostIds } from '@/lib/reportedContent';
 import { touchActivity } from '@/lib/activity';
+import { visitRankScoreSql } from '@/lib/rankKey';
 
 export async function GET(request: Request) {
   try {
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
         liked_by_me: sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${userId})`,
         visibility: sql<string>`COALESCE(${visits.visibility}, ${posts.visibility}, 'public')`,
         visit_date:             visits.visited_date,
-        visit_rating:           visits.rating,
+        visit_rank_score:       visitRankScoreSql(),
         visit_activities:       visits.activities,
         visit_weather:          visits.weather_conditions,
         visit_crowd:            visits.crowd,

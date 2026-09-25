@@ -48,7 +48,6 @@ interface Draft {
   startDateExact: boolean;
   endDateExact:   boolean;
   title:     string;
-  rating:    number;
   crowd:     number;
   difficulty:number;
   weather:   string[];
@@ -78,7 +77,6 @@ interface VisitDetail {
   end_date: string | null;
   visited_date_exact: boolean | null;
   end_date_exact: boolean | null;
-  rating: number | null;
   crowd: number | null;
   difficulty: number | null;
   weather_conditions: string[] | null;
@@ -119,13 +117,11 @@ const RETURN_OPTS   = [
   { id: 'no',    label: 'Probably not', color: C.inkMute, icon: 'cloud-outline' as const,  iconFilled: 'cloud' as const },
 ];
 const STEPS = [
-  'Where & when', 'Rating', 'Crowd', 'Difficulty', 'Weather', 'Would you return?', 'Photos', 'Journal', 'Share',
+  'Where & when', 'Crowd', 'Difficulty', 'Weather', 'Would you return?', 'Photos', 'Journal', 'Share',
 ];
-const STAR_SIZE = 56;
 
-// Reactive emoji for the hero-slide steps — index 0 is the "unset" state for
-// Rating (0..5 stars), Crowd/Difficulty index directly by (value - 1).
-const RATING_EMOJI = ['🤔', '😞', '😕', '🙂', '😃', '🤩'];
+// Reactive emoji for the hero-slide steps — index 0 is the "unset" state,
+// Crowd/Difficulty index directly by (value - 1).
 const CROWD_EMOJI  = ['🦗', '🧍', '🚶', '👥', '🏟️'];
 const DIFF_EMOJI   = ['🌱', '🚶', '⛰️', '🥵', '💀'];
 
@@ -134,7 +130,7 @@ const DIFF_EMOJI   = ['🌱', '🚶', '⛰️', '🥵', '💀'];
 function makeBlank(): Draft {
   return {
     parkCode: '', startDate: null, endDate: null, startDateExact: true, endDateExact: true, title: '',
-    rating: 0, crowd: 0, difficulty: 0, weather: [], wouldReturn: null,
+    crowd: 0, difficulty: 0, weather: [], wouldReturn: null,
     highlight: '', notes: '', activities: [], companions: [], companionObjs: [],
     photos: [], visibility: 'Friends', caption: '',
     hikeSource: null, distanceMeters: null, durationSeconds: null,
@@ -148,7 +144,7 @@ type SavedDraft = SharedSavedDraft<Draft>;
 
 function draftHasContent(d: Draft): boolean {
   return !!(d.parkCode || d.title || d.notes || d.highlight ||
-    d.activities.length || d.photos.length || d.rating || d.startDate);
+    d.activities.length || d.photos.length || d.startDate);
 }
 
 async function loadDrafts(): Promise<SavedDraft[]> {
@@ -222,93 +218,6 @@ function deletePhotos(urls: string[], token: string | null) {
     method: 'POST',
     body: JSON.stringify({ urls }),
   }).catch(e => console.warn('Photo cleanup failed:', e));
-}
-
-// ── StarRating ────────────────────────────────────────────────────────────────
-
-const HALF_LABELS: Record<number, string> = {
-  0:'', 0.5:'Not great', 1:'Rough', 1.5:'Below avg',
-  2:'Meh', 2.5:'Decent', 3:'Good', 3.5:'Really good',
-  4:'Great', 4.5:'Amazing', 5:'Unreal',
-};
-
-const STAR_GAP = 10;
-const STAR_TOTAL = STAR_SIZE + STAR_GAP;
-
-function valueFromX(x: number): number {
-  const clamped = Math.max(0, x);
-  const starIdx = Math.floor(clamped / STAR_TOTAL);
-  if (starIdx >= 5) return 5;
-  const posInStar = clamped - starIdx * STAR_TOTAL;
-  return posInStar < STAR_SIZE / 2 ? starIdx + 0.5 : starIdx + 1;
-}
-
-function StarRating({ value, onChange, onDragChange }: {
-  value: number; onChange: (v: number) => void;
-  // Lets the parent sheet know a touch is actively dragging this control, so it can
-  // suspend its own swipe-to-dismiss gesture for the duration (see ScaleRow for the
-  // same pattern — a stray vertical component in the drag was closing the sheet).
-  onDragChange?: (dragging: boolean) => void;
-}) {
-  const C = useColors();
-  const containerX = useRef(0);
-  const isDragging = useRef(false);
-  // Ticks a light haptic each time the dragged-to value crosses into a new
-  // half-star, instead of firing on every pixel of pan movement.
-  const lastHaptic = useRef(value);
-  const change = (v: number) => {
-    if (v !== lastHaptic.current) { Haptics.selectionAsync(); lastHaptic.current = v; }
-    onChange(v);
-  };
-
-  const panResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (e) => {
-      Keyboard.dismiss();
-      isDragging.current = true;
-      onDragChange?.(true);
-      const x = e.nativeEvent.pageX - containerX.current;
-      change(valueFromX(x));
-    },
-    onPanResponderMove: (e) => {
-      const x = e.nativeEvent.pageX - containerX.current;
-      change(valueFromX(x));
-    },
-    onPanResponderRelease: () => { isDragging.current = false; onDragChange?.(false); },
-    onPanResponderTerminate: () => { isDragging.current = false; onDragChange?.(false); },
-  })).current;
-
-  return (
-    <View style={{ alignItems: 'center' }}>
-      {/* Padded hit area — drags starting a bit outside the stars still rate.
-          Touch x maps off the inner row's pageX, so the padding is pure slack.
-          Generous on purpose: once PanResponder grants here, it keeps the
-          gesture for the rest of the drag regardless of later vertical
-          drift, so a wide starting margin is what actually stops a
-          slightly-off-horizontal swipe from instead being grabbed by the
-          sheet's own swipe-to-dismiss gesture. */}
-      <View style={{ paddingVertical: 28, paddingHorizontal: 20 }} {...panResponder.panHandlers}>
-        <View
-          ref={r => {
-            if (r) r.measure((_x, _y, _w, _h, px) => { containerX.current = px; });
-          }}
-          style={{ flexDirection: 'row', gap: STAR_GAP }}
-          pointerEvents="none"
-        >
-          {Array.from({ length: 5 }).map((_, i) => (
-            <View key={i} style={{ width: STAR_SIZE, height: STAR_SIZE }}>
-              <Ionicons
-                name={value >= i + 1 ? 'star' : value >= i + 0.5 ? 'star-half' : 'star-outline'}
-                size={STAR_SIZE}
-                color={value >= i + 0.5 ? C.accent : dyn('rgba(27,26,22,0.28)', 'rgba(240,234,217,0.32)')}
-              />
-            </View>
-          ))}
-        </View>
-      </View>
-    </View>
-  );
 }
 
 // ── ScaleRow (slider) ───────────────────────────────────────────────────────────
@@ -1626,22 +1535,6 @@ function StepWhere({
 // "The visit" used to be one screen with five controls stacked on top of each
 // other. Split into one question per screen so nothing competes for attention —
 // each still gets the same fade-in-down entrance the other steps use.
-function StepRating({ draft, set, onSliderDragChange }: {
-  draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
-  onSliderDragChange?: (dragging: boolean) => void;
-}) {
-  const r = draft.rating;
-  return (
-    <HeroSlide
-      emoji={RATING_EMOJI[Math.min(5, Math.max(0, Math.ceil(r)))]}
-      title="How was it?"
-      subtitle={r > 0 ? `${r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)} / 5 · ${HALF_LABELS[r]}` : 'Tap or swipe to rate'}
-    >
-      <StarRating value={r} onChange={v => set('rating', v)} onDragChange={onSliderDragChange} />
-    </HeroSlide>
-  );
-}
-
 function StepCrowd({ draft, set, onSliderDragChange }: {
   draft: Draft; set: <K extends keyof Draft>(k: K, v: Draft[K]) => void;
   onSliderDragChange?: (dragging: boolean) => void;
@@ -1869,7 +1762,9 @@ function VisitPreview({ draft, park, userName, username, avatarUrl }: {
     is_friend_post: false,
     visibility: draft.visibility.toLowerCase(),
     visit_date: draft.startDate ? draft.startDate.toISOString() : null,
-    visit_rating: draft.rating > 0 ? draft.rating : null,
+    // Not yet ranked at preview time — ranking happens in a follow-up flow
+    // after the visit is saved (needs a real visit id to compare against).
+    visit_rank_score: null,
     visit_activities: draft.activities.length > 0 ? draft.activities : null,
     visit_weather: draft.weather.length > 0 ? draft.weather : null,
     visit_crowd: draft.crowd > 0 ? draft.crowd : null,
@@ -2316,7 +2211,6 @@ export default function LogVisitModal() {
           startDateExact: v.visited_date_exact ?? true,
           endDateExact:   v.end_date_exact ?? true,
           title:      v.title ?? '',
-          rating:     v.rating ?? 0,
           crowd:      v.crowd ?? 0,
           difficulty: v.difficulty ?? 0,
           weather:    v.weather_conditions ?? [],
@@ -2404,7 +2298,6 @@ export default function LogVisitModal() {
             end_date:           draft.endDate?.toISOString() ?? null,
             visited_date_exact: draft.startDateExact,
             end_date_exact:     draft.endDate ? draft.endDateExact : true,
-            rating:             draft.rating  > 0 ? draft.rating  : null,
             crowd:              draft.crowd   > 0 ? draft.crowd   : null,
             difficulty:         draft.difficulty > 0 ? draft.difficulty : null,
             weather_conditions: draft.weather.length > 0 ? draft.weather : null,
@@ -2461,7 +2354,6 @@ export default function LogVisitModal() {
           end_date:           draft.endDate?.toISOString() ?? null,
           visited_date_exact: draft.startDateExact,
           end_date_exact:     draft.endDate ? draft.endDateExact : true,
-          rating:             draft.rating  > 0 ? draft.rating  : null,
           crowd:              draft.crowd   > 0 ? draft.crowd   : null,
           difficulty:         draft.difficulty > 0 ? draft.difficulty : null,
           weather_conditions: draft.weather.length > 0 ? draft.weather : null,
@@ -2504,7 +2396,16 @@ export default function LogVisitModal() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast('Visit logged!');
       leavingViaAction.current = true;
-      router.back();
+      // Beli-style: rank right after logging, not as part of the wizard —
+      // needs a real visit id to compare against the rest of the list.
+      if (visitRes.visit?.id) {
+        const parkName = parks.find(p => p.park_code === draft.parkCode)?.name ?? '';
+        router.replace(
+          `/(modals)/rank-visit?visitId=${visitRes.visit.id}&parkCode=${draft.parkCode}&parkName=${encodeURIComponent(parkName)}` as never
+        );
+      } else {
+        router.back();
+      }
     } catch (e) {
       if (e instanceof Error && e.message.includes('409')) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -2619,19 +2520,18 @@ export default function LogVisitModal() {
             onPickPark={() => setShowPicker(true)} onOpenPicker={setOpenPicker}
           />
         )}
-        {step === 1 && <StepRating draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
-        {step === 2 && <StepCrowd draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
-        {step === 3 && (
+        {step === 1 && <StepCrowd draft={draft} set={set} onSliderDragChange={setSliderDragging} />}
+        {step === 2 && (
           <StepDifficulty
             draft={draft} set={set} onSliderDragChange={setSliderDragging}
             onClearHike={clearHike} onPickGpx={pickGpxFile} gpxLoading={gpxLoading}
           />
         )}
-        {step === 4 && <StepWeather draft={draft} set={set} />}
-        {step === 5 && <StepWouldReturn draft={draft} set={set} />}
-        {step === 6 && <StepPhotos draft={draft} set={set} getToken={getFreshToken} originalPhotos={originalPhotos.current} onDragActiveChange={setSliderDragging} />}
-        {step === 7 && token && <StepJournal draft={draft} set={set} token={token} npsActivityNames={npsActivityNames} />}
-        {step === 8 && (
+        {step === 3 && <StepWeather draft={draft} set={set} />}
+        {step === 4 && <StepWouldReturn draft={draft} set={set} />}
+        {step === 5 && <StepPhotos draft={draft} set={set} getToken={getFreshToken} originalPhotos={originalPhotos.current} onDragActiveChange={setSliderDragging} />}
+        {step === 6 && token && <StepJournal draft={draft} set={set} token={token} npsActivityNames={npsActivityNames} />}
+        {step === 7 && (
           <StepShare
             draft={draft}
             set={set}

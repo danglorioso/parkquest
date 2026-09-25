@@ -1,4 +1,5 @@
 export * from './parkGlyphs';
+export * from './rankScore';
 
 export type ParkStatus = 'unvisited' | 'bucket_list' | 'visited';
 export type BadgeTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'legendary';
@@ -25,6 +26,7 @@ export interface Visit {
   park_code: string;
   visited_date: Date | null;
   rating: number | null;
+  rank_key: string | null;
   title: string | null;
   notes: string | null;
   photos: PhotoMeta[] | null;

@@ -195,6 +195,13 @@ function RootStack() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="(modals)/rank-visit"
+        options={{
+          presentation: 'modal',
+          headerShown: false,
+        }}
+      />
       {/* No park-sheet/[id] route — the map-dot park sheet is rendered
           inline inside (tabs)/map.tsx (see ParkProfileScreen there) rather
           than presented as its own screen. It used to be one, through

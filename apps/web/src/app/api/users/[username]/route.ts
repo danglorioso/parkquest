@@ -5,6 +5,8 @@ import { db } from '@/lib/db';
 import { userProfiles, visits, friendships, parks, userBadges, posts } from '@/lib/db/schema';
 import { getBadgeDisplayMap } from '@/lib/badgeDefs';
 import { getBlockedIds } from '@/lib/blocks';
+import { visitRankScoreSql } from '@/lib/rankKey';
+import { deriveRankScore, sortByRankKey } from '@parkquest/types';
 
 export async function GET(
   _req: Request,
@@ -78,7 +80,7 @@ export async function GET(
         visibility:   visits.visibility,
         title:        visits.title,
         notes:        visits.notes,
-        rating:       visits.rating,
+        rank_key:     visits.rank_key,
         activities:   visits.activities,
       })
         .from(visits)
@@ -111,7 +113,7 @@ export async function GET(
           ? sql<boolean>`EXISTS(SELECT 1 FROM likes WHERE likes.post_id = ${posts.id} AND likes.user_id = ${viewerId})`
           : sql<boolean>`false`,
         visit_date:           visits.visited_date,
-        visit_rating:         visits.rating,
+        visit_rank_score:     visitRankScoreSql(),
         visit_activities:     visits.activities,
         visit_weather:        visits.weather_conditions,
         visit_crowd:          visits.crowd,
@@ -191,12 +193,21 @@ export async function GET(
     // Visited parks (map + stamps): all actual visits, no visibility filter (just counts/locations)
     const visitedParks = actualVisits;
 
+    // Rank position/score, derived from this user's own rank_key order — the
+    // whole set (actualVisits), not just the visibility-filtered subset below,
+    // so a redacted visit's presence still occupies its real slot in the count.
+    const rankedVisits = sortByRankKey(actualVisits.map((v) => ({ id: v.id, rank_key: v.rank_key })));
+    const rankById = new Map(
+      rankedVisits.map((v, i) => [v.id, { position: i + 1, score: deriveRankScore(i, rankedVisits.length) }])
+    );
+
     // Journal entries: visible ones shown in full, private ones shown as redacted placeholders
     const journal = actualVisits.map((v) => {
       const vis = v.visibility ?? 'private';
       const canSee = canSeePrivate
         || (canSeeFriends && (vis === 'public' || vis === 'friends'))
         || vis === 'public';
+      const rank = rankById.get(v.id) ?? null;
 
       if (canSee) {
         return {
@@ -207,7 +218,8 @@ export async function GET(
           states:       v.states,
           title:        v.title,
           notes:        v.notes,
-          rating:       v.rating,
+          rank_position: rank?.position ?? null,
+          rank_score:    rank?.score ?? null,
           activities:   v.activities,
           visibility:   v.visibility,
           redacted:     false,
@@ -222,7 +234,8 @@ export async function GET(
         states:       null,
         title:        null,
         notes:        null,
-        rating:       null,
+        rank_position: null,
+        rank_score:    null,
         activities:   null,
         visibility:   v.visibility,
         redacted:     true,
@@ -272,7 +285,7 @@ export async function GET(
         liked_by_me:          p.liked_by_me,
         is_friend_post:       true,
         visit_date:           p.visit_date ? p.visit_date.toISOString() : null,
-        visit_rating:         p.visit_rating,
+        visit_rank_score:     p.visit_rank_score,
         visit_activities:     p.visit_activities,
         visit_weather:        p.visit_weather,
         visit_crowd:          p.visit_crowd,

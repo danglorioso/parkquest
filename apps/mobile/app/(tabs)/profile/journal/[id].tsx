@@ -19,6 +19,7 @@ import { parkColor } from '@/lib/parkColors';
 import { HikeStatsCard } from '@/components/HikeStatsCard';
 import { CompanionSearch, type CompanionUser } from '@/components/CompanionSearch';
 import { ActivityChips } from '@/components/ActivityChips';
+import { deriveRankScore, sortByRankKey } from '@parkquest/types';
 
 const DANGER = '#C0392B';
 
@@ -62,7 +63,7 @@ interface JournalEntry {
   visited_date: string | null;
   end_date: string | null;
   is_bucket_list: boolean;
-  rating: number | null;
+  rank_key: string | null;
   crowd: number | null;
   difficulty: number | null;
   weather_conditions: string[] | null;
@@ -88,7 +89,6 @@ interface Draft {
   title: string;
   visited_date: Date;
   end_date: Date | null;
-  rating: number;
   crowd: number;
   difficulty: number;
   weather_conditions: string[];
@@ -111,24 +111,6 @@ function capitalize(s: string): string {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-
-function RatingInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  const T = useColors();
-  return (
-    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <TouchableOpacity key={i} onPress={() => onChange(i + 1)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-          <Ionicons name={i < value ? 'star' : 'star-outline'} size={26} color={T.accent} />
-        </TouchableOpacity>
-      ))}
-      {value > 0 && (
-        <TouchableOpacity onPress={() => onChange(0)} style={{ marginLeft: 4 }}>
-          <Text style={{ fontSize: 13, color: C.inkMute }}>Clear</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-}
 
 function ScaleInput({ value, labels, onChange }: { value: number; labels: string[]; onChange: (n: number) => void }) {
   const s = useThemedStyles(makeStyles);
@@ -392,6 +374,9 @@ export default function JournalEntryScreen() {
   const T = useColors();
 
   const [entry,   setEntry]   = useState<JournalEntry | null>(null);
+  // Full list, fetched anyway to locate `entry` by id — reused to compute
+  // this visit's rank position/score without a second round trip.
+  const [allEntries, setAllEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   // Deep-linked from the journal list's "Edit entry" quick action.
   const [editing, setEditing] = useState(edit === '1');
@@ -399,7 +384,7 @@ export default function JournalEntryScreen() {
   const [token,   setToken]   = useState('');
 
   const [draft, setDraft] = useState<Draft>({
-    title: '', visited_date: new Date(), end_date: null, rating: 0,
+    title: '', visited_date: new Date(), end_date: null,
     crowd: 0, difficulty: 0, weather_conditions: [], activities: [],
     companions: [], companionObjs: [],
     would_return: '', highlight: '', notes: '', photos: [],
@@ -433,6 +418,7 @@ export default function JournalEntryScreen() {
       const res = await fetch(`${BASE}/api/visits`, { headers: { Authorization: `Bearer ${tok}` } });
       if (!res.ok) return;
       const all: JournalEntry[] = await res.json();
+      setAllEntries(all);
       const found = all.find(e => String(e.id) === String(id));
       if (found) {
         setEntry(found);
@@ -457,7 +443,6 @@ export default function JournalEntryScreen() {
       title:              e.title ?? '',
       visited_date:       e.visited_date ? new Date(e.visited_date) : new Date(),
       end_date:           e.end_date ? new Date(e.end_date) : null,
-      rating:             e.rating ?? 0,
       crowd:              e.crowd ?? 0,
       difficulty:         e.difficulty ?? 0,
       weather_conditions: e.weather_conditions ?? [],
@@ -490,7 +475,6 @@ export default function JournalEntryScreen() {
         startDate:         draft.visited_date.toISOString().split('T')[0],
         endDate:           draft.end_date ? draft.end_date.toISOString().split('T')[0] : null,
         title:             draft.title || null,
-        rating:            draft.rating || null,
         crowd:             draft.crowd || null,
         difficulty:        draft.difficulty || null,
         weather:           draft.weather_conditions,
@@ -587,6 +571,11 @@ export default function JournalEntryScreen() {
       v => WEATHER_OPTS.find(o => o.value === v)?.label ?? v
     );
     const hasHike = !!entry.external_source && entry.distance_meters != null;
+    const ranked = sortByRankKey(allEntries);
+    const rankIndex = entry.rank_key ? ranked.findIndex(e => e.id === entry.id) : -1;
+    const rankRow = rankIndex >= 0
+      ? { key: 'Rank', value: `#${rankIndex + 1} of ${ranked.length} · ${deriveRankScore(rankIndex, ranked.length)}` }
+      : null;
     // Plain label: value rows, grouped into sections like the park profile
     // page — not PostCard's spread-out stat strip, and not one undifferentiated
     // list either, since "when/who/what it was like" are different questions.
@@ -597,7 +586,7 @@ export default function JournalEntryScreen() {
       ...(entry.created_at ? [{ key: 'Post date', value: fmtDate(entry.created_at) }] : []),
     ];
     const statRows: Row[] = [
-      ...(entry.rating ? [{ key: 'Rating', value: `${entry.rating}/5` }] : []),
+      ...(rankRow ? [rankRow] : []),
       ...(entry.crowd ? [{ key: 'Crowd', value: CROWD_LABELS[(entry.crowd ?? 1) - 1] }] : []),
       ...(entry.difficulty ? [{ key: 'Difficulty', value: DIFF_LABELS[(entry.difficulty ?? 1) - 1] }] : []),
       ...(entry.would_return ? [{ key: 'Would return', value: capitalize(entry.would_return) }] : []),
@@ -812,12 +801,6 @@ export default function JournalEntryScreen() {
           {/* Dates */}
           <DateRow label="Visit date" value={draft.visited_date} onChange={d => set('visited_date', d ?? new Date())} />
           <DateRow label="End date"   value={draft.end_date}     onChange={d => set('end_date', d)} />
-
-          {/* Rating */}
-          <View style={{ gap: 8 }}>
-            <Text style={s.fieldLabel}>Rating</Text>
-            <RatingInput value={draft.rating} onChange={v => set('rating', v)} />
-          </View>
 
           {/* Crowds */}
           <View style={{ gap: 8 }}>

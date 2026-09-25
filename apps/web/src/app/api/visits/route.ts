@@ -55,6 +55,7 @@ export async function GET() {
         end_date_exact: visits.end_date_exact,
         is_bucket_list: visits.is_bucket_list,
         rating: visits.rating,
+        rank_key: visits.rank_key,
         crowd: visits.crowd,
         difficulty: visits.difficulty,
         weather_conditions: visits.weather_conditions,

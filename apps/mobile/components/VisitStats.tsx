@@ -1,6 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { STATIC as C } from '@/lib/palette';
 import { HikeStatsCard } from '@/components/HikeStatsCard';
 
@@ -12,7 +11,7 @@ import { HikeStatsCard } from '@/components/HikeStatsCard';
 // entries) map into this shape at the call site.
 export interface VisitStatsInput {
   visit_date?: string | null;
-  visit_rating?: number | null;
+  visit_rank_score?: number | null;
   visit_crowd?: number | null;
   visit_difficulty?: number | null;
   visit_weather?: string[] | null;
@@ -39,7 +38,6 @@ export const WOULD_RETURN_LABELS: Record<string, string> = {
 };
 export const CROWD_LABELS = ['Empty', 'Quiet', 'Moderate', 'Busy', 'Packed'];
 export const DIFF_LABELS  = ['Easy', 'Light', 'Moderate', 'Hard', 'Strenuous'];
-export const STAR = '#C49A28';
 
 // "Jun 12" this year, "Jun 12, 2024" otherwise — the year only when it
 // carries information.
@@ -51,13 +49,12 @@ export function fmtVisitDate(iso: string) {
   });
 }
 
-function Stat({ value, label, star, align }: {
-  value: string; label: string; star?: boolean; align: 'flex-start' | 'center' | 'flex-end';
+function Stat({ value, label, align }: {
+  value: string; label: string; align: 'flex-start' | 'center' | 'flex-end';
 }) {
   return (
     <View style={[styles.stat, { alignItems: align }]}>
       <View style={styles.statValueRow}>
-        {star && <Ionicons name="star" size={13} color={STAR} />}
         <Text style={styles.statValue} numberOfLines={1}>{value}</Text>
       </View>
       <Text style={styles.statLabel}>{label}</Text>
@@ -67,8 +64,8 @@ function Stat({ value, label, star, align }: {
 
 export function VisitStatsStrip({ visit }: { visit: VisitStatsInput }) {
   const date = visit.visit_date ? fmtVisitDate(visit.visit_date) : null;
-  const r = visit.visit_rating;
-  const rating = r ? (r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)) : null;
+  const r = visit.visit_rank_score;
+  const rankScore = r != null ? (r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)) : null;
   const crowd = visit.visit_crowd
     ? (CROWD_LABELS[Math.round(visit.visit_crowd) - 1] ?? String(visit.visit_crowd)) : null;
   const difficulty = visit.visit_difficulty
@@ -80,9 +77,9 @@ export function VisitStatsStrip({ visit }: { visit: VisitStatsInput }) {
   // its right edge, however many stats that turns out to be, down to just
   // one (which lands fully flex-start, not centered, since it's both the
   // first and only item).
-  const items: { value: string; label: string; star?: boolean }[] = [
+  const items: { value: string; label: string }[] = [
     ...(date ? [{ value: date, label: 'Visited' }] : []),
-    ...(rating ? [{ value: rating, label: 'Rating', star: true }] : []),
+    ...(rankScore ? [{ value: rankScore, label: 'Score' }] : []),
     ...(crowd ? [{ value: crowd, label: 'Crowd' }] : []),
     ...(difficulty ? [{ value: difficulty, label: 'Difficulty' }] : []),
   ];
@@ -95,7 +92,6 @@ export function VisitStatsStrip({ visit }: { visit: VisitStatsInput }) {
           key={it.label}
           value={it.value}
           label={it.label}
-          star={it.star}
           align={
             items.length === 1 || i === 0 ? 'flex-start'
             // Difficulty centers over its own label even as the last

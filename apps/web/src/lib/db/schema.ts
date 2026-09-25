@@ -70,6 +70,10 @@ export const visits = pgTable('visits', {
   visited_date_exact: boolean('visited_date_exact').notNull().default(true),
   end_date_exact: boolean('end_date_exact').notNull().default(true),
   rating: real('rating'),
+  // Fractional/lexicographic rank key (base62), scoped per clerk_user_id — orders
+  // a user's visited parks without rewriting neighbors on insert. Null = not yet
+  // ranked. Display score is derived from position, not stored — see rankKey.ts.
+  rank_key: varchar('rank_key', { length: 32 }),
   crowd: integer('crowd'),                 // 1-5 scale
   difficulty: integer('difficulty'),       // 1-5 scale
   weather_conditions: jsonb('weather_conditions').$type<string[]>(),

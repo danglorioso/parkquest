@@ -11,7 +11,7 @@ import { getAdminParks, type AdminParkRow } from '@/lib/api';
 const SORT_OPTIONS: { key: string; label: string }[] = [
   { key: 'visit_count', label: 'Visits' },
   { key: 'post_count', label: 'Posts' },
-  { key: 'avg_rating', label: 'Rating' },
+  { key: 'avg_rank_score', label: 'Rank score' },
   { key: 'avg_crowd', label: 'Crowd' },
   { key: 'avg_difficulty', label: 'Difficulty' },
   { key: 'pct_would_return', label: '% return' },
@@ -57,7 +57,7 @@ export default function AdminParksScreen() {
                 {p.visit_count} visits · {p.post_count} posts
               </Text>
               <Text style={st.meta}>
-                Rating {p.avg_rating ?? '—'} · Crowd {p.avg_crowd ?? '—'} · Difficulty {p.avg_difficulty ?? '—'} · Would return {p.pct_would_return != null ? `${p.pct_would_return}%` : '—'}
+                Rank score {p.avg_rank_score ?? '—'} · Crowd {p.avg_crowd ?? '—'} · Difficulty {p.avg_difficulty ?? '—'} · Would return {p.pct_would_return != null ? `${p.pct_would_return}%` : '—'}
               </Text>
             </View>
           )}

@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { posts, parks, userProfiles, visits, friendships } from '@/lib/db/schema';
 import { deleteR2PhotosTrusted, extractPhotoUrls } from '@/lib/photoCleanup';
 import { requireAdmin } from '@/lib/admin';
+import { visitRankScoreSql } from '@/lib/rankKey';
 
 export async function PATCH(
   req: Request,
@@ -92,7 +93,7 @@ export async function GET(
           : sql<boolean>`false`,
         visibility: sql<string>`COALESCE(${visits.visibility}, ${posts.visibility}, 'public')`,
         visit_date:             visits.visited_date,
-        visit_rating:           visits.rating,
+        visit_rank_score:       visitRankScoreSql(),
         visit_activities:       visits.activities,
         visit_weather:          visits.weather_conditions,
         visit_crowd:            visits.crowd,
