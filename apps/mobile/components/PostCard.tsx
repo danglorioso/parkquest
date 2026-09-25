@@ -17,7 +17,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { BADGE_MAP, badgeColors, ensureBadgeDefs } from '@/lib/badges';
-import { VisitStatsStrip, VisitFacts } from '@/components/VisitStats';
+import { VisitStatsStrip, VisitFacts, hasVisitDetails } from '@/components/VisitStats';
 import { blockUser, sendFriendRequest } from '@/lib/api';
 import { emitUserBlocked } from '@/lib/blocking';
 import { STATIC as C, useColors } from '@/lib/palette';
@@ -1457,8 +1457,10 @@ function PostCardImpl({
       )}
 
       {/* Facts — the details line (weather, activities, company, would
-          return), notes, hike stats */}
-      {!isBadge && (
+          return), notes, hike stats. Skip the wrapper entirely when there's
+          nothing to show — a padded empty View still takes up its own
+          padding-height even with no children. */}
+      {!isBadge && (hasVisitDetails(post) || !!post.visit_notes || (!!post.visit_external_source && post.visit_distance_meters != null)) && (
         <View style={styles.facts}>
           <VisitFacts visit={post} />
         </View>
@@ -1691,7 +1693,7 @@ const styles = StyleSheet.create({
   // Park hero (photo-less visits)
   parkHero: {
     borderRadius: 14, overflow: 'hidden',
-    height: 180, marginBottom: 12,
+    height: 180,
     justifyContent: 'flex-end',
   },
   parkHeroContent: {
@@ -1738,7 +1740,10 @@ const styles = StyleSheet.create({
   // label under its value (left / center / right, see VisitStatsStrip).
   statsStrip: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingHorizontal: 18, paddingTop: 8, paddingBottom: 6,
+    // The hairline border below belongs to actionRow and sits right at this
+    // row's bottom edge with no padding of its own before it — so matching
+    // top/bottom here is what keeps the gap visually even on both sides.
+    paddingHorizontal: 18, paddingTop: 16, paddingBottom: 16,
   },
   stat: { gap: 1 },
   statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 20 },
