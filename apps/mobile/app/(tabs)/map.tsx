@@ -791,7 +791,8 @@ export default function MapScreen() {
   }, []);
 
   const loadVisits = useCallback(async () => {
-    const tok = await getTokenRef.current();
+    let tok: string | null;
+    try { tok = await getTokenRef.current(); } catch { tok = null; }
     if (!tok) return;
     setToken(tok);
     try {
@@ -808,7 +809,8 @@ export default function MapScreen() {
   }, [mergeVisits]);
 
   const loadData = useCallback(async () => {
-    const tok = await getTokenRef.current();
+    let tok: string | null;
+    try { tok = await getTokenRef.current(); } catch { tok = null; }
     if (tok) setToken(tok);
     const isFirstLoad = !hasLoadedRef.current;
     if (isFirstLoad) setLoading(true);

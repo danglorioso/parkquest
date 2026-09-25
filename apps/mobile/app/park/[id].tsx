@@ -636,7 +636,8 @@ export function ParkProfileScreen({
   const blurAnim = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
-    const tok = await getToken();
+    let tok: string | null;
+    try { tok = await getToken(); } catch { tok = null; }
     if (!tok || !id) return;
     setToken(tok);
     setPark(prev => { if (!prev) setLoading(true); return prev; });
@@ -740,7 +741,8 @@ export function ParkProfileScreen({
   }, [getToken, id, user?.id, isOnline]);
 
   const loadWeather = useCallback(async () => {
-    const tok = await getToken();
+    let tok: string | null;
+    try { tok = await getToken(); } catch { tok = null; }
     if (!tok || !id) {
       setWeatherLoaded(true);
       return;
@@ -760,7 +762,8 @@ export function ParkProfileScreen({
   }, [getToken, id]);
 
   const toggleBucketList = useCallback(async () => {
-    const tok = await getToken();
+    let tok: string | null;
+    try { tok = await getToken(); } catch { tok = null; }
     if (!tok || !id) return;
     setBucketBusy(true);
     try {
