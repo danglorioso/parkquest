@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useSignUp } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { Trees } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Wordmark } from "@/components/Wordmark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -159,7 +159,7 @@ export default function SignUpModal({ open, onOpenChange, switchToSignIn }: Sign
           <span className="w-full border-t" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-white px-2 text-gray-500">Or continue with email</span>
+          <span className="bg-background px-2 text-ink-mute">Or continue with email</span>
         </div>
       </div>
     </>
@@ -167,12 +167,12 @@ export default function SignUpModal({ open, onOpenChange, switchToSignIn }: Sign
 
   const SignInLink = () =>
     switchToSignIn ? (
-      <div className="text-center text-sm text-gray-600">
+      <div className="text-center text-sm text-ink-mute">
         Already have an account?{" "}
         <button
           type="button"
           onClick={() => { onOpenChange(false); switchToSignIn(); }}
-          className="text-green-600 hover:text-green-700 font-medium hover:cursor-pointer"
+          className="text-primary hover:text-primary/80 font-medium hover:cursor-pointer"
         >
           Sign in
         </button>
@@ -183,10 +183,10 @@ export default function SignUpModal({ open, onOpenChange, switchToSignIn }: Sign
     <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); onOpenChange(o); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader className="space-y-4">
-          <div className="flex items-center justify-center gap-2">
-            <Trees className="w-8 h-8 text-green-600" />
-            <DialogTitle className="text-2xl font-bold text-gray-900">ParkQuest</DialogTitle>
+          <div className="flex items-center justify-center">
+            <Wordmark size="large" />
           </div>
+          <DialogTitle className="sr-only">Create a ParkQuest account</DialogTitle>
           <DialogDescription className="text-center text-base">
             {step === "email" && "Start tracking your national park adventures"}
             {step === "password" && "Create a password for your account"}
@@ -234,8 +234,8 @@ export default function SignUpModal({ open, onOpenChange, switchToSignIn }: Sign
                     disabled={loading || !isLoaded}
                   />
                 </div>
-                {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</div>}
-                <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white hover:cursor-pointer" disabled={!isLoaded}>
+                {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
+                <Button type="submit" className="w-full hover:cursor-pointer hover:cursor-pointer" disabled={!isLoaded}>
                   Continue
                 </Button>
                 <SignInLink />
@@ -246,7 +246,7 @@ export default function SignUpModal({ open, onOpenChange, switchToSignIn }: Sign
           {/* Step 2: Password */}
           {step === "password" && (
             <form onSubmit={handleCreateAccount} className="space-y-4">
-              <p className="text-sm text-gray-500 text-center">Creating account for <span className="font-medium text-gray-700">{email}</span></p>
+              <p className="text-sm text-ink-mute text-center">Creating account for <span className="font-medium text-ink">{email}</span></p>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input
@@ -262,8 +262,8 @@ export default function SignUpModal({ open, onOpenChange, switchToSignIn }: Sign
               </div>
               {/* clerk-captcha must be in the DOM when signUp.create() is called */}
               <div id="clerk-captcha" />
-              {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</div>}
-              <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white hover:cursor-pointer" disabled={loading || !isLoaded}>
+              {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
+              <Button type="submit" className="w-full hover:cursor-pointer hover:cursor-pointer" disabled={loading || !isLoaded}>
                 {loading ? "Creating account..." : "Create Account"}
               </Button>
               <Button type="button" variant="outline" className="w-full" onClick={() => { setStep("email"); setError(""); setPassword(""); }}>
@@ -287,10 +287,10 @@ export default function SignUpModal({ open, onOpenChange, switchToSignIn }: Sign
                   autoFocus
                   disabled={loading || !isLoaded}
                 />
-                <p className="text-xs text-gray-500">We sent a verification code to {email}</p>
+                <p className="text-xs text-ink-mute">We sent a verification code to {email}</p>
               </div>
-              {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</div>}
-              <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white" disabled={loading || !isLoaded}>
+              {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
+              <Button type="submit" className="w-full hover:cursor-pointer" disabled={loading || !isLoaded}>
                 {loading ? "Verifying..." : "Verify Email"}
               </Button>
               <Button type="button" variant="outline" className="w-full" onClick={() => { setStep("password"); setCode(""); setError(""); }}>

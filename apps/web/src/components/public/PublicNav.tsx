@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { Menu, Search, X } from "lucide-react";
 import Logo from "@/components/Logo";
+import SignInModal from "@/components/SignInModal";
+import SignUpModal from "@/components/SignUpModal";
 import { APP_STORE_URL } from "@/components/AppStoreBadge";
 import { fullStateName } from "@/lib/stateNames";
 
@@ -129,7 +131,7 @@ function NavSearch() {
         const stateNames = p.states.split(",").map((s) => fullStateName(s.trim())).join(" ");
         return `${p.name} ${stateNames}`.toLowerCase().includes(term);
       })
-      // The 63 national parks outrank the monuments/historic sites that share a name fragment
+      // The 64 national parks outrank the monuments/historic sites that share a name fragment
       .sort((a, b) => Number(b.is_national_park) - Number(a.is_national_park) || a.name.localeCompare(b.name))
       .slice(0, MAX_PARKS);
   }, [parks, term]);
@@ -279,6 +281,8 @@ export function PublicNav({ active, redirectTo }: {
 }) {
   const { isLoaded, isSignedIn } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Sign-in/up open in place as modals (the /sign-in route only bounces to the home page).
+  const [authModal, setAuthModal] = useState<null | "signin" | "signup">(null);
 
   const signInHref = redirectTo ? `/sign-in?redirect=${encodeURIComponent(redirectTo)}` : "/sign-in";
 
@@ -298,12 +302,23 @@ export function PublicNav({ active, redirectTo }: {
     <Link href="/feed" style={filled}>Open ParkQuest</Link>
   ) : (
     <>
-      <Link href={signInHref} style={outline}>Sign in</Link>
+      <Link href={signInHref} onClick={(e) => { e.preventDefault(); setAuthModal("signin"); }} style={outline}>Sign in</Link>
       <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer" style={filled}>Get the app</a>
     </>
   );
 
   return (
+    <>
+    <SignInModal
+      open={authModal === "signin"}
+      onOpenChange={(open) => { if (!open) setAuthModal(null); }}
+      switchToSignUp={() => setAuthModal("signup")}
+    />
+    <SignUpModal
+      open={authModal === "signup"}
+      onOpenChange={(open) => { if (!open) setAuthModal(null); }}
+      switchToSignIn={() => setAuthModal("signin")}
+    />
     <header style={{
       position: "sticky", top: 0, zIndex: 100,
       background: "color-mix(in srgb, var(--bg) 92%, transparent)",
@@ -389,5 +404,6 @@ export function PublicNav({ active, redirectTo }: {
         </div>
       )}
     </header>
+    </>
   );
 }
