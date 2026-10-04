@@ -9,7 +9,7 @@ import {
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScrollToTop } from '@react-navigation/native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
@@ -334,6 +334,49 @@ function ParkListRow({
   );
 }
 
+// ── Designation carousel ──────────────────────────────────────────────────────
+
+// Top-of-page entry point into a single-designation view of the all-parks
+// list — tapping a row pushes /parks/designation/[key], a scoped copy of
+// this same screen (see ParksScreen's onlyType prop) rather than just
+// toggling the filter in place.
+function DesignationRow({
+  label, count, onPress, isLast,
+}: { label: string; count: number; onPress: () => void; isLast: boolean }) {
+  const { primary } = useColors();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[styles.designationRow, { borderLeftColor: primary }, !isLast && styles.designationRowDivider]}
+    >
+      <Text style={styles.designationRowLabel} numberOfLines={1}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={styles.designationRowCount}>{count} {count === 1 ? 'park' : 'parks'}</Text>
+        <Ionicons name="chevron-forward" size={15} color={C.inkMute} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function DesignationCarousel({
+  parkTypeCounts, onSelect,
+}: { parkTypeCounts: Record<string, number>; onSelect: (key: string) => void }) {
+  return (
+    <View style={styles.designationList}>
+      {PARK_TYPES.map((t, i) => (
+        <DesignationRow
+          key={t.key}
+          label={t.label}
+          count={parkTypeCounts[t.key] ?? 0}
+          onPress={() => onSelect(t.key)}
+          isLast={i === PARK_TYPES.length - 1}
+        />
+      ))}
+    </View>
+  );
+}
+
 // ── Filter panel ──────────────────────────────────────────────────────────────
 
 type FilterSection = 'status' | 'location' | 'activities' | 'topics';
@@ -421,6 +464,7 @@ function FilterPanel({
   hasFilter, onReset,
   sortBy, onSortChange,
   enabledParkTypes, parkTypeCounts, onToggleParkType, onToggleAllParkTypes,
+  showDesignationChips = true,
 }: {
   statusFilter: StatusFilter; onStatusFilter: (s: StatusFilter) => void;
   regionFilters: string[]; onRegionToggle: (r: string) => void; onClearRegions: () => void;
@@ -431,6 +475,7 @@ function FilterPanel({
   sortBy: SortBy; onSortChange: (s: SortBy) => void;
   enabledParkTypes: Set<string>; parkTypeCounts: Record<string, number>; onToggleParkType: (key: string) => void;
   onToggleAllParkTypes: () => void;
+  showDesignationChips?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [renderPanel, setRenderPanel] = useState(false);
@@ -561,7 +606,10 @@ function FilterPanel({
       {/* Designation quick-access chips — same taxonomy/toggle semantics as
           the map tab's chip row (see PARK_TYPES/onToggleParkType/
           onToggleAllParkTypes). Replaced the old ribbon-icon dropdown that
-          used to sit in the toggle row above. */}
+          used to sit in the toggle row above. Hidden on a single-designation
+          page (showDesignationChips=false) — the carousel above already
+          locked the type, so these would just let the user unpick it. */}
+      {showDesignationChips && (
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -602,6 +650,7 @@ function FilterPanel({
           );
         })}
       </ScrollView>
+      )}
 
       {/* Active filter chips — horizontally scrollable */}
       {activeCount > 0 && (
@@ -730,18 +779,22 @@ function FilterPanel({
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-export default function ParksScreen() {
+export function ParksScreen({ onlyType }: { onlyType?: string } = {}) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const { primary, accent } = useColors();
   const tabBarSpace = useTabBarSpace();
-  // insets.top reads 0 for a frame (or more) before the safe-area context's
-  // real measurement lands — even with initialWindowMetrics seeding the
-  // provider, there's still a gap on some launches/navigations. Read here
-  // (a hook, so it must run unconditionally on every render — the actual
-  // "hold a blank frame instead of painting the header in the wrong spot"
-  // branch happens at the return statement below, AFTER every other hook
-  // in this component, not here).
+  // useSafeAreaInsets() reads 0 for a frame (or more) before the safe-area
+  // context's real measurement lands — worse, and for longer, on a freshly
+  // PUSHED screen (e.g. the /parks/designation/[key] route) than on a tab
+  // switch, which previously painted the header under the notch/Dynamic
+  // Island for up to ~1s before jumping into place. initialWindowMetrics is
+  // a per-device constant seeded synchronously at app boot, so it's correct
+  // from this component's very first render — fall back to it whenever the
+  // live hook hasn't caught up yet, and use that (not a raw SafeAreaView) to
+  // pad the screen so there's never a wrong-then-correct frame to see.
   const insets = useSafeAreaInsets();
+  const topInset = insets.top || initialWindowMetrics?.insets.top || 0;
   // Menu icon tint — see the imageColor note on the view-toggle MenuView.
   const menuInk = useColorScheme() === 'dark' ? '#FFFBF1' : '#26231C';
 
@@ -755,8 +808,13 @@ export default function ParksScreen() {
   // Starts as every type shown, then swaps to whatever the user's set in
   // Profile → Appearance once that async read resolves (same setting the
   // map tab reads — see lib/settings' getDefaultParkTypes).
-  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(() => new Set(PARK_TYPES.map(t => t.key)));
-  useEffect(() => { getDefaultParkTypes().then(keys => setEnabledParkTypes(new Set(keys))); }, []);
+  const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(
+    () => new Set(onlyType ? [onlyType] : PARK_TYPES.map(t => t.key))
+  );
+  useEffect(() => {
+    if (onlyType) return; // locked to one designation — ignore the saved default
+    getDefaultParkTypes().then(keys => setEnabledParkTypes(new Set(keys)));
+  }, [onlyType]);
   const [regionFilters, setRegionFilters] = useState<string[]>([]);
   const [activityFilters, setActivityFilters] = useState<string[]>([]);
   const [topicFilters,    setTopicFilters]    = useState<string[]>([]);
@@ -764,6 +822,7 @@ export default function ParksScreen() {
   const [topicsMap,     setTopicsMap]     = useState<Record<string, string[]>>({});
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [designationOpen, setDesignationOpen] = useState(true);
   const [showViewMenu, setShowViewMenu] = useState(false);
   const [offlineFetchedAt, setOfflineFetchedAt] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -1019,7 +1078,16 @@ export default function ParksScreen() {
       {/* Page header */}
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={styles.title}>Explore the Parks</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+            {onlyType && (
+              <TouchableOpacity onPress={() => router.back()} hitSlop={8} style={styles.backBtn} activeOpacity={0.7}>
+                <Ionicons name="chevron-back" size={22} color={C.ink} />
+              </TouchableOpacity>
+            )}
+            <Text style={[styles.title, onlyType && { fontSize: 22 }]} numberOfLines={1}>
+              {onlyType ? (PARK_TYPES.find(t => t.key === onlyType)?.label ?? 'Parks') : 'Explore the Parks'}
+            </Text>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <MenuView
               onOpenMenu={() => setShowViewMenu(true)}
@@ -1065,6 +1133,27 @@ export default function ParksScreen() {
         )}
       </View>
 
+      {/* Browse by designation — pushes a scoped copy of this screen, not
+          shown on that scoped screen itself (onlyType already set). */}
+      {!onlyType && (
+        <>
+          <TouchableOpacity
+            onPress={() => setDesignationOpen(o => !o)}
+            activeOpacity={0.7}
+            style={styles.designationSubheaderRow}
+          >
+            <Text style={styles.designationSubheader}>By Park Designation</Text>
+            <Ionicons name={designationOpen ? 'chevron-down' : 'chevron-up'} size={18} color={C.inkMute} />
+          </TouchableOpacity>
+          <Collapsible open={designationOpen}>
+            <DesignationCarousel
+              parkTypeCounts={parkTypeCounts}
+              onSelect={key => router.push(`/parks/designation/${key}` as never)}
+            />
+          </Collapsible>
+        </>
+      )}
+
       {/* Filters */}
       <FilterPanel
         statusFilter={statusFilter} onStatusFilter={setStatusFilter}
@@ -1091,6 +1180,7 @@ export default function ParksScreen() {
         onToggleAllParkTypes={() => setEnabledParkTypes(prev =>
           prev.size === PARK_TYPES.length ? new Set() : new Set(PARK_TYPES.map(t => t.key))
         )}
+        showDesignationChips={!onlyType}
       />
 
       {/* Results count */}
@@ -1128,18 +1218,9 @@ export default function ParksScreen() {
     </View>
   ) : null;
 
-  // Every hook above has already run — safe to branch on insets here. Holds
-  // a blank (already-correct bg) frame instead of painting the title under
-  // the notch/Dynamic Island for a frame, then visibly jumping down once
-  // the real inset lands. 0 is safe to treat as "not measured yet" — no
-  // modern iPhone has a true 0 top inset.
-  if (insets.top === 0) {
-    return <View style={{ flex: 1, backgroundColor: C.bg }} />;
-  }
-
   if (error) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
+      <View style={[styles.screen, { paddingTop: topInset }]}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <Ionicons name="cloud-offline-outline" size={36} color={C.inkMute} />
           <Text style={{ color: C.inkMute, fontSize: 15, fontWeight: '600' }}>Failed to load parks</Text>
@@ -1150,12 +1231,12 @@ export default function ParksScreen() {
             <Text style={{ color: C.onPrimary, fontWeight: '700', fontSize: 14 }}>Retry</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <View style={[styles.screen, { paddingTop: topInset }]}>
       <LocationPermissionModal
         visible={showLocationPrompt}
         onAllow={handleAllowLocation}
@@ -1193,9 +1274,11 @@ export default function ParksScreen() {
         windowSize={7}
         maxToRenderPerBatch={8}
       />
-    </SafeAreaView>
+    </View>
   );
 }
+
+export default ParksScreen;
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -1214,6 +1297,14 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: C.ink,
     letterSpacing: -0.8,
+    flexShrink: 1,
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -6,
   },
   // Search
   searchWrap: {
@@ -1312,6 +1403,52 @@ const styles = StyleSheet.create({
   designationChipCountActive: {
     color: C.bg,
     opacity: 0.7,
+  },
+  designationSubheaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: H_PAD,
+    marginBottom: 10,
+  },
+  designationSubheader: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: C.ink,
+    letterSpacing: -0.3,
+  },
+  designationList: {
+    marginHorizontal: H_PAD,
+    marginBottom: 16,
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    borderWidth: 0.5,
+    borderColor: C.hairline,
+    overflow: 'hidden',
+  },
+  designationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderLeftWidth: 3,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+  },
+  designationRowDivider: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: C.hairlineSoft,
+  },
+  designationRowLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.ink,
+    flexShrink: 1,
+  },
+  designationRowCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.inkMute,
   },
   filterPanel: {
     marginTop: 8,
