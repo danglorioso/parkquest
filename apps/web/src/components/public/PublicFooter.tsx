@@ -38,18 +38,6 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
     ],
   },
   {
-    title: "Popular parks",
-    links: [
-      { label: "Yellowstone", href: "/parks/yell" },
-      { label: "Yosemite", href: "/parks/yose" },
-      { label: "Grand Canyon", href: "/parks/grca" },
-      { label: "Zion", href: "/parks/zion" },
-      { label: "Great Smoky Mountains", href: "/parks/grsm" },
-      { label: "Glacier", href: "/parks/glac" },
-      { label: "Acadia", href: "/parks/acad" },
-    ],
-  },
-  {
     title: "Things to do",
     links: [
       { label: "Hiking", href: "/parks?activity=Hiking" },
@@ -84,9 +72,9 @@ export function PublicFooter({ bottomClearance = 0 }: {
   const { isSignedIn } = useUser();
 
   return (
-    <footer className="pq-footer" style={{ containerType: "inline-size", background: "var(--surface)", borderTop: "0.5px solid var(--hairline)" }}>
+    <footer className="pq-footer" style={{ containerType: "inline-size", background: "#FAF3E0", borderTop: "0.5px solid var(--hairline)" }}>
       <style>{`
-        .pq-footer-grid { display: grid; grid-template-columns: minmax(220px, 1.5fr) repeat(5, auto); gap: 40px 44px; }
+        .pq-footer-grid { display: grid; grid-template-columns: minmax(220px, 1.5fr) repeat(4, auto); gap: 40px 44px; }
         .pq-footer-link { color: var(--ink-soft); text-decoration: none; font-size: 13.5px; }
         .pq-footer-link:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
         @container (max-width: 980px) {
@@ -101,24 +89,26 @@ export function PublicFooter({ bottomClearance = 0 }: {
       <div style={{ maxWidth: 1120, margin: "0 auto", padding: `48px 28px ${28 + bottomClearance}px` }}>
         <div className="pq-footer-grid">
           <div className="pq-footer-brand">
-            <Logo />
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <Logo />
+              <a
+                href="https://instagram.com/parkquest.me"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="ParkQuest on Instagram"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                  background: "var(--surface-alt)", border: "0.5px solid var(--hairline)",
+                  color: "var(--ink-soft)",
+                }}
+              >
+                <Instagram size={17} strokeWidth={2} />
+              </a>
+            </div>
             <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.55, margin: "12px 0 18px", maxWidth: 280 }}>
               A passport for America&rsquo;s national parks. Log your visits, collect a stamp for each park, and earn badges along the way.
             </p>
-            <a
-              href="https://instagram.com/parkquest.me"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="ParkQuest on Instagram"
-              style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                width: 36, height: 36, borderRadius: "50%", marginBottom: 14,
-                background: "var(--surface-alt)", border: "0.5px solid var(--hairline)",
-                color: "var(--ink-soft)",
-              }}
-            >
-              <Instagram size={17} strokeWidth={2} />
-            </a>
             <AppStoreBadge />
           </div>
 
