@@ -15,28 +15,29 @@ const profileFields = {
 // GET /api/parks/:park_code/visitors — who's visited this park, split into the
 // current user's accepted friends (non-private visits) and everyone else with a
 // publicly visible post from the park. Powers the "N friends and M others have
-// visited" indicator on the park detail screen.
+// visited" indicator on the park detail screen. Signed-out callers get no
+// friends or blocks, the same public-post avatars, and visitor_count.
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ park_code: string }> }
 ) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { park_code } = await params;
 
-    const friendRows = await db
-      .select({
-        friend_id: sql<string>`CASE WHEN ${friendships.requester_id} = ${userId} THEN ${friendships.recipient_id} ELSE ${friendships.requester_id} END`,
-      })
-      .from(friendships)
-      .where(
-        and(
-          or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId)),
-          eq(friendships.status, 'accepted')
-        )
-      );
+    const friendRows = userId
+      ? await db
+          .select({
+            friend_id: sql<string>`CASE WHEN ${friendships.requester_id} = ${userId} THEN ${friendships.recipient_id} ELSE ${friendships.requester_id} END`,
+          })
+          .from(friendships)
+          .where(
+            and(
+              or(eq(friendships.requester_id, userId), eq(friendships.recipient_id, userId)),
+              eq(friendships.status, 'accepted')
+            )
+          )
+      : [];
 
     const friendIds = friendRows.map(r => r.friend_id);
 
@@ -75,8 +76,8 @@ export async function GET(
     // posts inherit the linked visit's visibility — the visit is the source of
     // truth). Friends are excluded so nobody appears in both buckets, and
     // blocked users (either direction) never surface.
-    const blockedIds = await getBlockedIds(userId);
-    const excludedIds = [userId, ...friendIds, ...blockedIds];
+    const blockedIds = userId ? await getBlockedIds(userId) : [];
+    const excludedIds = [...(userId ? [userId] : []), ...friendIds, ...blockedIds];
 
     const otherRows = await db
       .selectDistinct({ clerk_user_id: posts.clerk_user_id })
@@ -100,6 +101,20 @@ export async function GET(
           .where(inArray(userProfiles.clerk_user_id, otherIds))
       : [];
 
+    // Distinct ParkQuest users who've logged a non-private visit here — the
+    // count shown publicly, separate from the avatar lists above.
+    const [visitorCountRow] = await db
+      .select({ count: sql<number>`COUNT(DISTINCT ${visits.clerk_user_id})::int` })
+      .from(visits)
+      .where(
+        and(
+          eq(visits.park_code, park_code),
+          isNotNull(visits.visited_date),
+          eq(visits.is_bucket_list, false),
+          ne(visits.visibility, 'private'),
+        )
+      );
+
     // Full lists — the mobile client slices to a few for the avatar stack
     // (friends first) but needs everyone for the tap-through sheet.
     return NextResponse.json({
@@ -107,6 +122,7 @@ export async function GET(
       total: friendProfiles.length,
       others: otherProfiles,
       others_total: otherProfiles.length,
+      visitor_count: visitorCountRow?.count ?? 0,
     });
   } catch (error) {
     console.error('Error fetching park visitors:', error);

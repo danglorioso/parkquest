@@ -689,19 +689,23 @@ function JournalColumn({
 function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: string }) {
   const paperBg = "#FAF3E0";
   const inkPaper = "#3A2E1C";
+  const [hasPosts, setHasPosts] = useState(false);
 
   return (
     <div
       style={{
         width: 340,
         flexShrink: 0,
+        minHeight: 0,
+        overflow: "hidden",
         borderLeft: "0.5px solid var(--hairline)",
         background: paperBg,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        padding: "40px 28px",
+        // With public posts the CTA pins to the top and the posts scroll below it.
+        justifyContent: hasPosts ? "flex-start" : "center",
+        padding: hasPosts ? "32px 28px 20px" : "40px 28px",
         gap: 20,
         textAlign: "center",
       }}
@@ -748,9 +752,14 @@ function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: strin
         </Link>
       </div>
 
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1.2px", color: "rgba(58,46,28,0.4)", textTransform: "uppercase", fontWeight: 600 }}>
-        Free · No credit card required
-      </div>
+      <ParkPosts
+        key={parkCode}
+        parkCode={parkCode}
+        isSignedIn={false}
+        onEditVisit={() => {}}
+        variant="sidebar"
+        onHasPosts={setHasPosts}
+      />
     </div>
   );
 }
@@ -761,10 +770,15 @@ function ParkPosts({
   parkCode,
   isSignedIn,
   onEditVisit,
+  variant = "column",
+  onHasPosts,
 }: {
   parkCode: string;
   isSignedIn: boolean | null | undefined;
   onEditVisit: (visitId: number) => void;
+  /** "sidebar" fills its parent and scrolls the list; "column" is the in-page section. */
+  variant?: "column" | "sidebar";
+  onHasPosts?: (has: boolean) => void;
 }) {
   const [data, setData] = useState<{ yours: FeedPost[]; community: FeedPost[] } | null>(null);
   const [tab, setTab] = useState<"community" | "yours">("community");
@@ -817,14 +831,20 @@ function ParkPosts({
     );
   };
 
+  useEffect(() => {
+    if (data) onHasPosts?.(data.yours.length > 0 || data.community.length > 0);
+  }, [data, onHasPosts]);
+
   if (!data || (data.yours.length === 0 && data.community.length === 0)) return null;
 
   const showTabs = isSignedIn && data.yours.length > 0;
   const activeList = tab === "yours" ? data.yours : data.community;
 
   return (
-    <div style={{ padding: "0 32px 40px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: open ? 12 : 0 }}>
+    <div style={variant === "sidebar"
+      ? { width: "100%", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
+      : { padding: "0 32px 40px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: open ? 12 : 0, flexShrink: 0 }}>
         <button
           onClick={() => setOpen((v) => !v)}
           style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, cursor: "pointer" }}
@@ -864,7 +884,9 @@ function ParkPosts({
           {tab === "yours" ? "You haven't posted about this park yet." : "No community posts yet."}
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={variant === "sidebar"
+          ? { display: "flex", flexDirection: "column", gap: 12, flex: 1, minHeight: 0, overflowY: "auto", paddingBottom: 8 }
+          : { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
           {activeList.map((post) => (
             <PostCard
               key={post.id}
@@ -899,6 +921,7 @@ function ParkInfoContent({
   onEditVisit,
   status,
   footer,
+  showCommunity = true,
 }: {
   park: ParkData;
   nps: NpsData | null;
@@ -916,6 +939,8 @@ function ParkInfoContent({
   status: "visited" | "bucketList" | "notVisited";
   /** Rendered at the end of the scroll column — the signed-out layout's site footer. */
   footer?: React.ReactNode;
+  /** Community posts at the bottom of the column — signed-out pages show them in the sidebar instead. */
+  showCommunity?: boolean;
 }) {
   const [heroLoaded, setHeroLoaded] = useState(false);
   const [heroIdx, setHeroIdx] = useState(0);
@@ -980,18 +1005,25 @@ function ParkInfoContent({
         <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", height: 360 }}>
           <style>{`@keyframes parkHeroFadeIn { from { opacity: 0; } to { opacity: 1; } }`}</style>
           <div style={{ position: "absolute", inset: 0, background: gradient, backgroundImage: topoPattern("#ffffff", 0.10), pointerEvents: "none" }} />
-          {heroImg && (
+          {/* Every slide stays mounted and cross-fades by opacity — remounting
+              the one changing image blanked the hero to the gradient for a frame. */}
+          {nps?.images.map((img, i) => (
             <Image
-              key={heroImg.url}
-              src={heroImg.url}
-              alt={heroImg.altText || park.name}
+              key={img.url}
+              src={img.url}
+              alt={img.altText || park.name}
               fill
               sizes="(max-width: 1200px) 100vw, 900px"
               onLoad={() => { if (!heroLoaded) setHeroLoaded(true); }}
-              onClick={() => onLightbox(nps!.images.map((img) => ({ url: img.url, caption: img.title || undefined, credit: img.credit || undefined })), heroIdx)}
-              style={{ objectFit: "cover", cursor: "pointer", animation: "parkHeroFadeIn 1.2s ease both" }}
+              onClick={() => onLightbox(nps.images.map((im) => ({ url: im.url, caption: im.title || undefined, credit: im.credit || undefined })), heroIdx)}
+              style={{
+                objectFit: "cover", cursor: "pointer",
+                opacity: i === heroIdx ? 1 : 0,
+                transition: "opacity 1s ease",
+                animation: i === 0 ? "parkHeroFadeIn 1.2s ease both" : undefined,
+              }}
             />
-          )}
+          ))}
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 35%, rgba(0,0,0,0) 65%)", pointerEvents: "none" }} />
           <div style={{ position: "absolute", bottom: 18, left: 22, right: 22, color: "#FFFBF1", pointerEvents: "none" }}>
             <div style={{ marginBottom: 6 }}>
@@ -1295,7 +1327,9 @@ function ParkInfoContent({
         </div>
       )}
 
-      <ParkPosts key={park.park_code} parkCode={park.park_code} isSignedIn={isSignedIn} onEditVisit={onEditVisit} />
+      {showCommunity && (
+        <ParkPosts key={park.park_code} parkCode={park.park_code} isSignedIn={isSignedIn} onEditVisit={onEditVisit} />
+      )}
 
       {/* Data attribution */}
       <div style={{ padding: "20px 32px 32px", borderTop: "0.5px solid var(--hairline)", marginTop: 8 }}>
@@ -1483,7 +1517,7 @@ export default function ParkDetailPage({
         <PublicNav active="parks" redirectTo={`/parks/${park_code}`} />
 
         <div style={{ display: "flex", height: `calc(100vh - ${PUBLIC_NAV_HEIGHT}px)`, overflow: "hidden" }}>
-          <ParkInfoContent {...sharedInfoProps} footer={<PublicFooter bottomClearance={FIXED_BANNER_CLEARANCE} />} />
+          <ParkInfoContent {...sharedInfoProps} showCommunity={false} footer={<PublicFooter bottomClearance={FIXED_BANNER_CLEARANCE} />} />
           <SignUpPanel parkName={park.name} parkCode={park.park_code} />
         </div>
 
