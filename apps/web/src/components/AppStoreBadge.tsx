@@ -1,4 +1,4 @@
-const APP_STORE_URL = "https://apps.apple.com/us/app/parkquest-national-park-log/id6778208311";
+export const APP_STORE_URL ="https://apps.apple.com/us/app/parkquest-national-park-log/id6778208311";
 
 export function AppStoreBadge({ className }: { className?: string }) {
   return (
