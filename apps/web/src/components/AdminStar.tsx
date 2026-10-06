@@ -19,7 +19,9 @@ export function AdminStar({ size = 14 }: { size?: number }) {
         verticalAlign: "middle",
       }}
     >
-      <Star size={size * 0.6} strokeWidth={0} fill="var(--primary-foreground)" />
+      {/* Lucide's star path sits a hair low-right inside its own 24-unit box,
+          so a plain flex center reads off-center — nudge it optically. */}
+      <Star size={size * 0.6} strokeWidth={0} fill="var(--primary-foreground)" style={{ transform: "translate(-0.5px, -0.5px)" }} />
     </span>
   );
 }
