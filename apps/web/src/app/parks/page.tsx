@@ -5,7 +5,7 @@ import { useUser } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { Search, X, Check, Bookmark, Plus } from "lucide-react";
+import { Search, X, Check, Bookmark, Plus, ChevronDown } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
 import { PublicNav, PUBLIC_NAV_HEIGHT } from "@/components/public/PublicNav";
 import { PublicFooter, FIXED_BANNER_CLEARANCE } from "@/components/public/PublicFooter";
@@ -636,26 +636,36 @@ function ParksPageContent() {
     onResetAll: () => { setStatusFilter("all"); setStateFilter("all"); setActivityFilters([]); setTopicFilters([]); setQuery(""); },
   };
 
+  // Native appearance ignored borderRadius on macOS, so the corners didn't
+  // match the search bar — drop it and draw the chevron ourselves.
+  const sortSelect = (
+    <div style={{ position: "relative", flexShrink: 0, height: 36 }}>
+      <select
+        value={sortBy}
+        onChange={(e) => handleSortChange(e.target.value as SortBy)}
+        aria-label="Sort parks"
+        style={{
+          appearance: "none", WebkitAppearance: "none", MozAppearance: "none",
+          height: 36, boxSizing: "border-box", width: "100%",
+          background: "var(--surface)", color: "var(--ink)", border: "0.5px solid var(--hairline)",
+          borderRadius: 12, padding: "0 34px 0 14px", fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+        }}
+      >
+        <option value="closest">Closest</option>
+        <option value="az">A to Z</option>
+        <option value="za">Z to A</option>
+      </select>
+      <ChevronDown size={14} strokeWidth={2} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "var(--ink-mute)", pointerEvents: "none" }} />
+    </div>
+  );
+
   const parkGrid = (
     <>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", letterSpacing: "1px", fontWeight: 600 }}>
-          {hasFilter ? `${filtered.length} RESULT${filtered.length !== 1 ? "S" : ""}` : ""}
+      {hasFilter && (
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", letterSpacing: "1px", marginBottom: 14, fontWeight: 600 }}>
+          {filtered.length} RESULT{filtered.length !== 1 ? "S" : ""}
         </div>
-        <select
-          value={sortBy}
-          onChange={(e) => handleSortChange(e.target.value as SortBy)}
-          aria-label="Sort parks"
-          style={{
-            background: "var(--surface)", color: "var(--ink)", border: "0.5px solid var(--hairline)",
-            borderRadius: 10, padding: "7px 12px", fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
-          }}
-        >
-          <option value="closest">Closest</option>
-          <option value="az">A to Z</option>
-          <option value="za">Z to A</option>
-        </select>
-      </div>
+      )}
       {loading ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
           {Array.from({ length: 18 }).map((_, i) => <CardSkeleton key={i} index={i} />)}
@@ -705,20 +715,23 @@ function ParksPageContent() {
                 </div>
               </div>
 
-              {/* Search bar */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 12, padding: "10px 14px", marginBottom: 20 }}>
-                <Search size={15} style={{ color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2} />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search parks…"
-                  style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 14, fontWeight: 500, color: "var(--ink)", fontFamily: "var(--font-sans)" }}
-                />
-                {query && (
-                  <button onClick={() => setQuery("")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-mute)", display: "flex", padding: 0 }}>
-                    <X size={14} />
-                  </button>
-                )}
+              {/* Search bar + sort */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+                <div style={{ flex: 1, minWidth: 0, height: 36, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 12, padding: "0 14px" }}>
+                  <Search size={15} style={{ color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2} />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search parks…"
+                    style={{ flex: 1, minWidth: 0, border: 0, outline: "none", background: "transparent", fontSize: 14, fontWeight: 500, color: "var(--ink)", fontFamily: "var(--font-sans)" }}
+                  />
+                  {query && (
+                    <button onClick={() => setQuery("")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-mute)", display: "flex", padding: 0 }}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                {sortSelect}
               </div>
 
               {parkGrid}
@@ -784,40 +797,34 @@ function ParksPageContent() {
               </div>
             </div>
 
-            {/* Search bar */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                background: "var(--surface)",
-                border: "0.5px solid var(--hairline)",
-                borderRadius: 12,
-                padding: "10px 14px",
-                marginBottom: 20,
-              }}
-            >
-              <Search size={15} style={{ color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2} />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search parks…"
+            {/* Search bar + sort */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+              <div
                 style={{
-                  flex: 1,
-                  border: 0,
-                  outline: "none",
-                  background: "transparent",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: "var(--ink)",
-                  fontFamily: "var(--font-sans)",
+                  flex: 1, minWidth: 0, height: 36, boxSizing: "border-box",
+                  display: "flex", alignItems: "center", gap: 10,
+                  background: "var(--surface)", border: "0.5px solid var(--hairline)", borderRadius: 12,
+                  padding: "0 14px",
                 }}
-              />
-              {query && (
-                <button onClick={() => setQuery("")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-mute)", display: "flex", padding: 0 }}>
-                  <X size={14} />
-                </button>
-              )}
+              >
+                <Search size={15} style={{ color: "var(--ink-mute)", flexShrink: 0 }} strokeWidth={2} />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search parks…"
+                  style={{
+                    flex: 1, minWidth: 0, border: 0, outline: "none",
+                    background: "transparent", fontSize: 14, fontWeight: 500,
+                    color: "var(--ink)", fontFamily: "var(--font-sans)",
+                  }}
+                />
+                {query && (
+                  <button onClick={() => setQuery("")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-mute)", display: "flex", padding: 0 }}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              {sortSelect}
             </div>
 
             {parkGrid}
