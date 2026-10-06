@@ -7,7 +7,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { Search, X, Check, Bookmark, Plus } from "lucide-react";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
-import Logo from "@/components/Logo";
+import { PublicNav, PUBLIC_NAV_HEIGHT } from "@/components/public/PublicNav";
+import { PublicFooter, FIXED_BANNER_CLEARANCE } from "@/components/public/PublicFooter";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ interface Park {
   latitude: string | null;
   longitude: string | null;
   image_url: string | null;
+  is_national_park?: boolean;
 }
 
 interface Visit {
@@ -28,8 +30,19 @@ interface Visit {
 }
 
 type StatusFilter = "all" | "visited" | "bucketList" | "notVisited";
+type SortBy = "closest" | "az" | "za";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function milesFrom(from: { lat: number; lng: number }, p: Park): number {
+  if (!p.latitude || !p.longitude) return Infinity;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const lat2 = parseFloat(p.latitude);
+  const dLat = toRad(lat2 - from.lat);
+  const dLng = toRad(parseFloat(p.longitude) - from.lng);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(from.lat)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 3958.8 * 2 * Math.asin(Math.sqrt(a));
+}
 
 const STATE_NAMES: Record<string, string> = {
   AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
@@ -144,7 +157,7 @@ function ParkCard({ park, status, showStatus = true }: { park: Park; status: "vi
       <div
         style={{
           background: "var(--surface)",
-          border: "0.5px solid var(--hairline)",
+          border: park.is_national_park ? "1.5px solid var(--primary)" : "0.5px solid var(--hairline)",
           borderRadius: 14,
           overflow: "hidden",
           cursor: "pointer",
@@ -490,6 +503,8 @@ function ParksPageContent() {
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<SortBy>("az");
+  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
   const searchParams = useSearchParams();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
     const s = searchParams.get("status");
@@ -545,6 +560,19 @@ function ParksPageContent() {
     );
   };
 
+  // Location is only requested once someone picks "Closest" — never on page
+  // load. If it's refused, fall back to A to Z rather than showing a sort
+  // label that isn't actually being applied.
+  const handleSortChange = (s: SortBy) => {
+    setSortBy(s);
+    if (s !== "closest" || userLoc || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => setSortBy("az"),
+      { maximumAge: 300000, timeout: 10000 }
+    );
+  };
+
   const toggleTopic = (topic: string) => {
     setTopicFilters((prev) =>
       prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic]
@@ -573,8 +601,16 @@ function ParksPageContent() {
         return p.name.toLowerCase().includes(q) || p.states.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q);
       }
       return true;
-    }).sort((a, b) => a.name.localeCompare(b.name));
-  }, [parks, visits, activitiesMap, topicsMap, query, statusFilter, stateFilter, activityFilters, topicFilters]);
+    }).sort((a, b) => {
+      if (sortBy === "za") return b.name.localeCompare(a.name);
+      if (sortBy === "closest" && userLoc) {
+        const da = milesFrom(userLoc, a);
+        const db = milesFrom(userLoc, b);
+        if (da !== db) return da - db;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [parks, visits, activitiesMap, topicsMap, query, statusFilter, stateFilter, activityFilters, topicFilters, sortBy, userLoc]);
 
   const visitedCount = useMemo(() => parks.filter((p) => parkStatus(p.park_code, visits) === "visited").length, [parks, visits]);
 
@@ -602,11 +638,24 @@ function ParksPageContent() {
 
   const parkGrid = (
     <>
-      {hasFilter && (
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", letterSpacing: "1px", marginBottom: 14, fontWeight: 600 }}>
-          {filtered.length} RESULT{filtered.length !== 1 ? "S" : ""}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-mute)", letterSpacing: "1px", fontWeight: 600 }}>
+          {hasFilter ? `${filtered.length} RESULT${filtered.length !== 1 ? "S" : ""}` : ""}
         </div>
-      )}
+        <select
+          value={sortBy}
+          onChange={(e) => handleSortChange(e.target.value as SortBy)}
+          aria-label="Sort parks"
+          style={{
+            background: "var(--surface)", color: "var(--ink)", border: "0.5px solid var(--hairline)",
+            borderRadius: 10, padding: "7px 12px", fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+          }}
+        >
+          <option value="closest">Closest</option>
+          <option value="az">A to Z</option>
+          <option value="za">Z to A</option>
+        </select>
+      </div>
       {loading ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
           {Array.from({ length: 18 }).map((_, i) => <CardSkeleton key={i} index={i} />)}
@@ -642,46 +691,15 @@ function ParksPageContent() {
   if (isLoaded && !isSignedIn) {
     return (
       <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-        {/* Public top nav */}
-        <div style={{
-          position: "sticky", top: 0, zIndex: 100,
-          background: "rgba(245,239,224,0.92)",
-          backdropFilter: "blur(20px) saturate(160%)",
-          WebkitBackdropFilter: "blur(20px) saturate(160%)",
-          borderBottom: "0.5px solid var(--hairline)",
-          padding: "0 24px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          height: 54,
-        }}>
-          <Logo />
-          <div style={{ display: "flex", gap: 8 }}>
-            <Link href="/sign-in?redirect=/parks" style={{ textDecoration: "none" }}>
-              <button style={{
-                background: "transparent", border: "0.5px solid var(--hairline)",
-                borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600,
-                color: "var(--ink)", cursor: "pointer",
-              }}>Sign in</button>
-            </Link>
-            <Link href="/sign-up" style={{ textDecoration: "none" }}>
-              <button style={{
-                background: "var(--primary)", border: "none",
-                borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 700,
-                color: "#FFFBF1", cursor: "pointer",
-              }}>Get started</button>
-            </Link>
-          </div>
-        </div>
+        <PublicNav active="parks" redirectTo="/parks" />
 
-        <div style={{ display: "flex", height: "calc(100vh - 54px)", overflow: "hidden" }}>
+        <div style={{ display: "flex", height: `calc(100vh - ${PUBLIC_NAV_HEIGHT}px)`, overflow: "hidden" }}>
           <FilterSidebar {...filterSidebarProps} isPublic />
 
           <div style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
-            <div style={{ padding: "28px 32px", paddingBottom: 100 }}>
+            <div style={{ padding: "28px 32px", paddingBottom: 48 }}>
               {/* Header */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.6px", color: "var(--ink-mute)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>
-                  <span style={{ visibility: loading ? "hidden" : "visible" }}>{parks.length} National Parks</span>
-                </div>
                 <div style={{ fontWeight: 900, fontSize: 30, color: "var(--ink)", letterSpacing: -0.8 }}>
                   Explore the Parks
                 </div>
@@ -705,6 +723,7 @@ function ParksPageContent() {
 
               {parkGrid}
             </div>
+            <PublicFooter bottomClearance={FIXED_BANNER_CLEARANCE} />
           </div>
         </div>
 
@@ -755,9 +774,6 @@ function ParksPageContent() {
 
             {/* Header */}
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.6px", color: "var(--ink-mute)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>
-                <span style={{ visibility: loading ? "hidden" : "visible" }}>{parks.length} National Parks</span>
-              </div>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
                 <div style={{ fontWeight: 900, fontSize: 30, color: "var(--ink)", letterSpacing: -0.8 }}>
                   Explore the Parks

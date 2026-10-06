@@ -116,6 +116,7 @@ export function GlobalSpotlight({ open, onClose }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const userTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const userReqId = useRef(0);
   // Stale-closure-safe refs for keyboard handler
   const activeIdxRef = useRef(-1);
   const navItemsRef = useRef<NavItem[]>([]);
@@ -125,6 +126,7 @@ export function GlobalSpotlight({ open, onClose }: Props) {
   const [parks, setParks] = useState<Park[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [users, setUsers] = useState<UserResult[]>([]);
+  const [usersPending, setUsersPending] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
 
@@ -205,12 +207,15 @@ export function GlobalSpotlight({ open, onClose }: Props) {
   // Debounced user search
   const searchUsers = useCallback((query: string) => {
     if (userTimer.current) clearTimeout(userTimer.current);
-    if (!query.trim()) { setUsers([]); return; }
+    const reqId = ++userReqId.current;
+    if (!query.trim()) { setUsers([]); setUsersPending(false); return; }
+    setUsersPending(true);
     userTimer.current = setTimeout(() => {
       fetch(`/api/users?search=${encodeURIComponent(query)}`)
         .then((r) => (r.ok ? r.json() : []))
-        .then(setUsers)
-        .catch(() => {});
+        .then((data) => { if (reqId === userReqId.current) setUsers(data); })
+        .catch(() => {})
+        .finally(() => { if (reqId === userReqId.current) setUsersPending(false); });
     }, 200);
   }, []);
 
@@ -454,6 +459,10 @@ export function GlobalSpotlight({ open, onClose }: Props) {
                   active={activeHref === `/parks/${p.park_code}`}
                 />
               ))}
+            </div>
+          ) : q && (!dataLoaded || usersPending) ? (
+            <div style={{ padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-mute)" }}>
+              Searching…
             </div>
           ) : q && users.length === 0 ? (
             <div style={{ padding: "40px 16px", textAlign: "center", fontSize: 13, color: "var(--ink-mute)" }}>

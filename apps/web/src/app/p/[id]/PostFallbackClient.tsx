@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
-import Logo from '@/components/Logo';
+import { PublicNav } from '@/components/public/PublicNav';
+import { PublicFooter } from '@/components/public/PublicFooter';
 import { OpenInAppOverlay } from '@/components/OpenInAppOverlay';
 import { PostCard, type FeedPost } from '@/components/PostCard';
+import { isMobileBrowser } from '@/lib/device';
 
 function PostUnavailableCard() {
   return (
@@ -27,10 +28,13 @@ function PostUnavailableCard() {
 
 export function PostFallbackClient({ id, appStoreUrl }: { id: string; appStoreUrl: string | null }) {
   const router = useRouter();
-  const { isSignedIn, isLoaded } = useUser();
+  const { isSignedIn } = useUser();
   const [post, setPost] = useState<FeedPost | null>(null);
   const [status, setStatus] = useState<'loading' | 'ok' | 'notfound' | 'error'>('loading');
-  const [showOverlay, setShowOverlay] = useState(true);
+  // Mobile-only — desktop has no app to catch the parkquest:// scheme (see
+  // the profile page's identical fix for why this used to break desktop
+  // Safari outright).
+  const [showOverlay, setShowOverlay] = useState(false);
   const attemptedOpen = useRef(false);
 
   const openApp = () => {
@@ -38,8 +42,9 @@ export function PostFallbackClient({ id, appStoreUrl }: { id: string; appStoreUr
   };
 
   useEffect(() => {
-    if (attemptedOpen.current) return;
+    if (attemptedOpen.current || !isMobileBrowser()) return;
     attemptedOpen.current = true;
+    setShowOverlay(true);
     openApp();
   }, [id]);
 
@@ -66,44 +71,17 @@ export function PostFallbackClient({ id, appStoreUrl }: { id: string; appStoreUr
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <div style={{
-        position: 'sticky', top: 0, zIndex: 100,
-        background: 'rgba(245,239,224,0.92)',
-        backdropFilter: 'blur(20px) saturate(160%)',
-        WebkitBackdropFilter: 'blur(20px) saturate(160%)',
-        borderBottom: '0.5px solid var(--hairline)',
-        padding: '0 24px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        height: 54,
-      }}>
-        <Logo />
-        {isLoaded && !isSignedIn && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Link href={`/sign-in?redirect=${encodeURIComponent(`/p/${id}`)}`} style={{ textDecoration: 'none' }}>
-              <button style={{
-                background: 'transparent', border: '0.5px solid var(--hairline)',
-                borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 600,
-                color: 'var(--ink)', cursor: 'pointer',
-              }}>Sign in</button>
-            </Link>
-            <Link href="/sign-up" style={{ textDecoration: 'none' }}>
-              <button style={{
-                background: 'var(--primary)', border: 'none',
-                borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 700,
-                color: '#FFFBF1', cursor: 'pointer',
-              }}>Get started</button>
-            </Link>
-          </div>
-        )}
-      </div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
+      <PublicNav redirectTo={`/p/${id}`} />
 
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '32px 20px 80px' }}>
+      <div style={{ flex: 1, width: '100%', maxWidth: 560, margin: '0 auto', padding: '32px 20px 80px' }}>
         {status === 'ok' && post && (
           <PostCard post={post} onLike={handleLike} />
         )}
         {(status === 'notfound' || status === 'error') && <PostUnavailableCard />}
       </div>
+
+      <PublicFooter />
 
       {showOverlay && (
         <OpenInAppOverlay

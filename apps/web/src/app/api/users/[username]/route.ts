@@ -40,6 +40,8 @@ export async function GET(
     const [
       [visitCountRow],
       [parksTotalRow],
+      [areasVisitedRow],
+      [areasTotalRow],
       [friendCountRow],
       allVisitsRaw,
       earnedBadges,
@@ -61,6 +63,17 @@ export async function GET(
           eq(parks.is_national_park, true),
         )),
       db.select({ count: count() }).from(parks).where(eq(parks.is_national_park, true)),
+      // Same shape, but every NPS area regardless of designation — mirrors
+      // the mobile passport's own "NPS AREAS" stat (parkScopes.all).
+      db.select({ count: countDistinct(visits.park_code) })
+        .from(visits)
+        .innerJoin(parks, eq(parks.park_code, visits.park_code))
+        .where(and(
+          eq(visits.clerk_user_id, targetId),
+          eq(visits.is_bucket_list, false),
+          isNotNull(visits.visited_date),
+        )),
+      db.select({ count: count() }).from(parks),
       db.select({ count: count() }).from(friendships).where(and(
         or(eq(friendships.requester_id, targetId), eq(friendships.recipient_id, targetId)),
         eq(friendships.status, 'accepted'),
@@ -287,6 +300,8 @@ export async function GET(
       ...profile,
       parks_visited:     visitCountRow.count,
       parks_total:       parksTotalRow.count,
+      areas_visited:     areasVisitedRow.count,
+      areas_total:       areasTotalRow.count,
       states_visited:    statesVisited.size,
       bucket_list_count: bucketList.length,
       friend_count:      friendCountRow.count,

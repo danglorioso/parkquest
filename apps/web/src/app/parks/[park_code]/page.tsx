@@ -10,10 +10,11 @@ import {
 } from "lucide-react";
 import { LightboxModal, type LightboxImage } from "@/components/LightboxModal";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
+import { PublicNav, PUBLIC_NAV_HEIGHT } from "@/components/public/PublicNav";
+import { PublicFooter, FIXED_BANNER_CLEARANCE } from "@/components/public/PublicFooter";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
 import { PostCard, type FeedPost } from "@/components/PostCard";
-import Logo from "@/components/Logo";
 import type { NpsData } from "@/app/api/parks/[park_code]/nps/route";
 import type { WeatherForecast } from "@/app/api/parks/[park_code]/weather/route";
 
@@ -897,6 +898,7 @@ function ParkInfoContent({
   onLogVisit,
   onEditVisit,
   status,
+  footer,
 }: {
   park: ParkData;
   nps: NpsData | null;
@@ -912,6 +914,8 @@ function ParkInfoContent({
   onLogVisit: () => void;
   onEditVisit: (visitId: number) => void;
   status: "visited" | "bucketList" | "notVisited";
+  /** Rendered at the end of the scroll column — the signed-out layout's site footer. */
+  footer?: React.ReactNode;
 }) {
   const [heroLoaded, setHeroLoaded] = useState(false);
   const [heroIdx, setHeroIdx] = useState(0);
@@ -1307,6 +1311,8 @@ function ParkInfoContent({
           . ParkQuest does not guarantee the accuracy, completeness, or timeliness of any information displayed. Always verify details before your visit.
         </p>
       </div>
+
+      {footer}
     </div>
   );
 }
@@ -1474,38 +1480,10 @@ export default function ParkDetailPage({
   if (isLoaded && !isSignedIn) {
     return (
       <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-        {/* Public top nav */}
-        <div style={{
-          position: "sticky", top: 0, zIndex: 100,
-          background: "rgba(245,239,224,0.92)",
-          backdropFilter: "blur(20px) saturate(160%)",
-          WebkitBackdropFilter: "blur(20px) saturate(160%)",
-          borderBottom: "0.5px solid var(--hairline)",
-          padding: "0 24px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          height: 54,
-        }}>
-          <Logo />
-          <div style={{ display: "flex", gap: 8 }}>
-            <Link href={`/sign-in?redirect=${encodeURIComponent(`/parks/${park_code}`)}`} style={{ textDecoration: "none" }}>
-              <button style={{
-                background: "transparent", border: "0.5px solid var(--hairline)",
-                borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600,
-                color: "var(--ink)", cursor: "pointer",
-              }}>Sign in</button>
-            </Link>
-            <Link href="/sign-up" style={{ textDecoration: "none" }}>
-              <button style={{
-                background: "var(--primary)", border: "none",
-                borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 700,
-                color: "#FFFBF1", cursor: "pointer",
-              }}>Get started</button>
-            </Link>
-          </div>
-        </div>
+        <PublicNav active="parks" redirectTo={`/parks/${park_code}`} />
 
-        <div style={{ display: "flex", height: "calc(100vh - 54px)", overflow: "hidden" }}>
-          <ParkInfoContent {...sharedInfoProps} />
+        <div style={{ display: "flex", height: `calc(100vh - ${PUBLIC_NAV_HEIGHT}px)`, overflow: "hidden" }}>
+          <ParkInfoContent {...sharedInfoProps} footer={<PublicFooter bottomClearance={FIXED_BANNER_CLEARANCE} />} />
           <SignUpPanel parkName={park.name} parkCode={park.park_code} />
         </div>
 

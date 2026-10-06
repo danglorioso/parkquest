@@ -255,7 +255,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
       }}
     >
       {/* Wordmark */}
-      <div style={{ padding: "6px 18px 10px" }}>
+      <div style={{ height: 52, display: "flex", alignItems: "center", padding: "0 18px" }}>
         <Link href="/feed" style={{ textDecoration: "none" }}>
           <Wordmark />
         </Link>

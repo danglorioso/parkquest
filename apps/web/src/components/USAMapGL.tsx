@@ -25,6 +25,9 @@ interface Props {
   className?: string;
   initialBounds?: [[number, number], [number, number]];
   showControls?: boolean;
+  // Floor for zooming out. The 2.5 default suits a full-size map; a card-sized
+  // one needs to go lower before initialBounds can fit the lower 48.
+  minZoom?: number;
   flyToTarget?: { coords: [number, number]; rightPadding?: number } | null;
   labelsEnabled?: boolean;
   labelFontSize?: number;
@@ -317,6 +320,7 @@ export default function USAMapGL({
   className = "h-full w-full",
   initialBounds,
   showControls = true,
+  minZoom = 2.5,
   flyToTarget,
   labelsEnabled = true,
   labelFontSize = 11.5,
@@ -393,7 +397,7 @@ export default function USAMapGL({
       ...(initialBounds
         ? { bounds: initialBounds, fitBoundsOptions: { padding: 10 } }
         : { center: [-98.5, 39.0] as [number, number], zoom: 3.6 }),
-      minZoom: 2.5,
+      minZoom,
       maxZoom: 14,
       attributionControl: false,
     });
