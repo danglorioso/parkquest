@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/lib/palette';
+import { useAvatarExpandViewer } from '@/lib/avatarViewer';
 
 // Shared between the profile screen's own small passport card and the
 // full-size cover in components/PassportBackdrop.tsx (the permanent layer
@@ -81,16 +82,26 @@ export interface PassportFaceProps {
       plain `new Animated.Value(0)` for a face that never collapses (the
       card). */
   collapseFrac: AnimatedNumber;
-  onAvatarPress?: () => void;
   /** See PassportStatsRect. Fires on every layout pass of the grid,
       including while it collapses — callers wanting the rest geometry gate
       it themselves. */
   onStatsLayout?: (rect: PassportStatsRect) => void;
+  /** Avatar's own rendered rect, same coordinate space/purpose as
+      onStatsLayout — lets a screen that only shows this face through a hole
+      (the profile tab, closed) float its own avatar-shaped tap target over
+      it, since its hole tap target otherwise swallows every touch on the
+      card (see PASSPORT_STAT_LINKS's sibling comment in profile/index.tsx). */
+  onAvatarLayout?: (rect: PassportStatsRect) => void;
+  /** True while that SAME closed-card floating target (a separate view,
+      positioned to exactly coincide with this avatar) is itself mid-expand
+      into the fullscreen viewer — hides this avatar's own pixels so the two
+      don't briefly show at once. See useAvatarExpandViewer. */
+  forceAvatarHidden?: boolean;
 }
 
 export function PassportFace({
   avatarUrl, name, username, joinDate, bio, statItems, progressLabel, progressPct, mrzLine1, mrzLine2,
-  containerWidth, collapseFrac, onAvatarPress, onStatsLayout,
+  containerWidth, collapseFrac, onStatsLayout, onAvatarLayout, forceAvatarHidden = false,
 }: PassportFaceProps) {
   const T = useColors();
 
@@ -184,8 +195,13 @@ export function PassportFace({
     </View>
   );
 
+  const avatarViewer = useAvatarExpandViewer({ uri: avatarUrl });
+  const avatarHidden = avatarViewer.hidden || forceAvatarHidden;
+  const rootViewRef = useRef<View>(null);
+
   return (
     <View
+      ref={rootViewRef}
       style={{ alignItems: 'center' }}
       onLayout={onStatsLayout ? e => {
         const { x, y } = e.nativeEvent.layout;
@@ -195,20 +211,26 @@ export function PassportFace({
     >
       <Animated.View style={[st.section, collapseSection(topH)]}>
         <View style={st.sectionInner} onLayout={e => setTopH(e.nativeEvent.layout.height)}>
-          {onAvatarPress ? (
+          <View
+            ref={avatarViewer.ref}
+            collapsable={false}
+            style={{ opacity: avatarHidden ? 0 : 1 }}
+            onLayout={onAvatarLayout ? () => {
+              avatarViewer.ref.current?.measureLayout(
+                rootViewRef.current as any,
+                (x, y, width, height) => onAvatarLayout({ x, y, width, height }),
+              );
+            } : undefined}
+          >
             <TouchableOpacity
               style={[st.avatarWrap, { borderColor: T.hairline, backgroundColor: T.surface }]}
               activeOpacity={avatarUrl ? 0.85 : 1}
               disabled={!avatarUrl}
-              onPress={onAvatarPress}
+              onPress={avatarViewer.onPress}
             >
               {avatarContent}
             </TouchableOpacity>
-          ) : (
-            <View style={[st.avatarWrap, { borderColor: T.hairline, backgroundColor: T.surface }]}>
-              {avatarContent}
-            </View>
-          )}
+          </View>
 
           <Text style={st.name} numberOfLines={1} adjustsFontSizeToFit>{name ?? 'Explorer'}</Text>
           {username ? <Text style={st.handle}>@{username}</Text> : null}

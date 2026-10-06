@@ -161,7 +161,6 @@ export interface PassportBackdropProps {
   /** Reports the card block's rendered height so the profile screen can
       size its hole to match. */
   onCardHeight: (h: number) => void;
-  onAvatarPress: () => void;
   /** Reports the cover's 2×2 stat grid rect (relative to the card block =
       the hole) so the profile screen can float its own tap targets over the
       stats while the passport is closed — its hole tap target otherwise
@@ -170,6 +169,10 @@ export interface PassportBackdropProps {
       own layout genuinely changes (e.g. bio length) — there's no
       "collapsed" variant of it to filter out. */
   onStatsLayout?: (rect: PassportStatsRect) => void;
+  /** Same idea, for the avatar — see PassportFace's own onAvatarLayout. */
+  onAvatarLayout?: (rect: PassportStatsRect) => void;
+  /** Forwarded straight to PassportFace's forceAvatarHidden — see there. */
+  avatarHiddenExtra?: boolean;
   getToken: () => Promise<string | null>;
   rawVisits: any[];
   earnedBadges: BadgeSummary[];
@@ -287,7 +290,7 @@ function CompactStats({ stats, badgesLoaded, friendsLoaded, onPress }: {
 }
 
 export function PassportBackdrop({
-  active, onRequestClose, holeTop, shiftY, onCardHeight, onAvatarPress, onStatsLayout,
+  active, onRequestClose, holeTop, shiftY, onCardHeight, onStatsLayout, onAvatarLayout, avatarHiddenExtra,
   getToken, rawVisits, earnedBadges, profile, stats, badgesLoaded, friendsLoaded, mrzLine1, mrzLine2, isDark,
 }: PassportBackdropProps) {
   const insets = useSafeAreaInsets();
@@ -615,8 +618,9 @@ export function PassportBackdrop({
               mrzLine2={mrzLine2}
               containerWidth={containerWidthAnim}
               collapseFrac={zeroAnim}
-              onAvatarPress={onAvatarPress}
               onStatsLayout={onStatsLayout}
+              onAvatarLayout={onAvatarLayout}
+              forceAvatarHidden={avatarHiddenExtra}
             />
           </View>
 

@@ -23,6 +23,7 @@ import LoadingScreen from '../components/LoadingScreen';
 import { ToastHost } from '../lib/toast';
 import { PinchZoomHost } from '../lib/pinchZoom';
 import { ImageLightboxHost } from '../lib/imageLightbox';
+import { AvatarViewerHost } from '../lib/avatarViewer';
 import { useAuthBootstrapReady } from '../lib/network';
 import { useFeedBootstrapReady } from '../lib/feedReady';
 import { syncLastAccountProfile, type AuthStrategy } from '../lib/lastAccount';
@@ -296,6 +297,7 @@ function RootLayout() {
             <ToastHost />
             <PinchZoomHost />
             <ImageLightboxHost />
+            <AvatarViewerHost />
           </SafeAreaProvider>
           </PaletteProvider>
         </GestureHandlerRootView>

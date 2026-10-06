@@ -18,7 +18,7 @@ import { AdminStar } from '@/components/AdminStar';
 import { BadgeDetailModal, BadgePatch } from '@/components/BadgeDetailModal';
 import { ParkStamp } from '@/components/ParkStamp';
 import { EmptyState } from '@/components/EmptyState';
-import { AvatarLightbox } from '@/components/AvatarLightbox';
+import { useAvatarExpandViewer } from '@/lib/avatarViewer';
 import { GlassScrubTabs } from '@/components/GlassScrubTabs';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { emitUserBlocked } from '@/lib/blocking';
@@ -211,7 +211,7 @@ export default function UserProfileScreen() {
   const [friendBusy, setFriendBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<ProfileBadge | null>(null);
-  const [avatarLightbox, setAvatarLightbox] = useState(false);
+  const avatarViewer = useAvatarExpandViewer({ uri: profile?.avatar_url ?? null });
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showReportUserSheet, setShowReportUserSheet] = useState(false);
@@ -572,17 +572,19 @@ export default function UserProfileScreen() {
             ref={scrollRef}
             contentContainerStyle={styles.scroll}
             showsVerticalScrollIndicator={false}
-            scrollEnabled={!avatarLightbox}
+            scrollEnabled={!avatarViewer.hidden}
           >
             {/* Hero */}
             <View style={styles.hero}>
-              <TouchableOpacity
-                activeOpacity={profile.avatar_url ? 0.85 : 1}
-                disabled={!profile.avatar_url}
-                onPress={() => setAvatarLightbox(true)}
-              >
-                <Avatar url={profile.avatar_url} name={displayName} size={88} style={styles.avatar} />
-              </TouchableOpacity>
+              <View ref={avatarViewer.ref} collapsable={false} style={{ opacity: avatarViewer.hidden ? 0 : 1 }}>
+                <TouchableOpacity
+                  activeOpacity={profile.avatar_url ? 0.85 : 1}
+                  disabled={!profile.avatar_url}
+                  onPress={avatarViewer.onPress}
+                >
+                  <Avatar url={profile.avatar_url} name={displayName} size={88} style={styles.avatar} />
+                </TouchableOpacity>
+              </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Text style={styles.name}>{displayName}</Text>
@@ -970,8 +972,6 @@ export default function UserProfileScreen() {
             onSubmitted={() => { setReportedUser(true); Alert.alert('Report submitted', "Thanks — we'll review this."); }}
           />
         ) : null}
-
-        <AvatarLightbox visible={avatarLightbox} url={profile?.avatar_url} onClose={() => setAvatarLightbox(false)} />
       </SafeAreaView>
     </>
   );
