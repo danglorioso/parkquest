@@ -27,7 +27,7 @@ import { EmptyState } from '@/components/EmptyState';
 import {
   PassportBackdrop, PASSPORT_CARD_INSET, PASSPORT_CARD_RADIUS, PASSPORT_CARD_W, PASSPORT_STAT_LINKS,
 } from '@/components/PassportBackdrop';
-import { AvatarLightbox } from '@/components/AvatarLightbox';
+import { useAvatarExpandViewer } from '@/lib/avatarViewer';
 import { FeedbackSheet } from '@/components/FeedbackSheet';
 import { STATIC as C, colorStr, dyn, useColors } from '@/lib/palette';
 import { useTabBarSpace } from '@/components/FloatingTabBar';
@@ -234,7 +234,17 @@ export default function ProfileScreen() {
   const [selectedBadge, setSelectedBadge] = useState<BadgeSummary | null>(null);
   const [sharingBadge, setSharingBadge] = useState<BadgeSummary | null>(null);
   const [selectedStamp, setSelectedStamp] = useState<StampPreview | null>(null);
-  const [avatarLightbox, setAvatarLightbox] = useState(false);
+  // Avatar's own rect within the card (see PassportFace's onAvatarLayout) —
+  // used to float a dedicated avatar-shaped tap target over the hole while
+  // the passport is closed, same idea as PASSPORT_STAT_LINKS's stat rects.
+  const [avatarRect, setAvatarRect] = useState<PassportStatsRect | null>(null);
+  const handleAvatarLayout = useCallback((r: PassportStatsRect) => {
+    setAvatarRect(prev =>
+      prev && Math.abs(prev.x - r.x) < 0.5 && Math.abs(prev.y - r.y) < 0.5
+        && Math.abs(prev.width - r.width) < 0.5 && Math.abs(prev.height - r.height) < 0.5
+        ? prev : r,
+    );
+  }, []);
   const [searchOpen, setSearchOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [rawVisits, setRawVisits] = useState<any[]>([]);
@@ -381,6 +391,13 @@ export default function ProfileScreen() {
   const displayName = realName ?? 'Explorer';
   const username    = profile?.username || user?.username || '';
   const avatarUrl   = profile?.avatar_url || user?.imageUrl || null;
+  // Closed-card floating target's own viewer instance — a SEPARATE trigger
+  // from the real avatar's (inside PassportFace, reachable once the
+  // passport is open) but both grow the same fullscreen circle. Nothing to
+  // forward for hiding the real avatar (visible through the hole right
+  // now): PassportFace hides it itself, keyed off this same uri — which
+  // also keeps this whole screen from re-rendering as the viewer opens.
+  const closedAvatarViewer = useAvatarExpandViewer({ uri: avatarUrl });
   const joinDate    = user?.createdAt
     ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : null;
@@ -662,7 +679,7 @@ export default function ProfileScreen() {
         shiftY={backdropShift}
         onCardHeight={handleCardHeight}
         onStatsLayout={handleStatsLayout}
-        onAvatarPress={() => setAvatarLightbox(true)}
+        onAvatarLayout={handleAvatarLayout}
         getToken={getToken}
         rawVisits={rawVisits}
         earnedBadges={allEarnedBadges}
@@ -737,6 +754,34 @@ export default function ProfileScreen() {
             onPress={openPassport}
             activeOpacity={1}
           />
+          {/* Avatar target — a later sibling of the hole catch-all above, so
+              it wins there specifically: tapping the avatar opens the
+              fullscreen photo viewer (growing from this exact spot) instead
+              of the passport. avatarRect comes from PassportFace's own
+              onAvatarLayout, same coordinate space as statsRect below — it
+              has to sit exactly on the photo, since this view (not the real
+              avatar, whose backdrop is native-shifted with scroll) is what
+              the viewer measures and grows from. Not rendered for a
+              placeholder avatar: that tap just opens the passport. */}
+          {avatarRect && closedAvatarViewer.canExpand && (
+            <View
+              ref={closedAvatarViewer.ref}
+              collapsable={false}
+              style={{
+                position: 'absolute',
+                left: PASSPORT_CARD_INSET + avatarRect.x,
+                top: HOLE_TOP + avatarRect.y,
+                width: avatarRect.width,
+                height: avatarRect.height,
+              }}
+            >
+              <TouchableOpacity
+                style={{ width: avatarRect.width, height: avatarRect.height, borderRadius: avatarRect.width / 2 }}
+                onPress={closedAvatarViewer.onPress}
+                activeOpacity={1}
+              />
+            </View>
+          )}
           {/* Stat links on the closed card (see statsRect) — later siblings
               of the hole target above, so they win the touch. Stats with no
               link of their own get no target: the tap falls through to the
@@ -1139,11 +1184,6 @@ export default function ProfileScreen() {
         <FeedbackSheet onClose={() => setFeedbackOpen(false)} />
       ) : null}
       </Animated.View>
-
-      {/* Outside the foreground wrapper — the backdrop's own avatar (the
-          only avatar there is) opens this too, and while the passport is
-          open the foreground is pointerEvents 'none'. */}
-      <AvatarLightbox visible={avatarLightbox} url={avatarUrl} onClose={() => setAvatarLightbox(false)} />
     </View>
   );
 }

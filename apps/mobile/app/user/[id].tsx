@@ -18,7 +18,7 @@ import { AdminStar } from '@/components/AdminStar';
 import { BadgeDetailModal, BadgePatch } from '@/components/BadgeDetailModal';
 import { ParkStamp } from '@/components/ParkStamp';
 import { EmptyState } from '@/components/EmptyState';
-import { useAvatarExpandViewer } from '@/lib/avatarViewer';
+import { useAvatarExpandViewer, useAvatarLift } from '@/lib/avatarViewer';
 import { GlassScrubTabs } from '@/components/GlassScrubTabs';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { emitUserBlocked } from '@/lib/blocking';
@@ -185,6 +185,30 @@ function FriendListModal({ userId, onClose, onNavigate }: {
   );
 }
 
+// Its own component so the viewer opening and closing re-renders these few
+// views rather than the whole screen (see useAvatarLift).
+function HeroAvatar({ url, name }: { url: string | null; name: string }) {
+  const viewer = useAvatarExpandViewer({ uri: url });
+  const lift = useAvatarLift(url);
+  return (
+    <TouchableOpacity
+      style={styles.avatarTouch}
+      activeOpacity={viewer.canExpand ? 0.85 : 1}
+      disabled={!viewer.canExpand}
+      onPress={viewer.onPress}
+    >
+      {/* Ring on a plain View (its color is a dyn token — not safe on the
+          touchable's Animated.View). The viewer's ref wraps the photo alone,
+          inside the ring: see useAvatarExpandViewer. */}
+      <View style={[styles.avatarRing, lift.ringHidden && styles.avatarRingLifted]}>
+        <View ref={viewer.ref} collapsable={false} style={{ opacity: lift.photoHidden ? 0 : 1 }}>
+          <Avatar url={url} name={name} size={84} />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getToken } = useAuth();
@@ -211,7 +235,6 @@ export default function UserProfileScreen() {
   const [friendBusy, setFriendBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<ProfileBadge | null>(null);
-  const avatarViewer = useAvatarExpandViewer({ uri: profile?.avatar_url ?? null });
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showReportUserSheet, setShowReportUserSheet] = useState(false);
@@ -572,19 +595,10 @@ export default function UserProfileScreen() {
             ref={scrollRef}
             contentContainerStyle={styles.scroll}
             showsVerticalScrollIndicator={false}
-            scrollEnabled={!avatarViewer.hidden}
           >
             {/* Hero */}
             <View style={styles.hero}>
-              <View ref={avatarViewer.ref} collapsable={false} style={{ opacity: avatarViewer.hidden ? 0 : 1 }}>
-                <TouchableOpacity
-                  activeOpacity={profile.avatar_url ? 0.85 : 1}
-                  disabled={!profile.avatar_url}
-                  onPress={avatarViewer.onPress}
-                >
-                  <Avatar url={profile.avatar_url} name={displayName} size={88} style={styles.avatar} />
-                </TouchableOpacity>
-              </View>
+              <HeroAvatar url={profile.avatar_url} name={displayName} />
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Text style={styles.name}>{displayName}</Text>
@@ -989,11 +1003,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 24,
   },
-  avatar: {
+  avatarTouch: { marginBottom: 14 },
+  avatarRing: {
     borderWidth: 2,
     borderColor: C.hairline,
-    marginBottom: 14,
+    borderRadius: 44,
   },
+  avatarRingLifted: { borderColor: 'transparent' },
   name: {
     fontSize: 22,
     fontWeight: '800',

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/lib/palette';
-import { useAvatarExpandViewer } from '@/lib/avatarViewer';
+import { useAvatarExpandViewer, useAvatarLift } from '@/lib/avatarViewer';
 
 // Shared between the profile screen's own small passport card and the
 // full-size cover in components/PassportBackdrop.tsx (the permanent layer
@@ -86,22 +86,18 @@ export interface PassportFaceProps {
       including while it collapses — callers wanting the rest geometry gate
       it themselves. */
   onStatsLayout?: (rect: PassportStatsRect) => void;
-  /** Avatar's own rendered rect, same coordinate space/purpose as
-      onStatsLayout — lets a screen that only shows this face through a hole
+  /** The avatar image's own rendered rect (the photo, not its ring), same
+      coordinate space/purpose as onStatsLayout — lets a screen that only
+      shows this face through a hole
       (the profile tab, closed) float its own avatar-shaped tap target over
       it, since its hole tap target otherwise swallows every touch on the
       card (see PASSPORT_STAT_LINKS's sibling comment in profile/index.tsx). */
   onAvatarLayout?: (rect: PassportStatsRect) => void;
-  /** True while that SAME closed-card floating target (a separate view,
-      positioned to exactly coincide with this avatar) is itself mid-expand
-      into the fullscreen viewer — hides this avatar's own pixels so the two
-      don't briefly show at once. See useAvatarExpandViewer. */
-  forceAvatarHidden?: boolean;
 }
 
 export function PassportFace({
   avatarUrl, name, username, joinDate, bio, statItems, progressLabel, progressPct, mrzLine1, mrzLine2,
-  containerWidth, collapseFrac, onStatsLayout, onAvatarLayout, forceAvatarHidden = false,
+  containerWidth, collapseFrac, onStatsLayout, onAvatarLayout,
 }: PassportFaceProps) {
   const T = useColors();
 
@@ -117,6 +113,18 @@ export function PassportFace({
     const root = rootLayoutRef.current, row = rowLayoutRef.current;
     if (!root || !row) return;
     onStatsLayoutRef.current?.({ x: root.x + row.x, y: root.y + row.y, width: row.width, height: row.height });
+  };
+  // Same two-part sum for the avatar. The root's own offset (the card's
+  // padding + watermark above it) is NOT optional here: reported relative to
+  // the root alone, the profile's floating avatar target landed that far up
+  // and left of the real photo — and the viewer grew from there.
+  const avatarInRootRef = useRef<PassportStatsRect | null>(null);
+  const onAvatarLayoutRef = useRef(onAvatarLayout);
+  onAvatarLayoutRef.current = onAvatarLayout;
+  const reportAvatar = () => {
+    const root = rootLayoutRef.current, a = avatarInRootRef.current;
+    if (!root || !a) return;
+    onAvatarLayoutRef.current?.({ x: root.x + a.x, y: root.y + a.y, width: a.width, height: a.height });
   };
 
   const contentWidth = Animated.subtract(containerWidth, PADDING_H * 2);
@@ -196,41 +204,60 @@ export function PassportFace({
   );
 
   const avatarViewer = useAvatarExpandViewer({ uri: avatarUrl });
-  const avatarHidden = avatarViewer.hidden || forceAvatarHidden;
+  // Keyed by the avatar's uri, so this hides for the profile tab's floating
+  // closed-card target too — a different component opens the viewer there,
+  // but this is the avatar it's showing.
+  const avatarLift = useAvatarLift(avatarUrl);
   const rootViewRef = useRef<View>(null);
 
   return (
     <View
       ref={rootViewRef}
       style={{ alignItems: 'center' }}
-      onLayout={onStatsLayout ? e => {
+      onLayout={onStatsLayout || onAvatarLayout ? e => {
         const { x, y } = e.nativeEvent.layout;
         rootLayoutRef.current = { x, y };
         reportStats();
+        reportAvatar();
       } : undefined}
     >
       <Animated.View style={[st.section, collapseSection(topH)]}>
         <View style={st.sectionInner} onLayout={e => setTopH(e.nativeEvent.layout.height)}>
-          <View
-            ref={avatarViewer.ref}
-            collapsable={false}
-            style={{ opacity: avatarHidden ? 0 : 1 }}
-            onLayout={onAvatarLayout ? () => {
-              avatarViewer.ref.current?.measureLayout(
-                rootViewRef.current as any,
-                (x, y, width, height) => onAvatarLayout({ x, y, width, height }),
-              );
-            } : undefined}
+          <TouchableOpacity
+            style={st.avatarTouch}
+            activeOpacity={avatarViewer.canExpand ? 0.85 : 1}
+            disabled={!avatarViewer.canExpand}
+            onPress={avatarViewer.onPress}
           >
-            <TouchableOpacity
-              style={[st.avatarWrap, { borderColor: T.hairline, backgroundColor: T.surface }]}
-              activeOpacity={avatarUrl ? 0.85 : 1}
-              disabled={!avatarUrl}
-              onPress={avatarViewer.onPress}
-            >
-              {avatarContent}
-            </TouchableOpacity>
-          </View>
+            {/* The ring is a border and nothing else. It used to be a
+                surface-colored disc with the photo sitting on it, and that
+                disc is what stayed behind as a white circle once the photo
+                lifted into the viewer. Ring and photo hide separately (see
+                useAvatarLift): together on the way out, so the cover shows
+                through where the avatar was; ring first on the way back. */}
+            <View style={[st.avatarRing, { borderColor: T.surface }, avatarLift.ringHidden && st.avatarRingLifted]}>
+              {/* The viewer's ref wraps the photo alone — inside the ring,
+                  clear of the touchable's bottom margin. Around the whole
+                  touchable it measured 89×101, and the fullscreen circle
+                  started as that. */}
+              <View
+                ref={avatarViewer.ref}
+                collapsable={false}
+                style={{ opacity: avatarLift.photoHidden ? 0 : 1 }}
+                onLayout={onAvatarLayout ? () => {
+                  avatarViewer.ref.current?.measureLayout(
+                    rootViewRef.current as any,
+                    (x, y, width, height) => {
+                      avatarInRootRef.current = { x, y, width, height };
+                      reportAvatar();
+                    },
+                  );
+                } : undefined}
+              >
+                {avatarContent}
+              </View>
+            </View>
+          </TouchableOpacity>
 
           <Text style={st.name} numberOfLines={1} adjustsFontSizeToFit>{name ?? 'Explorer'}</Text>
           {username ? <Text style={st.handle}>@{username}</Text> : null}
@@ -310,17 +337,19 @@ export function PassportFace({
 const st = StyleSheet.create({
   section: { alignSelf: 'stretch' },
   sectionInner: { alignSelf: 'stretch', alignItems: 'center' },
-  avatarWrap: {
-    padding: 1.5,
+  avatarTouch: { marginBottom: 12 },
+  // 2.5 = the old 1px border + 1.5 padding, so the avatar's footprint (and
+  // everything positioned off it) is unchanged.
+  avatarRing: {
+    borderWidth: 2.5,
     borderRadius: 50,
-    borderWidth: 1,
-    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 5,
   },
+  avatarRingLifted: { borderColor: 'transparent', shadowOpacity: 0, elevation: 0 },
   avatarInner: { width: 84, height: 84, borderRadius: 42, overflow: 'hidden' },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { fontSize: 30, fontWeight: '900', color: GOLD },

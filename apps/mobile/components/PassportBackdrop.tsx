@@ -171,8 +171,6 @@ export interface PassportBackdropProps {
   onStatsLayout?: (rect: PassportStatsRect) => void;
   /** Same idea, for the avatar — see PassportFace's own onAvatarLayout. */
   onAvatarLayout?: (rect: PassportStatsRect) => void;
-  /** Forwarded straight to PassportFace's forceAvatarHidden — see there. */
-  avatarHiddenExtra?: boolean;
   getToken: () => Promise<string | null>;
   rawVisits: any[];
   earnedBadges: BadgeSummary[];
@@ -290,7 +288,7 @@ function CompactStats({ stats, badgesLoaded, friendsLoaded, onPress }: {
 }
 
 export function PassportBackdrop({
-  active, onRequestClose, holeTop, shiftY, onCardHeight, onStatsLayout, onAvatarLayout, avatarHiddenExtra,
+  active, onRequestClose, holeTop, shiftY, onCardHeight, onStatsLayout, onAvatarLayout,
   getToken, rawVisits, earnedBadges, profile, stats, badgesLoaded, friendsLoaded, mrzLine1, mrzLine2, isDark,
 }: PassportBackdropProps) {
   const insets = useSafeAreaInsets();
@@ -620,7 +618,6 @@ export function PassportBackdrop({
               collapseFrac={zeroAnim}
               onStatsLayout={onStatsLayout}
               onAvatarLayout={onAvatarLayout}
-              forceAvatarHidden={avatarHiddenExtra}
             />
           </View>
 
