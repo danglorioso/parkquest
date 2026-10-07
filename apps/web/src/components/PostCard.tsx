@@ -433,7 +433,7 @@ function Lightbox({ photos, startIdx, onClose }: {
 
 // ── PhotoCarousel ─────────────────────────────────────────────────────────────
 
-function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: string | null }) {
+function PhotoCarousel({ photos, parkCode, height = 480 }: { photos: string[]; parkCode: string | null; height?: number }) {
   const [idx, setIdx] = useState(0);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const n = photos.length;
@@ -448,7 +448,7 @@ function PhotoCarousel({ photos, parkCode }: { photos: string[]; parkCode: strin
         />
       )}
 
-      <div className="pq-photo-frame" style={{ position: "relative", height: 480, overflow: "hidden", userSelect: "none" }}>
+      <div className="pq-photo-frame" style={{ position: "relative", height, overflow: "hidden", userSelect: "none" }}>
         {photos.map((src, k) => (
           <div
             key={k}
@@ -1174,15 +1174,17 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
     <div style={{ padding: "0 18px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
       {/* Title */}
       {post.visit_title && (
-        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "var(--ink)", letterSpacing: -0.2, lineHeight: "22px" }}>
           {post.visit_title}
         </div>
       )}
 
       {/* Highlight */}
       {post.visit_highlight && (
-        <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-          <span style={{ fontWeight: 700, color: "var(--ink)" }}>Highlight: </span>
+        <div style={{
+          borderLeft: "2px solid color-mix(in srgb, var(--primary) 40%, transparent)",
+          paddingLeft: 10, fontSize: 14, fontStyle: "italic", color: "var(--ink-soft)", lineHeight: "20px",
+        }}>
           {post.visit_highlight}
         </div>
       )}
@@ -1252,7 +1254,7 @@ function VisitMeta({ post, heroDate = false }: { post: FeedPost; heroDate?: bool
 
 // ── ParkHeroBanner — visit posts with no photos ───────────────────────────────
 
-function ParkHeroBanner({ post }: { post: FeedPost }) {
+function ParkHeroBanner({ post, height = 190 }: { post: FeedPost; height?: number }) {
   const [npsImageUrl, setNpsImageUrl] = useState<string | null>(null);
   const imageUrl = post.park_image_url ?? npsImageUrl;
 
@@ -1269,7 +1271,7 @@ function ParkHeroBanner({ post }: { post: FeedPost }) {
 
   const inner = (
     <div style={{
-      position: "relative", height: 190, borderRadius: 14, overflow: "hidden",
+      position: "relative", height, borderRadius: 14, overflow: "hidden",
       background: imageUrl ? undefined : parkGradient(post.park_code ?? "xx"),
     }}>
       {imageUrl && (
@@ -1329,8 +1331,11 @@ export function PostCard({
   onEditVisit,
   onUserBlocked,
   canDelete = false,
+  compact = false,
 }: {
   post: FeedPost;
+  /** Shorter photo/hero frames so the text reads without scrolling past a full-height image (narrow sidebars). */
+  compact?: boolean;
   onLike: (id: number, liked: boolean) => void;
   from?: string;
   onDelete?: (id: number) => void;
@@ -1364,6 +1369,11 @@ export function PostCard({
   const hasPhotos = !isBadgePost && post.photos && post.photos.length > 0;
   const photos = hasPhotos ? post.photos! : [""];
   const name = post.display_name ?? post.username ?? "Explorer";
+  // Signed-out responses strip identity fields server-side (see
+  // redactAnonPost) — never just hide them in the UI, so a crawler hitting
+  // the API directly gets the same redaction. React to their absence here.
+  const isAnon = !post.username && !post.display_name;
+  const anonName = "ParkQuest member";
   const commentCount = post.comment_count + commentDelta;
   const isFirstVisit = !isBadgePost && !!post.visit_id && Number(post.visit_ordinal) === 1;
   const isNationalParkFirstVisit = isFirstVisit && !!post.is_national_park;
@@ -1497,73 +1507,46 @@ export function PostCard({
           : "0.5px solid var(--hairline)",
       overflow: "hidden",
     }}>
-      {/* Badge banner */}
-      {isBadgePost && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "10px 18px",
-          background: "var(--surface-alt)", borderBottom: "0.5px solid var(--hairline-soft)",
-        }}>
-          <Award size={14} strokeWidth={2} style={{ color: "var(--primary)", flexShrink: 0 }} />
-          <span style={{
-            fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.2px",
-            color: "var(--primary)", fontWeight: 700,
-          }}>
-            BADGE EARNED
-          </span>
-        </div>
-      )}
-
-      {/* First visit banner — reserved for the classic 63 National Parks;
-          every other designation gets no banner */}
-      {isNationalParkFirstVisit && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "5px 18px",
-          background: "color-mix(in srgb, var(--accent) 10%, transparent)",
-          borderBottom: "0.5px solid color-mix(in srgb, var(--accent) 38%, transparent)",
-        }}>
-          <ParkStamp
-            parkCode={post.park_code ?? ""}
-            name={post.park_name ?? ""}
-            states={post.park_states ?? ""}
-            colorIdx={parkStampColorIdx(post.park_code ?? "xx")}
-            size={30}
-            idSuffix={`-fv-${post.id}`}
-          />
-          <span style={{
-            fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.2px",
-            color: "var(--accent)", fontWeight: 700,
-          }}>
-            FIRST VISIT
-          </span>
-        </div>
-      )}
-
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 10px" }}>
-        <Link href={`/profile/${post.username}${from ? `?from=${from}` : ""}`} style={{ textDecoration: "none", flexShrink: 0 }}>
-          <Avatar url={post.avatar_url} name={name} size={40} />
-        </Link>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Link href={`/profile/${post.username}${from ? `?from=${from}` : ""}`} style={{ textDecoration: "none" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>
-              {name}
-              {post.author_is_admin && <AdminStar />}
-            </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px 12px" }}>
+        {isAnon ? (
+          <Avatar url={null} name={anonName} size={40} />
+        ) : (
+          <Link href={`/profile/${post.username}${from ? `?from=${from}` : ""}`} style={{ textDecoration: "none", flexShrink: 0 }}>
+            <Avatar url={post.avatar_url} name={name} size={40} />
           </Link>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-mute)", marginTop: 1 }}>
-            <span>
-              {post.username && <span>@{post.username} · </span>}
-              {relTime(post.created_at)}
-            </span>
-            {visibility != null && (() => {
-              const VisIcon = VIS_ICONS[visibility] ?? Globe;
-              return <VisIcon size={11} strokeWidth={2} style={{ opacity: 0.75, flexShrink: 0 }} />;
-            })()}
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {isAnon ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 700, fontSize: 15, lineHeight: "20px", color: "var(--ink-mute)" }}>
+              {anonName}
+            </div>
+          ) : (
+            <Link href={`/profile/${post.username}${from ? `?from=${from}` : ""}`} style={{ textDecoration: "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 700, fontSize: 15, lineHeight: "20px", color: "var(--ink)" }}>
+                {name}
+                {post.author_is_admin && <AdminStar />}
+              </div>
+            </Link>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, lineHeight: "17px", color: "var(--ink-mute)", marginTop: 1 }}>
+            {isAnon ? (
+              <span>Sign up to see who posted</span>
+            ) : (
+              <>
+                <span>
+                  {post.username && <span>@{post.username} · </span>}
+                  {relTime(post.created_at)}
+                </span>
+                {visibility != null && (() => {
+                  const VisIcon = VIS_ICONS[visibility] ?? Globe;
+                  return <VisIcon size={11} strokeWidth={2} style={{ opacity: 0.75, flexShrink: 0 }} />;
+                })()}
+              </>
+            )}
           </div>
         </div>
-        <div ref={menuRef} style={{ position: "relative" }}>
+        {!isAnon && <div ref={menuRef} style={{ position: "relative" }}>
           <button
             onClick={() => setShowMenu(v => !v)}
             style={{
@@ -1653,21 +1636,16 @@ export function PostCard({
               )}
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
-      {/* Park location — hidden on photoless visit posts; the hero banner carries it */}
+      {/* Where — full-width park line under the header, hidden on photoless
+          visit posts where the hero banner already carries it */}
       {post.park_name && !isBadgePost && !(!hasPhotos && post.visit_id) && (
-        <div style={{ padding: "0 18px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <Link href={`/parks/${post.park_code}`} style={{ textDecoration: "none" }}>
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: 4,
-              fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--primary)",
-              fontWeight: 700, letterSpacing: "0.4px",
-            }}>
-              <MapPin size={11} strokeWidth={2.4} style={{ color: "var(--primary)" }} />
-              {post.park_name.toUpperCase()}
-            </div>
+        <div style={{ padding: "0 18px 12px", marginTop: -4, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+          <Link href={`/parks/${post.park_code}`} style={{ display: "flex", alignItems: "flex-start", gap: 5, textDecoration: "none", color: "var(--primary)", minWidth: 0 }}>
+            <MapPin size={14} strokeWidth={2.2} style={{ marginTop: 3, flexShrink: 0 }} />
+            <span style={{ fontSize: 15, fontWeight: 600, lineHeight: "20px", letterSpacing: -0.1 }}>{post.park_name}</span>
           </Link>
           {/* Already-visited parks can't be bucket-listed — POST /api/visits
               would wipe the dated visit's visited_date */}
@@ -1757,7 +1735,7 @@ export function PostCard({
           </div>
         </div>
       ) : currentCaption ? (
-        <div style={{ padding: "0 18px 12px", fontSize: 15, color: "var(--ink)", lineHeight: 1.5 }}>
+        <div style={{ padding: "0 18px 12px", fontSize: 15, color: "var(--ink)", lineHeight: "22px" }}>
           {currentCaption}
         </div>
       ) : null}
@@ -1766,13 +1744,13 @@ export function PostCard({
       {isBadgePost && post.badge_id && <BadgePostBody badgeId={post.badge_id} />}
 
       {/* Park hero banner — visit posts with no photos */}
-      {!isBadgePost && !hasPhotos && post.visit_id && <ParkHeroBanner post={post} />}
+      {!isBadgePost && !hasPhotos && post.visit_id && <ParkHeroBanner post={post} height={compact ? 130 : 190} />}
 
       {/* Visit metadata */}
       {!isBadgePost && <VisitMeta post={post} heroDate={!hasPhotos && !!post.visit_id} />}
 
       {/* Photo carousel */}
-      {!isBadgePost && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} />}
+      {!isBadgePost && hasPhotos && <PhotoCarousel photos={photos} parkCode={post.park_code} height={compact ? 200 : 480} />}
 
       {/* Crowd / difficulty scales */}
       {!isBadgePost && (post.visit_crowd || post.visit_difficulty) && (
@@ -1782,56 +1760,34 @@ export function PostCard({
         </div>
       )}
 
-      {/* Action row */}
+      {/* Action row — bare icons with counts, as in the app */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 8,
-        padding: "12px 18px 14px", borderTop: "0.5px solid var(--hairline-soft)",
+        display: "flex", alignItems: "center", gap: 28,
+        padding: "6px 18px", borderTop: "0.5px solid var(--hairline-soft)",
       }}>
         <LikesTooltip postId={post.id} likeCount={post.like_count} onLike={() => onLike(post.id, post.liked_by_me)}>
           <button
-            className="hover:opacity-75 transition-opacity"
             style={{
-              display: "flex", alignItems: "center", gap: 6,
-              background: post.liked_by_me ? "color-mix(in srgb, var(--liked) 10%, transparent)" : "var(--surface-alt)",
-              border: post.liked_by_me ? "0.5px solid color-mix(in srgb, var(--liked) 38%, transparent)" : "0.5px solid var(--hairline)",
-              borderRadius: 9, padding: "6px 12px", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: 4, padding: "6px 2px",
+              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
               color: post.liked_by_me ? "var(--liked)" : "var(--ink-soft)",
-              transition: "background 140ms ease, border-color 140ms ease, color 140ms ease",
             }}
           >
-            <Heart
-              size={15} strokeWidth={2.2}
-              fill={post.liked_by_me ? "var(--liked)" : "none"}
-              style={{ color: "inherit", flexShrink: 0 }}
-            />
-            <span style={{
-              fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700,
-              letterSpacing: "0.5px", lineHeight: 1,
-            }}>
-              {post.like_count > 0 ? post.like_count.toLocaleString() : "Like"}
-            </span>
+            <Heart size={22} strokeWidth={2} fill={post.liked_by_me ? "var(--liked)" : "none"} style={{ color: "inherit", flexShrink: 0 }} />
+            {post.like_count > 0 && <span style={{ fontSize: 13, fontWeight: 600 }}>{post.like_count.toLocaleString()}</span>}
           </button>
         </LikesTooltip>
 
         <button
           onClick={() => setShowComments(v => !v)}
-          className="hover:opacity-75 transition-opacity"
           style={{
-            display: "flex", alignItems: "center", gap: 6,
-            background: showComments ? "rgba(31,61,46,0.10)" : "var(--surface-alt)",
-            border: showComments ? "0.5px solid rgba(31,61,46,0.30)" : "0.5px solid var(--hairline)",
-            borderRadius: 9, padding: "6px 12px", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 4, padding: "6px 2px",
+            background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
             color: showComments ? "var(--primary)" : "var(--ink-soft)",
-            transition: "background 140ms ease, border-color 140ms ease, color 140ms ease",
           }}
         >
-          <MessageCircle size={15} strokeWidth={2.2} style={{ color: "inherit", flexShrink: 0 }} />
-          <span style={{
-            fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700,
-            letterSpacing: "0.5px", lineHeight: 1,
-          }}>
-            {commentCount > 0 ? commentCount.toLocaleString() : "Comment"}
-          </span>
+          <MessageCircle size={20} strokeWidth={2} style={{ color: "inherit", flexShrink: 0 }} />
+          {commentCount > 0 && <span style={{ fontSize: 13, fontWeight: 600 }}>{commentCount.toLocaleString()}</span>}
         </button>
 
         <div style={{ flex: 1 }} />
@@ -1839,14 +1795,12 @@ export function PostCard({
         <button
           onClick={handleShare}
           aria-label="Share post"
-          className="hover:opacity-75 transition-opacity"
           style={{
-            display: "flex", alignItems: "center", gap: 6,
-            background: "var(--surface-alt)", border: "0.5px solid var(--hairline)",
-            borderRadius: 9, padding: "6px 10px", cursor: "pointer", color: "var(--ink-soft)",
+            display: "flex", alignItems: "center", padding: "6px 2px",
+            background: "none", border: "none", cursor: "pointer", color: "var(--ink-soft)",
           }}
         >
-          <Share2 size={15} strokeWidth={2.2} style={{ color: "inherit", flexShrink: 0 }} />
+          <Share2 size={20} strokeWidth={2} />
         </button>
       </div>
 

@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { posts, parks, userProfiles, visits, friendships } from '@/lib/db/schema';
 import { deleteR2PhotosTrusted, extractPhotoUrls } from '@/lib/photoCleanup';
 import { requireAdmin } from '@/lib/admin';
+import { redactAnonPost } from '@/lib/redactAnonPost';
 
 export async function PATCH(
   req: Request,
@@ -141,7 +142,7 @@ export async function GET(
     }
 
     // Match the feed response shape so clients can reuse feed components
-    return NextResponse.json({
+    const payload = {
       ...post,
       is_friend_post: isOwner,
       photos: Array.isArray(post.photos)
@@ -150,7 +151,8 @@ export async function GET(
           )
         : null,
       visit_date: post.visit_date ? post.visit_date.toISOString() : null,
-    });
+    };
+    return NextResponse.json(viewerId ? payload : redactAnonPost(payload));
   } catch (error) {
     console.error('Error fetching post:', error);
     return NextResponse.json({ error: 'Failed to fetch post' }, { status: 500 });

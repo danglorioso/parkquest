@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { posts, parks, userProfiles, friendships, visits } from '@/lib/db/schema';
 import { getBlockedIds } from '@/lib/blocks';
 import { getReportedPostIds } from '@/lib/reportedContent';
+import { redactAnonPost } from '@/lib/redactAnonPost';
 
 // GET /api/parks/:park_code/posts — recent community activity for a park's
 // detail page. Splits into the viewer's own posts vs everyone else's, and
@@ -128,7 +129,10 @@ export async function GET(
       .filter((p) => !!p.caption?.trim() || (p.photos?.length ?? 0) > 0 || p.comment_count > 0 || !!p.badge_id);
 
     const yours = viewerId ? normalized.filter((p) => p.clerk_user_id === viewerId).slice(0, SECTION_LIMIT) : [];
-    const community = normalized.filter((p) => p.clerk_user_id !== viewerId).slice(0, SECTION_LIMIT);
+    const community = normalized
+      .filter((p) => p.clerk_user_id !== viewerId)
+      .slice(0, SECTION_LIMIT)
+      .map((p) => (viewerId ? p : redactAnonPost(p)));
 
     return NextResponse.json({ yours, community });
   } catch (error) {
