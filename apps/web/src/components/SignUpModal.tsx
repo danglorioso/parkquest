@@ -235,7 +235,7 @@ export default function SignUpModal({ open, onOpenChange, switchToSignIn }: Sign
                   />
                 </div>
                 {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
-                <Button type="submit" className="w-full hover:cursor-pointer hover:cursor-pointer" disabled={!isLoaded}>
+                <Button type="submit" className="w-full hover:cursor-pointer" disabled={!isLoaded}>
                   Continue
                 </Button>
                 <SignInLink />
@@ -263,7 +263,7 @@ export default function SignUpModal({ open, onOpenChange, switchToSignIn }: Sign
               {/* clerk-captcha must be in the DOM when signUp.create() is called */}
               <div id="clerk-captcha" />
               {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
-              <Button type="submit" className="w-full hover:cursor-pointer hover:cursor-pointer" disabled={loading || !isLoaded}>
+              <Button type="submit" className="w-full hover:cursor-pointer" disabled={loading || !isLoaded}>
                 {loading ? "Creating account..." : "Create Account"}
               </Button>
               <Button type="button" variant="outline" className="w-full" onClick={() => { setStep("email"); setError(""); setPassword(""); }}>

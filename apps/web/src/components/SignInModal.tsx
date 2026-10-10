@@ -153,7 +153,7 @@ export default function SignInModal({ open, onOpenChange, switchToSignUp }: Sign
             )}
             <Button
               type="submit"
-              className="w-full hover:cursor-pointer hover:cursor-pointer"
+              className="w-full hover:cursor-pointer"
               disabled={loading || !isLoaded}
             >
               {loading ? "Verifying..." : "Verify"}
@@ -324,7 +324,7 @@ export default function SignInModal({ open, onOpenChange, switchToSignUp }: Sign
 
             <Button
               type="submit"
-              className="w-full hover:cursor-pointer hover:cursor-pointer"
+              className="w-full hover:cursor-pointer"
               disabled={loading || !isLoaded}
             >
               {loading ? "Signing in..." : "Sign In"}
