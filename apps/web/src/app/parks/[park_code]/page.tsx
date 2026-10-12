@@ -1,12 +1,12 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import React, { use, useEffect, useRef, useState } from "react";
+import React, { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import {
-  ChevronLeft, ChevronRight, ChevronDown, PenLine, MapPin, Plus, ExternalLink, Phone, Mail, Clock, DollarSign, Navigation, Cloud, Tag, Footprints, ArrowUpRight, TreePine,
+  ChevronLeft, ChevronRight, ChevronDown, PenLine, MapPin, Plus, Bookmark, ExternalLink, Phone, Mail, Clock, DollarSign, Navigation, Cloud, Tag, Footprints, ArrowUpRight, TreePine,
 } from "lucide-react";
 import { LightboxModal, type LightboxImage } from "@/components/LightboxModal";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
@@ -15,6 +15,8 @@ import { PublicFooter, FIXED_BANNER_CLEARANCE } from "@/components/public/Public
 import { DesktopButton } from "@/components/desktop/DesktopButton";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
 import { PostCard, type FeedPost } from "@/components/PostCard";
+import SignInModal from "@/components/SignInModal";
+import SignUpModal from "@/components/SignUpModal";
 import type { NpsData } from "@/app/api/parks/[park_code]/nps/route";
 import type { WeatherForecast } from "@/app/api/parks/[park_code]/weather/route";
 
@@ -686,18 +688,32 @@ function JournalColumn({
 
 // ── Public sign-up CTA panel (replaces journal for logged-out visitors) ────────
 
-function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: string }) {
+function SignUpPanel({ parkName, parkCode, open, onToggle, onSignIn, onSignUp }: {
+  parkName: string;
+  parkCode: string;
+  open: boolean;
+  onToggle: () => void;
+  onSignIn: () => void;
+  onSignUp: () => void;
+}) {
   const paperBg = "#FAF3E0";
   const inkPaper = "#3A2E1C";
-  const [hasPosts, setHasPosts] = useState(false);
+  // "loading" until ParkPosts reports back; the sign-up block only shows when there are no posts.
+  const [postsState, setPostsState] = useState<"loading" | "some" | "none">("loading");
+  const onHasPosts = useCallback((has: boolean) => setPostsState(has ? "some" : "none"), []);
+  const hasPosts = postsState === "some";
+  const panelWidth = hasPosts ? 480 : 340;
 
+  // Outer box animates its width; the clip box keeps the panel's content from
+  // reflowing while it slides, and the toggle sits outside the clip so it stays visible.
   return (
+    <div style={{ position: "relative", flexShrink: 0, height: "100%", width: open ? panelWidth : 0, transition: "width 240ms ease" }}>
+    <div style={{ height: "100%", width: "100%", overflow: "hidden" }}>
     <div
       style={{
-        width: 340,
-        flexShrink: 0,
+        width: panelWidth,
+        height: "100%",
         minHeight: 0,
-        overflow: "hidden",
         borderLeft: "0.5px solid var(--hairline)",
         background: paperBg,
         display: "flex",
@@ -705,11 +721,12 @@ function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: strin
         alignItems: "center",
         // With public posts the CTA pins to the top and the posts scroll below it.
         justifyContent: hasPosts ? "flex-start" : "center",
-        padding: hasPosts ? "32px 28px 20px" : "40px 28px",
-        gap: 20,
+        padding: hasPosts ? "24px 20px 0" : "40px 28px",
+        gap: hasPosts ? 14 : 20,
         textAlign: "center",
       }}
     >
+      <>
       <div style={{
         width: 64, height: 64, borderRadius: 18,
         background: "rgba(31,61,46,0.08)",
@@ -724,12 +741,12 @@ function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: strin
           Been to {parkName}?
         </div>
         <div style={{ fontSize: 13.5, color: "rgba(58,46,28,0.65)", lineHeight: 1.6 }}>
-          Log your visit, write journal entries, earn badges, and track all 63 national parks on your personal map.
+          Log your visit, write journal entries, earn badges, and track all 64 national parks on your personal map.
         </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
-        <Link href="/sign-up" style={{ textDecoration: "none" }}>
+        <Link href="/sign-up" onClick={(e) => { e.preventDefault(); onSignUp(); }} style={{ textDecoration: "none" }}>
           <button style={{
             width: "100%",
             background: "var(--primary)", border: "none",
@@ -739,7 +756,7 @@ function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: strin
             Create free account
           </button>
         </Link>
-        <Link href={`/sign-in?redirect=${encodeURIComponent(`/parks/${parkCode}`)}`} style={{ textDecoration: "none" }}>
+        <Link href={`/sign-in?redirect=${encodeURIComponent(`/parks/${parkCode}`)}`} onClick={(e) => { e.preventDefault(); onSignIn(); }} style={{ textDecoration: "none" }}>
           <button style={{
             width: "100%",
             background: "transparent",
@@ -751,6 +768,7 @@ function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: strin
           </button>
         </Link>
       </div>
+      </>
 
       <ParkPosts
         key={parkCode}
@@ -758,8 +776,22 @@ function SignUpPanel({ parkName, parkCode }: { parkName: string; parkCode: strin
         isSignedIn={false}
         onEditVisit={() => {}}
         variant="sidebar"
-        onHasPosts={setHasPosts}
+        onHasPosts={onHasPosts}
       />
+    </div>
+    </div>
+    <button
+      onClick={onToggle}
+      aria-label={open ? "Collapse community panel" : "Expand community panel"}
+      style={{
+        position: "absolute", left: -8, top: "50%", transform: "translateY(-50%)", zIndex: 5,
+        width: 18, height: 44, borderRadius: 10, cursor: "pointer", padding: 0,
+        background: "#FAF3E0", border: "0.5px solid var(--hairline)", color: "var(--ink-mute)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      {open ? <ChevronRight size={12} strokeWidth={2} /> : <ChevronLeft size={12} strokeWidth={2} />}
+    </button>
     </div>
   );
 }
@@ -844,6 +876,7 @@ function ParkPosts({
     <div style={variant === "sidebar"
       ? { width: "100%", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
       : { padding: "0 32px 40px" }}>
+      {variant !== "sidebar" && (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: open ? 12 : 0, flexShrink: 0 }}>
         <button
           onClick={() => setOpen((v) => !v)}
@@ -878,6 +911,15 @@ function ParkPosts({
           </div>
         )}
       </div>
+      )}
+      {variant === "sidebar" && (
+        <div style={{ flexShrink: 0, textAlign: "left", marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 24, color: "var(--ink)", letterSpacing: -0.5, lineHeight: 1.15 }}>Community</div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.4px", color: "var(--ink-mute)", textTransform: "uppercase", fontWeight: 600, marginTop: 6 }}>
+            {activeList.length} {activeList.length === 1 ? "post" : "posts"} about this park
+          </div>
+        </div>
+      )}
 
       {!open ? null : activeList.length === 0 ? (
         <div style={{ padding: "24px 0", textAlign: "center", fontSize: 13, color: "var(--ink-mute)" }}>
@@ -885,7 +927,7 @@ function ParkPosts({
         </div>
       ) : (
         <div style={variant === "sidebar"
-          ? { display: "flex", flexDirection: "column", gap: 12, flex: 1, minHeight: 0, overflowY: "auto", paddingBottom: 8 }
+          ? { display: "flex", flexDirection: "column", gap: 12, flex: 1, minHeight: 0, overflowY: "auto", paddingBottom: FIXED_BANNER_CLEARANCE }
           : { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
           {activeList.map((post) => (
             <PostCard
@@ -895,6 +937,7 @@ function ParkPosts({
               onDelete={handleDelete}
               onEditVisit={onEditVisit}
               onUserBlocked={handleUserBlocked}
+              compact={variant === "sidebar"}
             />
           ))}
         </div>
@@ -922,6 +965,7 @@ function ParkInfoContent({
   status,
   footer,
   showCommunity = true,
+  onAuthRequired,
 }: {
   park: ParkData;
   nps: NpsData | null;
@@ -941,6 +985,8 @@ function ParkInfoContent({
   footer?: React.ReactNode;
   /** Community posts at the bottom of the column — signed-out pages show them in the sidebar instead. */
   showCommunity?: boolean;
+  /** Signed-out actions that need an account (log a visit, bucket list) open the sign-in prompt. */
+  onAuthRequired?: () => void;
 }) {
   const [heroLoaded, setHeroLoaded] = useState(false);
   const [heroIdx, setHeroIdx] = useState(0);
@@ -1096,11 +1142,18 @@ function ParkInfoContent({
             </Link>
           </>
         ) : (
-          <Link href="/sign-up" style={{ textDecoration: "none" }}>
-            <DesktopButton primary>
-              <Plus size={14} strokeWidth={2.4} /> Track this park
-            </DesktopButton>
-          </Link>
+          <>
+            <Link href="/sign-in" onClick={(e) => { e.preventDefault(); onAuthRequired?.(); }} style={{ textDecoration: "none" }}>
+              <DesktopButton primary>
+                <Plus size={14} strokeWidth={2.4} /> Log a visit
+              </DesktopButton>
+            </Link>
+            <Link href="/sign-in" onClick={(e) => { e.preventDefault(); onAuthRequired?.(); }} style={{ textDecoration: "none" }}>
+              <DesktopButton>
+                <Bookmark size={14} strokeWidth={2} /> Add to bucket list
+              </DesktopButton>
+            </Link>
+          </>
         )}
       </div>
 
@@ -1374,6 +1427,8 @@ export default function ParkDetailPage({
   const [activitiesExpanded, setActivitiesExpanded] = useState(true);
   const [topicsExpanded, setTopicsExpanded] = useState(true);
   const [lightbox, setLightbox] = useState<{ images: LightboxImage[]; index: number } | null>(null);
+  const [sidePanelOpen, setSidePanelOpen] = useState(true);
+  const [authModal, setAuthModal] = useState<null | "signin" | "signup">(null);
   // Fetch NPS and weather data for everyone (public)
   useEffect(() => {
     fetch(`/api/parks/${park_code}/nps`)
@@ -1508,6 +1563,7 @@ export default function ParkDetailPage({
     onLogVisit: openLogVisit,
     onEditVisit: openEditVisitById,
     status,
+    onAuthRequired: () => setAuthModal("signin"),
   };
 
   // Public layout for unauthenticated users
@@ -1518,7 +1574,14 @@ export default function ParkDetailPage({
 
         <div style={{ display: "flex", height: `calc(100vh - ${PUBLIC_NAV_HEIGHT}px)`, overflow: "hidden" }}>
           <ParkInfoContent {...sharedInfoProps} showCommunity={false} footer={<PublicFooter bottomClearance={FIXED_BANNER_CLEARANCE} />} />
-          <SignUpPanel parkName={park.name} parkCode={park.park_code} />
+          <SignUpPanel
+            parkName={park.name}
+            parkCode={park.park_code}
+            open={sidePanelOpen}
+            onToggle={() => setSidePanelOpen((v) => !v)}
+            onSignIn={() => setAuthModal("signin")}
+            onSignUp={() => setAuthModal("signup")}
+          />
         </div>
 
         {/* Sticky sign-up banner */}
@@ -1532,18 +1595,18 @@ export default function ParkDetailPage({
               Track your visit to {park.name}
             </div>
             <div style={{ fontSize: 12.5, color: "rgba(255,251,241,0.75)", marginTop: 2 }}>
-              Log visits, earn badges, and explore all 63 national parks on ParkQuest.
+              Log visits, earn badges, and explore all 64 national parks on ParkQuest.
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <Link href={`/sign-in?redirect=${encodeURIComponent(`/parks/${park_code}`)}`} style={{ textDecoration: "none" }}>
+            <Link href={`/sign-in?redirect=${encodeURIComponent(`/parks/${park_code}`)}`} onClick={(e) => { e.preventDefault(); setAuthModal("signin"); }} style={{ textDecoration: "none" }}>
               <button style={{
                 background: "rgba(255,251,241,0.15)", border: "1px solid rgba(255,251,241,0.35)",
                 borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600,
                 color: "#FFFBF1", cursor: "pointer",
               }}>Sign in</button>
             </Link>
-            <Link href="/sign-up" style={{ textDecoration: "none" }}>
+            <Link href="/sign-up" onClick={(e) => { e.preventDefault(); setAuthModal("signup"); }} style={{ textDecoration: "none" }}>
               <button style={{
                 background: "#FFFBF1", border: "none",
                 borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700,
@@ -1552,6 +1615,17 @@ export default function ParkDetailPage({
             </Link>
           </div>
         </div>
+
+        <SignInModal
+          open={authModal === "signin"}
+          onOpenChange={(open) => { if (!open) setAuthModal(null); }}
+          switchToSignUp={() => setAuthModal("signup")}
+        />
+        <SignUpModal
+          open={authModal === "signup"}
+          onOpenChange={(open) => { if (!open) setAuthModal(null); }}
+          switchToSignIn={() => setAuthModal("signin")}
+        />
       </div>
     );
   }
