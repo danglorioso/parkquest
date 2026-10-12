@@ -181,6 +181,30 @@ export function describeCondition(c: BadgeCondition, parkNames?: Map<string, str
 
 // ─── Stats computation ─────────────────────────────────────────────────────────
 
+// Designation-matched scopes compare the designation exactly (single clean
+// NPS strings, unlike "National Park" which spans several variant spellings —
+// see is_national_park for why that one's a curated flag, not a match).
+const SCOPE_DESIGNATIONS: Record<Exclude<BadgeParkScope, 'national_park' | 'all'>, string> = {
+  historic_park: 'National Historical Park',
+  monument: 'National Monument',
+  historic_site: 'National Historic Site',
+  preserve: 'National Preserve',
+  recreation_area: 'National Recreation Area',
+  seashore: 'National Seashore',
+};
+
+export const BADGE_PARK_SCOPES: BadgeParkScope[] = [
+  'national_park',
+  ...(Object.keys(SCOPE_DESIGNATIONS) as BadgeParkScope[]),
+  'all',
+];
+
+export function parkInScope(scope: BadgeParkScope, p: { is_national_park: boolean; designation: string | null }): boolean {
+  if (scope === 'all') return true;
+  if (scope === 'national_park') return p.is_national_park;
+  return p.designation === SCOPE_DESIGNATIONS[scope];
+}
+
 export function computeStats(
   userVisits: Array<{ park_code: string; is_bucket_list: boolean | null; visited_date: Date | null }>,
   allParks: Array<{ park_code: string; states: string; is_national_park: boolean; designation: string | null }>
@@ -192,26 +216,12 @@ export function computeStats(
 
   const visitedCodes = new Set(actualVisits.map(v => v.park_code));
 
-  // parks_visited/all_parks_visited need a visited/total pair per scope —
-  // 'historic_park'/'monument' match the designation exactly (single clean
-  // NPS strings, unlike "National Park" which spans several variant
-  // spellings — see is_national_park for why that one's a curated flag,
-  // not a match).
-  const scopeCodeSets: Record<BadgeParkScope, Set<string>> = {
-    national_park: new Set(allParks.filter(p => p.is_national_park).map(p => p.park_code)),
-    historic_park: new Set(allParks.filter(p => p.designation === 'National Historical Park').map(p => p.park_code)),
-    monument: new Set(allParks.filter(p => p.designation === 'National Monument').map(p => p.park_code)),
-    historic_site: new Set(allParks.filter(p => p.designation === 'National Historic Site').map(p => p.park_code)),
-    preserve: new Set(allParks.filter(p => p.designation === 'National Preserve').map(p => p.park_code)),
-    recreation_area: new Set(allParks.filter(p => p.designation === 'National Recreation Area').map(p => p.park_code)),
-    seashore: new Set(allParks.filter(p => p.designation === 'National Seashore').map(p => p.park_code)),
-    all: new Set(allParks.map(p => p.park_code)),
-  };
+  // parks_visited/all_parks_visited need a visited/total pair per scope.
   const parkScopes = Object.fromEntries(
-    (Object.entries(scopeCodeSets) as [BadgeParkScope, Set<string>][]).map(([scope, codes]) => [
-      scope,
-      { total: codes.size, visited: [...visitedCodes].filter(c => codes.has(c)).length },
-    ])
+    BADGE_PARK_SCOPES.map(scope => {
+      const codes = new Set(allParks.filter(p => parkInScope(scope, p)).map(p => p.park_code));
+      return [scope, { total: codes.size, visited: [...visitedCodes].filter(c => codes.has(c)).length }];
+    })
   ) as Record<BadgeParkScope, ParkScopeStats>;
 
   const statesSet = new Set<string>();
