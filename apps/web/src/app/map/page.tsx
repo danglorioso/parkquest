@@ -14,6 +14,7 @@ import { MapParkTypesControl, PARK_TYPES, DEFAULT_PARK_TYPES } from "@/component
 import { LogVisitModal } from "@/components/LogVisitModal";
 import type { VisitDraft } from "@/components/LogVisitModal";
 import type { NpsSummary } from "@/app/api/parks/nps-all/route";
+import { PublicMapView } from "./PublicMapView";
 
 const USAMap = dynamic(() => import("@/components/USAMapGL"), {
   ssr: false,
@@ -60,7 +61,7 @@ interface ParkForMap {
 }
 
 
-export default function Home() {
+function SignedInMap() {
   const { isSignedIn, isLoaded } = useUser();
   const router = useRouter();
 
@@ -70,7 +71,7 @@ export default function Home() {
   const [logVisitDraft, setLogVisitDraft] = useState<Partial<VisitDraft> | undefined>(undefined);
   const [logVisitEditMode, setLogVisitEditMode] = useState(false);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
-  // Map defaults to National Parks (the curated 63) — everything else (the
+  // Map defaults to National Parks (the curated 64) — everything else (the
   // new Historical Parks, and whatever gets added later) is opt-in.
   const [enabledParkTypes, setEnabledParkTypes] = useState<Set<string>>(DEFAULT_PARK_TYPES);
   const [labelsEnabled, setLabelsEnabled] = useState(true);
@@ -83,12 +84,6 @@ export default function Home() {
   const selectedPark = selectedParkCode
     ? parks.find((p) => p.park_code === selectedParkCode) ?? null
     : null;
-
-  useEffect(() => {
-    if (!isSignedIn && isLoaded) {
-      router.push('/');
-    }
-  }, [isSignedIn, isLoaded, router]);
 
   // Read ?park= from URL on mount and pre-select that park
   useEffect(() => {
@@ -457,4 +452,11 @@ export default function Home() {
       </DesktopShell>
     );
   }
+}
+
+export default function Home() {
+  const { isSignedIn, isLoaded } = useUser();
+  if (!isLoaded) return null;
+  if (!isSignedIn) return <PublicMapView />;
+  return <SignedInMap />;
 }

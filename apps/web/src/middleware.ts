@@ -14,6 +14,11 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
 
+  // Public map — signed-out visitors get a read-only view (see app/map)
+  if (req.nextUrl.pathname === '/map') {
+    return NextResponse.next();
+  }
+
   // Allow public profile pages (logged-out visitors see a sign-up nudge)
   if (req.nextUrl.pathname.startsWith('/profile/')) {
     return NextResponse.next();
