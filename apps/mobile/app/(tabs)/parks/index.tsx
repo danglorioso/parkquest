@@ -16,6 +16,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { MenuView } from '@react-native-menu/menu';
 import { PARK_TYPES } from '@/lib/parkTypes';
+import { ParkTypeMenu } from '@/components/ParkTypeMenu';
 import { getDefaultParkTypes } from '@/lib/settings';
 import * as Location from 'expo-location';
 import { fullStateName } from '@/lib/stateNames';
@@ -215,7 +216,7 @@ function ParkCard({
         ) : null}
       </View>
       {park.is_national_park && (
-        // One of the curated 63 — a primary-accent border, not just the
+        // One of the curated 64 — a primary-accent border, not just the
         // usual neutral hairline, so they read as distinct at a glance.
         // Rendered as a separate non-clipping overlay on top of the card's
         // own content, not merged onto styles.card's borderWidth — a border
@@ -463,8 +464,8 @@ function FilterPanel({
   allActivities, allTopics, filtersLoading,
   hasFilter, onReset,
   sortBy, onSortChange,
-  enabledParkTypes, parkTypeCounts, onToggleParkType, onToggleAllParkTypes,
-  showDesignationChips = true,
+  enabledParkTypes, parkTypeCounts, onShowOnlyParkType, onShowAllParkTypes,
+  showParkTypeMenu = true,
 }: {
   statusFilter: StatusFilter; onStatusFilter: (s: StatusFilter) => void;
   regionFilters: string[]; onRegionToggle: (r: string) => void; onClearRegions: () => void;
@@ -473,9 +474,9 @@ function FilterPanel({
   allActivities: string[]; allTopics: string[]; filtersLoading: boolean;
   hasFilter: boolean; onReset: () => void;
   sortBy: SortBy; onSortChange: (s: SortBy) => void;
-  enabledParkTypes: Set<string>; parkTypeCounts: Record<string, number>; onToggleParkType: (key: string) => void;
-  onToggleAllParkTypes: () => void;
-  showDesignationChips?: boolean;
+  enabledParkTypes: Set<string>; parkTypeCounts: Record<string, number>; onShowOnlyParkType: (key: string) => void;
+  onShowAllParkTypes: () => void;
+  showParkTypeMenu?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [renderPanel, setRenderPanel] = useState(false);
@@ -603,53 +604,20 @@ function FilterPanel({
         </MenuView>
       </View>
 
-      {/* Designation quick-access chips — same taxonomy/toggle semantics as
-          the map tab's chip row (see PARK_TYPES/onToggleParkType/
-          onToggleAllParkTypes). Replaced the old ribbon-icon dropdown that
-          used to sit in the toggle row above. Hidden on a single-designation
-          page (showDesignationChips=false) — the carousel above already
-          locked the type, so these would just let the user unpick it. */}
-      {showDesignationChips && (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ marginTop: 8 }}
-        contentContainerStyle={styles.designationChipRow}
-      >
-        <TouchableOpacity
-          onPress={onToggleAllParkTypes}
-          activeOpacity={0.75}
-          style={[styles.designationChip, enabledParkTypes.size === PARK_TYPES.length && styles.designationChipActive]}
-        >
-          <Text
-            style={[
-              styles.designationChipText,
-              enabledParkTypes.size === PARK_TYPES.length && styles.designationChipTextActive,
-            ]}
-            numberOfLines={1}
-          >
-            All
-          </Text>
-        </TouchableOpacity>
-        {PARK_TYPES.map(t => {
-          const active = enabledParkTypes.has(t.key);
-          return (
-            <TouchableOpacity
-              key={t.key}
-              onPress={() => onToggleParkType(t.key)}
-              activeOpacity={0.75}
-              style={[styles.designationChip, active && styles.designationChipActive]}
-            >
-              <Text style={[styles.designationChipText, active && styles.designationChipTextActive]} numberOfLines={1}>
-                {t.label}
-              </Text>
-              <Text style={[styles.designationChipCount, active && styles.designationChipCountActive]}>
-                {parkTypeCounts[t.key] ?? 0}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {/* Designation picker — same PARK_TYPES taxonomy as the map tab's (see
+          ParkTypeMenu for why this is a menu and not the chip row it used to
+          be). Hidden on a single-designation page (showParkTypeMenu=false) —
+          the carousel that led there already locked the type, so this would
+          just let the user unpick it. */}
+      {showParkTypeMenu && (
+        <View style={{ marginTop: 8 }}>
+          <ParkTypeMenu
+            enabled={enabledParkTypes}
+            counts={parkTypeCounts}
+            onSelectOnly={onShowOnlyParkType}
+            onSelectAll={onShowAllParkTypes}
+          />
+        </View>
       )}
 
       {/* Active filter chips — horizontally scrollable */}
@@ -1172,15 +1140,9 @@ export function ParksScreen({ onlyType }: { onlyType?: string } = {}) {
         sortBy={sortBy} onSortChange={handleSortChange}
         enabledParkTypes={enabledParkTypes}
         parkTypeCounts={parkTypeCounts}
-        onToggleParkType={key => setEnabledParkTypes(prev => {
-          const next = new Set(prev);
-          if (next.has(key)) next.delete(key); else next.add(key);
-          return next;
-        })}
-        onToggleAllParkTypes={() => setEnabledParkTypes(prev =>
-          prev.size === PARK_TYPES.length ? new Set() : new Set(PARK_TYPES.map(t => t.key))
-        )}
-        showDesignationChips={!onlyType}
+        onShowOnlyParkType={key => setEnabledParkTypes(new Set([key]))}
+        onShowAllParkTypes={() => setEnabledParkTypes(new Set(PARK_TYPES.map(t => t.key)))}
+        showParkTypeMenu={!onlyType}
       />
 
       {/* Results count */}
@@ -1189,7 +1151,7 @@ export function ParksScreen({ onlyType }: { onlyType?: string } = {}) {
       )}
 
       {/* Last thing in the header — sits directly above the park cards,
-          below the toggle row/designation chips/filter panel above it. */}
+          below the toggle row/designation menu/filter panel above it. */}
       {offlineFetchedAt && <OfflineBanner fetchedAt={offlineFetchedAt} />}
     </View>
   );
@@ -1364,45 +1326,6 @@ const styles = StyleSheet.create({
   filterBadgeText: {
     fontSize: 13,
     fontWeight: '800',
-  },
-  designationChipRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  designationChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: C.surface,
-    borderWidth: 0.5,
-    borderColor: C.hairline,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    height: 32,
-  },
-  // Inverted ink/bg fill, not a hue — matches the map tab's same chip row
-  // (a colored chip here would read as a status color instead).
-  designationChipActive: {
-    backgroundColor: C.ink,
-    borderColor: C.ink,
-  },
-  designationChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.inkSoft,
-  },
-  designationChipTextActive: {
-    color: C.bg,
-  },
-  designationChipCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: C.inkMute,
-    fontVariant: ['tabular-nums'],
-  },
-  designationChipCountActive: {
-    color: C.bg,
-    opacity: 0.7,
   },
   designationSubheaderRow: {
     flexDirection: 'row',

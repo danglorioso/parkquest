@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated, DeviceEventEmitter, Dimensions, Keyboard, Linking, Platform,
-  Pressable, ScrollView, StyleSheet,
+  Pressable, StyleSheet,
   Text, TextInput, TouchableOpacity, View, useColorScheme,
   type ColorValue,
 } from 'react-native';
@@ -20,6 +20,7 @@ import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useIsOnline } from '@/lib/network';
 import { PARK_TYPES } from '@/lib/parkTypes';
+import { ParkTypeMenu } from '@/components/ParkTypeMenu';
 import { getDefaultParkTypes } from '@/lib/settings';
 import { MapDetailsSheet, type StatusOption } from '@/components/MapDetailsSheet';
 import { LocationPermissionModal } from '@/components/LocationPermissionModal';
@@ -734,36 +735,16 @@ export default function MapScreen() {
     setSelectedPark(null);
   }, []);
 
-  // Turns everything off except the one type — the chip row's own
-  // double-tap gesture (see chipLastTapRef below), not exposed anywhere
-  // else. Each single tap still runs its normal toggleParkType first; this
-  // just overrides the result once a second tap on the same chip lands
-  // inside the double-tap window.
-  const isolateParkType = useCallback((key: string) => {
+  // The park-type menu's two actions: one designation alone, or all of them.
+  // (Any-combination toggling stays in the Map Details sheet's checklist.)
+  const showOnlyParkType = useCallback((key: string) => {
     setEnabledParkTypes(new Set([key]));
     setSelectedPark(null);
   }, []);
-
-  // Manual double-tap detection for the chip row — RN has no built-in
-  // onDoubleTap, and a real delay-then-decide gesture would make every
-  // single tap feel laggy (waiting to see if a second tap follows). Instead
-  // each tap fires its normal single-tap action immediately; this only
-  // tracks timing to detect when a second tap on the SAME chip lands within
-  // the window, and isolates on top of whatever the two individual toggles
-  // just did.
-  const chipLastTapRef = useRef<{ key: string; time: number } | null>(null);
-  const DOUBLE_TAP_MS = 300;
-  const handleChipPress = useCallback((key: string) => {
-    const now = Date.now();
-    const last = chipLastTapRef.current;
-    toggleParkType(key);
-    if (last && last.key === key && now - last.time < DOUBLE_TAP_MS) {
-      isolateParkType(key);
-      chipLastTapRef.current = null;
-    } else {
-      chipLastTapRef.current = { key, time: now };
-    }
-  }, [toggleParkType, isolateParkType]);
+  const showAllParkTypes = useCallback(() => {
+    setEnabledParkTypes(new Set(PARK_TYPES.map(t => t.key)));
+    setSelectedPark(null);
+  }, []);
 
   // Tapping "All" while it's already active turns everything off, same as
   // tapping an active individual chip removes just that one — "All" behaves
@@ -801,7 +782,7 @@ export default function MapScreen() {
     filterStatus === 'notVisited' ? visibleParks.filter(p => p.status === 'notVisited' || p.status === 'bucketList') :
     visibleParks.filter(p => p.status === filterStatus);
 
-  // National parks (all 63) always get their own dot, never absorbed into a
+  // National parks (all 64) always get their own dot, never absorbed into a
   // cluster — they're the primary content, so density-hiding them at low zoom
   // would bury the exact pins someone opens the map to find. The tapped/
   // deep-linked park is exempted too — selection and sheet-anchoring both key
@@ -1360,52 +1341,22 @@ export default function MapScreen() {
         />
       </View>
 
-      {/* Park-type quick-access chips — same toggleParkType/PARK_TYPES the
-          Map Details sheet's checklist uses, just surfaced as one-tap
-          shortcuts instead of buried in the sheet. PARK_TYPES is already
-          ordered most-common-first (national parks, then historical parks,
-          ...), so no separate sort here. */}
-      <View style={[styles.chipRowWrap, { top: insets.top + 62 }]}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipRow}
-        >
-          <TouchableOpacity
-            onPress={toggleAllParkTypes}
-            activeOpacity={0.75}
-            style={[styles.chip, enabledParkTypes.size === PARK_TYPES.length && styles.chipActive]}
-          >
-            <Text
-              style={[styles.chipText, enabledParkTypes.size === PARK_TYPES.length && styles.chipTextActive]}
-              numberOfLines={1}
-            >
-              All
-            </Text>
-          </TouchableOpacity>
-          {PARK_TYPES.map(t => {
-            const active = enabledParkTypes.has(t.key);
-            return (
-              <TouchableOpacity
-                key={t.key}
-                onPress={() => handleChipPress(t.key)}
-                activeOpacity={0.75}
-                style={[styles.chip, active && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
-                  {t.label}
-                </Text>
-                <Text style={[styles.chipCount, active && styles.chipCountActive]}>
-                  {parkTypeCounts[t.key] ?? 0}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+      {/* Park-type picker — "Showing: National Parks ⌄". One tap away instead
+          of buried in the Map Details sheet, whose checklist (any combination,
+          via toggleParkType) it shares enabledParkTypes with. Was a scrolling
+          chip row — see ParkTypeMenu for why it isn't any more. */}
+      <View style={[styles.parkTypeMenuWrap, { top: insets.top + 62 }]}>
+        <ParkTypeMenu
+          floating
+          enabled={enabledParkTypes}
+          counts={parkTypeCounts}
+          onSelectOnly={showOnlyParkType}
+          onSelectAll={showAllParkTypes}
+        />
       </View>
 
       {offlineFetchedAt && (
-        // zIndex required, not optional — searchBarWrap(40)/chipRowWrap(39)/
+        // zIndex required, not optional — searchBarWrap(40)/parkTypeMenuWrap(39)/
         // mapControls(31) all set one, and once ANY sibling does, plain JSX
         // order stops deciding paint order for the rest of them too.
         <View style={{ position: 'absolute', top: insets.top + 62 + 32 + 8, left: 0, right: 0, zIndex: 38 }}>
@@ -1487,58 +1438,13 @@ const styles = StyleSheet.create({
     zIndex: 40,
     elevation: 10,
   },
-  chipRowWrap: {
+  // No `right` — shrink-wraps the pill, so the rest of that strip of map
+  // stays pannable.
+  parkTypeMenuWrap: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: 14,
     zIndex: 39,
     elevation: 9,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 14,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: dyn('rgba(255,251,241,0.93)', 'rgba(32,29,23,0.93)'),
-    borderWidth: 0.5,
-    borderColor: C.hairline,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    height: 32,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  // Inverted ink/bg fill, not a hue — a colored chip here would read as yet
-  // another status color (the map already uses green/amber/gray for
-  // visited/bucket/not-visited), same mistake the marker ring made earlier.
-  chipActive: {
-    backgroundColor: C.ink,
-    borderColor: C.ink,
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.inkSoft,
-  },
-  chipTextActive: {
-    color: C.bg,
-  },
-  chipCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: C.inkMute,
-    fontVariant: ['tabular-nums'],
-  },
-  chipCountActive: {
-    color: C.bg,
-    opacity: 0.7,
   },
   // Same input bar shape as the header's SearchOverlay (12pt radius, 10pt
   // vertical padding, 15pt text) — but filled with the warm translucent white
