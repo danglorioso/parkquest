@@ -2,25 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Layers, Check } from "lucide-react";
+import { PARK_TYPE_DEFS, matchesParkType } from "@parkquest/types";
 
 // One entry per park designation the app tracks — a park matches exactly one.
-// Add a row here (matching the real NPS `designation` string) whenever a new
-// batch gets seeded (Monuments, Memorials, ...); nothing else about this
-// control needs to change to scale to a dozen of these.
+// The list itself lives in @parkquest/types (PARK_TYPE_DEFS), shared with the
+// mobile filters and the admin park editor; nothing else about this control
+// needs to change to scale to a dozen of these.
 export interface ParkTypeOption {
   key: string;
   label: string;
   match: (p: { is_national_park: boolean; designation?: string | null }) => boolean;
 }
-export const PARK_TYPES: ParkTypeOption[] = [
-  { key: "national_park", label: "National Parks", match: (p) => p.is_national_park },
-  { key: "historical_park", label: "National Historical Parks", match: (p) => p.designation === "National Historical Park" },
-  { key: "monument", label: "National Monuments", match: (p) => p.designation === "National Monument" },
-  { key: "historic_site", label: "National Historic Sites", match: (p) => p.designation === "National Historic Site" },
-  { key: "preserve", label: "National Preserves", match: (p) => p.designation === "National Preserve" },
-  { key: "recreation_area", label: "National Recreation Areas", match: (p) => p.designation === "National Recreation Area" },
-  { key: "seashore", label: "National Seashores", match: (p) => p.designation === "National Seashore" },
-];
+export const PARK_TYPES: ParkTypeOption[] = PARK_TYPE_DEFS.map((d) => ({
+  key: d.key,
+  label: d.label,
+  match: (p) => matchesParkType(d, p),
+}));
 export const DEFAULT_PARK_TYPES = new Set(["national_park"]);
 
 function collapsedLabel(enabled: Set<string>): string {

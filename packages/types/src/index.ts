@@ -1,4 +1,5 @@
 export * from './parkGlyphs';
+export * from './parkTypes';
 
 export type ParkStatus = 'unvisited' | 'bucket_list' | 'visited';
 export type BadgeTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'legendary';
