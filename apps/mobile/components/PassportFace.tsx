@@ -64,7 +64,7 @@ export interface PassportFaceProps {
       loading-placeholder rules, e.g. the card shows "–" for a stat whose
       own fetch hasn't resolved yet, which the expand view never needs to). */
   statItems: PassportFaceStatItem[];
-  /** Pre-formatted, e.g. "12 of 63 parks stamped" or "Loading…". */
+  /** Pre-formatted, e.g. "12 of 64 parks stamped" or "Loading…". */
   progressLabel: string;
   /** 0-100. */
   progressPct: number;
@@ -372,7 +372,7 @@ const st = StyleSheet.create({
   },
   // alignSelf stretch: these sit inside a centering wrapper (sectionInner)
   // — without it the block shrink-wraps to the label's text width and the
-  // bar under "N of 63 parks stamped" ends where the words do instead of
+  // bar under "N of 64 parks stamped" ends where the words do instead of
   // running the full card width.
   progressWrap: { alignSelf: 'stretch', gap: 6, marginTop: 18, marginBottom: 10 },
   progressText: { fontSize: 11, fontWeight: '600', color: GOLD, opacity: 0.7, letterSpacing: 0.5 },

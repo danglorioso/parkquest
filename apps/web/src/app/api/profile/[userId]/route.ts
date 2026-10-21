@@ -36,7 +36,7 @@ export async function GET(
     }
 
     const [[visitStats], [parksTotalRow], [friendCountRow], earnedBadges, allVisitsRaw, friendshipRows] = await Promise.all([
-      // Distinct park_code, scoped to National Parks (the curated 63) — not
+      // Distinct park_code, scoped to National Parks (the curated 64) — not
       // a raw visit-log count, which double-counts repeat visits and would
       // include every park designation with no distinction.
       db

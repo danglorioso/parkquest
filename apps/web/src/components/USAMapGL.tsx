@@ -196,7 +196,7 @@ function buildStyle(): StyleSpecification {
       },
 
       // Park marker halos — smaller/fainter for non-National-Park pins, so
-      // the curated 63 stay visually primary when both types are on screen.
+      // the curated 64 stay visually primary when both types are on screen.
       {
         id: "parks-halo",
         type: "circle",

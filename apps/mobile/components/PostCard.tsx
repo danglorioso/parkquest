@@ -1174,7 +1174,7 @@ function PostCardImpl({
   };
 
   const isFirstVisit = !isBadge && !!post.visit_id && Number(post.visit_ordinal) === 1;
-  // First-visit callout is reserved for the classic 63 National Parks;
+  // First-visit callout is reserved for the classic 64 National Parks;
   // every other designation gets none.
   const isNationalParkFirstVisit = isFirstVisit && !!post.is_national_park;
 

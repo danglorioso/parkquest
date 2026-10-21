@@ -216,13 +216,13 @@ export default function ProfileScreen() {
   const isDark = useColorScheme() === 'dark';
 
   const [profile,      setProfile]      = useState<ProfileInfo | null>(null);
-  // National Parks only (the curated 63), deduped by park_code — sourced
+  // National Parks only (the curated 64), deduped by park_code — sourced
   // from /api/badges' stats.parkScopes.national_park, not computed from raw
   // visits here, so this can't drift from the passport screen's own count.
   const [parksVisited, setParksVisited] = useState(0);
   const [parksTotal,   setParksTotal]   = useState(0);
   // Every park area regardless of designation — mirrors the passport
-  // screen's own AREAS stat (stats.parkScopes.all), not just the curated 63.
+  // screen's own AREAS stat (stats.parkScopes.all), not just the curated 64.
   const [areasVisited, setAreasVisited] = useState(0);
   const [badgesEarned, setBadgesEarned] = useState(0);
   const [totalBadges,  setTotalBadges]  = useState(0);

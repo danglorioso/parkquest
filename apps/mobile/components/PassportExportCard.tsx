@@ -85,7 +85,7 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
 
       {/* Kicker — same edge-to-edge printed-document strip as the cover */}
       <Text style={st.kicker} numberOfLines={1} ellipsizeMode="clip">
-        OFFICIAL RECORD OF VISITATION · AMERICA'S 63 NATIONAL PARKS · PARKQUEST.ME
+        OFFICIAL RECORD OF VISITATION · AMERICA'S 64 NATIONAL PARKS · PARKQUEST.ME
       </Text>
 
       {/* Identity */}
@@ -122,10 +122,10 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
         {(`${data.passportNo} ✦ ${(data.username || data.name).toUpperCase()} ✦ NATIONAL PARK PASSPORT ✦ `).repeat(6)}
       </Text>
 
-      {/* Hero line — the one number that matters most. Spells out "the 63
+      {/* Hero line — the one number that matters most. Spells out "the 64
           National Parks" (not just "parks"): shared outside the app, the
           image has no passport screen around it to make clear this count
-          is the classic 63, not every NPS area (AREAS below covers those). */}
+          is the classic 64, not every NPS area (AREAS below covers those). */}
       <View style={st.hero}>
         <Text style={st.heroText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
           {data.visitedCount} of the {data.totalParks} National Parks stamped

@@ -102,10 +102,10 @@ function PassportShareInner() {
       });
 
       // Share card mirrors the passport screen: National Parks only (the
-      // curated 63), not every park area the app tracks.
+      // curated 64), not every park area the app tracks.
       const nationalParks = (parks ?? []).filter(p => p.is_national_park);
       // AREAS stat below is the one exception — it covers every designation
-      // the app tracks, not just the curated 63 (mirrors passport.tsx's own
+      // the app tracks, not just the curated 64 (mirrors passport.tsx's own
       // AREAS tile, sourced from parkScopes.all there).
       const areasVisited = (parks ?? []).filter(p => visitedMap.has(p.park_code)).length;
       const areasTotal = (parks ?? []).length;

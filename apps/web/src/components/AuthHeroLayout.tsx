@@ -91,14 +91,14 @@ const CLOUDS: Array<{ width: string; top: string; opacity: number; duration: num
 ];
 
 const FEATURES = [
-  { icon: Map,     title: "Every visit, mapped",  desc: "Tap a park, mark it visited. Watch your passport fill in with stamps across all 63 U.S. national parks." },
+  { icon: Map,     title: "Every visit, mapped",  desc: "Tap a park, mark it visited. Watch your passport fill in with stamps across all 64 U.S. national parks." },
   { icon: Pencil,  title: "Journal as you go",    desc: "Notes, photos, companions, ratings — plus GPX hike import for real distance, elevation, and route stats." },
-  { icon: Award,   title: "Earn the patches",     desc: "32 badges across five tiers, from your First Steps to the Century Club to a legendary Park Legend crown for all 63." },
+  { icon: Award,   title: "Earn the patches",     desc: "32 badges across five tiers, from your First Steps to the Century Club to a legendary Park Legend crown for all 64." },
   { icon: Compass, title: "Share the journey",    desc: "A real social feed — like, comment, add friends, and post your latest badge or trip for the community to see." },
 ];
 
 const SCREENS = [
-  { title: "Explore the parks",  subtitle: "All 63, filterable by region, status, and activities", image: "/screens/pq_web_allparks.jpg" },
+  { title: "Explore the parks",  subtitle: "All 64, filterable by region, status, and activities", image: "/screens/pq_web_allparks.jpg" },
   { title: "The Map",            subtitle: "Every park at a glance — visited, bucket list, or still to go", image: "/screens/pq_web_map.jpg" },
   { title: "Park profiles",      subtitle: "Activities, entrance fees, and your own visit history", image: "/screens/pq_web_map_popoversheet.jpg" },
   { title: "The Passport",       subtitle: "An official-feeling record of every stamp you've earned", image: "/screens/pq_web_passport.jpg" },
@@ -1052,7 +1052,7 @@ function MobileHeroSection() {
           fontWeight: 600,
           marginBottom: 8,
         }}>
-          63 PARKS · ONE QUEST
+          64 PARKS · ONE QUEST
         </div>
         <div style={{ fontWeight: 800, fontSize: 34, letterSpacing: -1, lineHeight: 1.05 }}>
           Every park.<br />One journal.
@@ -1264,7 +1264,7 @@ function HeroSection({ onScroll }: { onScroll: () => void }) {
             textTransform: "uppercase",
           }}
         >
-          EST. 2026 · 63 PARKS · ONE QUEST
+          EST. 2026 · 64 PARKS · ONE QUEST
         </div>
         <div
           style={{
@@ -1395,7 +1395,7 @@ function AboutSection() {
           <p style={{ margin: 0, marginBottom: 14 }}>
             That&apos;s why I created this app — to keep track of where you&apos;ve been and
             to help other adventurers who, like me, enjoy experiencing new regions of the country.
-            Whether you&apos;re planning an upcoming park visit or working toward checking all 63
+            Whether you&apos;re planning an upcoming park visit or working toward checking all 64
             national parks off your list, I&apos;ve designed this app to help you document your
             journeys and share your experiences with others.
           </p>
@@ -2025,7 +2025,7 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
             marginTop: 14,
           }}
         >
-          63 parks.<br />One quest.<br />
+          64 parks.<br />One quest.<br />
         </div>
         <div
           style={{

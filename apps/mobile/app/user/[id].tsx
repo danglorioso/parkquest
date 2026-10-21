@@ -629,7 +629,7 @@ export default function UserProfileScreen() {
             {/* Stats strip (+ friend action row, same card) — NP VISITED /
                 AREAS / BADGES, one line, same label-above-value order as the
                 passport hero card, plus a progress bar mirroring the
-                passport card's "X of 63 parks stamped" line. One white
+                passport card's "X of 64 parks stamped" line. One white
                 card, not two: the friend count + action button join it
                 below a thin internal divider instead of a second
                 rounded/bordered card with its own gap underneath — same

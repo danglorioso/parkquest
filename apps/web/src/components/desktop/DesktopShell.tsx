@@ -430,7 +430,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
               QUEST
             </span>
             <span className="font-bold" style={{ fontSize: 11, color: "var(--ink)" }}>
-              {visitedCount} / {totalCount || 63}
+              {visitedCount} / {totalCount || 64}
             </span>
           </div>
           <div
@@ -446,7 +446,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
             />
           </div>
           <div style={{ fontSize: 10.5, color: "var(--ink-mute)", marginTop: 4 }}>
-            {Math.round(pct)}% complete · {(totalCount || 63) - visitedCount} to go
+            {Math.round(pct)}% complete · {(totalCount || 64) - visitedCount} to go
           </div>
         </div>
 
@@ -716,13 +716,13 @@ function MobileDrawer({
           <div style={{ padding: "8px 4px 4px" }}>
             <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1.4px", color: "var(--ink-mute)", textTransform: "uppercase", fontWeight: 600 }}>QUEST</span>
-              <span style={{ fontWeight: 700, fontSize: 11, color: "var(--ink)" }}>{visitedCount} / {totalCount || 63}</span>
+              <span style={{ fontWeight: 700, fontSize: 11, color: "var(--ink)" }}>{visitedCount} / {totalCount || 64}</span>
             </div>
             <div className="rounded-full overflow-hidden" style={{ height: 6, background: "var(--surface-alt)" }}>
               <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "linear-gradient(to right, var(--primary), var(--accent))", transition: "width 500ms" }} />
             </div>
             <div style={{ fontSize: 10.5, color: "var(--ink-mute)", marginTop: 4 }}>
-              {Math.round(pct)}% complete · {(totalCount || 63) - visitedCount} to go
+              {Math.round(pct)}% complete · {(totalCount || 64) - visitedCount} to go
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -761,9 +761,9 @@ export function DesktopShell({
     return v ? parseInt(v, 10) : 0;
   });
   const [totalCount, setTotalCount] = useState(() => {
-    if (typeof window === "undefined") return 63;
+    if (typeof window === "undefined") return 64;
     const v = sessionStorage.getItem("pq_total_count");
-    return v ? parseInt(v, 10) : 63;
+    return v ? parseInt(v, 10) : 64;
   });
   const [bucketCount, setBucketCount] = useState(() => {
     if (typeof window === "undefined") return 0;

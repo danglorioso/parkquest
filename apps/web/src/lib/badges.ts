@@ -21,7 +21,7 @@ export interface ParkScopeStats {
 
 export interface UserStats {
   // Visited/total pairs per BadgeParkScope — 'national_park' is the curated
-  // 63, 'historic_park'/'monument' match designation exactly, 'all' is every
+  // 64, 'historic_park'/'monument' match designation exactly, 'all' is every
   // row. See computeStats for how each is derived.
   parkScopes: Record<BadgeParkScope, ParkScopeStats>;
   statesVisited: number;

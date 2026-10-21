@@ -35,7 +35,7 @@ export const CONDITION_LABELS: Record<BadgeConditionType, string> = {
 
 export interface ParkOption { park_code: string; name: string }
 
-// 'national_park' is the curated 63 — NOT "any area the NPS operates".
+// 'national_park' is the curated 64 — NOT "any area the NPS operates".
 // That's what 'all' is for, named that way specifically so it can't be
 // mistaken for "all National Parks" in this dropdown.
 export const SCOPE_LABELS: Record<BadgeParkScope, string> = {

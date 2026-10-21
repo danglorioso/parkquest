@@ -168,7 +168,7 @@ export default function PassportPage() {
     fetchAll();
   }
 
-  // The passport's stamp grid is National Parks only — the curated 63, not
+  // The passport's stamp grid is National Parks only — the curated 64, not
   // every park area the app tracks. A separate "AREAS" stat below covers
   // everything; don't fold the two together here.
   const nationalParks = useMemo(() => allParks.filter((p) => p.is_national_park), [allParks]);

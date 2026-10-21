@@ -253,7 +253,7 @@ function PolicyContent() {
           lineHeight: 1.7,
         }}
       >
-        ParkQuest (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) is a personal project built to help you track visits to all 63 U.S. national parks, earn badges, keep a trip journal, and connect with fellow explorers. This Privacy Policy explains what information we collect when you use ParkQuest, how we use it, and the choices you have. By using ParkQuest you agree to these practices.
+        ParkQuest (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) is a personal project built to help you track visits to all 64 U.S. national parks, earn badges, keep a trip journal, and connect with fellow explorers. This Privacy Policy explains what information we collect when you use ParkQuest, how we use it, and the choices you have. By using ParkQuest you agree to these practices.
       </div>
 
       <Section title="1. Information We Collect">

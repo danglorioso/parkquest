@@ -200,7 +200,7 @@ export type BadgeConditionType =
 
 /**
  * Which slice of `parks` a `parks_visited`/`all_parks_visited` condition
- * counts against. 'national_park' is the curated 63 — NOT "any area the NPS
+ * counts against. 'national_park' is the curated 64 — NOT "any area the NPS
  * operates" (that ambiguity is exactly why this isn't just called "parks").
  * Defaults to 'national_park' when omitted, since every badge written before
  * this field existed was implicitly scoped to the only parks that existed

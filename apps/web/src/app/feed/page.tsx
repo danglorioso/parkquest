@@ -309,7 +309,7 @@ export default function FeedPage() {
   const [posts, setPosts]   = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [visited, setVisited] = useState(0);
-  const [total, setTotal]   = useState(63);
+  const [total, setTotal]   = useState(64);
   const [showCreate, setShowCreate] = useState(false);
   const [editDraft, setEditDraft] = useState<Partial<VisitDraft> | undefined>();
   const [filterType, setFilterType] = useState<"all" | "visits" | "badges">("all");

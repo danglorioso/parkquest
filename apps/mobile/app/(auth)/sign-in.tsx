@@ -263,7 +263,7 @@ function HeroSection() {
         <Text style={styles.wordmarkText}>Park<Text style={{ fontWeight: '400' }}>Quest</Text></Text>
       </View>
 
-      {/* Tagline — no kicker line above it anymore. 63 (official National
+      {/* Tagline — no kicker line above it anymore. 64 (official National
           Parks) and this app's actual tracked-park count (127, and
           growing as more designations get added) are different numbers,
           so any single count here goes stale or is misleading — the
