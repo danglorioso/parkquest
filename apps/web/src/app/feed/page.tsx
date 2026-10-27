@@ -10,6 +10,7 @@ import { DesktopHeader } from "@/components/desktop/DesktopHeader";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
 import { LogVisitModal, type VisitDraft } from "@/components/LogVisitModal";
 import { PostCard, Avatar, type FeedPost } from "@/components/PostCard";
+import { NATIONAL_PARK_COUNT_FALLBACK } from "@/lib/useNationalParkCount";
 
 // ── Types for right rail ──────────────────────────────────────────────────────
 
@@ -309,7 +310,7 @@ export default function FeedPage() {
   const [posts, setPosts]   = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [visited, setVisited] = useState(0);
-  const [total, setTotal]   = useState(64);
+  const [total, setTotal]   = useState(NATIONAL_PARK_COUNT_FALLBACK);
   const [showCreate, setShowCreate] = useState(false);
   const [editDraft, setEditDraft] = useState<Partial<VisitDraft> | undefined>();
   const [filterType, setFilterType] = useState<"all" | "visits" | "badges">("all");

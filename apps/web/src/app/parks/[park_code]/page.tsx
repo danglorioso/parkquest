@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { LightboxModal, type LightboxImage } from "@/components/LightboxModal";
 import { DesktopShell } from "@/components/desktop/DesktopShell";
+import { useNationalParkCount } from "@/lib/useNationalParkCount";
 import { PublicNav, PUBLIC_NAV_HEIGHT } from "@/components/public/PublicNav";
 import { PublicFooter, FIXED_BANNER_CLEARANCE } from "@/components/public/PublicFooter";
 import { DesktopButton } from "@/components/desktop/DesktopButton";
@@ -696,6 +697,7 @@ function SignUpPanel({ parkName, parkCode, open, onToggle, onSignIn, onSignUp }:
   onSignIn: () => void;
   onSignUp: () => void;
 }) {
+  const parkCount = useNationalParkCount();
   const paperBg = "#FAF3E0";
   const inkPaper = "#3A2E1C";
   // "loading" until ParkPosts reports back; the sign-up block only shows when there are no posts.
@@ -741,7 +743,7 @@ function SignUpPanel({ parkName, parkCode, open, onToggle, onSignIn, onSignUp }:
           Been to {parkName}?
         </div>
         <div style={{ fontSize: 13.5, color: "rgba(58,46,28,0.65)", lineHeight: 1.6 }}>
-          Log your visit, write journal entries, earn badges, and track all 64 national parks on your personal map.
+          Log your visit, write journal entries, earn badges, and track all {parkCount} national parks on your personal map.
         </div>
       </div>
 
@@ -1413,6 +1415,7 @@ export default function ParkDetailPage({
 }) {
   const { park_code } = use(params);
   const { isLoaded, isSignedIn } = useUser();
+  const parkCount = useNationalParkCount();
 
   const [park, setPark]       = useState<ParkData | null>(null);
   const [visits, setVisits]   = useState<VisitData[]>([]);
@@ -1595,7 +1598,7 @@ export default function ParkDetailPage({
               Track your visit to {park.name}
             </div>
             <div style={{ fontSize: 12.5, color: "rgba(255,251,241,0.75)", marginTop: 2 }}>
-              Log visits, earn badges, and explore all 64 national parks on ParkQuest.
+              Log visits, earn badges, and explore all {parkCount} national parks on ParkQuest.
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>

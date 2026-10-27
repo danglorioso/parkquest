@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSignIn, useSignUp, useUser } from "@clerk/nextjs";
 import { Map, Pencil, Award, Compass, ArrowRight, Heart, MessageCircle, Share2 } from "lucide-react";
 import { AppStoreBadge } from "./AppStoreBadge";
+import { useNationalParkCount } from "@/lib/useNationalParkCount";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -90,15 +91,17 @@ const CLOUDS: Array<{ width: string; top: string; opacity: number; duration: num
   { width: "28%", top: "25%", opacity: 0.12, duration: 88,  delay: 22, variant: 0 },
 ];
 
-const FEATURES = [
-  { icon: Map,     title: "Every visit, mapped",  desc: "Tap a park, mark it visited. Watch your passport fill in with stamps across all 64 U.S. national parks." },
+// Functions of the live National Park count (useNationalParkCount) — never
+// hardcode it; a redesignation shouldn't need a deploy to fix the copy.
+const features = (n: number) => [
+  { icon: Map,     title: "Every visit, mapped",  desc: `Tap a park, mark it visited. Watch your passport fill in with stamps across all ${n} U.S. national parks.` },
   { icon: Pencil,  title: "Journal as you go",    desc: "Notes, photos, companions, ratings — plus GPX hike import for real distance, elevation, and route stats." },
-  { icon: Award,   title: "Earn the patches",     desc: "32 badges across five tiers, from your First Steps to the Century Club to a legendary Park Legend crown for all 64." },
+  { icon: Award,   title: "Earn the patches",     desc: `32 badges across five tiers, from your First Steps to the Century Club to a legendary Park Legend crown for all ${n}.` },
   { icon: Compass, title: "Share the journey",    desc: "A real social feed — like, comment, add friends, and post your latest badge or trip for the community to see." },
 ];
 
-const SCREENS = [
-  { title: "Explore the parks",  subtitle: "All 64, filterable by region, status, and activities", image: "/screens/pq_web_allparks.jpg" },
+const screens = (n: number) => [
+  { title: "Explore the parks",  subtitle: `All ${n}, filterable by region, status, and activities`, image: "/screens/pq_web_allparks.jpg" },
   { title: "The Map",            subtitle: "Every park at a glance — visited, bucket list, or still to go", image: "/screens/pq_web_map.jpg" },
   { title: "Park profiles",      subtitle: "Activities, entrance fees, and your own visit history", image: "/screens/pq_web_map_popoversheet.jpg" },
   { title: "The Passport",       subtitle: "An official-feeling record of every stamp you've earned", image: "/screens/pq_web_passport.jpg" },
@@ -924,6 +927,7 @@ function CloudShape({ variant }: { variant: number }) {
 }
 
 function MobileHeroSection() {
+  const parkCount = useNationalParkCount();
   return (
     <div
       className="flex flex-col justify-end md:hidden relative overflow-hidden"
@@ -1052,7 +1056,7 @@ function MobileHeroSection() {
           fontWeight: 600,
           marginBottom: 8,
         }}>
-          64 PARKS · ONE QUEST
+          {parkCount} PARKS · ONE QUEST
         </div>
         <div style={{ fontWeight: 800, fontSize: 34, letterSpacing: -1, lineHeight: 1.05 }}>
           Every park.<br />One journal.
@@ -1064,6 +1068,7 @@ function MobileHeroSection() {
 }
 
 function HeroSection({ onScroll }: { onScroll: () => void }) {
+  const parkCount = useNationalParkCount();
   return (
     <div
       style={{
@@ -1264,7 +1269,7 @@ function HeroSection({ onScroll }: { onScroll: () => void }) {
             textTransform: "uppercase",
           }}
         >
-          EST. 2026 · 64 PARKS · ONE QUEST
+          EST. 2026 · {parkCount} PARKS · ONE QUEST
         </div>
         <div
           style={{
@@ -1340,6 +1345,7 @@ function HeroSection({ onScroll }: { onScroll: () => void }) {
 }
 
 function AboutSection() {
+  const parkCount = useNationalParkCount();
   return (
     <div
       id="about"
@@ -1395,7 +1401,7 @@ function AboutSection() {
           <p style={{ margin: 0, marginBottom: 14 }}>
             That&apos;s why I created this app — to keep track of where you&apos;ve been and
             to help other adventurers who, like me, enjoy experiencing new regions of the country.
-            Whether you&apos;re planning an upcoming park visit or working toward checking all 64
+            Whether you&apos;re planning an upcoming park visit or working toward checking all {parkCount}
             national parks off your list, I&apos;ve designed this app to help you document your
             journeys and share your experiences with others.
           </p>
@@ -1454,6 +1460,7 @@ function AboutSection() {
 }
 
 function FeaturesSection() {
+  const parkCount = useNationalParkCount();
   return (
     <div
       className="px-6 py-16 md:px-[60px] md:py-[80px]"
@@ -1488,7 +1495,7 @@ function FeaturesSection() {
         Made for however you explore.
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
-        {FEATURES.map((f, i) => (
+        {features(parkCount).map((f, i) => (
           <div
             key={i}
             onMouseEnter={(e) => {
@@ -1695,6 +1702,7 @@ function ScreenshotsSection() {
 }
 
 function ScreensCarousel() {
+  const parkCount = useNationalParkCount();
   const rowRef = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
@@ -1742,7 +1750,7 @@ function ScreensCarousel() {
         className="pq-screens-row flex gap-6 mt-9 pl-8 md:pl-[72px] pr-12 md:pr-[84px] pb-2 scroll-pl-8 md:scroll-pl-[72px] scroll-pr-12 md:scroll-pr-[84px]"
         style={{ overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        {SCREENS.map((s, i) => (
+        {screens(parkCount).map((s, i) => (
           <ScreenshotCard key={i} {...s} />
         ))}
       </div>
@@ -1977,6 +1985,7 @@ function CommunitySection() {
 }
 
 function FinalCTASection({ onAbout }: { onAbout: () => void }) {
+  const parkCount = useNationalParkCount();
   return (
     <div
       className="px-6 pt-16 pb-20 md:px-[60px] md:pt-[80px] md:pb-[100px]"
@@ -2025,7 +2034,7 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
             marginTop: 14,
           }}
         >
-          64 parks.<br />One quest.<br />
+          {parkCount} parks.<br />One quest.<br />
         </div>
         <div
           style={{

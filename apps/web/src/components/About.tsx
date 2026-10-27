@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import Map from "./Map";
 import SignUpModal from "./SignUpModal";
+import { useNationalParkCount } from "@/lib/useNationalParkCount";
 import { FlagTriangleRight } from "lucide-react";
 
 interface ParkFromDB {
@@ -24,6 +25,7 @@ interface ParkForMap {
 }
 
 export default function About() {
+  const parkCount = useNationalParkCount();
   const [parks, setParks] = useState<ParkForMap[]>([]);
   const [isLoadingParks, setIsLoadingParks] = useState(true);
   const [showSignUpModal, setShowSignUpModal] = useState(false);
@@ -76,7 +78,7 @@ export default function About() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Explore All 64 National Parks</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">Explore All {parkCount} National Parks</h1>
           <p className="text-xl text-gray-600">Discover America&apos;s natural wonders and track your adventures</p>
         </div>
 
@@ -99,7 +101,7 @@ export default function About() {
                   </p>
 
                   <p className="text-base sm:text-lg leading-relaxed text-gray-700">
-                    That&apos;s why I created this app to keep track of where you&apos;ve been and to help other adventurers who, like me, enjoy experiencing new regions of the country. Whether you&apos;re planning an upcoming park visit or working toward checking all 64 national parks off your list, I&apos;ve designed this app to help you document your journeys and share your experiences with others.
+                    That&apos;s why I created this app to keep track of where you&apos;ve been and to help other adventurers who, like me, enjoy experiencing new regions of the country. Whether you&apos;re planning an upcoming park visit or working toward checking all {parkCount} national parks off your list, I&apos;ve designed this app to help you document your journeys and share your experiences with others.
                   </p>
 
                   <p className="text-base sm:text-lg leading-relaxed text-gray-700">

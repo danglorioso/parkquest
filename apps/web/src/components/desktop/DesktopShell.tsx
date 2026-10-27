@@ -16,6 +16,7 @@ import { NotificationCenter } from "@/components/desktop/NotificationCenter";
 import { PushPermissionPrompt } from "@/components/desktop/PushPermissionPrompt";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { LogVisitModal } from "@/components/LogVisitModal";
+import { NATIONAL_PARK_COUNT_FALLBACK } from "@/lib/useNationalParkCount";
 
 // ── Nav config ───────────────────────────────────────────────────────────────
 
@@ -430,7 +431,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
               QUEST
             </span>
             <span className="font-bold" style={{ fontSize: 11, color: "var(--ink)" }}>
-              {visitedCount} / {totalCount || 64}
+              {visitedCount} / {totalCount || NATIONAL_PARK_COUNT_FALLBACK}
             </span>
           </div>
           <div
@@ -446,7 +447,7 @@ function DesktopSidebar({ visitedCount, totalCount, bucketCount, username, onLog
             />
           </div>
           <div style={{ fontSize: 10.5, color: "var(--ink-mute)", marginTop: 4 }}>
-            {Math.round(pct)}% complete · {(totalCount || 64) - visitedCount} to go
+            {Math.round(pct)}% complete · {(totalCount || NATIONAL_PARK_COUNT_FALLBACK) - visitedCount} to go
           </div>
         </div>
 
@@ -716,13 +717,13 @@ function MobileDrawer({
           <div style={{ padding: "8px 4px 4px" }}>
             <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1.4px", color: "var(--ink-mute)", textTransform: "uppercase", fontWeight: 600 }}>QUEST</span>
-              <span style={{ fontWeight: 700, fontSize: 11, color: "var(--ink)" }}>{visitedCount} / {totalCount || 64}</span>
+              <span style={{ fontWeight: 700, fontSize: 11, color: "var(--ink)" }}>{visitedCount} / {totalCount || NATIONAL_PARK_COUNT_FALLBACK}</span>
             </div>
             <div className="rounded-full overflow-hidden" style={{ height: 6, background: "var(--surface-alt)" }}>
               <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "linear-gradient(to right, var(--primary), var(--accent))", transition: "width 500ms" }} />
             </div>
             <div style={{ fontSize: 10.5, color: "var(--ink-mute)", marginTop: 4 }}>
-              {Math.round(pct)}% complete · {(totalCount || 64) - visitedCount} to go
+              {Math.round(pct)}% complete · {(totalCount || NATIONAL_PARK_COUNT_FALLBACK) - visitedCount} to go
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -761,9 +762,9 @@ export function DesktopShell({
     return v ? parseInt(v, 10) : 0;
   });
   const [totalCount, setTotalCount] = useState(() => {
-    if (typeof window === "undefined") return 64;
+    if (typeof window === "undefined") return NATIONAL_PARK_COUNT_FALLBACK;
     const v = sessionStorage.getItem("pq_total_count");
-    return v ? parseInt(v, 10) : 64;
+    return v ? parseInt(v, 10) : NATIONAL_PARK_COUNT_FALLBACK;
   });
   const [bucketCount, setBucketCount] = useState(() => {
     if (typeof window === "undefined") return 0;

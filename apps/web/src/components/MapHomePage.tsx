@@ -2,6 +2,7 @@
 
 import { Info } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNationalParkCount } from "@/lib/useNationalParkCount";
 import Map from "./Map";
 import SignUpModal from "./SignUpModal";
 
@@ -22,6 +23,7 @@ interface ParkForMap {
 }
 
 export default function MapHomePage() {
+  const parkCount = useNationalParkCount();
   const [parks, setParks] = useState<ParkForMap[]>([]);
   const [isLoadingParks, setIsLoadingParks] = useState(true);
   const [showSignUpModal, setShowSignUpModal] = useState(false);
@@ -72,7 +74,7 @@ export default function MapHomePage() {
             `}} />
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="text-center mb-12">
-                    <h2 className="text-4xl font-bold text-gray-900 mb-4">Explore All 64 National Parks</h2>
+                    <h2 className="text-4xl font-bold text-gray-900 mb-4">Explore All {parkCount} National Parks</h2>
                     <p className="text-xl text-gray-600 max-w-2xl mx-auto">
                         Click on any park to learn more. Sign up to start tracking your visits and earning badges.
                     </p>
