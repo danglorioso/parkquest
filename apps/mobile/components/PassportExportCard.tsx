@@ -85,7 +85,7 @@ export function PassportExportCard({ data, variant }: { data: PassportExportData
 
       {/* Kicker — same edge-to-edge printed-document strip as the cover */}
       <Text style={st.kicker} numberOfLines={1} ellipsizeMode="clip">
-        OFFICIAL RECORD OF VISITATION · AMERICA'S 64 NATIONAL PARKS · PARKQUEST.ME
+        OFFICIAL RECORD OF VISITATION · AMERICA'S {data.totalParks} NATIONAL PARKS · PARKQUEST.ME
       </Text>
 
       {/* Identity */}

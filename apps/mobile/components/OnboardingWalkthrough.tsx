@@ -20,12 +20,14 @@ interface Step {
 const STEPS: Step[] = [
   {
     title: 'Welcome to ParkQuest',
-    body: 'Chase all 64 U.S. National Parks, log every visit, and leave your mark. Here\'s a quick look around.',
+    // No park counts in this copy — it ships in the binary, and the count
+    // changes server-side (redesignations) without a new build.
+    body: 'Chase every U.S. National Park, log every visit, and leave your mark. Here\'s a quick look around.',
   },
   {
     icon: 'map-outline',
     title: 'Track every park',
-    body: 'The Map tab shows all 64 national parks at a glance — tap a pin to check it out, mark it visited, or save it to your bucket list.',
+    body: 'The Map tab shows every national park at a glance — tap a pin to check it out, mark it visited, or save it to your bucket list.',
   },
   {
     icon: 'add-circle-outline',
