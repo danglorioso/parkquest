@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSignIn, useSignUp, useUser } from "@clerk/nextjs";
-import { Map, Pencil, Award, Compass, ArrowRight, Heart, MessageCircle, Share2 } from "lucide-react";
+import { Map, Mountain, Pencil, Award, Compass, ArrowRight, Heart, MessageCircle, Share2 } from "lucide-react";
 import { AppStoreBadge } from "./AppStoreBadge";
 import { useNationalParkCount } from "@/lib/useNationalParkCount";
 
@@ -54,6 +55,21 @@ const ANIMATIONS = `
     100%    { transform: translateX(var(--ss-dx,-320px)) translateY(var(--ss-dy,320px)) rotate(-42deg); opacity: 0; }
   }
   .pq-left-col::-webkit-scrollbar { display: none }
+  .pq-hero-link {
+    display: inline-flex; align-items: center; gap: 7px;
+    color: #FFFBF1; font-weight: 600; text-decoration: none; line-height: 1;
+    padding: 8px 13px; border-radius: 10px;
+    border: 1px solid rgba(255,251,241,0.32);
+    background: rgba(255,251,241,0.08);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    backdrop-filter: blur(10px) saturate(140%);
+    transition: background 150ms, border-color 150ms;
+  }
+  .pq-hero-link svg { opacity: 0.8; transition: opacity 150ms }
+  .pq-hero-link--icon { border-color: transparent }
+  .pq-hero-link:hover { background: rgba(255,251,241,0.18); border-color: rgba(255,251,241,0.6) }
+  .pq-hero-link:hover svg { opacity: 1 }
+  .pq-hero-link:focus-visible { outline: 2px solid #FFFBF1; outline-offset: 2px }
   .pq-screens-row::-webkit-scrollbar { display: none }
   @media (prefers-reduced-motion: reduce) {
     .pq-left-col *, .pq-left-col *::before, .pq-left-col *::after {
@@ -106,6 +122,32 @@ const screens = (n: number) => [
   { title: "Park profiles",      subtitle: "Activities, entrance fees, and your own visit history", image: "/screens/pq_web_map_popoversheet.jpg" },
   { title: "The Passport",       subtitle: "An official-feeling record of every stamp you've earned", image: "/screens/pq_web_passport.jpg" },
 ];
+
+// Browsing needs no account — the parks list, park pages, and the map all have
+// signed-out views (see middleware.ts). Two links, top-right of the hero,
+// opposite the wordmark: enough to find them without turning the landing page
+// into a site nav.
+const BROWSE_LINKS = [
+  { label: "Browse parks", href: "/parks", Icon: Mountain },
+  { label: "Map", href: "/map", Icon: Map },
+];
+
+// Frosted buttons (styles: .pq-hero-link in ANIMATIONS) so they read as
+// tappable over the hero art. Icons only on desktop — on a phone the two
+// labels already fill the space beside the wordmark. With an icon the outline
+// only appears on hover; without one it stays, since it's the only cue.
+function HeroBrowseLinks({ top, right, fontSize, icons }: { top: number; right: number; fontSize: number; icons: boolean }) {
+  return (
+    <nav aria-label="Browse" style={{ position: "absolute", top, right, zIndex: 3, display: "flex", gap: 8 }}>
+      {BROWSE_LINKS.map(({ label, href, Icon }) => (
+        <Link key={href} href={href} className={icons ? "pq-hero-link pq-hero-link--icon" : "pq-hero-link"} style={{ fontSize }}>
+          {icons && <Icon size={fontSize} strokeWidth={2.2} aria-hidden />}
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 // ── Form components ──────────────────────────────────────────────────────────
 
@@ -198,10 +240,8 @@ function UsernameStep({ showNameFields }: { showNameFields: boolean }) {
       <DField label="Username" value={username} onChange={handleChange} />
       <div
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
+          fontSize: 12,
           color: "var(--ink-mute)",
-          letterSpacing: "0.6px",
           marginBottom: 14,
           marginTop: -4,
         }}
@@ -415,11 +455,8 @@ function DField({
       <div style={{ flex: 1 }}>
         <div
           style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            letterSpacing: "1.4px",
+            fontSize: 12,
             color: "var(--ink-mute)",
-            textTransform: "uppercase",
             fontWeight: 600,
           }}
         >
@@ -490,16 +527,14 @@ function AppStorePill({ compact = false }: { compact?: boolean }) {
         borderRadius: 999,
         background: "rgba(255,251,241,0.14)",
         border: "0.5px solid rgba(255,251,241,0.30)",
-        fontFamily: "var(--font-mono)",
-        fontSize: compact ? 9 : 10.5,
-        letterSpacing: "1px",
-        fontWeight: 700,
+        fontSize: compact ? 12 : 13.5,
+        fontWeight: 600,
         color: "#FFFBF1",
         textDecoration: "none",
       }}
     >
-      <AppleGlyph size={compact ? 10 : 12} />
-      AVAILABLE NOW ON iOS
+      <AppleGlyph size={compact ? 11 : 13} />
+      Available now on iOS
     </a>
   );
 }
@@ -787,7 +822,7 @@ function AuthForm({
       </div>
       <div style={dividerStyle}>
         <div style={{ flex: 1, height: "0.5px", background: "var(--hairline)" }} />
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1.5px", color: "var(--ink-mute)", fontWeight: 600 }}>OR</span>
+        <span style={{ fontSize: 12.5, color: "var(--ink-mute)" }}>or</span>
         <div style={{ flex: 1, height: "0.5px", background: "var(--hairline)" }} />
       </div>
     </>
@@ -869,7 +904,7 @@ function AuthForm({
   if (suStep === "password") {
     return (
       <form onSubmit={handleCreateAccount}>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-mute)", letterSpacing: "0.4px", marginBottom: 16, textAlign: "center" }}>
+        <div style={{ fontSize: 13, color: "var(--ink-mute)", marginBottom: 16, textAlign: "center" }}>
           Creating account for <span style={{ color: "var(--ink)", fontWeight: 700 }}>{suEmail}</span>
         </div>
         <DField label="Password" type={suShowPw ? "text" : "password"} value={suPassword} onChange={setSuPassword} trailing={suShowPw ? "Hide" : "Show"} onTrailingClick={() => setSuShowPw((v) => !v)} />
@@ -927,7 +962,6 @@ function CloudShape({ variant }: { variant: number }) {
 }
 
 function MobileHeroSection() {
-  const parkCount = useNationalParkCount();
   return (
     <div
       className="flex flex-col justify-end md:hidden relative overflow-hidden"
@@ -1044,20 +1078,10 @@ function MobileHeroSection() {
           Park<span style={{ fontWeight: 500 }}>Quest</span>
         </span>
       </div>
+      <HeroBrowseLinks top={24} right={14} fontSize={14} icons={false} />
 
       {/* Tagline anchored to bottom */}
       <div style={{ position: "relative", padding: "0 24px 32px", color: "#FFFBF1", zIndex: 2 }}>
-        <div style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
-          letterSpacing: "2.5px",
-          opacity: 0.70,
-          textTransform: "uppercase",
-          fontWeight: 600,
-          marginBottom: 8,
-        }}>
-          {parkCount} PARKS · ONE QUEST
-        </div>
         <div style={{ fontWeight: 800, fontSize: 34, letterSpacing: -1, lineHeight: 1.05 }}>
           Every park.<br />One journal.
         </div>
@@ -1068,7 +1092,6 @@ function MobileHeroSection() {
 }
 
 function HeroSection({ onScroll }: { onScroll: () => void }) {
-  const parkCount = useNationalParkCount();
   return (
     <div
       style={{
@@ -1257,27 +1280,16 @@ function HeroSection({ onScroll }: { onScroll: () => void }) {
           Park<span style={{ fontWeight: 500 }}>Quest</span>
         </div>
       </div>
+      <HeroBrowseLinks top={32} right={30} fontSize={15} icons />
 
       {/* Tagline */}
       <div style={{ position: "relative", padding: "0 40px 100px", color: "#FFFBF1", zIndex: 2 }}>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            letterSpacing: "3px",
-            opacity: 0.75,
-            textTransform: "uppercase",
-          }}
-        >
-          EST. 2026 · {parkCount} PARKS · ONE QUEST
-        </div>
         <div
           style={{
             fontWeight: 800,
             fontSize: 64,
             letterSpacing: -1.6,
             lineHeight: 1,
-            marginTop: 18,
           }}
         >
           Every park.<br />One journal.<br />
@@ -1319,14 +1331,12 @@ function HeroSection({ onScroll }: { onScroll: () => void }) {
       >
         <div
           style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: "2.4px",
+            fontSize: 13,
             fontWeight: 600,
             opacity: 0.85,
           }}
         >
-          LEARN MORE
+          Learn more
         </div>
         <svg width="22" height="22" viewBox="0 0 22 22">
           <circle cx="11" cy="11" r="10" fill="none" stroke="#FFFBF1" strokeWidth="1" opacity="0.4" />
@@ -1358,24 +1368,11 @@ function AboutSection() {
       <div style={{ maxWidth: 540 }}>
         <div
           style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            letterSpacing: "2.2px",
-            color: "rgba(255,251,241,0.65)",
-            textTransform: "uppercase",
-            fontWeight: 600,
-          }}
-        >
-          ABOUT
-        </div>
-        <div
-          style={{
             fontWeight: 800,
             fontSize: 38,
             color: "#FFFBF1",
             letterSpacing: -1,
             lineHeight: 1.05,
-            marginTop: 14,
           }}
         >
           Why I built<br />ParkQuest.
@@ -1442,15 +1439,12 @@ function AboutSection() {
             </div>
             <div
               style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10.5,
+                fontSize: 13,
                 color: "rgba(255,251,241,0.65)",
-                letterSpacing: "0.8px",
                 marginTop: 1,
-                fontWeight: 600,
               }}
             >
-              FOUNDER
+              Founder
             </div>
           </div>
         </div>
@@ -1471,24 +1465,11 @@ function FeaturesSection() {
     >
       <div
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10.5,
-          letterSpacing: "2.2px",
-          color: "rgba(255,251,241,0.65)",
-          textTransform: "uppercase",
-          fontWeight: 600,
-        }}
-      >
-        WHAT&apos;S INSIDE
-      </div>
-      <div
-        style={{
           fontWeight: 800,
           fontSize: 38,
           color: "#FFFBF1",
           letterSpacing: -1,
           lineHeight: 1.05,
-          marginTop: 14,
           maxWidth: 480,
         }}
       >
@@ -1612,8 +1593,8 @@ function ScreenshotCard({
             <path d="M3 20L9 9l3 5 3-7 6 13H3z" />
             <circle cx="20" cy="4" r="3.5" fill="currentColor" stroke="none" />
           </svg>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "1.4px", fontWeight: 700, color: "#7B5A2E" }}>
-            PARKQUEST
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: -0.2, color: "#7B5A2E" }}>
+            Park<span style={{ fontWeight: 500 }}>Quest</span>
           </span>
         </div>
         <div
@@ -1668,24 +1649,11 @@ function ScreenshotsSection() {
         <div className="px-6 md:px-[60px]">
           <div
             style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              letterSpacing: "2.2px",
-              color: "rgba(58,46,28,0.55)",
-              textTransform: "uppercase",
-              fontWeight: 600,
-            }}
-          >
-            A LOOK INSIDE
-          </div>
-          <div
-            style={{
               fontWeight: 800,
               fontSize: 38,
               color: "#3A2E1C",
               letterSpacing: -1,
               lineHeight: 1.05,
-              marginTop: 14,
               maxWidth: 480,
             }}
           >
@@ -1832,8 +1800,8 @@ function CommunityPostCard({ post, avatarColor }: { post: ShowcasePost; avatarCo
           }}
         >
           <Award size={13} color="var(--primary)" strokeWidth={2.2} />
-          <span style={{ fontSize: 11.5, letterSpacing: "1.2px", fontWeight: 700, color: "var(--primary)" }}>
-            BADGE EARNED
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--primary)" }}>
+            Earned a badge
           </span>
         </div>
       )}
@@ -1951,24 +1919,11 @@ function CommunitySection() {
     >
       <div
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10.5,
-          letterSpacing: "2.2px",
-          color: "rgba(255,251,241,0.65)",
-          textTransform: "uppercase",
-          fontWeight: 600,
-        }}
-      >
-        FROM THE COMMUNITY
-      </div>
-      <div
-        style={{
           fontWeight: 800,
           fontSize: 38,
           color: "#FFFBF1",
           letterSpacing: -1,
           lineHeight: 1.05,
-          marginTop: 14,
           maxWidth: 480,
         }}
       >
@@ -2014,24 +1969,11 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
       >
         <div
           style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            letterSpacing: "2.2px",
-            color: "rgba(255,251,241,0.65)",
-            textTransform: "uppercase",
-            fontWeight: 600,
-          }}
-        >
-          READY?
-        </div>
-        <div
-          style={{
             fontWeight: 800,
             fontSize: 44,
             color: "#FFFBF1",
             letterSpacing: -1.2,
             lineHeight: 1.0,
-            marginTop: 14,
           }}
         >
           {parkCount} parks.<br />One quest.<br />
@@ -2055,15 +1997,15 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
         <div
           style={{
             display: "flex",
+            flexWrap: "wrap",
             justifyContent: "center",
             alignItems: "center",
-            gap: 18,
+            columnGap: 18,
+            rowGap: 10,
             marginTop: 50,
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.8px",
-            color: "rgba(255,251,241,0.45)",
-            fontWeight: 600,
+            fontSize: 13,
+            color: "rgba(255,251,241,0.6)",
+            fontWeight: 500,
           }}
         >
           <button
@@ -2083,10 +2025,10 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,251,241,0.85)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = ""; }}
           >
-            ABOUT
+            About
           </button>
-          {(["PRIVACY", "TERMS", "CONTACT", "CHANGELOG"] as const).map((l) => {
-            const href = l === "CONTACT" ? "/support" : l === "PRIVACY" ? "/privacy" : l === "TERMS" ? "/terms" : l === "CHANGELOG" ? "https://github.com/danglorioso/parkquest" :null;
+          {(["Parks", "Map", "Privacy", "Terms", "Contact", "Changelog"] as const).map((l) => {
+            const href = l === "Parks" ? "/parks" : l === "Map" ? "/map" : l === "Contact" ? "/support" : l === "Privacy" ? "/privacy" : l === "Terms" ? "/terms" : l === "Changelog" ? "https://github.com/danglorioso/parkquest" :null;
             return href ? (
               <a
                 key={l}
@@ -2164,14 +2106,11 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
           <div
             style={{
               marginTop: 10,
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              letterSpacing: "1.4px",
-              color: "rgba(255,251,241,0.32)",
-              fontWeight: 500,
+              fontSize: 12,
+              color: "rgba(255,251,241,0.4)",
             }}
           >
-            © PARKQUEST {new Date().getFullYear()} · ALL RIGHTS RESERVED
+            © {new Date().getFullYear()} ParkQuest
           </div>
         </div>
       </div>
@@ -2243,20 +2182,6 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
           borderLeft: "0.5px solid var(--hairline)",
         }}
       >
-        {/* Kicker */}
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: "2px",
-            color: "var(--ink-mute)",
-            textTransform: "uppercase",
-            fontWeight: 600,
-          }}
-        >
-          DIGITAL NATIONAL PARK JOURNAL
-        </div>
-
         {/* Headline + sub */}
         <div
           style={{
@@ -2264,7 +2189,6 @@ export function AuthHeroLayout({ forcedMode }: AuthHeroLayoutProps) {
             fontSize: 32,
             color: "var(--ink)",
             letterSpacing: -0.8,
-            marginTop: 8,
             lineHeight: 1.05,
           }}
         >

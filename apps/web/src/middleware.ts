@@ -70,7 +70,7 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
   
-  // For ALL other routes (including /map), require auth
+  // For ALL other routes, require auth
   if (!userId) {
     const url = req.nextUrl.clone();
     url.pathname = '/';

@@ -26,7 +26,8 @@ interface PublicLink {
 
 export const PUBLIC_NAV_LINKS: PublicLink[] = [
   { id: "parks",    label: "Parks",    href: "/parks" },
-  { id: "map",      label: "Map",      href: "/map",      gated: true },
+  // Public since the read-only map view (app/map/PublicMapView.tsx)
+  { id: "map",      label: "Map",      href: "/map" },
   { id: "passport", label: "Passport", href: "/passport", gated: true },
   { id: "badges",   label: "Badges",   href: "/badges",   gated: true },
   { id: "support",  label: "Support",  href: "/support" },
