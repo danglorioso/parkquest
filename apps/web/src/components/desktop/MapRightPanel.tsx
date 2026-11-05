@@ -50,11 +50,16 @@ interface Park {
 interface Props {
   park: Park;
   onClose: () => void;
-  onMarkVisited: () => void;
-  onAddToBucketList: () => void;
-  onRemoveFromBucketList: () => void;
-  onEditVisit: () => void;
+  onMarkVisited?: () => void;
+  onAddToBucketList?: () => void;
+  onRemoveFromBucketList?: () => void;
+  onEditVisit?: () => void;
   prefetchedNps?: NpsSummary;
+  /**
+   * Signed-out map (app/map/PublicMapView): no visit status to show, and the
+   * visit/bucket-list buttons become one sign-in prompt plus a park-page link.
+   */
+  guest?: { onSignIn: () => void };
 }
 
 function useEscapeKey(onClose: () => void, blocked: boolean) {
@@ -144,7 +149,7 @@ function CarouselArrow({ dir, onClick }: { dir: "left" | "right"; onClick: (e: R
   );
 }
 
-export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList, onRemoveFromBucketList, onEditVisit, prefetchedNps }: Props) {
+export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList, onRemoveFromBucketList, onEditVisit, prefetchedNps, guest }: Props) {
   const [fetchedImages, setFetchedImages] = useState<LightboxImage[]>(
     park.image_url ? [{ url: park.image_url }] : []
   );
@@ -361,10 +366,12 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
             <X style={{ width: 14, height: 14 }} strokeWidth={2.4} />
           </button>
 
-          {/* Status chip */}
-          <div style={{ position: "absolute", bottom: 10, left: 14 }}>
-            <StatusChip status={park.status} />
-          </div>
+          {/* Status chip — a guest has no visits, so "Not visited" would just be noise */}
+          {!guest && (
+            <div style={{ position: "absolute", bottom: 10, left: 14 }}>
+              <StatusChip status={park.status} />
+            </div>
+          )}
         </div>
 
         {/* Scrollable body */}
@@ -573,7 +580,18 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
 
         {/* Action row */}
         <div style={{ padding: 14, borderTop: "0.5px solid var(--hairline-soft)", display: "flex", gap: 8, flexShrink: 0 }}>
-          {park.status === "visited" ? (
+          {guest ? (
+            <>
+              <ActionBtn as="a" href={`/parks/${park.park_code}`} bg="var(--surface-alt)" color="var(--ink)">
+                View park
+                <ArrowRight style={{ width: 14, height: 14 }} strokeWidth={2.4} />
+              </ActionBtn>
+              <ActionBtn bg="var(--primary)" color="#FFFBF1" onClick={guest.onSignIn}>
+                <Check style={{ width: 14, height: 14 }} strokeWidth={2.4} />
+                Sign in to log a visit
+              </ActionBtn>
+            </>
+          ) : park.status === "visited" ? (
             <>
               <ActionBtn bg="var(--surface-alt)" color="var(--ink)" onClick={onEditVisit}>
                 <Pencil style={{ width: 14, height: 14 }} strokeWidth={2} />
@@ -603,9 +621,11 @@ export function MapRightPanel({ park, onClose, onMarkVisited, onAddToBucketList,
               )}
             </>
           )}
-          <ActionBtn as="a" href={`/parks/${park.park_code}`} bg="var(--surface)" color="var(--ink)" border="0.5px solid var(--hairline)" flex="0 0 auto" padding="10px 12px">
-            <ArrowRight style={{ width: 14, height: 14 }} strokeWidth={2.4} />
-          </ActionBtn>
+          {!guest && (
+            <ActionBtn as="a" href={`/parks/${park.park_code}`} bg="var(--surface)" color="var(--ink)" border="0.5px solid var(--hairline)" flex="0 0 auto" padding="10px 12px">
+              <ArrowRight style={{ width: 14, height: 14 }} strokeWidth={2.4} />
+            </ActionBtn>
+          )}
         </div>
       </div>
 
