@@ -10,8 +10,14 @@ import { useNationalParkCount } from "@/lib/useNationalParkCount";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// Seamless tile: each wave's period is the tile width (300) and the 50-unit line
+// spacing divides the tile height, so edges match in both directions. Paths
+// run a half-period past each side so strokes aren't clipped at the seam.
 function topoPattern(color: string, opacity: number): string {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='420' height='420' viewBox='0 0 420 420'><g fill='none' stroke='${color}' stroke-opacity='${opacity}' stroke-width='1'><path d='M-20 60 Q 60 30 130 60 T 280 60 T 440 60'/><path d='M-20 110 Q 60 80 130 110 T 280 110 T 440 110'/><path d='M-20 160 Q 60 130 130 160 T 280 160 T 440 160'/><path d='M-20 210 Q 60 180 130 210 T 280 210 T 440 210'/><path d='M-20 260 Q 60 230 130 260 T 280 260 T 440 260'/><path d='M-20 310 Q 60 280 130 310 T 280 310 T 440 310'/><path d='M-20 360 Q 60 330 130 360 T 280 360 T 440 360'/><path d='M-20 410 Q 60 380 130 410 T 280 410 T 440 410'/></g></svg>`;
+  const lines = [25, 75, 125, 175, 225, 275]
+    .map((y) => `<path d='M-150 ${y} Q -75 ${y + 30} 0 ${y} T 150 ${y} T 300 ${y} T 450 ${y}'/>`)
+    .join("");
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'><g fill='none' stroke='${color}' stroke-opacity='${opacity}' stroke-width='1'>${lines}</g></svg>`;
   return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
 }
 
@@ -45,7 +51,7 @@ const ANIMATIONS = `
   @keyframes pqMountainDriftB { 0%,100% { transform: translateX(0) } 50% { transform: translateX(1%) } }
   @keyframes pqMountainDriftC { 0%,100% { transform: translateX(0) } 50% { transform: translateX(-0.5%) } }
   @keyframes pqSunGlow        { 0%,100% { opacity: 0.55; transform: scale(1) } 50% { opacity: 0.85; transform: scale(1.04) } }
-  @keyframes pqTopoDrift      { 0% { background-position: 0 0 } 100% { background-position: 420px 200px } }
+  @keyframes pqTopoDrift      { 0% { background-position: 0 0 } 100% { background-position: calc(var(--topo-tile) * 2) var(--topo-tile) } }
   @keyframes pqScrollHint     { 0%,100% { transform: translateX(-50%) translateY(0); opacity: 0.7 } 50% { transform: translateX(-50%) translateY(6px); opacity: 1 } }
   @keyframes pqCloud          { 0% { transform: translateX(-110%) } 100% { transform: translateX(800%) } }
   @keyframes pqShootingStar   {
@@ -942,22 +948,22 @@ function AuthForm({
 
 function CloudShape({ variant }: { variant: number }) {
   if (variant === 1) return <>
-    <ellipse cx="30" cy="17" rx="22" ry="5" fill="#FFFBF1" />
-    <ellipse cx="75" cy="15" rx="45" ry="7" fill="#FFFBF1" />
-    <ellipse cx="140" cy="16" rx="48" ry="6" fill="#FFFBF1" />
-    <ellipse cx="183" cy="18" rx="18" ry="4" fill="#FFFBF1" />
+    <ellipse cx="30" cy="25" rx="22" ry="6" fill="#FFFBF1" />
+    <ellipse cx="75" cy="23" rx="45" ry="9" fill="#FFFBF1" />
+    <ellipse cx="140" cy="24" rx="48" ry="8" fill="#FFFBF1" />
+    <ellipse cx="183" cy="26" rx="18" ry="5" fill="#FFFBF1" />
   </>;
   if (variant === 2) return <>
-    <ellipse cx="28" cy="19" rx="20" ry="8" fill="#FFFBF1" />
-    <ellipse cx="62" cy="13" rx="28" ry="12" fill="#FFFBF1" />
-    <ellipse cx="102" cy="11" rx="32" ry="13" fill="#FFFBF1" />
-    <ellipse cx="143" cy="14" rx="28" ry="10" fill="#FFFBF1" />
-    <ellipse cx="170" cy="18" rx="18" ry="7" fill="#FFFBF1" />
+    <ellipse cx="28" cy="27" rx="20" ry="10" fill="#FFFBF1" />
+    <ellipse cx="62" cy="21" rx="28" ry="16" fill="#FFFBF1" />
+    <ellipse cx="102" cy="19" rx="32" ry="17" fill="#FFFBF1" />
+    <ellipse cx="143" cy="22" rx="28" ry="13" fill="#FFFBF1" />
+    <ellipse cx="170" cy="26" rx="18" ry="9" fill="#FFFBF1" />
   </>;
   return <>
-    <ellipse cx="40" cy="16" rx="32" ry="9" fill="#FFFBF1" />
-    <ellipse cx="82" cy="14" rx="38" ry="10" fill="#FFFBF1" />
-    <ellipse cx="128" cy="17" rx="28" ry="8" fill="#FFFBF1" />
+    <ellipse cx="40" cy="24" rx="32" ry="12" fill="#FFFBF1" />
+    <ellipse cx="82" cy="22" rx="38" ry="13" fill="#FFFBF1" />
+    <ellipse cx="128" cy="25" rx="28" ry="10" fill="#FFFBF1" />
   </>;
 }
 
@@ -975,7 +981,8 @@ function MobileHeroSection() {
       <div style={{
         position: "absolute", inset: 0, pointerEvents: "none",
         backgroundImage: topoPattern("#FFFBF1", 0.14),
-        backgroundSize: "300px 300px",
+        backgroundSize: "214px 214px",
+        ["--topo-tile" as string]: "214px",
         animation: "pqTopoDrift 90s linear infinite",
       }} />
 
@@ -1000,10 +1007,10 @@ function MobileHeroSection() {
       }}>
         {CLOUDS.slice(0, 5).map((c, i) => (
           <div key={`mcloud-${i}`} style={{
-            position: "absolute", top: c.top, left: 0, right: 0, height: 28, opacity: c.opacity,
+            position: "absolute", top: c.top, left: 0, right: 0, opacity: c.opacity,
           }}>
-            <svg viewBox="0 0 200 36" preserveAspectRatio="none" style={{
-              width: c.width, height: "100%",
+            <svg viewBox="0 0 200 44" style={{
+              display: "block", width: c.width, height: "auto",
               animation: `pqCloud ${c.duration}s ${c.delay}s linear infinite`,
               animationFillMode: "backwards",
             }}>
@@ -1109,8 +1116,9 @@ function HeroSection({ onScroll }: { onScroll: () => void }) {
           position: "absolute",
           inset: 0,
           backgroundImage: topoPattern("#FFFBF1", 0.16),
-          backgroundSize: "420px 420px",
-          animation: "pqTopoDrift 90s linear infinite",
+          backgroundSize: "300px 300px",
+          ["--topo-tile" as string]: "300px",
+          animation: "pqTopoDrift 128s linear infinite",
         }}
       />
 
@@ -1145,16 +1153,17 @@ function HeroSection({ onScroll }: { onScroll: () => void }) {
               top: c.top,
               left: 0,
               right: 0,
-              height: 36,
               opacity: c.opacity,
             }}
           >
+            {/* Scales with its width (no preserveAspectRatio="none"), so wide
+                desktop clouds keep their shape instead of stretching flat. */}
             <svg
-              viewBox="0 0 200 36"
-              preserveAspectRatio="none"
+              viewBox="0 0 200 44"
               style={{
+                display: "block",
                 width: c.width,
-                height: "100%",
+                height: "auto",
                 animation: `pqCloud ${c.duration}s ${c.delay}s linear infinite`,
                 animationFillMode: "backwards",
               }}
@@ -1572,7 +1581,7 @@ function ScreenshotCard({
             inset: 0,
             borderRadius: 16,
             backgroundImage: topoPattern("#1F3D2E", 0.10),
-            backgroundSize: "160px 160px",
+            backgroundSize: "114px 114px",
             pointerEvents: "none",
           }}
         />
@@ -1641,7 +1650,7 @@ function ScreenshotsSection() {
           position: "absolute",
           inset: 0,
           backgroundImage: topoPattern("#3A2E1C", 0.06),
-          backgroundSize: "260px 260px",
+          backgroundSize: "186px 186px",
           pointerEvents: "none",
         }}
       />
@@ -1955,7 +1964,8 @@ function FinalCTASection({ onAbout }: { onAbout: () => void }) {
           position: "absolute",
           inset: 0,
           backgroundImage: topoPattern("#FFFBF1", 0.10),
-          backgroundSize: "300px 300px",
+          backgroundSize: "214px 214px",
+          ["--topo-tile" as string]: "214px",
           animation: "pqTopoDrift 60s linear infinite",
         }}
       />
