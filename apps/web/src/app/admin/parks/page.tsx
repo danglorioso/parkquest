@@ -4,10 +4,13 @@ import { ArrowUp, ArrowDown } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import StampGlyphManager from './StampGlyphManager';
 import SyncParksPanel from './SyncParksPanel';
+import { AddParkPanel, EditParkPanel, ParkChangeLogPanel } from './ParkEditor';
 
 interface ParkRow {
   park_code: string;
   name: string;
+  designation: string | null;
+  is_national_park: boolean;
   visit_count: number;
   post_count: number;
   avg_rating: string | null;
@@ -39,7 +42,7 @@ async function getParks(sort: string, dir: string) {
 
 export default async function AdminParksPage({
   searchParams,
-}: { searchParams: Promise<{ sort?: string; dir?: string }> }) {
+}: { searchParams: Promise<{ sort?: string; dir?: string; edit?: string }> }) {
   const params = await searchParams;
   const sort = params.sort ?? 'visit_count';
   const dir = params.dir === 'asc' ? 'asc' : 'desc';
@@ -50,10 +53,18 @@ export default async function AdminParksPage({
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight text-ink">Parks</h1>
-        <p className="mt-1 text-sm text-ink-mute">Click a column to sort. Averages exclude parks with no logged visits.</p>
+        <p className="mt-1 text-sm text-ink-mute">Click a column to sort, or a park name to edit it. Averages exclude parks with no logged visits.</p>
       </div>
 
       <SyncParksPanel />
+      <AddParkPanel />
+      {/* key: remount when an Edit link picks a different park */}
+      <EditParkPanel
+        key={params.edit ?? ''}
+        initialCode={params.edit}
+        parks={[...parks].sort((a, b) => a.name.localeCompare(b.name))}
+      />
+      <ParkChangeLogPanel />
       <StampGlyphManager />
 
       <Card className="border-hairline p-0 shadow-[var(--shadow-card)]">
@@ -78,7 +89,12 @@ export default async function AdminParksPage({
             <tbody>
               {parks.map(p => (
                 <tr key={p.park_code} className="border-b border-hairline-soft last:border-0">
-                  <td className="px-4 py-3 font-semibold text-ink">{p.name}</td>
+                  <td className="px-4 py-3">
+                    <Link href={`/admin/parks?sort=${sort}&dir=${dir}&edit=${p.park_code}#edit-park`} scroll={false} className="font-semibold text-ink hover:underline">
+                      {p.name}
+                    </Link>
+                    <div className="text-xs text-ink-mute">{p.designation || '—'}{p.is_national_park ? ' · National Park' : ''}</div>
+                  </td>
                   <td className="px-4 py-3 text-ink-soft">{p.visit_count}</td>
                   <td className="px-4 py-3 text-ink-soft">{p.post_count}</td>
                   <td className="px-4 py-3 text-ink-soft">{p.avg_rating ?? '—'}</td>
