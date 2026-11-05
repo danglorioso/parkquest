@@ -30,6 +30,29 @@ export const parks = pgTable('parks', {
   created_at: timestamp('created_at').defaultNow(),
 });
 
+// Audit log for every admin-side parks write — Add park, Edit park, NPS sync
+// applies, and reverts (scripts/create-park-changes-table.mjs). Each row is
+// inserted in the same SQL statement as the write it records (see
+// writeParkChange in lib/parkAdmin.ts). before/after are full snapshots of
+// the editable fields (ParkSnapshot); before is null for 'create'. No FK on
+// park_code: parks are never deleted, and the log must outlive any rename.
+export type ParkSnapshot = Pick<
+  typeof parks.$inferSelect,
+  'name' | 'states' | 'designation' | 'is_national_park' | 'latitude' | 'longitude' | 'description' | 'image_url'
+>;
+
+export const parkChanges = pgTable('park_changes', {
+  id: serial('id').primaryKey(),
+  park_code: varchar('park_code', { length: 10 }).notNull(),
+  action: varchar('action', { length: 20 }).notNull(), // 'create' | 'update' | 'sync' | 'revert'
+  before: jsonb('before').$type<ParkSnapshot>(),
+  after: jsonb('after').$type<ParkSnapshot>().notNull(),
+  changed_fields: jsonb('changed_fields').$type<string[]>().notNull(),
+  admin_clerk_user_id: varchar('admin_clerk_user_id', { length: 255 }).notNull(),
+  reverts_change_id: integer('reverts_change_id'),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const userProfiles = pgTable('user_profiles', {
   clerk_user_id: varchar('clerk_user_id', { length: 255 }).notNull().primaryKey(),
   username: varchar('username', { length: 50 }).notNull().unique(),
