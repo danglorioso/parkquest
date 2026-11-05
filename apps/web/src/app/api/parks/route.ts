@@ -28,6 +28,9 @@ export async function GET() {
         )
       );
 
+    // A day of client caching is fine for park adds/redesignations — they
+    // don't need to show up instantly. Admin park writes revalidate the server
+    // copy (revalidateParkData), so they land within this one window.
     return NextResponse.json(allParks, {
       headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=3600' },
     });
