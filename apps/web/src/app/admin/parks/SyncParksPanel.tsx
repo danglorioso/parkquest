@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { RefreshCw, Check } from 'lucide-react';
 import { CollapsibleCard } from '../CollapsibleCard';
-import type { Change } from '@/app/api/admin/parks/sync/route';
+import Link from 'next/link';
+import type { Change, DesignationDrift } from '@/app/api/admin/parks/sync/route';
 
 const btnBase =
   'inline-flex items-center justify-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
@@ -21,6 +22,7 @@ function changeKey(c: Change) {
 
 export default function SyncParksPanel() {
   const [changes, setChanges] = useState<Change[] | null>(null);
+  const [drift, setDrift] = useState<DesignationDrift[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [checking, setChecking] = useState(false);
@@ -38,11 +40,13 @@ export default function SyncParksPanel() {
       const body = await res?.json().catch(() => null);
       setError(body?.error ?? 'Failed to check for updates');
       setChanges(null);
+      setDrift([]);
       return;
     }
     const body = await res.json();
     const found: Change[] = body.changes ?? [];
     setChanges(found);
+    setDrift(body.drift ?? []);
     setSelected(new Set(found.map(changeKey)));
   };
 
@@ -106,6 +110,24 @@ export default function SyncParksPanel() {
               {result.skipped.map((s) => <li key={s}>{s}</li>)}
             </ul>
           )}
+        </div>
+      )}
+
+      {drift.length > 0 && (
+        <div className="mt-3 rounded-lg border border-hairline bg-surface p-3 text-sm text-ink">
+          <p className="font-semibold">NPS lists a different designation for {drift.length === 1 ? 'this park' : 'these parks'}</p>
+          <p className="mt-0.5 text-xs text-ink-mute">
+            Usually a redesignation one side hasn&apos;t caught up with. Name sync is paused for these until the designations match —
+            if ParkQuest is the one behind, redesignate it with Edit park.
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {drift.map((d) => (
+              <li key={d.park_code}>
+                <Link href={`/admin/parks?edit=${d.park_code}#edit-park`} scroll={false} className="font-semibold text-primary hover:underline">{d.park_name}</Link>
+                <span className="text-ink-mute"> — ParkQuest: {d.db_designation || '(blank)'} · NPS: {d.nps_designation}{d.nps_name && d.nps_name !== d.park_name ? ` (“${d.nps_name}”)` : ''}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

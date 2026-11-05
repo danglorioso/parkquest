@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { parks } from '@/lib/db/schema';
+import { parks, type ParkSnapshot } from '@/lib/db/schema';
 import { requireAdmin } from '@/lib/admin';
 import { toNpsCode, localCodesForNpsCode } from '@/lib/npsCodeMap';
+import { loadParkSnapshots, updateParkLogged } from '@/lib/parkAdmin';
 
 const SYNCABLE_FIELDS = ['name', 'states', 'description', 'latitude', 'longitude', 'image_url'] as const;
 type SyncField = (typeof SYNCABLE_FIELDS)[number];
@@ -22,6 +22,7 @@ const IDENTITY_FIELDS: SyncField[] = ['name', 'latitude', 'longitude', 'descript
 interface NpsRaw {
   parkCode: string;
   fullName?: string;
+  designation?: string;
   states?: string;
   description?: string;
   latitude?: string;
@@ -32,6 +33,7 @@ interface NpsRaw {
 interface DbParkRow {
   park_code: string;
   name: string;
+  designation: string | null;
   states: string;
   description: string | null;
   latitude: string | null;
@@ -45,6 +47,26 @@ export interface Change {
   field: SyncField;
   old_value: string | null;
   new_value: string;
+}
+
+/**
+ * NPS and ParkQuest disagree on a park's designation — almost always a
+ * redesignation one side hasn't caught up with yet (Chiricahua: promoted here
+ * the day the act was signed, NPS still listed "National Monument"). Name sync
+ * pauses for these rows so a lagging NPS fullName can't undo a rename; an
+ * admin resolves it with Edit park, which never runs automatically.
+ */
+export interface DesignationDrift {
+  park_code: string;
+  park_name: string;
+  db_designation: string | null;
+  nps_designation: string;
+  nps_name: string | null;
+}
+
+function designationDrifted(row: DbParkRow, nps: NpsRaw, shared: boolean): boolean {
+  const npsDesignation = nps.designation?.trim();
+  return !shared && !!npsDesignation && npsDesignation !== (row.designation ?? '');
 }
 
 async function fetchNpsByCode(): Promise<Map<string, NpsRaw>> {
@@ -79,20 +101,9 @@ function fieldValue(field: SyncField, nps: NpsRaw): string | null {
   }
 }
 
-async function applyField(park_code: string, field: SyncField, value: string) {
-  switch (field) {
-    case 'name': return db.update(parks).set({ name: value }).where(eq(parks.park_code, park_code));
-    case 'states': return db.update(parks).set({ states: value }).where(eq(parks.park_code, park_code));
-    case 'description': return db.update(parks).set({ description: value }).where(eq(parks.park_code, park_code));
-    case 'latitude': return db.update(parks).set({ latitude: value }).where(eq(parks.park_code, park_code));
-    case 'longitude': return db.update(parks).set({ longitude: value }).where(eq(parks.park_code, park_code));
-    case 'image_url': return db.update(parks).set({ image_url: value }).where(eq(parks.park_code, park_code));
-  }
-}
-
 async function getDbParks(): Promise<DbParkRow[]> {
   return db.select({
-    park_code: parks.park_code, name: parks.name, states: parks.states,
+    park_code: parks.park_code, name: parks.name, designation: parks.designation, states: parks.states,
     description: parks.description, latitude: parks.latitude, longitude: parks.longitude,
     image_url: parks.image_url,
   }).from(parks);
@@ -100,8 +111,10 @@ async function getDbParks(): Promise<DbParkRow[]> {
 
 function diffOne(row: DbParkRow, nps: NpsRaw, shared: boolean): Change[] {
   const changes: Change[] = [];
+  const drifted = designationDrifted(row, nps, shared);
   for (const field of SYNCABLE_FIELDS) {
     if (shared && IDENTITY_FIELDS.includes(field)) continue;
+    if (drifted && field === 'name') continue;
     const newValue = fieldValue(field, nps);
     if (newValue === null) continue; // never overwrite with a blank
     const oldValue = row[field];
@@ -121,14 +134,21 @@ export async function GET() {
   try {
     const [npsByCode, dbParks] = await Promise.all([fetchNpsByCode(), getDbParks()]);
     const changes: Change[] = [];
+    const drift: DesignationDrift[] = [];
     for (const row of dbParks) {
       const npsCode = toNpsCode(row.park_code);
       const nps = npsByCode.get(npsCode);
       if (!nps) continue; // NPS dropped/renamed this code — needs manual review, not auto-sync
       const shared = localCodesForNpsCode(npsCode).length > 1;
       changes.push(...diffOne(row, nps, shared));
+      if (designationDrifted(row, nps, shared)) {
+        drift.push({
+          park_code: row.park_code, park_name: row.name, db_designation: row.designation,
+          nps_designation: nps.designation!.trim(), nps_name: nps.fullName?.trim() || null,
+        });
+      }
     }
-    return NextResponse.json({ changes });
+    return NextResponse.json({ changes, drift });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Sync check failed' }, { status: 500 });
   }
@@ -137,6 +157,10 @@ export async function GET() {
 // POST — apply a set of changes an admin confirmed from the GET preview.
 // Re-fetches NPS + the DB right before writing rather than trusting the
 // echoed preview values, since a confirmation click can land minutes later.
+// Writes go through updateParkLogged — one compare-and-set + park_changes row
+// per park — so a sync apply shows up in the change log and can be reverted.
+// No cache revalidation on purpose: NPS metadata drift reaching the app within
+// the normal one-day cache window is fine.
 export async function POST(request: Request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
@@ -146,14 +170,15 @@ export async function POST(request: Request) {
 
   let npsByCode: Map<string, NpsRaw>;
   let dbParks: DbParkRow[];
+  let snapshots: Map<string, ParkSnapshot>;
   try {
-    [npsByCode, dbParks] = await Promise.all([fetchNpsByCode(), getDbParks()]);
+    [npsByCode, dbParks, snapshots] = await Promise.all([fetchNpsByCode(), getDbParks(), loadParkSnapshots()]);
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Sync failed' }, { status: 500 });
   }
   const dbByCode = new Map(dbParks.map((r) => [r.park_code, r]));
 
-  let applied = 0;
+  const setByPark = new Map<string, Partial<ParkSnapshot>>();
   const skipped: string[] = [];
 
   for (const change of body.changes) {
@@ -167,13 +192,21 @@ export async function POST(request: Request) {
 
     const shared = localCodesForNpsCode(npsCode).length > 1;
     if (shared && IDENTITY_FIELDS.includes(change.field)) { skipped.push(`${change.park_code}.${change.field}: identity field on a shared NPS record`); continue; }
+    if (change.field === 'name' && designationDrifted(row, nps, shared)) { skipped.push(`${change.park_code}.name: NPS designation differs — rename via Edit park`); continue; }
 
     const liveValue = fieldValue(change.field, nps);
     if (liveValue === null || !valuesEqual(change.field, change.new_value, liveValue)) { skipped.push(`${change.park_code}.${change.field}: value changed since preview, skipped for safety`); continue; }
     if (valuesEqual(change.field, row[change.field] ?? null, liveValue)) { skipped.push(`${change.park_code}.${change.field}: already up to date`); continue; }
 
-    await applyField(change.park_code, change.field, liveValue);
-    applied++;
+    setByPark.set(change.park_code, { ...setByPark.get(change.park_code), [change.field]: liveValue });
+  }
+
+  let applied = 0;
+  for (const [park_code, set] of setByPark) {
+    const before = snapshots.get(park_code);
+    const result = before && await updateParkLogged({ park_code, before, set, action: 'sync', adminId: admin.id });
+    if (result && result.ok) applied += Object.keys(set).length;
+    else skipped.push(`${park_code}: park changed during sync, skipped`);
   }
 
   return NextResponse.json({ applied, skipped });
