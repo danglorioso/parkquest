@@ -23,6 +23,7 @@ import { emitUserBlocked } from '@/lib/blocking';
 import { STATIC as C, useColors } from '@/lib/palette';
 import { relTime } from '@/lib/dates';
 import { parkColor, parkGradientIndex } from '@/lib/parkColors';
+import { npsImage } from '@/lib/npsImage';
 import { fullStateName } from '@/lib/stateNames';
 import { ParkStamp } from '@/components/ParkStamp';
 import { BadgePatch } from '@/components/BadgeDetailModal';
@@ -554,7 +555,7 @@ function BadgePostBody({ badgeId }: { badgeId: string }) {
 function ParkHeroBanner({ post, onPress }: { post: FeedPost; onPress?: () => void }) {
   const parkCol = parkColor(post.park_code ?? 'ZZZZ');
   const [npsImageUrl, setNpsImageUrl] = useState<string | null>(null);
-  const imageUrl = post.park_image_url ?? npsImageUrl;
+  const imageUrl = npsImage(post.park_image_url ?? npsImageUrl);
 
   useEffect(() => {
     if (post.park_image_url || !post.park_code) return;

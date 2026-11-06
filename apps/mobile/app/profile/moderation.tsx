@@ -1,5 +1,5 @@
 import { ActivityIndicator, Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,6 +31,9 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function ModerationScreen() {
   const { getToken } = useAuth();
+  // clerk-expo returns a new getToken every render — keep it out of dep arrays.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const router = useRouter();
   const T = useColors();
   const [reports, setReports] = useState<Report[] | null>(null);
@@ -41,11 +44,11 @@ export default function ModerationScreen() {
   const [locationStatus, setLocationStatus] = useState<Location.PermissionStatus | null>(null);
 
   const load = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     getMyReports(tok).then(setReports).catch(() => setReports([]));
     getBlockedUsers(tok).then(setBlocked).catch(() => setBlocked([]));
-  }, [getToken]);
+  }, []);
 
   useFocusEffect(useCallback(() => {
     load();
@@ -74,7 +77,7 @@ export default function ModerationScreen() {
     if (unblockBusy.has(u.clerk_user_id)) return;
     setUnblockBusy(s => new Set([...s, u.clerk_user_id]));
     try {
-      const tok = await getToken();
+      const tok = await getTokenRef.current();
       if (!tok) return;
       await unblockUser(tok, u.clerk_user_id);
       setBlocked(prev => prev?.filter(b => b.clerk_user_id !== u.clerk_user_id) ?? prev);
@@ -96,7 +99,7 @@ export default function ModerationScreen() {
           text: 'Undo report', style: 'destructive', onPress: async () => {
             setDeleteBusy(s => new Set([...s, r.id]));
             try {
-              const tok = await getToken();
+              const tok = await getTokenRef.current();
               if (!tok) return;
               await deleteReport(tok, r.id);
               setReports(prev => prev?.filter(x => x.id !== r.id) ?? prev);

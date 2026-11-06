@@ -8,6 +8,9 @@ import { getAdminPosts, type AdminPostRow } from '@/lib/api';
 
 export default function AdminPostsScreen() {
   const { getToken } = useAuth();
+  // clerk-expo returns a new getToken every render — keep it out of dep arrays.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const router = useRouter();
   const [posts, setPosts] = useState<AdminPostRow[] | null>(null);
   // The API was already paginated (returns has_more) but this screen only
@@ -19,12 +22,12 @@ export default function AdminPostsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     pageRef.current = 1;
     setHasMore(true);
     getAdminPosts(tok, 1).then(r => { setPosts(r.posts); setHasMore(r.has_more); }).catch(() => { setPosts([]); setHasMore(false); });
-  }, [getToken]);
+  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -33,7 +36,7 @@ export default function AdminPostsScreen() {
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const tok = await getToken();
+      const tok = await getTokenRef.current();
       if (!tok) return;
       const nextPage = pageRef.current + 1;
       const r = await getAdminPosts(tok, nextPage);
@@ -46,7 +49,7 @@ export default function AdminPostsScreen() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [getToken, hasMore]);
+  }, [hasMore]);
 
   return (
     <>

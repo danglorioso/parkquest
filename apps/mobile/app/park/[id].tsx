@@ -38,6 +38,7 @@ import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { useIsOnline } from '@/lib/network';
 import type { ParkDetail, NpsData, NpsImage, ParkVisitorsSummary } from '@/lib/api';
 import { loadOfflineParks, loadOfflineParksNps } from '@/lib/offlineParks';
+import { npsImage } from '@/lib/npsImage';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const SW = Dimensions.get('window').width;
@@ -851,7 +852,7 @@ export function ParkProfileScreen({
   }, [nps]);
 
   const totalImgs = nps?.images?.length ?? 0;
-  const heroImage = totalImgs > 0 ? nps!.images[heroIdx]?.url : park?.image_url;
+  const heroImage = npsImage(totalImgs > 0 ? nps!.images[heroIdx]?.url : park?.image_url);
 
   useEffect(() => {
     if (!heroImage) return;
@@ -1806,7 +1807,7 @@ export function ParkProfileScreen({
                       popping in harshly without being long enough to read
                       as a real reload on a cache hit. */}
                   <ExpoImage
-                    source={{ uri: img.url }}
+                    source={{ uri: npsImage(img.url) }}
                     style={StyleSheet.absoluteFill}
                     contentFit="cover"
                     transition={200}

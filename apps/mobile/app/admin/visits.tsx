@@ -8,6 +8,9 @@ import { getAdminVisits, type AdminVisitRow } from '@/lib/api';
 
 export default function AdminVisitsScreen() {
   const { getToken } = useAuth();
+  // clerk-expo returns a new getToken every render — keep it out of dep arrays.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const [visits, setVisits] = useState<AdminVisitRow[] | null>(null);
   // The API was already paginated (returns has_more) but this screen only
   // ever requested page 1 and threw the flag away — "showing only the
@@ -18,12 +21,12 @@ export default function AdminVisitsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     pageRef.current = 1;
     setHasMore(true);
     getAdminVisits(tok, 1).then(r => { setVisits(r.visits); setHasMore(r.has_more); }).catch(() => { setVisits([]); setHasMore(false); });
-  }, [getToken]);
+  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -32,7 +35,7 @@ export default function AdminVisitsScreen() {
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const tok = await getToken();
+      const tok = await getTokenRef.current();
       if (!tok) return;
       const nextPage = pageRef.current + 1;
       const r = await getAdminVisits(tok, nextPage);
@@ -45,7 +48,7 @@ export default function AdminVisitsScreen() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [getToken, hasMore]);
+  }, [hasMore]);
 
   return (
     <>

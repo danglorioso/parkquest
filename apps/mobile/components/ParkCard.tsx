@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { STATIC as C } from '@/lib/palette';
 import { STATE_NAMES } from '@/lib/stateNames';
 import { parkColor } from '@/lib/parkColors';
+import { npsImage } from '@/lib/npsImage';
 
 // Matches web parks/page.tsx `ParkCard` + `CardSkeleton` exactly.
 // Park interface is intentionally minimal so it composes with any API shape.
@@ -61,7 +62,7 @@ export function ParkCard({ park, status = 'notVisited', showStatus = true, onPre
       <View style={[s.cover, { backgroundColor: bg }]}>
         {park.image_url && !imgFailed && (
           <Image
-            source={{ uri: park.image_url }}
+            source={{ uri: npsImage(park.image_url) }}
             style={s.coverImg}
             contentFit="cover"
             cachePolicy="memory-disk"

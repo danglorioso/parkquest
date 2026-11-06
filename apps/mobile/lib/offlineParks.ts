@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import type { ParkDetail, NpsData } from './api';
+import { npsImage } from './npsImage';
 
 // Same AsyncStorage-blob + DeviceEventEmitter shape as drafts.ts, applied to
 // the full parks list so Parks/Map tabs can fall back to it when offline.
@@ -68,18 +69,20 @@ export function onOfflineParksNpsChanged(cb: () => void) {
 // Downloads the actual image bytes (cover photos + every gallery image) into
 // expo-image's disk cache so they render offline too — caching the URL strings in
 // the JSON blobs above isn't enough on its own, since nothing has actually fetched
-// those bytes until something tries to render that exact URL.
+// those bytes until something tries to render that exact URL. Hence npsImage()
+// here too — every render site requests the resized URL, so that's the one
+// that has to be on disk.
 export async function prefetchParkImages(
   parks: ParkDetail[],
   npsByCode: Record<string, NpsData>,
 ): Promise<void> {
   const urls = new Set<string>();
   for (const p of parks) {
-    if (p.image_url) urls.add(p.image_url);
+    if (p.image_url) urls.add(npsImage(p.image_url));
   }
   for (const nps of Object.values(npsByCode)) {
     for (const img of nps.images ?? []) {
-      if (img.url) urls.add(img.url);
+      if (img.url) urls.add(npsImage(img.url));
     }
   }
   if (urls.size === 0) return;

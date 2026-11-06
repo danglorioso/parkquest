@@ -75,6 +75,9 @@ function ParkRow({ park, onPress }: { park: ParkWithStatus; onPress: () => void 
 
 export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { getToken } = useAuth();
+  // clerk-expo returns a new getToken every render — keep it out of dep arrays.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -140,7 +143,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
   useEffect(() => {
     if (!visible) return;
     (async () => {
-      const tok = await getToken();
+      const tok = await getTokenRef.current();
       if (!tok) return;
       const headers = { Authorization: `Bearer ${tok}` };
       try {
@@ -156,13 +159,13 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
         if (visitsRes.ok) setVisits(await visitsRes.json());
       } catch { /* ignore */ }
     })();
-  }, [visible, getToken]);
+  }, [visible]);
 
   const searchUsers = useCallback(async (q: string) => {
     const trimmed = q.trim();
     if (!trimmed) { setUserResults([]); return; }
     const mySeq = ++seq.current;
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) { setSearching(false); return; }
     try {
       const res = await fetch(
@@ -174,7 +177,7 @@ export function SearchOverlay({ visible, onClose }: { visible: boolean; onClose:
         if (mySeq === seq.current) { setUserResults(data.slice(0, 5)); setSearching(false); }
       } else if (mySeq === seq.current) { setSearching(false); }
     } catch { if (mySeq === seq.current) setSearching(false); }
-  }, [getToken]);
+  }, []);
 
   const handleChange = (q: string) => {
     setQuery(q);

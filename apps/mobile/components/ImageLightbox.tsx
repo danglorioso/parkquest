@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { GlassIconBg } from '@/components/GlassIconBg';
+import { npsImage } from '@/lib/npsImage';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, withTiming,
 } from 'react-native-reanimated';
@@ -194,7 +195,7 @@ function LightboxPage({
       <View style={styles.page}>
         <Reanimated.View style={[styles.img, animatedStyle]}>
           <Image
-            source={{ uri: image.url }}
+            source={{ uri: npsImage(image.url) }}
             style={StyleSheet.absoluteFill}
             contentFit="contain"
             cachePolicy="memory-disk"

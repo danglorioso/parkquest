@@ -484,6 +484,9 @@ function RangePicker({ value, onChange }: { value: AdminStatsRange; onChange: (r
 
 export default function AdminDashboardScreen() {
   const { getToken } = useAuth();
+  // clerk-expo returns a new getToken every render — keep it out of dep arrays.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const router = useRouter();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [usage, setUsage] = useState<AdminUsage | null>(null);
@@ -491,12 +494,12 @@ export default function AdminDashboardScreen() {
   const [range, setRange] = useState<AdminStatsRange>('7d');
 
   const load = useCallback(async (r: AdminStatsRange) => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     getAdminStats(tok, r).then(setStats).catch(() => {});
     // R2 usage lists the whole bucket — slower, so it loads independently.
     getAdminUsage(tok).then(setUsage).catch(() => {});
-  }, [getToken]);
+  }, []);
 
   useFocusEffect(useCallback(() => { load(range); }, [load, range]));
 

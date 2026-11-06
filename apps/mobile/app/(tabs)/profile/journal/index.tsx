@@ -15,6 +15,7 @@ import { VisitDetails, type VisitStatsInput } from '@/components/VisitStats';
 import { STATIC as C, colorStr, useColors } from '@/lib/palette';
 import { dayCount, fmtRange } from '@/lib/dates';
 import { parkColor } from '@/lib/parkColors';
+import { npsImage } from '@/lib/npsImage';
 
 const MENU_DESTRUCTIVE = '#FF3B30';
 
@@ -88,7 +89,7 @@ function EntryCard({ entry, onPress, onEdit, onDelete }: {
   const router = useRouter();
   // No user photo? Fall back to the park's own stock image rather than a
   // flat color block — still gives the card something to show.
-  const cover  = entry.cover_photo ?? entry.photos?.[0] ?? entry.park_image_url ?? null;
+  const cover  = entry.cover_photo ?? entry.photos?.[0] ?? npsImage(entry.park_image_url) ?? null;
   const days   = dayCount(entry.visited_date, entry.end_date);
   const visKey = (entry.visibility ?? 'private').toLowerCase();
   const visColor = visKey === 'public' ? C.visited : visKey === 'friends' ? T.primary : C.inkMute;

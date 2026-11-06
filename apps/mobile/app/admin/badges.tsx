@@ -1,5 +1,5 @@
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { AdminMenu } from '@/components/AdminMenu';
@@ -8,14 +8,17 @@ import { getAdminBadges, type AdminBadgeRow } from '@/lib/api';
 
 export default function AdminBadgesScreen() {
   const { getToken } = useAuth();
+  // clerk-expo returns a new getToken every render — keep it out of dep arrays.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const [badges, setBadges] = useState<AdminBadgeRow[] | null>(null);
   const [activeUsers, setActiveUsers] = useState(0);
 
   const load = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     getAdminBadges(tok).then(r => { setBadges(r.badges); setActiveUsers(r.active_users); }).catch(() => setBadges([]));
-  }, [getToken]);
+  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 

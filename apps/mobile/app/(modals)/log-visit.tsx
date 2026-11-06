@@ -35,6 +35,7 @@ import { relTime } from '@/lib/dates';
 import { getDefaultVisibility } from '@/lib/settings';
 import { fmtDuration, fmtElevationFt, fmtMiles } from '@/lib/hikeStats';
 import { parseGpx } from '@/lib/gpx';
+import { npsImage } from '@/lib/npsImage';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -1511,7 +1512,7 @@ function StepWhere({
                 to edge past the banner's own padding, same as the text row below. */}
             {park && park.image_url ? (
               <Image
-                source={{ uri: park.image_url }}
+                source={{ uri: npsImage(park.image_url) }}
                 style={StyleSheet.absoluteFill as any}
                 resizeMode="cover"
               />

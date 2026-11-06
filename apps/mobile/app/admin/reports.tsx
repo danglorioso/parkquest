@@ -1,7 +1,7 @@
 import {
   ActivityIndicator, FlatList, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { EmptyState } from '@/components/EmptyState';
@@ -28,16 +28,19 @@ const TABS: { key: 'open' | 'dismissed' | 'actioned'; label: string }[] = [
 
 export default function AdminReportsScreen() {
   const { getToken } = useAuth();
+  // clerk-expo returns a new getToken every render — keep it out of dep arrays.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const [status, setStatus] = useState<'open' | 'dismissed' | 'actioned'>('open');
   const [reports, setReports] = useState<EnrichedReport[] | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const load = useCallback(async (s: 'open' | 'dismissed' | 'actioned') => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     setReports(null);
     getAdminReports(tok, s).then(setReports).catch(() => setReports([]));
-  }, [getToken]);
+  }, []);
 
   useFocusEffect(useCallback(() => { load(status); }, [load, status]));
 
@@ -45,7 +48,7 @@ export default function AdminReportsScreen() {
     if (busyId) return;
     setBusyId(id);
     try {
-      const tok = await getToken();
+      const tok = await getTokenRef.current();
       if (!tok) return;
       await actOnReport(tok, id, action);
       setReports(prev => prev?.filter(r => r.id !== id) ?? prev);

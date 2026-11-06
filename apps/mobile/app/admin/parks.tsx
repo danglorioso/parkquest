@@ -1,7 +1,7 @@
 import {
   ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, Stack } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import { AdminMenu } from '@/components/AdminMenu';
@@ -19,14 +19,17 @@ const SORT_OPTIONS: { key: string; label: string }[] = [
 
 export default function AdminParksScreen() {
   const { getToken } = useAuth();
+  // clerk-expo returns a new getToken every render — keep it out of dep arrays.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const [parks, setParks] = useState<AdminParkRow[] | null>(null);
   const [sort, setSort] = useState('visit_count');
 
   const load = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     getAdminParks(tok, sort, 'desc').then(r => setParks(r.parks)).catch(() => setParks([]));
-  }, [getToken, sort]);
+  }, [sort]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 

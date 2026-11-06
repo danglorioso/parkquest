@@ -21,6 +21,9 @@ const SORTS: Array<{ key: AdminUserSort; label: string }> = [
 
 export default function AdminUsersScreen() {
   const { getToken } = useAuth();
+  // clerk-expo returns a new getToken every render — keep it out of dep arrays.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const router = useRouter();
   const { active } = useLocalSearchParams<{ active?: string }>();
   const activeWindow = active ? Number(active) : undefined;
@@ -38,14 +41,14 @@ export default function AdminUsersScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(async () => {
-    const tok = await getToken();
+    const tok = await getTokenRef.current();
     if (!tok) return;
     pageRef.current = 1;
     setHasMore(true);
     getAdminUsers(tok, 1, activeWindow, sort)
       .then(r => { setUsers(r.users); setHasMore(r.has_more); })
       .catch(() => { setUsers([]); setHasMore(false); });
-  }, [getToken, activeWindow, sort]);
+  }, [activeWindow, sort]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -54,7 +57,7 @@ export default function AdminUsersScreen() {
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const tok = await getToken();
+      const tok = await getTokenRef.current();
       if (!tok) return;
       const nextPage = pageRef.current + 1;
       const r = await getAdminUsers(tok, nextPage, activeWindow, sort);
@@ -67,13 +70,13 @@ export default function AdminUsersScreen() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [getToken, activeWindow, sort, hasMore]);
+  }, [activeWindow, sort, hasMore]);
 
   const toggleBan = async (u: AdminUserRow) => {
     if (busyId) return;
     setBusyId(u.clerk_user_id);
     try {
-      const tok = await getToken();
+      const tok = await getTokenRef.current();
       if (!tok) return;
       await setUserBanned(tok, u.clerk_user_id, !u.banned);
       setUsers(prev => prev?.map(x => x.clerk_user_id === u.clerk_user_id ? { ...x, banned: !u.banned } : x) ?? prev);

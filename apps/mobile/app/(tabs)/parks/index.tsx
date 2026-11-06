@@ -27,6 +27,7 @@ import { useTabBarSpace } from '@/components/FloatingTabBar';
 import { loadOfflineParks, saveOfflineParks } from '@/lib/offlineParks';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useIsOnline } from '@/lib/network';
+import { npsImage } from '@/lib/npsImage';
 import { hasSeenLocationPrompt, markLocationPromptSeen, distanceMiles } from '@/lib/location';
 import { LocationPermissionModal } from '@/components/LocationPermissionModal';
 import { GlassIconBg } from '@/components/GlassIconBg';
@@ -179,7 +180,7 @@ function ParkCard({
       <View style={[styles.cardImg, { backgroundColor: g1 }]}>
         {park.image_url && !imgFailed && (
           <Image
-            source={{ uri: park.image_url }}
+            source={{ uri: npsImage(park.image_url) }}
             style={StyleSheet.absoluteFill as any}
             contentFit="cover"
             cachePolicy="memory-disk"
@@ -300,7 +301,7 @@ function ParkListRow({
       <View style={[styles.listCardImg, { backgroundColor: g1 }]}>
         {park.image_url && !imgFailed && (
           <Image
-            source={{ uri: park.image_url }}
+            source={{ uri: npsImage(park.image_url) }}
             style={StyleSheet.absoluteFill as any}
             contentFit="cover"
             cachePolicy="memory-disk"
