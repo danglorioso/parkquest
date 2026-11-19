@@ -67,6 +67,8 @@
 	<string>ParkQuest uses your location to show nearby parks.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to access your microphone</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>ParkQuest saves your exported passport image to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>ParkQuest needs access to your photos to share your adventures.</string>
 	<key>NSUserActivityTypes</key>

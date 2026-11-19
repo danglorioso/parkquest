@@ -9,6 +9,7 @@ import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { captureRef } from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
+import * as Sentry from '@sentry/react-native';
 import * as SMS from 'expo-sms';
 import {
   EXPORT_H, EXPORT_W, PassportExportCard,
@@ -213,7 +214,16 @@ function PassportShareInner() {
       Alert.alert('Photos access needed', 'Allow ParkQuest to add to your photo library in Settings to save your passport.');
       return;
     }
-    await MediaLibrary.saveToLibraryAsync(uri);
+    try {
+      await MediaLibrary.saveToLibraryAsync(uri);
+    } catch (e) {
+      // Previously an unhandled rejection: the button just did nothing (build
+      // 174 shipped without NSPhotoLibraryAddUsageDescription). Tell the user,
+      // and keep reporting it now that it no longer reaches Sentry on its own.
+      Sentry.captureException(e);
+      Alert.alert("Couldn't save to Photos", 'Try again, or use More to save it another way.');
+      return;
+    }
     showToast('Saved to Photos');
   });
 
