@@ -2,9 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import { Home } from "lucide-react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+// v6 is ESM-only; bundlers can't locate the worker from import.meta.url on their own.
+maplibregl.setWorkerUrl(new URL("maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url).toString());
 
 export interface MapPark {
   park_code: string;
