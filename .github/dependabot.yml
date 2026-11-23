@@ -1,0 +1,10 @@
+# pnpm workspace: Dependabot must run from the root (where pnpm-workspace.yaml
+# and pnpm-lock.yaml live), not from apps/web or apps/mobile.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # 0 = no routine version-bump PRs; security-update PRs still open.
+    open-pull-requests-limit: 0
