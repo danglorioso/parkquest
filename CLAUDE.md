@@ -47,5 +47,10 @@ pnpm-workspaces monorepo:
 
 ## Conventions
 
-- Don't commit or push unless explicitly asked. Flag undeployed work — a fix isn't "live" until deployed (web) or shipped through TestFlight (mobile).
+- Commit on your own, without being asked: one commit per feature or fix as soon as it typechecks, on the current working branch. Don't save everything for one large commit, and never commit straight to `main` unless the task says so (Phase 1 groundwork).
+- Pushing, opening PRs, merging, and pushing tags still wait for Dan to ask.
+- Flag undeployed work — a fix isn't "live" until deployed (web) or shipped through TestFlight (mobile).
 - Prefer editing existing patterns over introducing new dependencies.
+- Redesign work follows `docs/redesign-tasks.md`: do one session's chunk, tick its boxes, and commit the ticked file with `docs:`.
+- Commit messages are a single line describing the change, prefixed with its type: `feat:` `add:` `restyle:` `fix:` `refactor:` `chore:` `docs:` (e.g. `restyle: passport card foil and microprint`).
+- Never credit Claude or Claude Code in commits or PRs: no `Co-Authored-By` trailer, no "Generated with" line, no session links.
