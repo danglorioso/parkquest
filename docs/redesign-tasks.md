@@ -23,6 +23,14 @@ One numbered item is one Claude Code session, sized to fit comfortably inside a 
   - [ ] `git tag pre-redesign` (local only; Dan pushes it)
   - [ ] Export the design assets into the repo: icon 1024, splash images (phone + iPad, both orientations), splash emblem (`add: redesign brand assets`). Don't wire them up yet.
 
+- [ ] **0b. Dependency updates** (on a `chore/deps` branch; GitHub's Dependabot flagged 124 known vulnerabilities on `main`, 71 high)
+  - [ ] `pnpm audit` and the Dependabot list: write down what's flagged and which app it's in
+  - [ ] Web: patch and minor updates first (Next.js security releases especially), then `pnpm build` and typecheck (`chore: update web dependencies`)
+  - [ ] Mobile: patch and minor updates that stay inside the current Expo SDK. Keep `react-native-worklets` pinned at 0.5.1. Typecheck, `pod install`, run on the simulator (`chore: update mobile dependencies`)
+  - [ ] Shared and dev-only packages (`chore: update shared dependencies`)
+  - [ ] Anything needing a major upgrade (a new Expo SDK, React or Next.js major) goes on a list for Dan, not into this session
+  - [ ] Dan: merge to `main`, check a Vercel preview, and run one TestFlight build of 1.0.3 + new deps before Phase 1
+
 ## Phase 1: Shared groundwork (on `main`, invisible to users)
 
 - [ ] **1. Design tokens**
